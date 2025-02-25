@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+dist/
+
+# Build files
+*.js.map
+*.d.ts
+
+# Editor files
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment files
+.env
+.env.*
+
+# Test files
+coverage/
+__tests__/
+*.test.ts
+*.spec.ts
+
+# Other
+.DS_Store
+.git/
+v1 - formatted.json
+
+# New files
+BUILD.md
+interface-organization.rule
+pnpm-lock.yaml
+
+

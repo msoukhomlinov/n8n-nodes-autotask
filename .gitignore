@@ -1,0 +1,70 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# commit message files
+commit_msg*.txt
+*_commit_msg.txt
+pr_msg*.txt
+*_pr_msg.txt
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+/dist
+pnpm-lock.yaml
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files
+.env*.local
+.env
+#.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+credentials.json
+
+# asdf
+.tool-versions
+
+# pycache
+**/__pycache__/
+
+# python virtual environment
+/venv/
+
+# pytest
+.pytest_cache/
+
+# vscode
+.vscode/
+
+# documentation and reference files
+/docs/
+/references/
+
+.cursorignore
+.cursorrules

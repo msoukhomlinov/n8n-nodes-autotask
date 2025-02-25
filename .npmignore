@@ -1,0 +1,36 @@
+# source
+nodes/
+credentials/
+*.ts
+!*.d.ts
+
+# development
+.git/
+.github/
+.vscode/
+.idea/
+coverage/
+.nyc_output/
+.cursorrules
+.cursorignore
+.editorconfig
+.eslintrc.js
+.eslintrc.prepublish.js
+.gitattributes
+.gitignore
+.prettierrc.js
+gulpfile.js
+jest.config.js
+tsconfig.json
+tslint.json
+*.map
+
+# misc
+.DS_Store
+.env
+.env.*
+.npmrc
+*.log
+node_modules/
+TODO.md
+debug-guidelines.md
