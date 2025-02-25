@@ -7,9 +7,8 @@ interface RawFilterInput {
 		op: 'and' | 'or';
 		items: {
 			itemType: Array<{
-				type: 'condition' | 'group';
-				field?: string;
-				op?: string;
+				field: string;
+				op: string;
 				value?: string;
 				valueType?: 'string' | 'number' | 'boolean';
 				udf?: boolean;
@@ -26,7 +25,10 @@ export const build = async function(this: IExecuteFunctions): Promise<INodeExecu
 			group: rawInput.group.map(group => ({
 				op: group.op,
 				items: group.items.itemType.map(item => ({
-					itemType: item
+					itemType: {
+						...item,
+						type: 'condition',
+					}
 				}))
 			}))
 		}

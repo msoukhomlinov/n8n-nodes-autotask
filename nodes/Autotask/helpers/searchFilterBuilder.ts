@@ -38,22 +38,13 @@ export function convertToAutotaskFilter(input: ISearchFilterBuilderInput): IAuto
 	// Convert to Autotask API format
 	const filter = input.filter.group.map((group) => {
 		const items = group.items.map((item) => {
-			if (item.itemType.type === 'condition') {
-				const value = item.itemType.value || '';
-				return {
-					op: item.itemType.op,
-					field: item.itemType.field,
-					value: convertValue(value, item.itemType.valueType || 'string'),
-					...(item.itemType.udf && { udf: true })
-				} as IAutotaskFilterCondition;
-			}
-			if (item.itemType.type === 'group' && item.subgroup) {
-				return {
-					op: item.subgroup.op,
-					items: item.subgroup.items
-				} as IAutotaskFilterGroup;
-			}
-			throw new Error('Invalid filter item type or missing data');
+			const value = item.itemType.value || '';
+			return {
+				op: item.itemType.op,
+				field: item.itemType.field,
+				value: convertValue(value, item.itemType.valueType || 'string'),
+				...(item.itemType.udf && { udf: true })
+			} as IAutotaskFilterCondition;
 		});
 
 		// If there's only one item, return it directly
@@ -85,7 +76,7 @@ function countUdfConditions(input: ISearchFilterBuilderInput): number {
 	let udfCount = 0;
 	for (const group of input.filter?.group || []) {
 		for (const item of group.items || []) {
-			if (item.itemType.type === 'condition' && item.itemType.udf) {
+			if (item.itemType.udf) {
 				udfCount++;
 			}
 		}
@@ -105,36 +96,28 @@ export function validateFilterInput(input: ISearchFilterBuilderInput): void {
 
 	for (const group of input.filter.group) {
 		if (!group.items?.length) {
-			throw new Error('Each group must contain at least one condition or subgroup');
+			throw new Error('Each group must contain at least one condition');
 		}
 
 		for (const item of group.items) {
-			if (item.itemType.type === 'condition') {
-				if (!item.itemType.field) {
-					throw new Error('Condition must have a field name');
+			if (!item.itemType.field) {
+				throw new Error('Condition must have a field name');
+			}
+			if (!item.itemType.op) {
+				throw new Error('Condition must have an operator');
+			}
+			// Only check for value if operator is not exist/notExist
+			if (item.itemType.op !== 'exist' && item.itemType.op !== 'notExist') {
+				if (item.itemType.value === undefined) {
+					throw new Error('Condition must have a value (empty string is allowed for searching empty fields)');
 				}
-				if (!item.itemType.op) {
-					throw new Error('Condition must have an operator');
+				// Validate value type conversion
+				try {
+					const value = item.itemType.value || '';
+					convertValue(value, item.itemType.valueType || 'string');
+				} catch (error) {
+					throw new Error(`Value conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
 				}
-				// Only check for value if operator is not exist/notExist
-				if (item.itemType.op !== 'exist' && item.itemType.op !== 'notExist') {
-					if (item.itemType.value === undefined) {
-						throw new Error('Condition must have a value (empty string is allowed for searching empty fields)');
-					}
-					// Validate value type conversion
-					try {
-						const value = item.itemType.value || '';
-						convertValue(value, item.itemType.valueType || 'string');
-					} catch (error) {
-						throw new Error(`Value conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-					}
-				}
-			} else if (item.itemType.type === 'group') {
-				if (!item.subgroup) {
-					throw new Error('Subgroup must be defined when item type is group');
-				}
-			} else {
-				throw new Error('Invalid item type');
 			}
 		}
 	}

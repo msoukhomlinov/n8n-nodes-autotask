@@ -16,14 +16,13 @@ export interface ISearchFilterBuilderInput {
 			op: 'and' | 'or';
 			items: Array<{
 				itemType: {
-					type: 'condition' | 'group';
-					field?: string;
-					op?: string;
+					type: 'condition';
+					field: string;
+					op: string;
 					value?: string;
 					valueType?: 'string' | 'number' | 'boolean';
 					udf?: boolean;
 				};
-				subgroup?: IFilterGroup;
 			}>;
 		}>;
 	};
