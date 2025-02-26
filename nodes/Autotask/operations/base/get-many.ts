@@ -60,6 +60,14 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 		return await handleErrors(
 			this.context,
 			async () => {
+				// Check if returnAll is false, if so, get the maxRecords parameter
+				const returnAll = this.context.getNodeParameter('returnAll', itemIndex, true) as boolean;
+				if (!returnAll) {
+					const maxRecords = this.context.getNodeParameter('maxRecords', itemIndex, 10) as number;
+					// Add MaxRecords to the filters object
+					filters.MaxRecords = maxRecords;
+				}
+
 				// Initialize results array
 				const results: T[] = [];
 
@@ -67,23 +75,24 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 				const initialResults = await this.executeQuery(filters, undefined);
 				results.push(...initialResults);
 
-				// Handle pagination
-				let pageCount = 1;
-				while (this.paginationHandler.hasNextPage()) {
-					const nextPageUrl = this.paginationHandler.getNextPageUrl();
-					if (!nextPageUrl) {
-						throw new Error(
-							ERROR_TEMPLATES.operation
-								.replace('{type}', 'PaginationError')
-								.replace('{operation}', 'getMany')
-								.replace('{entity}', this.entityType)
-								.replace('{details}', 'Invalid next page URL')
-						);
-					}
+				// Only continue with pagination if returnAll is true
+				if (returnAll) {
+					// Handle pagination
+					while (this.paginationHandler.hasNextPage()) {
+						const nextPageUrl = this.paginationHandler.getNextPageUrl();
+						if (!nextPageUrl) {
+							throw new Error(
+								ERROR_TEMPLATES.operation
+									.replace('{type}', 'PaginationError')
+									.replace('{operation}', 'getMany')
+									.replace('{entity}', this.entityType)
+									.replace('{details}', 'Invalid next page URL')
+							);
+						}
 
-					const pageResults = await this.executeQuery(filters, nextPageUrl);
-					results.push(...pageResults);
-					pageCount++;
+						const pageResults = await this.executeQuery(filters, nextPageUrl);
+						results.push(...pageResults);
+					}
 				}
 
 				return results;
@@ -184,6 +193,11 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 				const queryBody: IAutotaskQueryInput<T> = {
 					filter: filters.filter,
 				};
+
+				// Include MaxRecords if specified
+				if (filters.MaxRecords) {
+					queryBody.MaxRecords = filters.MaxRecords;
+				}
 
 				const response = await autotaskApiRequest.call(
 					this.context,

@@ -1,6 +1,7 @@
 import {
 	NodeConnectionType,
 	type ResourceMapperFields,
+	NodeOperationError,
 } from 'n8n-workflow';
 import type {
 	IExecuteFunctions,
@@ -119,7 +120,10 @@ export class Autotask implements INodeType {
 			case 'timeEntry':
 				return executeTimeEntryOperation.call(this);
 			default:
-				throw new Error(`Resource ${resource} is not supported`);
+				throw new NodeOperationError(
+					this.getNode(),
+					`Resource ${resource} is not supported`
+				);
 		}
 	}
 

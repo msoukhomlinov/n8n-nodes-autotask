@@ -5,6 +5,35 @@ import type { INodeProperties } from 'n8n-workflow';
  */
 export const getManyAdvancedOptions: INodeProperties[] = [
 	{
+		displayName: 'Get All',
+		name: 'returnAll',
+		type: 'boolean',
+		default: true,
+		description: 'Whether to return all results or only up to a given limit',
+		displayOptions: {
+			show: {
+				operation: ['getManyAdvanced'],
+			},
+		},
+	},
+	{
+		displayName: 'Max Records',
+		name: 'maxRecords',
+		type: 'number',
+		default: 10,
+		description: 'Max number of records to return (1-500)',
+		typeOptions: {
+			minValue: 1,
+			maxValue: 500,
+		},
+		displayOptions: {
+			show: {
+				operation: ['getManyAdvanced'],
+				returnAll: [false],
+			},
+		},
+	},
+	{
 		displayName: 'Advanced Filter',
 		name: 'advancedFilter',
 		type: 'json',

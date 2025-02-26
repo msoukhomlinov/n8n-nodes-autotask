@@ -2,6 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.1.1] - 2024-02-26
+
+### Added
+- Added support for limiting the number of records returned in query operations
+- Added "Get All" toggle to control whether to retrieve all results or only up to a specified limit
+- Added "Max Records" parameter (range 1-500, default 10) when "Get All" is set to false
+
+### Fixed
+- Fixed an issue with the MaxRecords parameter not being included in API requests
+
 ## [0.1.0] - 2024-02-25
 
 ### Added
