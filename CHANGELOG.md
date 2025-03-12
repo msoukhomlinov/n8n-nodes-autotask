@@ -24,7 +24,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - Improved performance with the new file-based caching system
 - Enhanced documentation for new entities
 
-## [0.1.1] - 2024-02-26
+## [0.1.1] - 2025-02-26
 
 ### Added
 - Added support for limiting the number of records returned in query operations
@@ -34,7 +34,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 ### Fixed
 - Fixed an issue with the MaxRecords parameter not being included in API requests
 
-## [0.1.0] - 2024-02-25
+## [0.1.0] - 2025-02-25
 
 ### Added
 - Initial public release of the n8n-nodes-autotask integration
