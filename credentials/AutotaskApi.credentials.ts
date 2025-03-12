@@ -234,6 +234,30 @@ export class AutotaskApi implements ICredentialType {
 				},
 			},
 		},
+		{
+			displayName: 'Cache Directory',
+			name: 'cacheDirectory',
+			type: 'string',
+			default: './cache/autotask',
+			description: 'Directory to store cache files (relative or absolute path)',
+			displayOptions: {
+				show: {
+					cacheEnabled: [true],
+				},
+			},
+		},
+		{
+			displayName: 'Maximum Cache Size (MB)',
+			name: 'cacheMaxSize',
+			type: 'number',
+			default: 100,
+			description: 'Maximum size of the cache in megabytes (0 for unlimited)',
+			displayOptions: {
+				show: {
+					cacheEnabled: [true],
+				},
+			},
+		},
 	];
 
 	authenticate: IAuthenticateGeneric = {

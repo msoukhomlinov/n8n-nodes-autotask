@@ -25,13 +25,13 @@ export async function executeEntityInfoOperations(
 			return getEntityInfoOp.execute(itemIndex);
 		}
 		case 'getFieldInfo': {
-			const getFieldInfoOp = new GetFieldInfoOperation<IAutotaskEntity>(
+			const getFieldInfoOp = new GetFieldInfoOperation(
 				entityType,
 				context,
 				parentType,
 				parentChain,
 			);
-			return getFieldInfoOp.execute(itemIndex);
+			return getFieldInfoOp.execute();
 		}
 		default:
 			throw new Error(`Unknown operation: ${operation}`);

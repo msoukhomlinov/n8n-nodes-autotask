@@ -2,7 +2,29 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [0.1.0] - 2024-02-25
+## [Unreleased]
+
+### Todo
+- [ ] Enhance all get operations to enrich results by adding 'label' fields for all picklist values
+- [ ] Add support for Company Alerts entity
+- [ ] Add support for Service Calls entity
+- [ ] Add support for Contracts and associated entities
+- [ ] Add support for Opportunities entity
+- [ ] Add webhook support for real-time event processing
+
+## [0.2.0] - 2025-03-12
+
+### Added
+- Enhanced caching to be file based and shareable between workflows/runs
+- Added support for Billing Codes (BillingCodes) entity
+- Added support for Ticket Note entity
+- Added support for Ticket History entity
+
+### Changed
+- Improved performance with the new file-based caching system
+- Enhanced documentation for new entities
+
+## [0.1.0] - 2025-02-25
 
 ### Added
 - Initial public release of the n8n-nodes-autotask integration
@@ -38,4 +60,5 @@ This section outlines planned features and improvements for future releases.
 ### Planned Features
 - **Webhook Support**: Integration with Autotask webhooks for real-time event processing
 
+[0.2.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.0
 [0.1.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.0 

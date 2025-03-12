@@ -37,7 +37,7 @@ export function addEntityInfoOperations(resourceName: string): INodeProperties[]
 				...entityInfoOptions,
 				// Resource's existing operations will be spread after this
 			],
-			default: 'getEntityInfo',
+			default: '',
 		},
 	];
 }

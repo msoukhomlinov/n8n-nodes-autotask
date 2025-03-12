@@ -1,6 +1,7 @@
 import {
 	NodeConnectionType,
 	type ResourceMapperFields,
+	NodeOperationError,
 } from 'n8n-workflow';
 import type {
 	IExecuteFunctions,
@@ -20,7 +21,10 @@ import { executeProjectPhaseOperation } from './resources/projectPhases/execute'
 import { executeProjectChargeOperation } from './resources/projectCharges/execute';
 import { executeProductOperation } from './resources/products/execute';
 import { executeTicketOperation } from './resources/tickets/execute';
+import { executeTicketNoteOperation } from './resources/ticketNotes/execute';
+import { executeTicketHistoryOperation } from './resources/ticketHistories/execute';
 import { executeTimeEntryOperation } from './resources/timeEntries/execute';
+import { executeBillingCodeOperation } from './resources/billingCodes/execute';
 import { searchFilterDescription, searchFilterOperations, build as executeSearchFilterOperation } from './resources/searchFilter';
 import { getResourceMapperFields } from './helpers/resourceMapper';
 import { RESOURCE_DEFINITIONS } from './resources/definitions';
@@ -35,7 +39,10 @@ import { projectPhaseFields } from './resources/projectPhases/description';
 import { projectChargeFields } from './resources/projectCharges/description';
 import { productFields } from './resources/products/description';
 import { ticketFields } from './resources/tickets/description';
+import { ticketNoteFields } from './resources/ticketNotes/description';
+import { ticketHistoryFields } from './resources/ticketHistories/description';
 import { timeEntryFields } from './resources/timeEntries/description';
+import { billingCodeFields } from './resources/billingCodes/description';
 import { addOperationsToResource } from './helpers/resource-operations.helper';
 
 /**
@@ -81,7 +88,10 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(projectTaskFields, { resourceName: 'task' }),
 			...addOperationsToResource(resourceFields, { resourceName: 'resource' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
+			...addOperationsToResource(ticketNoteFields, { resourceName: 'ticketNote' }),
+			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
+			...billingCodeFields,
 			...searchFilterDescription,
 			...searchFilterOperations,
 		],
@@ -92,6 +102,8 @@ export class Autotask implements INodeType {
 
 		// Handle resource-specific operations
 		switch (resource) {
+			case 'billingCode':
+				return executeBillingCodeOperation.call(this);
 			case 'company':
 				return executeCompanyOperation.call(this);
 			case 'companyNote':
@@ -116,10 +128,14 @@ export class Autotask implements INodeType {
 				return executeSearchFilterOperation.call(this);
 			case 'ticket':
 				return executeTicketOperation.call(this);
+			case 'ticketNote':
+				return executeTicketNoteOperation.call(this);
+			case 'TicketHistory':
+				return executeTicketHistoryOperation.call(this);
 			case 'timeEntry':
 				return executeTimeEntryOperation.call(this);
 			default:
-				throw new Error(`Resource ${resource} is not supported`);
+				throw new NodeOperationError(this.getNode(), `Resource ${resource} is not supported`);
 		}
 	}
 

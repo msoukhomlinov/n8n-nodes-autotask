@@ -1,6 +1,6 @@
 import type { INodeProperties } from 'n8n-workflow';
 
-export const resourceFields: INodeProperties[] = [
+export const ticketHistoryFields: INodeProperties[] = [
 	{
 		displayName: 'Operation',
 		name: 'operation',
@@ -8,52 +8,58 @@ export const resourceFields: INodeProperties[] = [
 		noDataExpression: true,
 		displayOptions: {
 			show: {
-				resource: [
-					'resource',
-				],
+				resource: ['TicketHistory'],
 			},
 		},
 		options: [
 			{
 				name: 'Get',
 				value: 'get',
-				description: 'Get a resource by ID',
-				action: 'Get a resource',
+				description: 'Get a ticket history by ID',
+				action: 'Get a ticket history',
 			},
 			{
 				name: 'Get Many',
 				value: 'getMany',
-				description: 'Get multiple resources',
-				action: 'Get multiple resources',
-			},
-			{
-				name: 'Update',
-				value: 'update',
-				description: 'Update a resource',
-				action: 'Update a resource',
+				description: 'Get many ticket histories',
+				action: 'Get many ticket histories',
 			},
 			{
 				name: 'Count',
 				value: 'count',
-				description: 'Count number of resources',
-				action: 'Count resources',
+				description: 'Count ticket histories',
+				action: 'Count ticket histories',
 			},
 		],
-		default: 'get',
+		default: 'getMany',
 	},
 	{
-		displayName: 'Resource ID',
+		displayName: 'Ticket History ID',
 		name: 'id',
 		type: 'string',
 		required: true,
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['resource'],
-				operation: ['update', 'get'],
+				resource: ['TicketHistory'],
+				operation: ['get'],
 			},
 		},
-
+		description: 'The ID of the ticket history to retrieve',
+	},
+	{
+		displayName: 'Ticket ID',
+		name: 'ticketID',
+		type: 'string',
+		required: true,
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['TicketHistory'],
+				operation: ['get', 'getMany', 'count'],
+			},
+		},
+		description: 'The ID of the ticket to get history for. This is the only allowed filter.',
 	},
 	{
 		displayName: 'Fields',
@@ -66,8 +72,8 @@ export const resourceFields: INodeProperties[] = [
 		required: true,
 		displayOptions: {
 			show: {
-				resource: ['resource'],
-				operation: ['update', 'getMany', 'count'],
+				resource: ['TicketHistory'],
+				operation: ['getMany'],
 			},
 		},
 		typeOptions: {

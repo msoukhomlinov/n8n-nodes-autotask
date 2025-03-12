@@ -33,8 +33,8 @@ export async function getFields(
 
 	// Try to get fields from cache first
 	let fields: IDataObject[] | undefined;
-	const cacheKey = `${entityType}:fields:${fieldType}`;
 	if (cacheService?.isEntityInfoEnabled()) {
+		const cacheKey = cacheService.getFieldsKey(entityType, fieldType);
 		fields = await cacheService.get<IDataObject[]>(cacheKey);
 		console.debug(`[${new Date().toISOString()}] Cache ${fields ? 'hit' : 'miss'} for fields: ${entityType}.${fieldType}`);
 	}
@@ -62,6 +62,7 @@ export async function getFields(
 
 		// Cache the results if caching is enabled
 		if (cacheService?.isEntityInfoEnabled()) {
+			const cacheKey = cacheService.getFieldsKey(entityType, fieldType);
 			await cacheService.set(
 				cacheKey,
 				fields,
@@ -220,8 +221,8 @@ export async function getEntityInfo(
 
 	// Try to get entity info from cache first
 	let info: IEntityInfo | undefined;
-	const cacheKey = `${entityType}:info`;
 	if (cacheService?.isEntityInfoEnabled()) {
+		const cacheKey = cacheService.getEntityInfoKey(entityType);
 		info = await cacheService.get<IEntityInfo>(cacheKey);
 		console.debug(`[${new Date().toISOString()}] Cache ${info ? 'hit' : 'miss'} for entity info: ${entityType}`);
 	}
@@ -243,6 +244,7 @@ export async function getEntityInfo(
 
 		// Cache the results if caching is enabled
 		if (cacheService?.isEntityInfoEnabled()) {
+			const cacheKey = cacheService.getEntityInfoKey(entityType);
 			await cacheService.set(
 				cacheKey,
 				info,

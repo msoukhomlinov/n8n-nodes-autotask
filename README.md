@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.1.0-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 This is an n8n community node for integrating with Autotask PSA. It provides a comprehensive set of operations to interact with Autotask entities through their REST API.
@@ -57,6 +57,7 @@ The node supports the following Autotask resources:
 
 | Resource | Description |
 |----------|-------------|
+| Billing Code | Manage billing codes for time entries and charges |
 | Company | Manage organisations in Autotask |
 | Company Note | Manage notes attached to companies |
 | Contact | Manage contacts associated with companies |
@@ -69,6 +70,8 @@ The node supports the following Autotask resources:
 | Resource | Manage staff resources |
 | Search Filter | Build advanced search filters |
 | Ticket | Manage service tickets |
+| Ticket History | View historical changes to tickets |
+| Ticket Note | Manage notes attached to tickets |
 | Time Entry | Manage time entries for billing |
 
 ### Operations
@@ -97,7 +100,7 @@ For most resources, the following operations are available:
 
 - **Resource Mapping**: Dynamically map fields based on entity definitions
 - **Advanced Filtering**: Build complex queries with multiple conditions
-- **Caching**: Improve performance by caching field definitions and picklists
+- **File-based Caching**: Improved performance with persistent caching that can be shared between workflows and runs
 - **Timezone Handling**: Automatic conversion between local time and UTC
 
 ## Usage
@@ -169,7 +172,7 @@ Many Autotask entities have parent-child relationships (e.g., Companies and Cont
 
 ### Caching Options
 
-The node includes a caching system to improve performance by reducing API calls:
+The node includes an enhanced file-based caching system to improve performance by reducing API calls:
 
 - **Enable Field Caching**: Toggle caching on/off
 - **Cache TTL**: How long to cache field values (in seconds)
@@ -179,6 +182,8 @@ The node includes a caching system to improve performance by reducing API calls:
 - **Reference Fields TTL**: How long to cache reference field values
 - **Cache Picklists**: Whether to cache picklist values
 - **Picklists TTL**: How long to cache picklist values
+- **File-based Cache**: Cache is stored in files that can be shared between workflows and runs
+- **Cache Directory**: Optional path to a directory where cache files will be stored
 
 ### Timezone Handling
 

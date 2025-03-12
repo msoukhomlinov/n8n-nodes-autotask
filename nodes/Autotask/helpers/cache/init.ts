@@ -28,6 +28,8 @@ export async function initializeCache(
 					},
 				},
 				(credentials.Username as string) || 'default',
+				credentials.cacheDirectory as string,
+				credentials.cacheMaxSize as number
 			);
 		}
 	} catch (error) {

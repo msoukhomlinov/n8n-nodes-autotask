@@ -6,6 +6,8 @@ import { OperationType } from '../types/base/entity-types';
  * This includes all endpoints that can be accessed through the Autotask REST API
  */
 export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
+	// BillingCode entity (read-only)
+	{ name: 'BillingCode', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Company', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'CompanyAttachment', childOf: 'Company', subname: 'Attachment', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyNote', childOf: 'Company', subname: 'Notes', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
@@ -29,6 +31,9 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'ProductWebhookUdfField', childOf: 'ProductWebhook', subname: 'UdfField', parentChain: ['Product', 'ProductWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	// Tickets entity
 	{ name: 'Ticket', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' }, hasUserDefinedFields: true },
+	{ name: 'TicketNote', childOf: 'Ticket', subname: 'Notes', parentIdField: 'ticketID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	// TicketHistory entity (read-only)
+	{ name: 'TicketHistory', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' }, noPluralize: true },
 	// TimeEntry entity and its attachment
 	{ name: 'TimeEntry', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
 	{ name: 'TimeEntryAttachment', childOf: 'TimeEntry', subname: 'Attachment', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },

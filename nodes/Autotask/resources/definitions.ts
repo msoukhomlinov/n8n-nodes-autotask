@@ -5,6 +5,11 @@ import type { INodePropertyOptions, INodeProperties } from 'n8n-workflow';
  */
 export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 	{
+		name: 'Billing Code',
+		value: 'billingCode',
+		description: 'Query Autotask Billing Codes',
+	},
+	{
 		name: 'Company',
 		value: 'company',
 		description: 'Manage Autotask Companies',
@@ -63,6 +68,16 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		name: 'Ticket',
 		value: 'ticket',
 		description: 'Manage Autotask Tickets',
+	},
+	{
+		name: 'Ticket History',
+		value: 'TicketHistory',
+		description: 'Query Autotask Ticket History',
+	},
+	{
+		name: 'Ticket Note',
+		value: 'ticketNote',
+		description: 'Manage Autotask Ticket Notes',
 	},
 	{
 		name: 'Time Entry',

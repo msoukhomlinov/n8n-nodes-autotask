@@ -107,7 +107,7 @@ function processEndpointPath(endpoint: string, options: IUrlOptions = {}): strin
 	const parts = endpoint.replace(/^\/+/, '').split('/');
 
 	// 2. Process each part
-	const processedParts = parts.map((part, index) => {
+	const processedParts = parts.map((part) => {
 		// Skip processing IDs
 		if (part.match(/^\d+$/)) {
 			return part;
@@ -117,9 +117,10 @@ function processEndpointPath(endpoint: string, options: IUrlOptions = {}): strin
 		const singularPart = singular(part);
 		const metadata = getEntityMetadata(singularPart);
 
-		// If it's a known entity, pluralize it
+		// If it's a known entity, handle pluralization
 		if (metadata) {
-			return plural(singularPart);
+			// Don't pluralize if noPluralize is true
+			return metadata.noPluralize ? singularPart : plural(singularPart);
 		}
 
 		// Return original if not an entity

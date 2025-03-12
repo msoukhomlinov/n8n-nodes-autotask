@@ -51,6 +51,8 @@ export interface IEntityMetadata {
 	hasUserDefinedFields?: boolean;
 	/** Whether this entity supports webhook callouts */
 	supportsWebhookCallouts?: boolean;
+	/** Whether this entity should not be pluralized in URLs */
+	noPluralize?: boolean;
 	/** @deprecated Use top-level entity definitions instead */
 	childResources?: IChildResource[];
 }
