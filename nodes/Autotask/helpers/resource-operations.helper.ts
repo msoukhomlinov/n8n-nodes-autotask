@@ -1,6 +1,7 @@
 import type { INodeProperties, INodePropertyOptions } from 'n8n-workflow';
 import { entityInfoOptions } from '../operations/common/entityInfo.description';
 import { getManyAdvancedOptions } from '../operations/common/get-many-advanced';
+import { getManyOptions } from '../operations/common/get-many';
 
 /**
  * Operation group types
@@ -41,6 +42,21 @@ export function addOperationsToResource(
 		// Add entity info operations if not excluded
 		if (!config.excludeOperations?.includes('entityInfo')) {
 			operationProperty.options = [...entityInfoOptions, ...operationProperty.options];
+		}
+
+		// Add getMany options if the operation exists and isn't excluded
+		if (operationProperty.options.some((op: INodePropertyOptions) => op.value === 'getMany') && !config.excludeOperations?.includes('getMany')) {
+			const getManyPropertyOptions = getManyOptions.map(option => ({
+				...option,
+				displayOptions: {
+					...option.displayOptions,
+					show: {
+						...option.displayOptions?.show,
+						resource: [config.resourceName],
+					},
+				},
+			}));
+			properties.push(...getManyPropertyOptions);
 		}
 
 		// Add getManyAdvanced operation if not excluded

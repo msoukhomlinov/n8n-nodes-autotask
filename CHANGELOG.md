@@ -24,7 +24,17 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - Improved performance with the new file-based caching system
 - Enhanced documentation for new entities
 
-## [0.1.0] - 2025-02-25
+## [0.1.1] - 2024-02-26
+
+### Added
+- Added support for limiting the number of records returned in query operations
+- Added "Get All" toggle to control whether to retrieve all results or only up to a specified limit
+- Added "Max Records" parameter (range 1-500, default 10) when "Get All" is set to false
+
+### Fixed
+- Fixed an issue with the MaxRecords parameter not being included in API requests
+
+## [0.1.0] - 2024-02-25
 
 ### Added
 - Initial public release of the n8n-nodes-autotask integration
@@ -61,4 +71,5 @@ This section outlines planned features and improvements for future releases.
 - **Webhook Support**: Integration with Autotask webhooks for real-time event processing
 
 [0.2.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.0
+[0.1.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.1
 [0.1.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.0 

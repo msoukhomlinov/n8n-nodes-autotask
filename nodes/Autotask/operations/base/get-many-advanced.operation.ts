@@ -76,6 +76,14 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 		try {
 			const queryInput = await this.parseAdvancedFilter(itemIndex);
 
+			// Check if returnAll is false, if so, get the maxRecords parameter
+			const returnAll = this.context.getNodeParameter('returnAll', itemIndex, true) as boolean;
+			if (!returnAll) {
+				const maxRecords = this.context.getNodeParameter('maxRecords', itemIndex, 10) as number;
+				// Add MaxRecords to the query input
+				queryInput.MaxRecords = maxRecords;
+			}
+
 			// Execute query with pagination
 			const results = await this.getManyOp.execute(queryInput, itemIndex);
 

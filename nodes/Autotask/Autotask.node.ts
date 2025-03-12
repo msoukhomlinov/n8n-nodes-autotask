@@ -135,7 +135,10 @@ export class Autotask implements INodeType {
 			case 'timeEntry':
 				return executeTimeEntryOperation.call(this);
 			default:
-				throw new NodeOperationError(this.getNode(), `Resource ${resource} is not supported`);
+				throw new NodeOperationError(
+					this.getNode(),
+					`Resource ${resource} is not supported`
+				);
 		}
 	}
 

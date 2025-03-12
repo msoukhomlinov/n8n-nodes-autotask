@@ -86,12 +86,16 @@ For most resources, the following operations are available:
   - Filter records using simple field conditions (equals)
   - Filtering on User Defined Fields (UDFs)
   - Automatically paginate through large result sets
+  - Choose to get all results or limit to a specific number (1-500)
+  - Set a maximum number of records to return when not retrieving all records
 - **Get Many Advanced**: Build complex queries with multiple filter conditions and logical operators. This operation provides:
   - Support for complex AND/OR logic in filters
   - Nested condition groups for sophisticated queries
   - Filtering on User Defined Fields (UDFs)
   - Advanced operators like contains, beginsWith, endsWith, exists, notExists
   - Support for IN and NOT IN operators with multiple values
+  - Choose to get all results or limit to a specific number (1-500)
+  - Set a maximum number of records to return when not retrieving all records
 - **Count**: Get the number of matching records
 - **Get Entity Info**: Retrieve metadata about the entity
 - **Get Field Info**: Retrieve field definitions for the selected entity
@@ -120,8 +124,11 @@ For most resources, the following operations are available:
 2. Select **Project** as the resource
 3. Select **Get Many** as the operation
 4. Add filter conditions (e.g., Status equals "Active")
-5. Connect to a trigger or previous node
-6. Execute the workflow
+5. Choose whether to retrieve all results or limit the number:
+   - Toggle "Get All" to true to retrieve all matching records
+   - Toggle "Get All" to false and set "Max Records" (1-500) to limit the results
+6. Connect to a trigger or previous node
+7. Execute the workflow
 
 ### Advanced Example: Complex Filtering with Get Many Advanced
 
@@ -156,7 +163,10 @@ For most resources, the following operations are available:
      ]
    }
    ```
-5. Execute the workflow to retrieve tickets that are not complete AND either have priority 6 OR are due within the next 3 days
+5. Choose whether to retrieve all results or limit the number:
+   - Toggle "Get All" to true to retrieve all matching records
+   - Toggle "Get All" to false and set "Max Records" (1-500) to limit the results
+6. Execute the workflow to retrieve tickets that are not complete AND either have priority 6 OR are due within the next 3 days
 
 ### Advanced Example: Working with Parent-Child Relationships
 

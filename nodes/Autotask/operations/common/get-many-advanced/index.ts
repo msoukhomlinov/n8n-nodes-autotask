@@ -1,3 +1,5 @@
-export * from './description';
-export * from './execute';
+import { getManyAdvancedOptions } from './description';
+import { executeGetManyAdvanced, handleGetManyAdvancedOperation } from './execute';
+
+export { getManyAdvancedOptions, executeGetManyAdvanced, handleGetManyAdvancedOperation };
 
