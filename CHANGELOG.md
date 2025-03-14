@@ -12,6 +12,17 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - [ ] Add support for Opportunities entity
 - [ ] Add webhook support for real-time event processing
 
+## [0.2.1] - 2025-03-15
+
+### Added
+- Added support for new Autotask API zones: America West 4, UK3, and Australia 2
+- Added ability to enter custom zone URL when selecting "Other" option
+- Added reference to official Autotask API Zones documentation
+
+### Changed
+- Updated zone selection to improve flexibility for users with custom or new zones
+- Modified credential testing to support custom zone URLs
+
 ## [0.2.0] - 2025-03-12
 
 ### Added
@@ -70,6 +81,7 @@ This section outlines planned features and improvements for future releases.
 ### Planned Features
 - **Webhook Support**: Integration with Autotask webhooks for real-time event processing
 
+[0.2.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.1
 [0.2.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.0
 [0.1.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.1
 [0.1.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.0 

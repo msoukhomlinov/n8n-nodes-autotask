@@ -89,6 +89,10 @@ export class AutotaskApi implements ICredentialType {
 					value: 'https://webservices24.autotask.net/atservicesrest',
 				},
 				{
+					name: 'America West 4',
+					value: 'https://webservices25.autotask.net/atservicesrest',
+				},
+				{
 					name: 'UK',
 					value: 'https://webservices4.autotask.net/atservicesrest',
 				},
@@ -97,8 +101,16 @@ export class AutotaskApi implements ICredentialType {
 					value: 'https://webservices16.autotask.net/atservicesrest',
 				},
 				{
+					name: 'UK3',
+					value: 'https://webservices28.autotask.net/atservicesrest',
+				},
+				{
 					name: 'Australia / New Zealand',
 					value: 'https://webservices6.autotask.net/atservicesrest',
+				},
+				{
+					name: 'Australia 2',
+					value: 'https://webservices26.autotask.net/atservicesrest',
 				},
 				{
 					name: 'Pre-Release (Deutsch)',
@@ -122,12 +134,25 @@ export class AutotaskApi implements ICredentialType {
 				},
 				{
 					name: 'Other (Use Zone Information API)',
-					value: 'https://webservices.autotask.net/atservicesrest',
+					value: 'other',
 				},
 			],
 			default: 'https://webservices6.autotask.net/atservicesrest',
 			required: true,
-			description: 'Select your Autotask instance zone. If unsure, use "Other" which will automatically detect your zone.',
+			description: 'Select your Autotask instance zone. If unsure, use "Other" which will automatically detect your zone. Zone list sourced from: https://ww6.autotask.net/help/developerhelp/Content/APIs/General/API_Zones.htm',
+		},
+		{
+			displayName: 'Custom Zone URL',
+			name: 'customZoneUrl',
+			type: 'string',
+			default: 'https://webservices.autotask.net/atservicesrest',
+			required: true,
+			displayOptions: {
+				show: {
+					zone: ['other'],
+				},
+			},
+			description: 'Enter your custom Autotask zone URL. You can find your zone URL using the Zone Information API or from your Autotask administrator.',
 		},
 		{
 			displayName: 'Timezone',
@@ -274,7 +299,7 @@ export class AutotaskApi implements ICredentialType {
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: '={{$credentials.zone}}/V1.0',
+			baseURL: '={{$credentials.zone === "other" ? $credentials.customZoneUrl : $credentials.zone}}/V1.0',
 			url: '/Companies/entityInformation',
 			method: 'GET',
 			headers: {
