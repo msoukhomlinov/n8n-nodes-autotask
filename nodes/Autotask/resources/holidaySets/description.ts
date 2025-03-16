@@ -4,32 +4,38 @@ const operationOptions = [
 	{
 		name: 'Create',
 		value: 'create',
-		description: 'Create a company',
-		action: 'Create a company',
+		description: 'Create a holiday set',
+		action: 'Create a holiday set',
 	},
 	{
 		name: 'Update',
 		value: 'update',
-		description: 'Update a company',
-		action: 'Update a company',
+		description: 'Update a holiday set',
+		action: 'Update a holiday set',
 	},
 	{
 		name: 'Get',
 		value: 'get',
-		description: 'Get a company by ID',
-		action: 'Get a company',
+		description: 'Get a holiday set by ID',
+		action: 'Get a holiday set',
 	},
 	{
 		name: 'Get Many',
 		value: 'getMany',
-		description: 'Get multiple companies using field filters',
-		action: 'Get multiple companies',
+		description: 'Get multiple holiday sets using field filters',
+		action: 'Get multiple holiday sets',
+	},
+	{
+		name: 'Delete',
+		value: 'delete',
+		description: 'Delete a holiday set',
+		action: 'Delete a holiday set',
 	},
 	{
 		name: 'Count',
 		value: 'count',
-		description: 'Count number of companies',
-		action: 'Count companies',
+		description: 'Count number of holiday sets',
+		action: 'Count holiday sets',
 	},
 ];
 
@@ -42,7 +48,7 @@ const baseFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: [
-					'company',
+					'holidaySet',
 				],
 			},
 		},
@@ -50,18 +56,18 @@ const baseFields: INodeProperties[] = [
 		default: 'get',
 	},
 	{
-		displayName: 'Company ID',
+		displayName: 'Holiday Set ID',
 		name: 'id',
 		type: 'string',
 		required: true,
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['company'],
-				operation: ['update', 'get'],
+				resource: ['holidaySet'],
+				operation: ['update', 'get', 'delete'],
 			},
 		},
-		description: 'The ID of the company to operate on',
+		description: 'The ID of the holiday set to operate on',
 	},
 	{
 		displayName: 'Fields',
@@ -74,7 +80,7 @@ const baseFields: INodeProperties[] = [
 		required: true,
 		displayOptions: {
 			show: {
-				resource: ['company'],
+				resource: ['holidaySet'],
 				operation: ['create', 'update', 'getMany', 'count'],
 			},
 		},
@@ -95,4 +101,4 @@ const baseFields: INodeProperties[] = [
 	},
 ];
 
-export const companyFields = baseFields;
+export const holidaySetFields = baseFields;

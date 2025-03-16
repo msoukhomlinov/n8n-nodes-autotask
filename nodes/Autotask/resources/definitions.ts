@@ -15,6 +15,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Autotask Companies',
 	},
 	{
+		name: 'Company Alert',
+		value: 'companyAlert',
+		description: 'Manage Autotask Company Alerts',
+	},
+	{
 		name: 'Company Note',
 		value: 'companyNote',
 		description: 'Manage Autotask Company Notes',
@@ -23,6 +28,26 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		name: 'Contact',
 		value: 'contact',
 		description: 'Manage Autotask Contacts',
+	},
+	{
+		name: 'Company Location',
+		value: 'companyLocation',
+		description: 'Manage Autotask Company Locations',
+	},
+	{
+		name: 'Contract',
+		value: 'contract',
+		description: 'Manage Autotask Contracts',
+	},
+	{
+		name: 'Holiday',
+		value: 'holiday',
+		description: 'Manage Autotask Holidays within Holiday Sets',
+	},
+	{
+		name: 'Holiday Set',
+		value: 'holidaySet',
+		description: 'Manage Autotask Holiday Sets',
 	},
 	{
 		name: 'Product',
@@ -63,6 +88,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		name: 'Search Filter',
 		value: 'searchFilter',
 		description: 'Build search filters for Autotask API queries',
+	},
+	{
+		name: 'Service Call',
+		value: 'serviceCall',
+		description: 'Manage Autotask Service Calls',
 	},
 	{
 		name: 'Ticket',

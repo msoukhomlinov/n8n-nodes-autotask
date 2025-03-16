@@ -5,14 +5,15 @@ import {
 	UpdateOperation,
 	GetOperation,
 	GetManyOperation,
+	DeleteOperation,
 	CountOperation,
 } from '../../operations/base';
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
-const ENTITY_TYPE = 'contact';
+const ENTITY_TYPE = 'holidaySet';
 
-export async function executeContactOperation(
+export async function executeHolidaySetOperation(
 	this: IExecuteFunctions,
 ): Promise<INodeExecutionData[][]> {
 	const items = this.getInputData();
@@ -52,9 +53,10 @@ export async function executeContactOperation(
 					break;
 				}
 
-				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-					returnData.push(...results);
+				case 'delete': {
+					const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					await deleteOp.execute(i);
+					returnData.push({ json: { success: true } });
 					break;
 				}
 
@@ -67,6 +69,12 @@ export async function executeContactOperation(
 							entityType: ENTITY_TYPE,
 						},
 					});
+					break;
+				}
+
+				case 'getManyAdvanced': {
+					const response = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
+					returnData.push(...response);
 					break;
 				}
 

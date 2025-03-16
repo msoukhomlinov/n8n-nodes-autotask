@@ -13,7 +13,9 @@ import type {
 import { executeProjectTaskOperation } from './resources/projectTasks/execute';
 import { executeProjectOperation } from './resources/projects/execute';
 import { executeCompanyOperation } from './resources/companies/execute';
+import { executeCompanyAlertOperation } from './resources/companyAlerts/execute';
 import { executeContactOperation } from './resources/contacts/execute';
+import { executeCompanyLocationOperation } from './resources/companyLocations/execute';
 import { executeResourceOperation } from './resources/resources/execute';
 import { executeCompanyNoteOperation } from './resources/companyNotes/execute';
 import { executeProjectNoteOperation } from './resources/projectNotes/execute';
@@ -25,13 +27,19 @@ import { executeTicketNoteOperation } from './resources/ticketNotes/execute';
 import { executeTicketHistoryOperation } from './resources/ticketHistories/execute';
 import { executeTimeEntryOperation } from './resources/timeEntries/execute';
 import { executeBillingCodeOperation } from './resources/billingCodes/execute';
+import { executeHolidaySetOperation } from './resources/holidaySets/execute';
+import { executeHolidayOperation } from './resources/holidays/execute';
+import { executeServiceCallOperation } from './resources/serviceCalls/execute';
+import { executeContractOperation } from './resources/contracts/execute';
 import { searchFilterDescription, searchFilterOperations, build as executeSearchFilterOperation } from './resources/searchFilter';
 import { getResourceMapperFields } from './helpers/resourceMapper';
 import { RESOURCE_DEFINITIONS } from './resources/definitions';
 import { projectTaskFields } from './resources/projectTasks/description';
 import { projectFields } from './resources/projects/description';
 import { companyFields } from './resources/companies/description';
+import { companyAlertFields } from './resources/companyAlerts/description';
 import { contactFields } from './resources/contacts/description';
+import { companyLocationFields } from './resources/companyLocations/description';
 import { resourceFields } from './resources/resources/description';
 import { companyNoteFields } from './resources/companyNotes/description';
 import { projectNoteFields } from './resources/projectNotes/description';
@@ -43,6 +51,10 @@ import { ticketNoteFields } from './resources/ticketNotes/description';
 import { ticketHistoryFields } from './resources/ticketHistories/description';
 import { timeEntryFields } from './resources/timeEntries/description';
 import { billingCodeFields } from './resources/billingCodes/description';
+import { holidaySetFields } from './resources/holidaySets/description';
+import { holidayFields } from './resources/holidays/description';
+import { serviceCallFields } from './resources/serviceCalls/description';
+import { contractFields } from './resources/contracts/description';
 import { addOperationsToResource } from './helpers/resource-operations.helper';
 
 /**
@@ -54,6 +66,7 @@ export class Autotask implements INodeType {
 		name: 'autotask',
 		icon: 'file:autotask.svg',
 		group: ['transform'],
+		usableAsTool: true,
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Consume Autotask REST API',
@@ -77,9 +90,12 @@ export class Autotask implements INodeType {
 				options: RESOURCE_DEFINITIONS,
 				default: 'company',
 			},
-			...companyFields,
+			...addOperationsToResource(companyFields, { resourceName: 'company' }),
+			...addOperationsToResource(companyAlertFields, { resourceName: 'companyAlert' }),
 			...addOperationsToResource(companyNoteFields, { resourceName: 'companyNote' }),
 			...addOperationsToResource(contactFields, { resourceName: 'contact' }),
+			...addOperationsToResource(companyLocationFields, { resourceName: 'companyLocation' }),
+			...addOperationsToResource(contractFields, { resourceName: 'contract' }),
 			...addOperationsToResource(productFields, { resourceName: 'product' }),
 			...addOperationsToResource(projectFields, { resourceName: 'project' }),
 			...addOperationsToResource(projectChargeFields, { resourceName: 'projectCharge' }),
@@ -91,7 +107,10 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(ticketNoteFields, { resourceName: 'ticketNote' }),
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
-			...billingCodeFields,
+			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
+			...addOperationsToResource(holidaySetFields, { resourceName: 'holidaySet' }),
+			...addOperationsToResource(holidayFields, { resourceName: 'holiday' }),
+			...addOperationsToResource(serviceCallFields, { resourceName: 'serviceCall' }),
 			...searchFilterDescription,
 			...searchFilterOperations,
 		],
@@ -106,10 +125,20 @@ export class Autotask implements INodeType {
 				return executeBillingCodeOperation.call(this);
 			case 'company':
 				return executeCompanyOperation.call(this);
+			case 'companyAlert':
+				return executeCompanyAlertOperation.call(this);
 			case 'companyNote':
 				return executeCompanyNoteOperation.call(this);
 			case 'contact':
 				return executeContactOperation.call(this);
+			case 'companyLocation':
+				return executeCompanyLocationOperation.call(this);
+			case 'contract':
+				return executeContractOperation.call(this);
+			case 'holidaySet':
+				return executeHolidaySetOperation.call(this);
+			case 'holiday':
+				return executeHolidayOperation.call(this);
 			case 'product':
 				return executeProductOperation.call(this);
 			case 'project':
@@ -126,6 +155,8 @@ export class Autotask implements INodeType {
 				return executeResourceOperation.call(this);
 			case 'searchFilter':
 				return executeSearchFilterOperation.call(this);
+			case 'serviceCall':
+				return executeServiceCallOperation.call(this);
 			case 'ticket':
 				return executeTicketOperation.call(this);
 			case 'ticketNote':

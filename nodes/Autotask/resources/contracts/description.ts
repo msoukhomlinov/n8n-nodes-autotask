@@ -1,6 +1,39 @@
 import type { INodeProperties } from 'n8n-workflow';
 
-export const contactFields: INodeProperties[] = [
+export const operationOptions = [
+	{
+		name: 'Create',
+		value: 'create',
+		description: 'Create a contract',
+		action: 'Create a contract',
+	},
+	{
+		name: 'Update',
+		value: 'update',
+		description: 'Update a contract',
+		action: 'Update a contract',
+	},
+	{
+		name: 'Get',
+		value: 'get',
+		description: 'Get a contract',
+		action: 'Get a contract',
+	},
+	{
+		name: 'Get Many',
+		value: 'getMany',
+		description: 'Get many contracts',
+		action: 'Get many contracts',
+	},
+	{
+		name: 'Count',
+		value: 'count',
+		description: 'Count contracts',
+		action: 'Count contracts',
+	},
+];
+
+export const baseFields: INodeProperties[] = [
 	{
 		displayName: 'Operation',
 		name: 'operation',
@@ -8,58 +41,25 @@ export const contactFields: INodeProperties[] = [
 		noDataExpression: true,
 		displayOptions: {
 			show: {
-				resource: [
-					'contact',
-				],
+				resource: ['contract'],
 			},
 		},
-		options: [
-			{
-				name: 'Create',
-				value: 'create',
-				description: 'Create a contact',
-				action: 'Create a contact',
-			},
-			{
-				name: 'Get',
-				value: 'get',
-				description: 'Get a contact by ID',
-				action: 'Get a contact',
-			},
-			{
-				name: 'Get Many',
-				value: 'getMany',
-				description: 'Get many contacts',
-				action: 'Get many contacts',
-			},
-			{
-				name: 'Update',
-				value: 'update',
-				description: 'Update a contact',
-				action: 'Update a contact',
-			},
-			{
-				name: 'Count',
-				value: 'count',
-				description: 'Count contacts',
-				action: 'Count contacts',
-			},
-		],
-		default: 'get',
+		options: operationOptions,
+		default: 'create',
 	},
 	{
-		displayName: 'Contact ID',
+		displayName: 'Contract ID',
 		name: 'id',
 		type: 'string',
 		required: true,
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['contact'],
+				resource: ['contract'],
 				operation: ['update', 'get'],
 			},
 		},
-		description: 'The ID of the contact to operate on',
+		description: 'The ID of the contract to operate on',
 	},
 	{
 		displayName: 'Fields',
@@ -72,7 +72,7 @@ export const contactFields: INodeProperties[] = [
 		required: true,
 		displayOptions: {
 			show: {
-				resource: ['contact'],
+				resource: ['contract'],
 				operation: ['create', 'update', 'getMany', 'count'],
 			},
 		},
@@ -92,3 +92,5 @@ export const contactFields: INodeProperties[] = [
 		},
 	},
 ];
+
+export const contractFields = baseFields;

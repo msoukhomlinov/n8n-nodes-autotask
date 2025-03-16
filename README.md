@@ -107,6 +107,26 @@ For most resources, the following operations are available:
 - **File-based Caching**: Improved performance with persistent caching that can be shared between workflows and runs
 - **Timezone Handling**: Automatic conversion between local time and UTC
 
+### AI Tool Integration
+
+This node can be used as a tool by AI agents in n8n workflows. This allows AI agents to interact with Autotask PSA, performing operations like retrieving company information, creating tickets, or updating contacts.
+
+#### Requirements
+
+Currently, n8n only allows core nodes to be used as tools by default. To use this community node as a tool, you need to:
+
+1. Set the environment variable `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE` to `true` when running n8n.
+2. Add the Autotask node as a tool in your AI agent workflow.
+
+#### Example AI Tool Usage
+
+An AI agent might use the Autotask node to:
+- Retrieve information about a company or contact
+- Create a new ticket based on user input
+- Update the status of an existing ticket
+- Add notes to a ticket or company record
+- Search for tickets matching specific criteria
+
 ## Usage
 
 ### Basic Example: Creating a Ticket

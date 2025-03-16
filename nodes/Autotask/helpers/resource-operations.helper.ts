@@ -30,6 +30,13 @@ export interface IOperationAdditionConfig {
 }
 
 /**
+ * Sort operations alphabetically by name
+ */
+function sortOperations(operations: INodePropertyOptions[]): INodePropertyOptions[] {
+	return [...operations].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
  * Add operations to a resource's operation options
  */
 export function addOperationsToResource(
@@ -40,9 +47,14 @@ export function addOperationsToResource(
 	const operationProperty = properties.find(p => p.name === 'operation' && p.type === 'options') as INodeProperties & { options: INodePropertyOptions[] };
 
 	if (operationProperty) {
+		// Sort the initial operations alphabetically
+		operationProperty.options = sortOperations(operationProperty.options);
+
 		// Add entity info operations if not excluded
 		if (!config.excludeOperations?.includes('entityInfo')) {
 			operationProperty.options = [...entityInfoOptions, ...operationProperty.options];
+			// Re-sort after adding entity info operations
+			operationProperty.options = sortOperations(operationProperty.options);
 		}
 
 		// Add getMany options if the operation exists and isn't excluded
@@ -68,6 +80,8 @@ export function addOperationsToResource(
 				description: 'Get multiple entities using JSON filters',
 				action: 'Get multiple entities using advanced filters',
 			}];
+			// Re-sort after adding getManyAdvanced operation
+			operationProperty.options = sortOperations(operationProperty.options);
 
 			// Add getManyAdvanced parameters
 			const advancedOptions = getManyAdvancedOptions.map(option => ({

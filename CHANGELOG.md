@@ -5,11 +5,23 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 ## [Unreleased]
 
 ### Todo
-- [ ] Add support for Company Alerts entity
-- [ ] Add support for Service Calls entity
-- [ ] Add support for Contracts and associated entities
-- [ ] Add support for Opportunities entity
+- [ ] Add support for Contracts child entities
+- [ ] Add support for Opportunities entity (https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/OpportunitiesEntity.htm)
 - [ ] Add webhook support for real-time event processing
+
+## [0.3.1] - 2025-03-18
+
+### Added
+- Added support for Company Alerts entity (https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/CompanyAlertsEntity.htm)
+- Added support for Company Locations entity (https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/CompanyLocationsEntity.htm)
+- Added support for HolidaySets entity (https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/HolidaySetsEntity.htm)
+- Added support for Holidays entity (https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/HolidaysEntity.htm)
+- Added support for Service Calls entity (https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ServiceCallsEntity.htm)
+- Added support for Contracts entity (https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ContactsEntity.htm)
+- Added support for using the node as an AI tool in n8n workflows
+  - Added `usableAsTool: true` to node description
+  - Added documentation on how to use the node with AI agents
+  - Note: Requires setting the `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE` environment variable
 
 ## [0.3.0] - 2025-03-16
 
@@ -93,6 +105,7 @@ This section outlines planned features and improvements for future releases.
 ### Planned Features
 - **Webhook Support**: Integration with Autotask webhooks for real-time event processing
 
+[0.3.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.1
 [0.3.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.0
 [0.2.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.1
 [0.2.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.0

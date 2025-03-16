@@ -1,6 +1,6 @@
 import type { INodeProperties } from 'n8n-workflow';
 
-export const contactFields: INodeProperties[] = [
+export const companyLocationFields: INodeProperties[] = [
 	{
 		displayName: 'Operation',
 		name: 'operation',
@@ -9,7 +9,7 @@ export const contactFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: [
-					'contact',
+					'companyLocation',
 				],
 			},
 		},
@@ -17,49 +17,55 @@ export const contactFields: INodeProperties[] = [
 			{
 				name: 'Create',
 				value: 'create',
-				description: 'Create a contact',
-				action: 'Create a contact',
+				description: 'Create a company location',
+				action: 'Create a company location',
 			},
 			{
 				name: 'Get',
 				value: 'get',
-				description: 'Get a contact by ID',
-				action: 'Get a contact',
+				description: 'Get a company location by ID',
+				action: 'Get a company location',
 			},
 			{
 				name: 'Get Many',
 				value: 'getMany',
-				description: 'Get many contacts',
-				action: 'Get many contacts',
+				description: 'Get many company locations',
+				action: 'Get many company locations',
 			},
 			{
 				name: 'Update',
 				value: 'update',
-				description: 'Update a contact',
-				action: 'Update a contact',
+				description: 'Update a company location',
+				action: 'Update a company location',
+			},
+			{
+				name: 'Delete',
+				value: 'delete',
+				description: 'Delete a company location',
+				action: 'Delete a company location',
 			},
 			{
 				name: 'Count',
 				value: 'count',
-				description: 'Count contacts',
-				action: 'Count contacts',
+				description: 'Count company locations',
+				action: 'Count company locations',
 			},
 		],
 		default: 'get',
 	},
 	{
-		displayName: 'Contact ID',
+		displayName: 'Company Location ID',
 		name: 'id',
 		type: 'string',
 		required: true,
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['contact'],
-				operation: ['update', 'get'],
+				resource: ['companyLocation'],
+				operation: ['update', 'get', 'delete'],
 			},
 		},
-		description: 'The ID of the contact to operate on',
+		description: 'The ID of the company location to operate on',
 	},
 	{
 		displayName: 'Fields',
@@ -72,7 +78,7 @@ export const contactFields: INodeProperties[] = [
 		required: true,
 		displayOptions: {
 			show: {
-				resource: ['contact'],
+				resource: ['companyLocation'],
 				operation: ['create', 'update', 'getMany', 'count'],
 			},
 		},

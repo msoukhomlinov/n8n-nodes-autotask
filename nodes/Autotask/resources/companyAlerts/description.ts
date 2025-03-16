@@ -4,32 +4,38 @@ const operationOptions = [
 	{
 		name: 'Create',
 		value: 'create',
-		description: 'Create a company',
-		action: 'Create a company',
+		description: 'Create a company alert',
+		action: 'Create a company alert',
 	},
 	{
 		name: 'Update',
 		value: 'update',
-		description: 'Update a company',
-		action: 'Update a company',
+		description: 'Update a company alert',
+		action: 'Update a company alert',
+	},
+	{
+		name: 'Delete',
+		value: 'delete',
+		description: 'Delete a company alert',
+		action: 'Delete a company alert',
 	},
 	{
 		name: 'Get',
 		value: 'get',
-		description: 'Get a company by ID',
-		action: 'Get a company',
+		description: 'Get a company alert by ID',
+		action: 'Get a company alert',
 	},
 	{
 		name: 'Get Many',
 		value: 'getMany',
-		description: 'Get multiple companies using field filters',
-		action: 'Get multiple companies',
+		description: 'Get multiple company alerts using field filters',
+		action: 'Get multiple company alerts',
 	},
 	{
 		name: 'Count',
 		value: 'count',
-		description: 'Count number of companies',
-		action: 'Count companies',
+		description: 'Count number of company alerts',
+		action: 'Count company alerts',
 	},
 ];
 
@@ -42,7 +48,7 @@ const baseFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: [
-					'company',
+					'companyAlert',
 				],
 			},
 		},
@@ -50,18 +56,18 @@ const baseFields: INodeProperties[] = [
 		default: 'get',
 	},
 	{
-		displayName: 'Company ID',
+		displayName: 'Company Alert ID',
 		name: 'id',
 		type: 'string',
 		required: true,
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['company'],
-				operation: ['update', 'get'],
+				resource: ['companyAlert'],
+				operation: ['update', 'get', 'delete'],
 			},
 		},
-		description: 'The ID of the company to operate on',
+		description: 'The ID of the company alert to operate on',
 	},
 	{
 		displayName: 'Fields',
@@ -74,7 +80,7 @@ const baseFields: INodeProperties[] = [
 		required: true,
 		displayOptions: {
 			show: {
-				resource: ['company'],
+				resource: ['companyAlert'],
 				operation: ['create', 'update', 'getMany', 'count'],
 			},
 		},
@@ -95,4 +101,4 @@ const baseFields: INodeProperties[] = [
 	},
 ];
 
-export const companyFields = baseFields;
+export const companyAlertFields = baseFields;

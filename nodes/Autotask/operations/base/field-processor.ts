@@ -695,8 +695,6 @@ export class FieldProcessor {
 		return await handleErrors(
 			this.context as IExecuteFunctions,
 			async () => {
-				console.debug(`[FieldProcessor] Starting picklist label enrichment for ${entities.length} ${this.entityType} entities`);
-
 				// Get all fields for this entity type - THIS ALREADY INCLUDES PICKLIST VALUES
 				const fields = await this.getFieldsForEntity(this.entityType, 'standard');
 
@@ -706,11 +704,8 @@ export class FieldProcessor {
 				);
 
 				if (picklistFields.length === 0) {
-					console.debug(`[FieldProcessor] No picklist fields found for ${this.entityType}, skipping enrichment`);
 					return entities;
 				}
-
-				console.debug(`[FieldProcessor] Found ${picklistFields.length} picklist fields for ${this.entityType}`);
 
 				// Create a map of fieldName -> picklistValues
 				const fieldPicklistValuesMap = new Map<string, Array<{
@@ -725,7 +720,6 @@ export class FieldProcessor {
 				for (const field of picklistFields) {
 					if (field.picklistValues?.length) {
 						fieldPicklistValuesMap.set(field.name, field.picklistValues);
-						console.debug(`[FieldProcessor] Extracted ${field.picklistValues.length} picklist values for ${field.name}`);
 					} else {
 						// If field doesn't have picklist values, try to get them from the EntityValueHelper
 						// This is a fallback and should rarely be needed since fields should already have picklist values
@@ -734,7 +728,6 @@ export class FieldProcessor {
 							const picklistValues = await entityHelper.getPicklistValues(field.name);
 							if (picklistValues.length) {
 								fieldPicklistValuesMap.set(field.name, picklistValues);
-								console.debug(`[FieldProcessor] Fetched ${picklistValues.length} picklist values for ${field.name} as fallback`);
 							}
 						} catch (error) {
 							console.warn(`[FieldProcessor] Failed to get picklist values for ${field.name}: ${error.message}`);
@@ -745,13 +738,11 @@ export class FieldProcessor {
 				// Process each picklist field
 				for (const field of picklistFields) {
 					const fieldName = field.name;
-					console.debug(`[FieldProcessor] Processing picklist field: ${fieldName}`);
 
 					// Get picklist values for this field from the map
 					const picklistValues = fieldPicklistValuesMap.get(fieldName) || [];
 
 					if (!picklistValues.length) {
-						console.debug(`[FieldProcessor] No picklist values found for ${fieldName}, skipping`);
 						continue;
 					}
 
@@ -765,8 +756,6 @@ export class FieldProcessor {
 						valueToLabelMapLowerCase.set(stringValue.toLowerCase(), value.label);
 					}
 
-					console.debug(`[FieldProcessor] Created value maps for ${fieldName} with ${valueToLabelMap.size} entries`);
-
 					// Process each entity
 					for (let i = 0; i < entities.length; i++) {
 						const entity = entities[i];
@@ -774,13 +763,11 @@ export class FieldProcessor {
 
 						// Skip if field doesn't exist or is null/undefined
 						if (fieldValue === undefined || fieldValue === null) {
-							console.debug(`[FieldProcessor] Entity has no value for ${fieldName}, skipping label creation`);
 							continue;
 						}
 
 						// Convert field value to string for comparison
 						const stringFieldValue = String(fieldValue);
-						console.debug(`[FieldProcessor] Entity field value for ${fieldName}: ${fieldValue} (${typeof fieldValue}) as string: "${stringFieldValue}"`);
 
 						// Add the label field with suffix "_label"
 						const labelFieldName = `${fieldName}_label`;
@@ -791,9 +778,6 @@ export class FieldProcessor {
 						// If no exact match, try case-insensitive match
 						if (!label) {
 							label = valueToLabelMapLowerCase.get(stringFieldValue.toLowerCase());
-							if (label) {
-								console.debug(`[FieldProcessor] Found case-insensitive match for ${fieldName}: ${stringFieldValue}`);
-							}
 						}
 
 						// If still no match, try numeric comparison if the field value is numeric
@@ -802,15 +786,12 @@ export class FieldProcessor {
 							for (const [key, val] of valueToLabelMap.entries()) {
 								if (Number(key) === numericFieldValue) {
 									label = val;
-									console.debug(`[FieldProcessor] Found numeric match for ${fieldName}: ${numericFieldValue}`);
 									break;
 								}
 							}
 						}
 
 						if (label) {
-							console.debug(`[FieldProcessor] Adding ${labelFieldName}=${label} to entity`);
-
 							// Create a new object with the label field inserted right after the original field
 							const newEntity: IDataObject = {};
 							let inserted = false;
@@ -839,7 +820,6 @@ export class FieldProcessor {
 					}
 				}
 
-				console.debug(`[FieldProcessor] Completed picklist label enrichment for ${entities.length} entities`);
 				return entities;
 			},
 			{

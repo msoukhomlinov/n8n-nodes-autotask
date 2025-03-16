@@ -34,8 +34,5 @@ export function addPicklistLabelOption(
 		},
 	};
 
-	// Log that we're adding the option to help with debugging
-	console.debug(`[addPicklistLabelOption] Adding picklist label option to resource: ${resourceName}`);
-
 	return [...properties, resourceOption];
 }

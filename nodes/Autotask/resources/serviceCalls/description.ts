@@ -4,32 +4,38 @@ const operationOptions = [
 	{
 		name: 'Create',
 		value: 'create',
-		description: 'Create a company',
-		action: 'Create a company',
+		description: 'Create a service call',
+		action: 'Create a service call',
 	},
 	{
 		name: 'Update',
 		value: 'update',
-		description: 'Update a company',
-		action: 'Update a company',
+		description: 'Update a service call',
+		action: 'Update a service call',
 	},
 	{
 		name: 'Get',
 		value: 'get',
-		description: 'Get a company by ID',
-		action: 'Get a company',
+		description: 'Get a service call by ID',
+		action: 'Get a service call',
 	},
 	{
 		name: 'Get Many',
 		value: 'getMany',
-		description: 'Get multiple companies using field filters',
-		action: 'Get multiple companies',
+		description: 'Get multiple service calls using field filters',
+		action: 'Get multiple service calls',
+	},
+	{
+		name: 'Delete',
+		value: 'delete',
+		description: 'Delete a service call',
+		action: 'Delete a service call',
 	},
 	{
 		name: 'Count',
 		value: 'count',
-		description: 'Count number of companies',
-		action: 'Count companies',
+		description: 'Count number of service calls',
+		action: 'Count service calls',
 	},
 ];
 
@@ -42,7 +48,7 @@ const baseFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: [
-					'company',
+					'serviceCall',
 				],
 			},
 		},
@@ -50,18 +56,18 @@ const baseFields: INodeProperties[] = [
 		default: 'get',
 	},
 	{
-		displayName: 'Company ID',
+		displayName: 'Service Call ID',
 		name: 'id',
 		type: 'string',
 		required: true,
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['company'],
-				operation: ['update', 'get'],
+				resource: ['serviceCall'],
+				operation: ['update', 'get', 'delete'],
 			},
 		},
-		description: 'The ID of the company to operate on',
+		description: 'The ID of the service call to operate on',
 	},
 	{
 		displayName: 'Fields',
@@ -74,7 +80,7 @@ const baseFields: INodeProperties[] = [
 		required: true,
 		displayOptions: {
 			show: {
-				resource: ['company'],
+				resource: ['serviceCall'],
 				operation: ['create', 'update', 'getMany', 'count'],
 			},
 		},
@@ -95,4 +101,4 @@ const baseFields: INodeProperties[] = [
 	},
 ];
 
-export const companyFields = baseFields;
+export const serviceCallFields = baseFields;

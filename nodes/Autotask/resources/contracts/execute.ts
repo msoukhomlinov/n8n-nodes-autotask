@@ -10,9 +10,9 @@ import {
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
-const ENTITY_TYPE = 'contact';
+const ENTITY_TYPE = 'contract';
 
-export async function executeContactOperation(
+export async function executeContractOperation(
 	this: IExecuteFunctions,
 ): Promise<INodeExecutionData[][]> {
 	const items = this.getInputData();
@@ -28,7 +28,6 @@ export async function executeContactOperation(
 					returnData.push({ json: response });
 					break;
 				}
-
 				case 'update': {
 					const entityId = this.getNodeParameter('id', i) as string;
 					const updateOp = new UpdateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
@@ -36,14 +35,12 @@ export async function executeContactOperation(
 					returnData.push({ json: response });
 					break;
 				}
-
 				case 'get': {
 					const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const response = await getOp.execute(i);
 					returnData.push({ json: response });
 					break;
 				}
-
 				case 'getMany': {
 					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const filters = getManyOp.buildFiltersFromResourceMapper(i);
@@ -51,13 +48,6 @@ export async function executeContactOperation(
 					returnData.push(...getManyOp.processReturnData(response));
 					break;
 				}
-
-				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-					returnData.push(...results);
-					break;
-				}
-
 				case 'count': {
 					const countOp = new CountOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const count = await countOp.execute(i);
@@ -69,14 +59,17 @@ export async function executeContactOperation(
 					});
 					break;
 				}
-
+				case 'getManyAdvanced': {
+					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
+					returnData.push(...results);
+					break;
+				}
 				case 'getEntityInfo':
 				case 'getFieldInfo': {
 					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
 					returnData.push(response);
 					break;
 				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}
@@ -88,6 +81,5 @@ export async function executeContactOperation(
 			throw error;
 		}
 	}
-
 	return [returnData];
 }

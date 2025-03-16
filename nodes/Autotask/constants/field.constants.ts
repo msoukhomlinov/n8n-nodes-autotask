@@ -172,10 +172,12 @@ export const FIELD_TYPE_MAPPINGS = {
 export const REQUIRED_UPDATE_ID_FIELDS: Record<string, string[]> = {
 	'Task': ['projectID'],
 	'Contact': ['companyID'],
+	'CompanyLocation': ['companyID'],
 	'CompanyNote': ['companyID'],
 	'ProjectNote': ['projectID'],
 	'Phase': ['projectID'],
 	'Charge': ['projectID'],
 	'TicketNote': ['ticketID'],
+	'Holiday': ['holidaySetID'],
 	// Add more entities and their required ID fields as needed
 } as const;

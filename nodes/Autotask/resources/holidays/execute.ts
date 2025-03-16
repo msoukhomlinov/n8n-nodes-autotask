@@ -6,13 +6,14 @@ import {
 	GetOperation,
 	GetManyOperation,
 	CountOperation,
+	DeleteOperation,
 } from '../../operations/base';
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
-const ENTITY_TYPE = 'contact';
+const ENTITY_TYPE = 'holiday';
 
-export async function executeContactOperation(
+export async function executeHolidayOperation(
 	this: IExecuteFunctions,
 ): Promise<INodeExecutionData[][]> {
 	const items = this.getInputData();
@@ -23,8 +24,12 @@ export async function executeContactOperation(
 		try {
 			switch (operation) {
 				case 'create': {
+					console.log('Debug: Starting create operation');
 					const createOp = new CreateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					console.log('Debug: Created operation instance');
+
 					const response = await createOp.execute(i);
+					console.log('Debug: Operation response:', response);
 					returnData.push({ json: response });
 					break;
 				}
@@ -38,14 +43,14 @@ export async function executeContactOperation(
 				}
 
 				case 'get': {
-					const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this, 'holidaySet');
 					const response = await getOp.execute(i);
 					returnData.push({ json: response });
 					break;
 				}
 
 				case 'getMany': {
-					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this, { parentType: 'holidaySet' });
 					const filters = getManyOp.buildFiltersFromResourceMapper(i);
 					const response = await getManyOp.execute({ filter: filters }, i);
 					returnData.push(...getManyOp.processReturnData(response));
@@ -53,7 +58,7 @@ export async function executeContactOperation(
 				}
 
 				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
+					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i, { parentType: 'holidaySet' });
 					returnData.push(...results);
 					break;
 				}
@@ -70,9 +75,25 @@ export async function executeContactOperation(
 					break;
 				}
 
+				case 'delete': {
+					console.log('Debug: Starting delete operation');
+					const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					console.log('Debug: Created DeleteOperation instance');
+
+					await deleteOp.execute(i);
+					console.log('Debug: Delete operation completed');
+					returnData.push({
+						json: {
+							success: true,
+							message: `Holiday with ID ${this.getNodeParameter('id', i)} was deleted successfully`,
+						}
+					});
+					break;
+				}
+
 				case 'getEntityInfo':
 				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
+					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i, 'holidaySet');
 					returnData.push(response);
 					break;
 				}

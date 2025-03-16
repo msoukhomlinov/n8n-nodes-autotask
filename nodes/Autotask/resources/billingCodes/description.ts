@@ -1,5 +1,4 @@
 import type { INodeProperties } from 'n8n-workflow';
-import { addOperationsToResource } from '../../helpers/resource-operations.helper';
 
 const operationOptions = [
 	{
@@ -84,6 +83,4 @@ const baseFields: INodeProperties[] = [
 	},
 ];
 
-export const billingCodeFields = addOperationsToResource(baseFields, {
-	resourceName: 'billingCode',
-});
+export const billingCodeFields = baseFields;

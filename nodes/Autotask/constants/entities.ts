@@ -9,6 +9,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	// BillingCode entity (read-only)
 	{ name: 'BillingCode', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Company', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'CompanyAlert', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'CompanyAttachment', childOf: 'Company', subname: 'Attachment', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyNote', childOf: 'Company', subname: 'Notes', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'CompanyNoteAttachment', childOf: 'CompanyNote', subname: 'Attachment', parentChain: ['Company', 'CompanyNote'], isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
@@ -16,7 +17,15 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'CompanyWebhookExcludedResource', childOf: 'CompanyWebhook', subname: 'ExcludedResource', parentChain: ['Company', 'CompanyWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyWebhookField', childOf: 'CompanyWebhook', subname: 'Field', parentChain: ['Company', 'CompanyWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyWebhookUdfField', childOf: 'CompanyWebhook', subname: 'UdfField', parentChain: ['Company', 'CompanyWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
-	{ name: 'Contact', childOf: 'Company', subname: 'Contact', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	{ name: 'Contact', childOf: 'Company', subname: 'Contact', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'CompanyLocation', childOf: 'Company', subname: 'Locations', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	{ name: 'Contract', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
+  // HolidaySets entity
+	{ name: 'HolidaySet', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
+	// Holiday entity (child of HolidaySet)
+	{ name: 'Holiday', childOf: 'HolidaySet', subname: 'Holidays', parentIdField: 'holidaySetID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	// ServiceCall entity
+	{ name: 'ServiceCall', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Project', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, parentIdField: 'companyID' },
 	{ name: 'ProjectNote', childOf: 'Project', subname: 'Notes', parentIdField: 'projectID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'ProjectCharge', childOf: 'Project', subname: 'Charges', parentIdField: 'projectID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },

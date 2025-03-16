@@ -6,13 +6,14 @@ import {
 	GetOperation,
 	GetManyOperation,
 	CountOperation,
+	DeleteOperation,
 } from '../../operations/base';
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
-const ENTITY_TYPE = 'contact';
+const ENTITY_TYPE = 'companyAlert';
 
-export async function executeContactOperation(
+export async function executeCompanyAlertOperation(
 	this: IExecuteFunctions,
 ): Promise<INodeExecutionData[][]> {
 	const items = this.getInputData();
@@ -34,6 +35,13 @@ export async function executeContactOperation(
 					const updateOp = new UpdateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const response = await updateOp.execute(i, entityId);
 					returnData.push({ json: response });
+					break;
+				}
+
+				case 'delete': {
+					const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					await deleteOp.execute(i);
+					returnData.push({ json: { success: true } });
 					break;
 				}
 
