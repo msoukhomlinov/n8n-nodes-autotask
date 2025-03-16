@@ -9,7 +9,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - [ ] Add support for Opportunities entity (https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/OpportunitiesEntity.htm)
 - [ ] Add webhook support for real-time event processing
 
-## [0.3.1] - 2025-03-18
+## [0.3.1] - 2025-03-16
 
 ### Added
 - Added support for Company Alerts entity (https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/CompanyAlertsEntity.htm)
