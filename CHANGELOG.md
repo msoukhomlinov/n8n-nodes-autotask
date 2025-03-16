@@ -11,7 +11,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - [ ] Add support for Opportunities entity
 - [ ] Add webhook support for real-time event processing
 
-## [0.3.0] - 2025-03-22
+## [0.3.0] - 2025-03-16
 
 ### Added
 - Enhanced get operations to add label fields for picklist values
