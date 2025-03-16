@@ -48,7 +48,7 @@ const baseFields: INodeProperties[] = [
 			},
 		},
 		options: operationOptions,
-		default: 'create',
+		default: 'get',
 	},
 	{
 		displayName: 'Company ID',

@@ -12,6 +12,8 @@ import { FilterOperators } from '../../constants/filters';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { buildEntityUrl, buildChildEntityUrl } from '../../helpers/http/request';
 import { getEntityMetadata } from '../../constants/entities';
+import { FieldProcessor } from './field-processor';
+import { OperationType } from '../../types/base/entity-types';
 
 /**
  * Base class for retrieving multiple entities
@@ -93,6 +95,28 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 						const pageResults = await this.executeQuery(filters, nextPageUrl);
 						results.push(...pageResults);
 					}
+				}
+
+				// Check if picklist labels should be added
+				try {
+					const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
+
+					if (addPicklistLabels && results.length > 0) {
+						console.debug(`[GetManyOperation] Adding picklist labels for ${results.length} ${this.entityType} entities`);
+
+						// Get field processor instance
+						const fieldProcessor = FieldProcessor.getInstance(
+							this.entityType,
+							OperationType.READ,
+							this.context,
+						);
+
+						// Enrich entities with picklist labels
+						return await fieldProcessor.enrichWithPicklistLabels(results) as T[];
+					}
+				} catch (error) {
+					// If parameter doesn't exist or there's an error, log it but don't fail the operation
+					console.warn(`[GetManyOperation] Error processing picklist labels: ${error.message}`);
 				}
 
 				return results;

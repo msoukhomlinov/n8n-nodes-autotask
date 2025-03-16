@@ -45,7 +45,7 @@ export const projectNoteFields: INodeProperties[] = [
 				action: 'Count project notes',
 			},
 		],
-		default: 'create',
+		default: 'get',
 	},
 	{
 		displayName: 'Note ID',

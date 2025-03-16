@@ -45,7 +45,7 @@ export const companyNoteFields: INodeProperties[] = [
 				action: 'Count company notes',
 			},
 		],
-		default: 'create',
+		default: 'get',
 	},
 	{
 		displayName: 'Note ID',

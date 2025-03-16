@@ -43,7 +43,7 @@ export const ticketFields: INodeProperties[] = [
 				action: 'Count tickets',
 			},
 		],
-		default: 'create',
+		default: 'get',
 	},
 	{
 		displayName: 'Ticket ID',

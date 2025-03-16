@@ -405,6 +405,16 @@ export class CacheService {
 			instance.clear().catch(error => {
 				console.warn('Failed to clear cache instance:', error);
 			});
+
+			// Also delete the cache file if it exists
+			if (instance.filePath && fs.existsSync(instance.filePath)) {
+				try {
+					fs.unlinkSync(instance.filePath);
+					console.debug(`Deleted cache file: ${instance.filePath}`);
+				} catch (error) {
+					console.warn(`Failed to delete cache file ${instance.filePath}:`, error);
+				}
+			}
 		}
 		CacheService.instances.clear();
 	}

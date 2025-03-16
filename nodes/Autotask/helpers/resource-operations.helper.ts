@@ -2,6 +2,7 @@ import type { INodeProperties, INodePropertyOptions } from 'n8n-workflow';
 import { entityInfoOptions } from '../operations/common/entityInfo.description';
 import { getManyAdvancedOptions } from '../operations/common/get-many-advanced';
 import { getManyOptions } from '../operations/common/get-many';
+import { addPicklistLabelOption } from '../operations/common/picklist-labels';
 
 /**
  * Operation group types
@@ -80,6 +81,18 @@ export function addOperationsToResource(
 				},
 			}));
 			properties.push(...advancedOptions);
+		}
+
+		// Add picklist label option if get operations exist, not excluded, and not already present
+		const hasGetOperations = operationProperty.options.some((op: INodePropertyOptions) =>
+			['get', 'getMany', 'getManyAdvanced'].includes(op.value as string)
+		);
+
+		const hasPicklistLabelOption = properties.some(prop => prop.name === 'addPicklistLabels');
+
+		if (hasGetOperations && !config.excludeOperations?.includes('picklistLabels') && !hasPicklistLabelOption) {
+			// Add the standardized picklist label option
+			return addPicklistLabelOption(properties, config.resourceName);
 		}
 	}
 

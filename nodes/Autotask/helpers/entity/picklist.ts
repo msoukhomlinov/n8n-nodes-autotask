@@ -1,4 +1,6 @@
 import type { EntityHelper } from './core';
+import { getFields } from './api';
+import type { IAutotaskField } from '../../types/base/entities';
 
 /**
  * Represents a processed picklist value used throughout the application.
@@ -16,28 +18,6 @@ interface IPicklistValue {
 	sortOrder: number;
 	/** Whether this option can be selected */
 	isActive: boolean;
-}
-
-/**
- * Raw picklist item structure returned by the Autotask API.
- * Matches the API response format before being transformed into IPicklistValue.
- * @see IPicklistValue for the processed version
- */
-interface IPicklistApiItem {
-	value: string;
-	label: string;
-	isDefaultValue: boolean;
-	sortOrder: number;
-	isActive: boolean;
-}
-
-/**
- * Raw API response structure for picklist queries.
- * Contains an array of picklist items from the Autotask API.
- */
-interface IPicklistApiResponse {
-	/** Array of raw picklist items from the API */
-	items: IPicklistApiItem[];
 }
 
 /**
@@ -72,22 +52,60 @@ export async function getPicklistValues(
 	helper: EntityHelper,
 ): Promise<IPicklistValue[]> {
 	const context = helper.getContext();
-	const endpoint = `/ATServicesRest/V1.0/PicklistValues/query?search={"filter":[{"op":"eq","field":"FieldID","value":"${fieldName}"}]}`;
+	console.debug(`[getPicklistValues] Starting to fetch picklist values for ${entityType}.${fieldName}`);
 
-	const response = await context.helpers.request({
-		method: 'GET',
-		url: endpoint,
-		headers: {
-			'Api-Version': '1.0',
-		},
-		json: true,
-	}) as IPicklistApiResponse;
+	try {
+		// Use getFields to get field definitions (with caching)
+		const fields = await getFields(entityType, context, { fieldType: 'standard' }) as IAutotaskField[];
+		console.debug(`[getPicklistValues] Retrieved ${fields.length} fields for ${entityType} using getFields`);
 
-	return response.items.map((item: IPicklistApiItem) => ({
-		value: item.value,
-		label: item.label,
-		isDefaultValue: item.isDefaultValue,
-		sortOrder: item.sortOrder,
-		isActive: item.isActive,
-	}));
+		// Find the field by name (case-insensitive)
+		const field = fields.find((f) =>
+			String(f.name).toLowerCase() === fieldName.toLowerCase()
+		);
+
+		if (!field) {
+			console.warn(`[getPicklistValues] Field ${fieldName} not found for entity ${entityType}`);
+			return [];
+		}
+
+		console.debug(`[getPicklistValues] Found field ${fieldName} for entity ${entityType}:`, {
+			name: field.name,
+			isPickList: field.isPickList,
+			hasPicklistValues: !!field.picklistValues,
+			picklistValuesCount: field.picklistValues?.length || 0
+		});
+
+		// If the field has picklistValues, use them directly
+		if (field.isPickList && field.picklistValues && field.picklistValues.length > 0) {
+			const picklistValues = field.picklistValues;
+			console.debug(`[getPicklistValues] Using ${picklistValues.length} picklistValues from field definition for ${entityType}.${fieldName}`);
+
+			if (picklistValues.length > 0) {
+				console.debug(`[getPicklistValues] First few picklist values for ${fieldName}:`,
+					picklistValues.slice(0, 3).map((item) => ({
+						value: item.value,
+						label: item.label
+					}))
+				);
+			}
+
+			return picklistValues.map((item) => ({
+				value: item.value,
+				label: item.label,
+				isDefaultValue: item.isDefaultValue,
+				sortOrder: item.sortOrder,
+				isActive: item.isActive,
+			}));
+		}
+
+		// If no picklist values found or field is not a picklist
+		console.warn(`[getPicklistValues] No picklist values found for ${entityType}.${fieldName}`);
+		return [];
+	} catch (error) {
+		console.error(`[getPicklistValues] Error fetching picklist values for ${entityType}.${fieldName}:`,
+			error.message || 'Unknown error');
+		// Return empty array instead of throwing to allow graceful fallback
+		return [];
+	}
 }

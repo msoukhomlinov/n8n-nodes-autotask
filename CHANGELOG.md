@@ -5,12 +5,24 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 ## [Unreleased]
 
 ### Todo
-- [ ] Enhance all get operations to enrich results by adding 'label' fields for all picklist values
 - [ ] Add support for Company Alerts entity
 - [ ] Add support for Service Calls entity
 - [ ] Add support for Contracts and associated entities
 - [ ] Add support for Opportunities entity
 - [ ] Add webhook support for real-time event processing
+
+## [0.3.0] - 2025-03-22
+
+### Added
+- Enhanced get operations to add label fields for picklist values
+  - Added `addPicklistLabels` option to get, getMany, and getManyAdvanced operations
+  - Automatically adds `_label` fields with human-readable values for all standard picklist fields
+  - Optimised for performance with batch processing and caching
+
+### Fixed
+- Resolved issues with caching where disabling the cache required an n8n restart to take effect
+  - Cache settings now apply immediately without requiring a restart
+  - Improved cache invalidation mechanism for more consistent behaviour
 
 ## [0.2.1] - 2025-03-15
 
@@ -81,6 +93,7 @@ This section outlines planned features and improvements for future releases.
 ### Planned Features
 - **Webhook Support**: Integration with Autotask webhooks for real-time event processing
 
+[0.3.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.0
 [0.2.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.1
 [0.2.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.0
 [0.1.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.1

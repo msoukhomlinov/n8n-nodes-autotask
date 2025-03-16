@@ -51,7 +51,7 @@ export const timeEntryFields: INodeProperties[] = [
 				action: 'Count time entries',
 			},
 		],
-		default: 'create',
+		default: 'get',
 	},
 	{
 		displayName: 'Time Entry ID',

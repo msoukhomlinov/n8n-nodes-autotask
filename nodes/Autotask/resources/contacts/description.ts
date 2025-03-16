@@ -8,7 +8,9 @@ export const contactFields: INodeProperties[] = [
 		noDataExpression: true,
 		displayOptions: {
 			show: {
-				resource: ['contact'],
+				resource: [
+					'contact',
+				],
 			},
 		},
 		options: [
@@ -17,6 +19,18 @@ export const contactFields: INodeProperties[] = [
 				value: 'create',
 				description: 'Create a contact',
 				action: 'Create a contact',
+			},
+			{
+				name: 'Get',
+				value: 'get',
+				description: 'Get a contact by ID',
+				action: 'Get a contact',
+			},
+			{
+				name: 'Get Many',
+				value: 'getMany',
+				description: 'Get many contacts',
+				action: 'Get many contacts',
 			},
 			{
 				name: 'Update',
@@ -31,21 +45,9 @@ export const contactFields: INodeProperties[] = [
 				action: 'Delete a contact',
 			},
 			{
-				name: 'Get',
-				value: 'get',
-				description: 'Get a contact by ID',
-				action: 'Get a contact',
-			},
-			{
-				name: 'Get Many',
-				value: 'getMany',
-				description: 'Get multiple contacts',
-				action: 'Get multiple contacts',
-			},
-			{
 				name: 'Count',
 				value: 'count',
-				description: 'Count number of contacts',
+				description: 'Count contacts',
 				action: 'Count contacts',
 			},
 		],

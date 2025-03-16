@@ -45,7 +45,7 @@ export const projectFields: INodeProperties[] = [
 				action: 'Count projects',
 			},
 		],
-		default: 'create',
+		default: 'get',
 	},
 	{
 		displayName: 'Project ID',

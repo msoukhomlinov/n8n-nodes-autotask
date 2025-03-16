@@ -29,6 +29,7 @@ import { initializeCache } from '../../helpers/cache/init';
 import { sortPicklistValues } from '../../helpers/field-conversion/utils';
 import { getEntityMetadata } from '../../constants/entities';
 import { getConfiguredTimezone } from '../../helpers/date-time/utils';
+import { getFields } from '../../helpers/entity/api';
 
 export interface IProcessFieldsOptions {
 	convertToProperties?: boolean;
@@ -461,8 +462,10 @@ export class FieldProcessor {
 		initialValues: IDataObject,
 		fields: IAutotaskField[],
 		operation: ResourceOperation,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		options: IProcessFieldsOptions = {},
 	): Promise<IDataObject> {
+		// Use options parameter in future implementations if needed
 		return await handleErrors(
 			this.context as IExecuteFunctions,
 			async () => {
@@ -471,6 +474,8 @@ export class FieldProcessor {
 				const contextForTimezone = this.context as IExecuteFunctions | ILoadOptionsFunctions;
 				const timezone = await getConfiguredTimezone.call(contextForTimezone);
 
+				// Process fields based on options if needed in the future
+				// Currently unused but kept for API consistency
 				for (const field of fields) {
 					// Skip if value is not explicitly set
 					if (!(field.name in initialValues)) {
@@ -662,5 +667,224 @@ export class FieldProcessor {
 	 */
 	public getEntityType(): string {
 		return this.entityType;
+	}
+
+	/**
+	 * Enriches entities with picklist labels
+	 * Adds a field with suffix "_label" for each picklist field containing the human-readable label
+	 * Only processes standard picklist fields, not reference fields
+	 */
+	public async enrichWithPicklistLabels<T extends IAutotaskEntity | IDataObject>(
+		entities: T | T[],
+	): Promise<T | T[]> {
+		// Handle single entity case
+		if (!Array.isArray(entities)) {
+			const result = await this.enrichWithPicklistLabels([entities]) as T[];
+			return result[0];
+		}
+
+		// If no entities to process, return early
+		if (entities.length === 0) {
+			return entities;
+		}
+
+		if (!this.context) {
+			throw new Error('Context is required for enrichWithPicklistLabels');
+		}
+
+		return await handleErrors(
+			this.context as IExecuteFunctions,
+			async () => {
+				console.debug(`[FieldProcessor] Starting picklist label enrichment for ${entities.length} ${this.entityType} entities`);
+
+				// Get all fields for this entity type - THIS ALREADY INCLUDES PICKLIST VALUES
+				const fields = await this.getFieldsForEntity(this.entityType, 'standard');
+
+				// Filter for picklist fields that are not references
+				const picklistFields = fields.filter(field =>
+					field.isPickList === true && field.isReference !== true
+				);
+
+				if (picklistFields.length === 0) {
+					console.debug(`[FieldProcessor] No picklist fields found for ${this.entityType}, skipping enrichment`);
+					return entities;
+				}
+
+				console.debug(`[FieldProcessor] Found ${picklistFields.length} picklist fields for ${this.entityType}`);
+
+				// Create a map of fieldName -> picklistValues
+				const fieldPicklistValuesMap = new Map<string, Array<{
+					value: string;
+					label: string;
+					isDefaultValue: boolean;
+					sortOrder: number;
+					isActive: boolean;
+				}>>();
+
+				// Extract picklist values from fields
+				for (const field of picklistFields) {
+					if (field.picklistValues?.length) {
+						fieldPicklistValuesMap.set(field.name, field.picklistValues);
+						console.debug(`[FieldProcessor] Extracted ${field.picklistValues.length} picklist values for ${field.name}`);
+					} else {
+						// If field doesn't have picklist values, try to get them from the EntityValueHelper
+						// This is a fallback and should rarely be needed since fields should already have picklist values
+						try {
+							const entityHelper = this.getEntityHelperInstance();
+							const picklistValues = await entityHelper.getPicklistValues(field.name);
+							if (picklistValues.length) {
+								fieldPicklistValuesMap.set(field.name, picklistValues);
+								console.debug(`[FieldProcessor] Fetched ${picklistValues.length} picklist values for ${field.name} as fallback`);
+							}
+						} catch (error) {
+							console.warn(`[FieldProcessor] Failed to get picklist values for ${field.name}: ${error.message}`);
+						}
+					}
+				}
+
+				// Process each picklist field
+				for (const field of picklistFields) {
+					const fieldName = field.name;
+					console.debug(`[FieldProcessor] Processing picklist field: ${fieldName}`);
+
+					// Get picklist values for this field from the map
+					const picklistValues = fieldPicklistValuesMap.get(fieldName) || [];
+
+					if (!picklistValues.length) {
+						console.debug(`[FieldProcessor] No picklist values found for ${fieldName}, skipping`);
+						continue;
+					}
+
+					// Create maps for different types of lookups
+					const valueToLabelMap = new Map<string, string>();
+					const valueToLabelMapLowerCase = new Map<string, string>();
+
+					for (const value of picklistValues) {
+						const stringValue = String(value.value);
+						valueToLabelMap.set(stringValue, value.label);
+						valueToLabelMapLowerCase.set(stringValue.toLowerCase(), value.label);
+					}
+
+					console.debug(`[FieldProcessor] Created value maps for ${fieldName} with ${valueToLabelMap.size} entries`);
+
+					// Process each entity
+					for (let i = 0; i < entities.length; i++) {
+						const entity = entities[i];
+						const fieldValue = entity[fieldName];
+
+						// Skip if field doesn't exist or is null/undefined
+						if (fieldValue === undefined || fieldValue === null) {
+							console.debug(`[FieldProcessor] Entity has no value for ${fieldName}, skipping label creation`);
+							continue;
+						}
+
+						// Convert field value to string for comparison
+						const stringFieldValue = String(fieldValue);
+						console.debug(`[FieldProcessor] Entity field value for ${fieldName}: ${fieldValue} (${typeof fieldValue}) as string: "${stringFieldValue}"`);
+
+						// Add the label field with suffix "_label"
+						const labelFieldName = `${fieldName}_label`;
+
+						// Try exact match first
+						let label = valueToLabelMap.get(stringFieldValue);
+
+						// If no exact match, try case-insensitive match
+						if (!label) {
+							label = valueToLabelMapLowerCase.get(stringFieldValue.toLowerCase());
+							if (label) {
+								console.debug(`[FieldProcessor] Found case-insensitive match for ${fieldName}: ${stringFieldValue}`);
+							}
+						}
+
+						// If still no match, try numeric comparison if the field value is numeric
+						if (!label && !isNaN(Number(stringFieldValue))) {
+							const numericFieldValue = Number(stringFieldValue);
+							for (const [key, val] of valueToLabelMap.entries()) {
+								if (Number(key) === numericFieldValue) {
+									label = val;
+									console.debug(`[FieldProcessor] Found numeric match for ${fieldName}: ${numericFieldValue}`);
+									break;
+								}
+							}
+						}
+
+						if (label) {
+							console.debug(`[FieldProcessor] Adding ${labelFieldName}=${label} to entity`);
+
+							// Create a new object with the label field inserted right after the original field
+							const newEntity: IDataObject = {};
+							let inserted = false;
+
+							// Copy all properties in order, inserting the label field after its associated field
+							for (const key of Object.keys(entity)) {
+								newEntity[key] = entity[key];
+
+								// Insert the label field right after its associated field
+								if (key === fieldName) {
+									newEntity[labelFieldName] = label;
+									inserted = true;
+								}
+							}
+
+							// If the field wasn't found (unlikely), add the label at the end
+							if (!inserted) {
+								newEntity[labelFieldName] = label;
+							}
+
+							// Replace the original entity with the new one
+							entities[i] = newEntity as T;
+						} else {
+							console.warn(`[FieldProcessor] No label found for value "${stringFieldValue}" in field ${fieldName}`);
+						}
+					}
+				}
+
+				console.debug(`[FieldProcessor] Completed picklist label enrichment for ${entities.length} entities`);
+				return entities;
+			},
+			{
+				operation: 'enrichWithPicklistLabels',
+				entityType: this.entityType,
+			},
+		);
+	}
+
+	/**
+	 * Get fields for an entity type
+	 * @private
+	 */
+	private async getFieldsForEntity(entityType: string, fieldType: 'standard' | 'udf' = 'standard'): Promise<IAutotaskField[]> {
+		if (!this.context) {
+			throw new Error('Context is required for getFieldsForEntity');
+		}
+
+		// Use the context object directly
+		return await getFields(entityType, this.context, { fieldType }) as IAutotaskField[];
+	}
+
+	/**
+	 * Get an EntityHelper instance for an entity type
+	 * @private
+	 */
+	private getEntityHelperInstance(): EntityValueHelper<IAutotaskEntity> {
+		if (!this.context) {
+			throw new Error('Context is required for getEntityHelperInstance');
+		}
+
+		if (!this._entityHelpers.has(this.entityType)) {
+			this._entityHelpers.set(
+				this.entityType,
+				new EntityValueHelper<IAutotaskEntity>(
+					this.context as IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
+					this.entityType,
+					{ cacheService: this.cacheService }
+				),
+			);
+		}
+		const helper = this._entityHelpers.get(this.entityType);
+		if (!helper) {
+			throw new Error(`Failed to get EntityHelper for ${this.entityType}`);
+		}
+		return helper;
 	}
 }

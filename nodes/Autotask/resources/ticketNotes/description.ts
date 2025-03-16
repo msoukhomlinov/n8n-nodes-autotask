@@ -45,7 +45,7 @@ export const ticketNoteFields: INodeProperties[] = [
 				action: 'Count ticket notes',
 			},
 		],
-		default: 'create',
+		default: 'get',
 	},
 	{
 		displayName: 'Note ID',

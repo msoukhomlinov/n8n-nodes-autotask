@@ -45,7 +45,7 @@ export const projectPhaseFields: INodeProperties[] = [
 				action: 'Count project phases',
 			},
 		],
-		default: 'create',
+		default: 'get',
 	},
 	{
 		displayName: 'Project ID',

@@ -78,9 +78,13 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			sortOrder: number;
 			isActive: boolean;
 		}> | undefined;
-		if (this.cacheService?.isPicklistEnabled()) {
-			const cacheKey = this.cacheService.getPicklistKey(this.entityType, fieldName);
-			values = await this.cacheService.get<Array<{
+
+		// Only use cache if the service exists and is enabled
+		const cacheEnabled = this.cacheService?.isPicklistEnabled() ?? false;
+
+		if (cacheEnabled) {
+			const cacheKey = this.cacheService!.getPicklistKey(this.entityType, fieldName);
+			values = await this.cacheService!.get<Array<{
 				value: string;
 				label: string;
 				isDefaultValue: boolean;
@@ -89,12 +93,12 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			}>>(cacheKey);
 		}
 
-		// If not in cache, fetch from API
+		// If not in cache or cache disabled, fetch from API
 		if (!values) {
 			values = await this.entityHelper.getPicklistValues(fieldName);
 
 			// Cache the results if caching is enabled
-			if (this.cacheService?.isPicklistEnabled()) {
+			if (cacheEnabled && this.cacheService) {
 				const cacheKey = this.cacheService.getPicklistKey(this.entityType, fieldName);
 				await this.cacheService.set(
 					cacheKey,
@@ -148,7 +152,6 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	async getValuesWithFilters(
 		filters: Record<string, unknown> = {},
 		sortField?: string,
-		sortAsc = true,
 		maxResults = 20000,
 	): Promise<T[]> {
 		// Check reference depth to prevent infinite recursion
@@ -168,7 +171,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		}
 
 		try {
-			return await this.fetchValues(filters, sortField, sortAsc, maxResults);
+			return await this.fetchValues(filters, sortField, maxResults);
 		} catch (error) {
 			const errorMessage = ERROR_TEMPLATES.reference
 				.replace('{type}', 'FetchError')
@@ -210,7 +213,6 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	private async fetchValues(
 		filters: Record<string, unknown> = {},
 		sortField?: string,
-		sortAsc = true,
 		maxResults = 20000,
 	): Promise<T[]> {
 		// Add isActive=true to default filters
@@ -218,7 +220,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			isActive: true,
 			...filters, // Allow overriding default filters if needed
 		};
-		const query = await this.prepareQuery(defaultFilters, sortField, sortAsc);
+		const query = await this.prepareQuery(defaultFilters, sortField);
 		return await this.getManyOperation.execute(query, maxResults);
 	}
 
@@ -229,7 +231,6 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	private async prepareQuery(
 		userFilters: Record<string, unknown>,
 		sortField?: string,
-		sortAsc = true,
 	): Promise<IAutotaskQueryInput<T>> {
 		const query: IAutotaskQueryInput<T> = {
 			filter: [],

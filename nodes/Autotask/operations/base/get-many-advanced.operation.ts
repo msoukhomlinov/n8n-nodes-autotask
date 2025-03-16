@@ -5,6 +5,7 @@ import { GetManyOperation } from './get-many';
 import { BaseOperation } from './base-operation';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { OperationType } from '../../types/base/entity-types';
+import { FieldProcessor } from './field-processor';
 
 /**
  * Base class for retrieving multiple entities using advanced JSON filtering
@@ -86,6 +87,28 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 
 			// Execute query with pagination
 			const results = await this.getManyOp.execute(queryInput, itemIndex);
+
+			// Check if picklist labels should be added
+			try {
+				const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
+
+				if (addPicklistLabels && results.length > 0) {
+					console.debug(`[GetManyAdvancedOperation] Adding picklist labels for ${results.length} ${this.entityType} entities`);
+
+					// Get field processor instance
+					const fieldProcessor = FieldProcessor.getInstance(
+						this.entityType,
+						this.operation,
+						this.context,
+					);
+
+					// Enrich entities with picklist labels
+					return await fieldProcessor.enrichWithPicklistLabels(results) as T[];
+				}
+			} catch (error) {
+				// If parameter doesn't exist or there's an error, log it but don't fail the operation
+				console.warn(`[GetManyAdvancedOperation] Error processing picklist labels: ${error.message}`);
+			}
 
 			return results;
 		} catch (error) {

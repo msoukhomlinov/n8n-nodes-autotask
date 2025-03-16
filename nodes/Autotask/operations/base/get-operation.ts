@@ -3,6 +3,7 @@ import type { IAutotaskEntity } from '../../types';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { OperationType } from '../../types/base/entity-types';
 import { BaseOperation } from './base-operation';
+import { FieldProcessor } from './field-processor';
 
 /**
  * Base class for getting entities
@@ -32,6 +33,30 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 		}
 
 		// Use the base class's getEntityById method
-		return await this.getEntityById(itemIndex, entityId as string | number) as T;
+		const entity = await this.getEntityById(itemIndex, entityId as string | number) as T;
+
+		// Check if picklist labels should be added
+		try {
+			const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
+
+			if (addPicklistLabels) {
+				console.debug(`[GetOperation] Adding picklist labels for ${this.entityType} entity`);
+
+				// Get field processor instance
+				const fieldProcessor = FieldProcessor.getInstance(
+					this.entityType,
+					this.operation,
+					this.context,
+				);
+
+				// Enrich entity with picklist labels
+				return await fieldProcessor.enrichWithPicklistLabels(entity) as T;
+			}
+		} catch (error) {
+			// If parameter doesn't exist or there's an error, log it but don't fail the operation
+			console.warn(`[GetOperation] Error processing picklist labels: ${error.message}`);
+		}
+
+		return entity;
 	}
 }

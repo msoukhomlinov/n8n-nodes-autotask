@@ -45,7 +45,7 @@ export const productFields: INodeProperties[] = [
 				action: 'Count products',
 			},
 		],
-		default: 'create',
+		default: 'get',
 	},
 	{
 		displayName: 'Product ID',

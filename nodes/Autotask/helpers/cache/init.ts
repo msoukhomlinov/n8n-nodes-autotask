@@ -1,6 +1,12 @@
 import type { IExecuteFunctions, ILoadOptionsFunctions, IHookFunctions, ICredentialDataDecryptedObject } from 'n8n-workflow';
 import { CacheService } from './service';
 
+// Track the cache state to avoid unnecessary clearing
+let lastCacheState: {
+	credentialsId?: string;
+	enabled?: boolean;
+} = {};
+
 /**
  * Initialize cache service with credentials
  */
@@ -9,10 +15,25 @@ export async function initializeCache(
 ): Promise<CacheService | undefined> {
 	try {
 		const credentials = await context.getCredentials('autotaskApi') as ICredentialDataDecryptedObject;
-		if (credentials.cacheEnabled) {
+		const credentialsId = (credentials.Username as string) || 'default';
+		const cacheEnabled = credentials.cacheEnabled as boolean;
+
+		// Only clear cache instances if the cache state has changed from enabled to disabled
+		if (!cacheEnabled && lastCacheState.enabled === true) {
+			console.debug('Cache disabled in credentials, clearing all cache instances');
+			CacheService.clearAllInstances();
+		}
+
+		// Update the last cache state
+		lastCacheState = {
+			credentialsId,
+			enabled: cacheEnabled,
+		};
+
+		if (cacheEnabled) {
 			return CacheService.getInstance(
 				{
-					enabled: credentials.cacheEnabled as boolean,
+					enabled: cacheEnabled,
 					ttl: credentials.cacheTTL as number,
 					entityInfo: {
 						enabled: credentials.cacheEntityInfo as boolean,
@@ -27,7 +48,7 @@ export async function initializeCache(
 						ttl: credentials.cachePicklistsTTL as number,
 					},
 				},
-				(credentials.Username as string) || 'default',
+				credentialsId,
 				credentials.cacheDirectory as string,
 				credentials.cacheMaxSize as number
 			);

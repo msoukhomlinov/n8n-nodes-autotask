@@ -51,7 +51,7 @@ export const projectChargeFields: INodeProperties[] = [
 				action: 'Count project charges',
 			},
 		],
-		default: 'create',
+		default: 'get',
 	},
 	{
 		displayName: 'Charge ID',
