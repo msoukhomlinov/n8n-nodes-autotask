@@ -50,6 +50,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Autotask Holiday Sets',
 	},
 	{
+		name: 'Opportunity',
+		value: 'opportunity',
+		description: 'Manage Autotask Opportunities',
+	},
+	{
 		name: 'Product',
 		value: 'product',
 		description: 'Manage Autotask Products',

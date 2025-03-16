@@ -24,6 +24,8 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'HolidaySet', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	// Holiday entity (child of HolidaySet)
 	{ name: 'Holiday', childOf: 'HolidaySet', subname: 'Holidays', parentIdField: 'holidaySetID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	// Opportunity entity (no DELETE operation)
+	{ name: 'Opportunity', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	// ServiceCall entity
 	{ name: 'ServiceCall', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Project', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, parentIdField: 'companyID' },

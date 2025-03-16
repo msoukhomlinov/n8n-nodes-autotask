@@ -31,6 +31,7 @@ import { executeHolidaySetOperation } from './resources/holidaySets/execute';
 import { executeHolidayOperation } from './resources/holidays/execute';
 import { executeServiceCallOperation } from './resources/serviceCalls/execute';
 import { executeContractOperation } from './resources/contracts/execute';
+import { executeOpportunityOperation } from './resources/opportunities/execute';
 import { searchFilterDescription, searchFilterOperations, build as executeSearchFilterOperation } from './resources/searchFilter';
 import { getResourceMapperFields } from './helpers/resourceMapper';
 import { RESOURCE_DEFINITIONS } from './resources/definitions';
@@ -55,6 +56,7 @@ import { holidaySetFields } from './resources/holidaySets/description';
 import { holidayFields } from './resources/holidays/description';
 import { serviceCallFields } from './resources/serviceCalls/description';
 import { contractFields } from './resources/contracts/description';
+import { opportunityFields } from './resources/opportunities/description';
 import { addOperationsToResource } from './helpers/resource-operations.helper';
 
 /**
@@ -96,6 +98,9 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(contactFields, { resourceName: 'contact' }),
 			...addOperationsToResource(companyLocationFields, { resourceName: 'companyLocation' }),
 			...addOperationsToResource(contractFields, { resourceName: 'contract' }),
+			...addOperationsToResource(holidaySetFields, { resourceName: 'holidaySet' }),
+			...addOperationsToResource(holidayFields, { resourceName: 'holiday' }),
+			...addOperationsToResource(opportunityFields, { resourceName: 'opportunity' }),
 			...addOperationsToResource(productFields, { resourceName: 'product' }),
 			...addOperationsToResource(projectFields, { resourceName: 'project' }),
 			...addOperationsToResource(projectChargeFields, { resourceName: 'projectCharge' }),
@@ -108,8 +113,6 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
-			...addOperationsToResource(holidaySetFields, { resourceName: 'holidaySet' }),
-			...addOperationsToResource(holidayFields, { resourceName: 'holiday' }),
 			...addOperationsToResource(serviceCallFields, { resourceName: 'serviceCall' }),
 			...searchFilterDescription,
 			...searchFilterOperations,
@@ -139,6 +142,8 @@ export class Autotask implements INodeType {
 				return executeHolidaySetOperation.call(this);
 			case 'holiday':
 				return executeHolidayOperation.call(this);
+			case 'opportunity':
+				return executeOpportunityOperation.call(this);
 			case 'product':
 				return executeProductOperation.call(this);
 			case 'project':
