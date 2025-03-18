@@ -3,6 +3,7 @@ import { entityInfoOptions } from '../operations/common/entityInfo.description';
 import { getManyAdvancedOptions } from '../operations/common/get-many-advanced';
 import { getManyOptions } from '../operations/common/get-many';
 import { addPicklistLabelOption } from '../operations/common/picklist-labels';
+import { addReferenceLabelOption } from '../operations/common/reference-labels';
 import { addSelectColumnsOption } from '../operations/common/select-columns';
 
 /**
@@ -104,6 +105,7 @@ export function addOperationsToResource(
 		);
 
 		const hasPicklistLabelOption = properties.some(prop => prop.name === 'addPicklistLabels');
+		const hasReferenceLabelOption = properties.some(prop => prop.name === 'addReferenceLabels');
 
 		if (hasGetOperations) {
 			let updatedProperties = [...properties];
@@ -111,6 +113,11 @@ export function addOperationsToResource(
 			// Add picklist label option if not excluded and not already present
 			if (!config.excludeOperations?.includes('picklistLabels') && !hasPicklistLabelOption) {
 				updatedProperties = addPicklistLabelOption(updatedProperties, config.resourceName);
+			}
+
+			// Add reference label option if not excluded and not already present
+			if (!config.excludeOperations?.includes('referenceLabels') && !hasReferenceLabelOption) {
+				updatedProperties = addReferenceLabelOption(updatedProperties, config.resourceName);
 			}
 
 			// Add select columns option if not excluded and not already present

@@ -16,6 +16,8 @@
 export interface IPrepareIncludeFieldsOptions {
 	/** Whether to add picklist labels */
 	addPicklistLabels?: boolean;
+	/** Whether to add reference labels */
+	addReferenceLabels?: boolean;
 	/** Whether to skip validation for development/debugging */
 	skipValidation?: boolean;
 }
@@ -48,13 +50,22 @@ export function prepareIncludeFields(
 	includeFields = selectedColumns.filter(column => {
 		// Skip label fields - these are generated client-side
 		if (column.endsWith('_label')) {
-			// If addPicklistLabels is true, we'll include the base field
+			// Handle picklist labels
 			if (options.addPicklistLabels) {
 				const baseField = column.replace('_label', '');
 				// Make sure the base field is included if it's not already
 				if (!includeFields.includes(baseField) && !selectedColumns.includes(baseField)) {
 					includeFields.push(baseField);
-					console.debug(`[prepareIncludeFields] Adding base field ${baseField} for label field ${column}`);
+					console.debug(`[prepareIncludeFields] Adding base field ${baseField} for picklist label field ${column}`);
+				}
+			}
+			// Handle reference labels - same logic as picklist labels
+			else if (options.addReferenceLabels) {
+				const baseField = column.replace('_label', '');
+				// Make sure the base field is included if it's not already
+				if (!includeFields.includes(baseField) && !selectedColumns.includes(baseField)) {
+					includeFields.push(baseField);
+					console.debug(`[prepareIncludeFields] Adding base field ${baseField} for reference label field ${column}`);
 				}
 			}
 			return false;

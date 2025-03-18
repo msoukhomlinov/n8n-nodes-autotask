@@ -4,7 +4,7 @@ import type { IAutotaskEntity } from '../../../types';
 /**
  * Filter an entity to only include selected columns
  * If no columns are selected, returns the original entity
- * If addPicklistLabels is true, includes label fields for selected picklist fields
+ * If addPicklistLabels or addReferenceLabels is true, includes label fields for selected fields
  */
 export function filterEntityBySelectedColumns<T extends IAutotaskEntity>(
 	entity: T,

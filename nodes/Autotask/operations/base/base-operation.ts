@@ -176,8 +176,19 @@ export class BaseOperation {
 					// If parameter doesn't exist or there's an error, default to false
 				}
 
+				// Check if reference labels should be added
+				let addReferenceLabels = false;
+				try {
+					addReferenceLabels = this.context.getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
+				} catch (error) {
+					// If parameter doesn't exist or there's an error, default to false
+				}
+
 				// Prepare include fields for API request
-				const includeFields = prepareIncludeFields(selectedColumns, { addPicklistLabels });
+				const includeFields = prepareIncludeFields(selectedColumns, {
+					addPicklistLabels,
+					addReferenceLabels,
+				});
 
 				// Prepare request options with query parameters if needed
 				const requestQuery: IDataObject = {};

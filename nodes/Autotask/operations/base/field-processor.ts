@@ -830,6 +830,176 @@ export class FieldProcessor {
 	}
 
 	/**
+	 * Enriches entities with reference labels by adding fields with "_label" suffix
+	 * containing human-readable values for reference fields.
+	 * @param entities Entity or array of entities to enrich
+	 * @returns Enriched entity or array of entities
+	 */
+	public async enrichWithReferenceLabels<T extends IAutotaskEntity | IDataObject>(
+		entities: T | T[],
+	): Promise<T | T[]> {
+		// Handle single entity case
+		if (!Array.isArray(entities)) {
+			const result = await this.enrichWithReferenceLabels([entities]) as T[];
+			return result[0];
+		}
+
+		// If no entities to process, return early
+		if (entities.length === 0) {
+			return entities;
+		}
+
+		if (!this.context) {
+			throw new Error('Context is required for enrichWithReferenceLabels');
+		}
+
+		return await handleErrors(
+			this.context as IExecuteFunctions,
+			async () => {
+				// Get all fields for this entity type
+				const fields = await this.getFieldsForEntity(this.entityType, 'standard');
+
+				// Filter for reference fields
+				const referenceFields = fields.filter(field => field.isReference === true);
+
+				if (referenceFields.length === 0) {
+					return entities;
+				}
+
+				// Group reference fields by entity type for efficient batch loading
+				const referenceFieldsByType = referenceFields.reduce((acc, field) => {
+					if (field.referenceEntityType &&
+						REFERENCE_ENABLED_ENTITIES.includes(field.referenceEntityType as ReferenceEnabledEntity)) {
+						if (!acc[field.referenceEntityType]) {
+							acc[field.referenceEntityType] = [];
+						}
+						acc[field.referenceEntityType].push(field);
+					}
+					return acc;
+				}, {} as Record<string, IAutotaskField[]>);
+
+				// Process each entity type's reference fields
+				for (const [referenceEntityType, fields] of Object.entries(referenceFieldsByType)) {
+					// Create a set of unique IDs referenced by all entities for this entity type
+					const referenceIds = new Set<string | number>();
+
+					// Collect all reference IDs from entities
+					for (const entity of entities) {
+						for (const field of fields) {
+							const fieldName = field.name;
+							const fieldValue = entity[fieldName];
+
+							// Skip null/undefined values and ensure we only process string or number IDs
+							if (fieldValue !== undefined && fieldValue !== null &&
+								(typeof fieldValue === 'string' || typeof fieldValue === 'number')) {
+								referenceIds.add(fieldValue);
+							}
+						}
+					}
+
+					// If no reference IDs found, skip this entity type
+					if (referenceIds.size === 0) {
+						continue;
+					}
+
+					// Load referenced entities
+					console.debug(`[FieldProcessor] Loading ${referenceIds.size} references for ${referenceEntityType}`);
+
+					// Get the entity helper for this reference type
+					const entityHelper = this.getEntityValueHelper(referenceEntityType);
+
+					// Get all entities for this type first
+					const allEntities = await entityHelper.getValues();
+
+					// Create a map of ID -> entity for quick lookups
+					const entityMap = new Map<string | number, IDataObject>();
+
+					// Add all entities to the map, with string keys for case-insensitive lookups
+					for (const entity of allEntities) {
+						if (entity.id !== undefined) {
+							entityMap.set(entity.id, entity);
+							// Also add a string version of the ID for string comparison
+							entityMap.set(String(entity.id), entity);
+						}
+					}
+
+					// Process each field for this entity type
+					for (const field of fields) {
+						const fieldName = field.name;
+
+						// Process each entity
+						for (let i = 0; i < entities.length; i++) {
+							const entity = entities[i];
+							const fieldValue = entity[fieldName];
+
+							// Skip null/undefined values and ensure we only process string or number values
+							if (fieldValue === undefined || fieldValue === null ||
+								(typeof fieldValue !== 'string' && typeof fieldValue !== 'number')) {
+								continue;
+							}
+
+							// Get the referenced entity - try both as is and as string
+							const referenceId = fieldValue;
+							let referencedEntity = entityMap.get(referenceId);
+
+							// If not found directly, try string conversion
+							if (!referencedEntity && typeof referenceId === 'number') {
+								referencedEntity = entityMap.get(String(referenceId));
+							}
+
+							// Create the label field name with suffix "_label"
+							const labelFieldName = `${fieldName}_label`;
+
+							// If referenced entity exists, format its display name
+							let label: string | undefined;
+							if (referencedEntity) {
+								label = this.formatReferenceDisplayName(referencedEntity, referenceEntityType);
+							} else {
+								console.warn(`[FieldProcessor] Reference entity not found for ${referenceEntityType} with ID ${referenceId}`);
+								// Fallback to showing just the ID
+								label = `${referenceEntityType} #${referenceId}`;
+							}
+
+							if (label) {
+								// Create a new object with the label field inserted right after the original field
+								const newEntity: IDataObject = {};
+								let inserted = false;
+
+								// Copy all properties in order, inserting the label field after its associated field
+								for (const key of Object.keys(entity)) {
+									newEntity[key] = entity[key];
+
+									// Insert the label field right after its associated field
+									if (key === fieldName) {
+										newEntity[labelFieldName] = label;
+										inserted = true;
+									}
+								}
+
+								// If the field wasn't found (unlikely), add the label at the end
+								if (!inserted) {
+									newEntity[labelFieldName] = label;
+								}
+
+								// Replace the original entity with the new one
+								entities[i] = newEntity as T;
+							} else {
+								console.warn(`[FieldProcessor] Failed to create label for ${referenceEntityType} with ID ${referenceId}`);
+							}
+						}
+					}
+				}
+
+				return entities;
+			},
+			{
+				operation: 'enrichWithReferenceLabels',
+				entityType: this.entityType,
+			},
+		);
+	}
+
+	/**
 	 * Get fields for an entity type
 	 * @private
 	 */

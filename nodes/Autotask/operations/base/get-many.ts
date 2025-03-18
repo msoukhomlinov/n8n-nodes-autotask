@@ -128,20 +128,33 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 					}
 				}
 
+				// Get field processor instance for enrichment
+				const fieldProcessor = FieldProcessor.getInstance(
+					this.entityType,
+					OperationType.READ,
+					this.context,
+				);
+
+				// Check if reference labels should be added (must be processed before picklist labels)
+				try {
+					const addReferenceLabels = this.context.getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
+
+					if (addReferenceLabels && results.length > 0) {
+						console.debug(`[GetManyOperation] Adding reference labels for ${results.length} ${this.entityType} entities`);
+						// Enrich entities with reference labels
+						results = await fieldProcessor.enrichWithReferenceLabels(results) as T[];
+					}
+				} catch (error) {
+					// If parameter doesn't exist or there's an error, log it but don't fail the operation
+					console.warn(`[GetManyOperation] Error processing reference labels: ${error.message}`);
+				}
+
 				// Check if picklist labels should be added
 				try {
 					const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
 
 					if (addPicklistLabels && results.length > 0) {
 						console.debug(`[GetManyOperation] Adding picklist labels for ${results.length} ${this.entityType} entities`);
-
-						// Get field processor instance
-						const fieldProcessor = FieldProcessor.getInstance(
-							this.entityType,
-							OperationType.READ,
-							this.context,
-						);
-
 						// Enrich entities with picklist labels
 						results = await fieldProcessor.enrichWithPicklistLabels(results) as T[];
 					}

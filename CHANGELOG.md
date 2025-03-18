@@ -17,6 +17,11 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - Allows selection of specific fields to return in the response
   - Uses the same field definitions as the resource mapper
   - Improves performance by reducing response payload size
+- Added reference field enrichment for get operations
+  - New "Add Reference Labels" option for get, getMany, and getManyAdvanced operations
+  - Automatically adds "_label" fields with human-readable values for reference fields
+  - Works just like picklist labels but for references to other entities
+  - Provides friendly names instead of just IDs for related entities
 - Added date value type to search filter resource
   - Enhanced filtering capabilities by allowing date-based queries
   - Compatible with various date formats including ISO 8601
@@ -28,8 +33,8 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - Makes creating complex filters more intuitive
 
 ### Fixed
-- Fixed issue where "Add Picklist Labels" option didn't work when "Select Columns" was used
-  - Picklist label fields (_label suffix) are now included when their base field is selected
+- Fixed issue where "Add Picklist Labels" and "Add Reference Labels" options didn't work when "Select Columns" was used
+  - Label fields (_label suffix) are now included when their base field is selected
   - Added additional logging for troubleshooting column selection issues
   - Improved field filtering logic to maintain relationships between fields
 - Date values in search filters now properly respect timezone settings from credentials

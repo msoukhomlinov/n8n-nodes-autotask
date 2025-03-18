@@ -3,11 +3,11 @@ import type { IAutotaskEntity, IAutotaskQueryInput } from '../../types';
 import type { IFilterCondition } from '../../types/base/entity-types';
 import { GetManyOperation } from './get-many';
 import { BaseOperation } from './base-operation';
-import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { OperationType } from '../../types/base/entity-types';
 import { FieldProcessor } from './field-processor';
 import { processResponseDatesArray } from '../../helpers/date-time';
 import { filterEntitiesBySelectedColumns, getSelectedColumns, prepareIncludeFields } from '../common/select-columns';
+import { handleErrors } from '../../helpers/errorHandler';
 
 /**
  * Base class for retrieving multiple entities using advanced JSON filtering
@@ -27,7 +27,11 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 		},
 	) {
 		super(entityType, OperationType.READ, context, options?.parentType);
-		this.getManyOp = new GetManyOperation<T>(entityType, context, options);
+		this.getManyOp = new GetManyOperation<T>(
+			entityType,
+			context,
+			options,
+		);
 	}
 
 	/**
@@ -109,91 +113,125 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 	 * Execute get many operation with advanced filtering
 	 */
 	async execute(itemIndex = 0): Promise<T[]> {
-		try {
-			const queryInput = await this.parseAdvancedFilter(itemIndex);
+		return await handleErrors(
+			this.context,
+			async () => {
+				// Parse advanced filter
+				const queryInput = await this.parseAdvancedFilter(itemIndex);
 
-			// Check if returnAll is false, if so, get the maxRecords parameter
-			const returnAll = this.context.getNodeParameter('returnAll', itemIndex, true) as boolean;
-			if (!returnAll) {
-				const maxRecords = this.context.getNodeParameter('maxRecords', itemIndex, 10) as number;
-				// Add MaxRecords to the query input
-				queryInput.MaxRecords = maxRecords;
-			}
-
-			// Execute query with pagination
-			let results = await this.getManyOp.execute(queryInput, itemIndex);
-
-			// Check if picklist labels should be added
-			try {
-				const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
-
-				if (addPicklistLabels && results.length > 0) {
-					console.debug(`[GetManyAdvancedOperation] Adding picklist labels for ${results.length} ${this.entityType} entities`);
-
-					// Get field processor instance
-					const fieldProcessor = FieldProcessor.getInstance(
-						this.entityType,
-						this.operation,
-						this.context,
-					);
-
-					// Enrich entities with picklist labels
-					results = await fieldProcessor.enrichWithPicklistLabels(results) as T[];
+				// Check if returnAll is false, if so, get the maxRecords parameter
+				const returnAll = this.context.getNodeParameter('returnAll', itemIndex, true) as boolean;
+				if (!returnAll) {
+					const maxRecords = this.context.getNodeParameter('maxRecords', itemIndex, 10) as number;
+					// Add MaxRecords to the query input
+					queryInput.MaxRecords = maxRecords;
 				}
-			} catch (error) {
-				// If parameter doesn't exist or there's an error, log it but don't fail the operation
-				console.warn(`[GetManyAdvancedOperation] Error processing picklist labels: ${error.message}`);
-			}
 
-			// Process dates in response before returning
-			try {
-				const processedResults = await processResponseDatesArray.call(
+				// Check for column selection
+				try {
+					const selectedColumns = getSelectedColumns(this.context, itemIndex);
+					if (selectedColumns && selectedColumns.length) {
+						// Get label options from parameters
+						const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
+						const addReferenceLabels = this.context.getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
+
+						// Set IncludeFields in the query
+						const includeFields = prepareIncludeFields(selectedColumns, {
+							addPicklistLabels,
+							addReferenceLabels,
+						});
+						queryInput.IncludeFields = includeFields;
+						console.debug(`[GetManyAdvancedOperation] Using IncludeFields with ${includeFields.length} fields`);
+					}
+				} catch (error) {
+					// If parameter doesn't exist or there's an error, log it but don't fail the operation
+					console.warn(`[GetManyAdvancedOperation] Error preparing IncludeFields: ${error.message}`);
+				}
+
+				// Execute query with pagination
+				let results = await this.getManyOp.execute(queryInput, itemIndex);
+
+				// Get field processor instance for enrichment
+				const fieldProcessor = FieldProcessor.getInstance(
+					this.entityType,
+					this.operation,
 					this.context,
-					results,
-					`${this.entityType}.getManyAdvanced`,
 				);
 
-				// Get selected columns to determine if client-side filtering is needed
-				const selectedColumns = getSelectedColumns(this.context, itemIndex);
+				// Check if reference labels should be added (must be processed before picklist labels)
+				try {
+					const addReferenceLabels = this.context.getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
 
-				// If no columns selected or server-side filtering was used via IncludeFields,
-				// we can skip client-side filtering
-				if (!selectedColumns || !selectedColumns.length || queryInput.IncludeFields?.length) {
-					return processedResults as T[];
+					if (addReferenceLabels && results.length > 0) {
+						console.debug(`[GetManyAdvancedOperation] Adding reference labels for ${results.length} ${this.entityType} entities`);
+						// Enrich entities with reference labels
+						results = await fieldProcessor.enrichWithReferenceLabels(results) as T[];
+					}
+				} catch (error) {
+					// If parameter doesn't exist or there's an error, log it but don't fail the operation
+					console.warn(`[GetManyAdvancedOperation] Error processing reference labels: ${error.message}`);
 				}
 
-				// Apply client-side filtering as a fallback if server-side filtering wasn't used
-				console.debug(`[GetManyAdvancedOperation] Applying client-side filtering as fallback`);
-				const filteredResults = filterEntitiesBySelectedColumns(processedResults as T[], selectedColumns) as T[];
+				// Check if picklist labels should be added
+				try {
+					const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
 
-				// Log filtered vs original count for debugging
-				const originalFieldCount = processedResults.length > 0 ? Object.keys(processedResults[0]).length : 0;
-				const filteredFieldCount = filteredResults.length > 0 ? Object.keys(filteredResults[0]).length : 0;
-				if (originalFieldCount !== filteredFieldCount) {
-					console.debug(`[GetManyAdvancedOperation] Additional client-side filtering applied: ${originalFieldCount} -> ${filteredFieldCount} fields`);
+					if (addPicklistLabels && results.length > 0) {
+						console.debug(`[GetManyAdvancedOperation] Adding picklist labels for ${results.length} ${this.entityType} entities`);
+						// Enrich entities with picklist labels
+						results = await fieldProcessor.enrichWithPicklistLabels(results) as T[];
+					}
+				} catch (error) {
+					// If parameter doesn't exist or there's an error, log it but don't fail the operation
+					console.warn(`[GetManyAdvancedOperation] Error processing picklist labels: ${error.message}`);
 				}
 
-				return filteredResults;
-			} catch (error) {
-				console.warn(`[GetManyAdvancedOperation] Error processing dates: ${error.message}`);
+				// Process dates in response before returning
+				try {
+					const processedResults = await processResponseDatesArray.call(
+						this.context,
+						results,
+						`${this.entityType}.getManyAdvanced`,
+					);
 
-				// Handle error case - apply client-side filtering if selected columns exist
-				const selectedColumns = getSelectedColumns(this.context, itemIndex);
-				if (selectedColumns?.length) {
-					const filteredResults = filterEntitiesBySelectedColumns(results, selectedColumns) as T[];
+					// Get selected columns to determine if client-side filtering is needed
+					const selectedColumns = getSelectedColumns(this.context, itemIndex);
+
+					// If no columns selected or server-side filtering was used via IncludeFields,
+					// we can skip client-side filtering
+					if (!selectedColumns || !selectedColumns.length || queryInput.IncludeFields?.length) {
+						return processedResults as T[];
+					}
+
+					// Apply client-side filtering as a fallback if server-side filtering wasn't used
+					console.debug(`[GetManyAdvancedOperation] Applying client-side filtering as fallback`);
+					const filteredResults = filterEntitiesBySelectedColumns(processedResults as T[], selectedColumns) as T[];
+
+					// Log filtered vs original count for debugging
+					const originalFieldCount = processedResults.length > 0 ? Object.keys(processedResults[0]).length : 0;
+					const filteredFieldCount = filteredResults.length > 0 ? Object.keys(filteredResults[0]).length : 0;
+					if (originalFieldCount !== filteredFieldCount) {
+						console.debug(`[GetManyAdvancedOperation] Additional client-side filtering applied: ${originalFieldCount} -> ${filteredFieldCount} fields`);
+					}
+
 					return filteredResults;
-				}
+				} catch (error) {
+					console.warn(`[GetManyAdvancedOperation] Error processing dates: ${error.message}`);
 
-				return results; // Return original if conversion fails and no filtering requested
+					// Handle error case - apply client-side filtering if selected columns exist
+					const selectedColumns = getSelectedColumns(this.context, itemIndex);
+					if (selectedColumns?.length) {
+						const filteredResults = filterEntitiesBySelectedColumns(results, selectedColumns) as T[];
+						return filteredResults;
+					}
+
+					return results; // Return original if conversion fails and no filtering requested
+				}
+			},
+			{
+				operation: 'getManyAdvanced',
+				entityType: this.entityType,
 			}
-		} catch (error) {
-			throw new Error(
-				ERROR_TEMPLATES.operation
-					.replace('{type}', 'AdvancedQueryError')
-					.replace('{operation}', 'getManyAdvanced')
-					.replace('{entity}', this.entityType)
-					.replace('{details}', error.message),
-			);
-		}
+		);
 	}
 }
