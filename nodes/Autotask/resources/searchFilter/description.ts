@@ -107,6 +107,7 @@ export const searchFilterOperations: INodeProperties[] = [
 											{ name: 'String', value: 'string' },
 											{ name: 'Number', value: 'number' },
 											{ name: 'Boolean', value: 'boolean' },
+											{ name: 'Date', value: 'date' },
 										],
 										default: 'string',
 										description: 'The type of value to be compared',
@@ -117,6 +118,35 @@ export const searchFilterOperations: INodeProperties[] = [
 										type: 'string',
 										default: '',
 										description: 'For boolean values, use "true" or "false"',
+										displayOptions: {
+											hide: {
+												valueType: ['date', 'boolean'],
+											},
+										},
+									},
+									{
+										displayName: 'Date Value',
+										name: 'dateValue',
+										type: 'dateTime',
+										default: '',
+										description: 'The date to be compared. Will be converted to UTC if timezone is configured in credentials.',
+										displayOptions: {
+											show: {
+												valueType: ['date'],
+											},
+										},
+									},
+									{
+										displayName: 'Boolean Value',
+										name: 'booleanValue',
+										type: 'boolean',
+										default: false,
+										description: 'Whether the condition should match true or false',
+										displayOptions: {
+											show: {
+												valueType: ['boolean'],
+											},
+										},
 									},
 									{
 										displayName: 'Is UDF?',

@@ -10,43 +10,88 @@ interface RawFilterInput {
 				field: string;
 				op: string;
 				value?: string;
-				valueType?: 'string' | 'number' | 'boolean';
+				valueType?: 'string' | 'number' | 'boolean' | 'date';
+				dateValue?: string;
+				booleanValue?: boolean;
 				udf?: boolean;
 			}>;
 		};
 	}>;
 }
 
-export const build = async function(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-	// Get the raw input and transform it to the expected structure
-	const rawInput = this.getNodeParameter('filter', 0) as RawFilterInput;
-	const input: ISearchFilterBuilderInput = {
-		filter: {
-			group: rawInput.group.map(group => ({
-				op: group.op,
-				items: group.items.itemType.map(item => ({
-					itemType: {
-						...item,
-						type: 'condition',
-					}
-				}))
-			}))
+export async function build(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+	try {
+		// Get the raw input from the node parameter
+		let rawInput: RawFilterInput;
+		try {
+			rawInput = this.getNodeParameter('filter', 0) as RawFilterInput;
+
+			// Basic validation of the filter structure
+			if (!rawInput || !rawInput.group || !Array.isArray(rawInput.group)) {
+				return [[{ json: { error: 'Invalid filter structure' } }]];
+			}
+		} catch (filterError) {
+			return [[{ json: { error: 'Failed to get filter parameter', details: (filterError as Error).message } }]];
 		}
-	};
 
-	// Debug logging
-	console.log('Filter input:', JSON.stringify(input, null, 2));
-	console.log('Has filter?', !!input.filter);
-	console.log('Has group?', !!input.filter?.group);
-	console.log('Group length:', input.filter?.group?.length);
-	if (input.filter?.group?.length > 0) {
-		console.log('First group:', JSON.stringify(input.filter.group[0], null, 2));
-		console.log('First group items:', JSON.stringify(input.filter.group[0].items, null, 2));
+		// Transform the filter input into the format expected by the Autotask API
+		let input: ISearchFilterBuilderInput;
+		try {
+			input = {
+				filter: {
+					group: rawInput.group.map(group => {
+						// Validate group structure
+						if (!group.items || !group.items.itemType || !Array.isArray(group.items.itemType)) {
+							throw new Error(`Invalid group structure`);
+						}
+
+						return {
+							op: group.op,
+							items: group.items.itemType.map(item => {
+								// Determine the value based on valueType
+								let itemValue: string | boolean | undefined;
+
+								if (item.valueType === 'date' && item.dateValue !== undefined) {
+									itemValue = item.dateValue;
+								} else if (item.valueType === 'boolean' && item.booleanValue !== undefined) {
+									itemValue = item.booleanValue;
+								} else {
+									itemValue = item.value;
+								}
+
+								return {
+									itemType: {
+										type: 'condition',
+										field: item.field,
+										op: item.op,
+										value: itemValue,
+										valueType: item.valueType,
+										dateValue: item.dateValue,
+										booleanValue: item.booleanValue,
+										udf: item.udf
+									}
+								};
+							})
+						};
+					})
+				}
+			};
+		} catch (transformError) {
+			return [[{ json: { error: 'Failed to transform filter input', details: (transformError as Error).message } }]];
+		}
+
+		// Validate and convert the filter
+		try {
+			validateFilterInput(input);
+			const autotaskFilter = await convertToAutotaskFilter(input, this);
+
+			// Return the filter as a stringified JSON
+			return [[{ json: { advancedFilter: JSON.stringify(autotaskFilter) } }]];
+		} catch (validationError) {
+			return [[{ json: { error: 'Filter validation or conversion failed', details: (validationError as Error).message } }]];
+		}
+	} catch (error) {
+		// Catch any unexpected errors
+		return [[{ json: { error: 'Unexpected error in search filter', details: (error as Error).message } }]];
 	}
-
-	validateFilterInput(input);
-	const autotaskFilter = convertToAutotaskFilter(input);
-
-	// Return the filter as a stringified JSON
-	return [[{ json: { advancedFilter: JSON.stringify(autotaskFilter) } }]];
-};
+}

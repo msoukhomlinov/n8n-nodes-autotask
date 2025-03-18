@@ -20,6 +20,7 @@ import type { IAutotaskEntity, IAutotaskResponse } from '../../types';
 import { getEntityMetadata } from '../../constants/entities';
 import { autotaskApiRequest } from '../../helpers/http';
 import { processResponseDates } from '../../helpers/date-time';
+import { getSelectedColumns, prepareIncludeFields } from '../common/select-columns';
 
 /**
  * Base class for all Autotask operations
@@ -164,11 +165,36 @@ export class BaseOperation {
 				// Use direct URL for fetching records to avoid circular dependency
 				const endpoint = buildEntityUrl(this.entityType, { entityId: String(entityId) });
 
+				// Get selected columns and prepare include fields for API
+				const selectedColumns = getSelectedColumns(this.context, itemIndex);
+
+				// Check if picklist labels should be added
+				let addPicklistLabels = false;
+				try {
+					addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
+				} catch (error) {
+					// If parameter doesn't exist or there's an error, default to false
+				}
+
+				// Prepare include fields for API request
+				const includeFields = prepareIncludeFields(selectedColumns, { addPicklistLabels });
+
+				// Prepare request options with query parameters if needed
+				const requestQuery: IDataObject = {};
+
+				// Add IncludeFields to query parameters if there are specific fields to include
+				if (includeFields.length > 0) {
+					requestQuery.IncludeFields = includeFields;
+					console.debug(`[BaseOperation] Using IncludeFields with ${includeFields.length} fields for getEntityById`);
+				}
+
 				// Get entity
 				const response = await autotaskApiRequest.call(
 					this.context,
 					'GET',
 					endpoint,
+					{},
+					requestQuery,
 				) as IAutotaskResponse<IAutotaskEntity>;
 
 				if (!response.item) {
@@ -326,7 +352,9 @@ export class BaseOperation {
 
 			// For update operations that should be done via parent, use parent/child endpoint without entity ID
 			if (this.operation === OperationType.UPDATE && metadata?.operations?.update === 'parent') {
-				const { entityId, ...urlOptions } = options; // Destructure to omit entityId
+				// Create a new object without the entityId property
+				const urlOptions = { ...options };
+				delete urlOptions.entityId;
 				return buildChildEntityUrl(
 					this.parentType,
 					this.entityType,

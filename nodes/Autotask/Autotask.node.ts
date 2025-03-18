@@ -184,5 +184,24 @@ export class Autotask implements INodeType {
 				return getResourceMapperFields.call(this, this.getNodeParameter('resource', 0) as string);
 			},
 		},
+		loadOptions: {
+			async getSelectColumns(this: ILoadOptionsFunctions) {
+				const resource = this.getNodeParameter('resource', 0) as string;
+
+				try {
+					// Get fields using the same function that powers the resource mapper
+					const { fields } = await getResourceMapperFields.call(this, resource);
+
+					// Format fields for multiOptions
+					return fields.map(field => ({
+						name: field.displayName || field.id,
+						value: field.id,
+					}));
+				} catch (error) {
+					console.error(`Error loading select columns options: ${error.message}`);
+					return [];
+				}
+			},
+		},
 	};
 }

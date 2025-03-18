@@ -4,9 +4,40 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [Unreleased]
 
+
 ### Todo
 - [ ] Add support for Contracts child entities
 - [ ] Add webhook support for real-time event processing
+
+## [0.3.3] - 2025-03-18
+
+### Added
+- Added column selection for get operations
+  - New "Select Columns" option for get, getMany, and getManyAdvanced operations
+  - Allows selection of specific fields to return in the response
+  - Uses the same field definitions as the resource mapper
+  - Improves performance by reducing response payload size
+- Added date value type to search filter resource
+  - Enhanced filtering capabilities by allowing date-based queries
+  - Compatible with various date formats including ISO 8601
+  - Automatically converts date inputs to Autotask API format
+  - Added date picker UI for improved user experience
+- Improved UI for search filter values
+  - Added date picker for date values
+  - Added toggle switch for boolean values
+  - Makes creating complex filters more intuitive
+
+### Fixed
+- Fixed issue where "Add Picklist Labels" option didn't work when "Select Columns" was used
+  - Picklist label fields (_label suffix) are now included when their base field is selected
+  - Added additional logging for troubleshooting column selection issues
+  - Improved field filtering logic to maintain relationships between fields
+- Date values in search filters now properly respect timezone settings from credentials
+  - Fixed inconsistency where search filter dates were not being converted from local timezone to UTC
+  - All date operations now consistently use the configured timezone
+- Fixed date conversion issue in getManyAdvanced operation
+  - Resolved a problem where date fields weren't being converted correctly when picklist labels were added
+  - Modified both getManyAdvanced and getMany operations to ensure date conversion always happens
 
 ## [0.3.2] - 2025-03-16
 
@@ -109,6 +140,7 @@ This section outlines planned features and improvements for future releases.
 ### Planned Features
 - **Webhook Support**: Integration with Autotask webhooks for real-time event processing
 
+[0.3.3]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.3
 [0.3.2]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.2
 [0.3.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.1
 [0.3.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.0

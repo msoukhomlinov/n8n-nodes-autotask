@@ -2,7 +2,7 @@ import type { ILoadOptionsFunctions, IExecuteFunctions, IDataObject, IHookFuncti
 import type { IAutotaskEntity, IAutotaskQueryInput } from '../../types';
 import type { GetManyOperation } from '../../operations/base/get-many';
 import { GetManyOperation as GetManyOperationClass } from '../../operations/base/get-many';
-import { PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../../constants/field.constants';
+import { PICKLIST_REFERENCE_FIELD_MAPPINGS, DEFAULT_PICKLIST_FIELDS } from '../../constants/field.constants';
 import type { IPicklistReferenceFieldMapping } from '../../types/base/picklists';
 import { ERROR_TEMPLATES, WARNING_TEMPLATES } from '../../constants/error.constants';
 import type { CacheService } from '../cache';
@@ -153,6 +153,9 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		filters: Record<string, unknown> = {},
 		sortField?: string,
 		maxResults = 20000,
+		options?: {
+			includeFields?: string[];
+		}
 	): Promise<T[]> {
 		// Check reference depth to prevent infinite recursion
 		if (this.currentDepth >= this.maxReferenceDepth) {
@@ -171,7 +174,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		}
 
 		try {
-			return await this.fetchValues(filters, sortField, maxResults);
+			return await this.fetchValues(filters, sortField, maxResults, options);
 		} catch (error) {
 			const errorMessage = ERROR_TEMPLATES.reference
 				.replace('{type}', 'FetchError')
@@ -214,23 +217,102 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		filters: Record<string, unknown> = {},
 		sortField?: string,
 		maxResults = 20000,
+		options?: {
+			includeFields?: string[];
+		}
 	): Promise<T[]> {
 		// Add isActive=true to default filters
 		const defaultFilters = {
 			isActive: true,
 			...filters, // Allow overriding default filters if needed
 		};
-		const query = await this.prepareQuery(defaultFilters, sortField);
+		const query = await this.prepareQuery(defaultFilters, sortField, options?.includeFields);
 		return await this.getManyOperation.execute(query, maxResults);
 	}
 
 	/**
+	 * Get required fields for display name formatting based on entity type mapping
+	 *
+	 * This method is a critical part of the fix for the reference field enrichment issue.
+	 * It ensures that when fetching reference entities for label generation, we always include
+	 * the fields needed to construct display labels (like firstName, lastName for Resources),
+	 * regardless of what columns the user has selected in their main query via IncludeFields.
+	 *
+	 * Note: We avoid including fields with certain patterns (like *ResourceID or *ID)
+	 * that might cause API errors.
+	 *
+	 * Without these fields, reference labels cannot be properly formatted when column filtering is used.
+	 *
+	 * @private
+	 * @returns Array of field names that must be included in API requests
+	 */
+	private getRequiredDisplayFields(): string[] {
+		// Always include id field
+		const requiredFields = new Set<string>(['id']);
+
+		// Get mapping for this entity type
+		const mapping = PICKLIST_REFERENCE_FIELD_MAPPINGS[this.entityType];
+
+		if (mapping) {
+			// Add name fields from mapping, filtering out potentially problematic fields
+			mapping.nameFields.forEach(field => {
+				// Avoid fields ending with ID and ResourceID as they might cause API errors
+				if (!field.endsWith('ID') && !field.endsWith('ResourceID')) {
+					requiredFields.add(field);
+				}
+			});
+
+			// Add bracket fields if any, filtering out potentially problematic fields
+			if (mapping.bracketField) {
+				if (Array.isArray(mapping.bracketField)) {
+					mapping.bracketField.forEach(field => {
+						// Avoid fields ending with ID and ResourceID as they might cause API errors
+						if (!field.endsWith('ID') && !field.endsWith('ResourceID')) {
+							requiredFields.add(field);
+						}
+					});
+				} else if (!mapping.bracketField.endsWith('ID') && !mapping.bracketField.endsWith('ResourceID')) {
+					requiredFields.add(mapping.bracketField);
+				}
+			}
+		} else {
+			// No mapping, use default fields, but still filter out problematic fields
+			DEFAULT_PICKLIST_FIELDS.forEach(field => {
+				if (field === 'id' || (!field.endsWith('ID') && !field.endsWith('ResourceID'))) {
+					requiredFields.add(field);
+				}
+			});
+		}
+
+		// Log which fields we're including
+		const fieldArray = Array.from(requiredFields);
+		console.debug(`[EntityValueHelper] Required display fields for ${this.entityType}: ${fieldArray.join(', ')}`);
+
+		return fieldArray;
+	}
+
+	/**
 	 * Prepare query input for API request
+	 *
+	 * This method handles two distinct use cases:
+	 * 1. Regular entity queries - These might use column filtering via IncludeFields to optimize response size
+	 * 2. Reference field lookups - When we're looking up entities for reference field enrichment
+	 *
+	 * For reference field lookups, we deliberately DO NOT filter fields (no IncludeFields parameter).
+	 * This is essential because:
+	 * - We need all fields to properly generate labels that might use various field combinations
+	 * - Filtering could cause missing fields needed for label generation
+	 * - Some field names might be invalid and cause API errors (500 status codes)
+	 * - Reference lookups typically fetch a small number of entities, so bandwidth impact is minimal
+	 *
+	 * Regular queries can still use field filtering for optimization.
+	 *
 	 * @private
 	 */
 	private async prepareQuery(
 		userFilters: Record<string, unknown>,
 		sortField?: string,
+		additionalFields?: string[]
 	): Promise<IAutotaskQueryInput<T>> {
 		const query: IAutotaskQueryInput<T> = {
 			filter: [],
@@ -240,17 +322,57 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		// Add user filters
 		for (const [field, value] of Object.entries(userFilters)) {
 			if (value !== undefined && value !== null) {
-				query.filter.push({
-					field,
-					op: 'eq',
-					value: String(value),
-				});
+				if (field === 'id' && typeof value === 'object' && value !== null && '$in' in value) {
+					// Handle $in operator for id field
+					query.filter.push({
+						field,
+						op: 'in',
+						value: String((value as { $in: string | string[] }).$in),
+					});
+				} else {
+					query.filter.push({
+						field,
+						op: 'eq',
+						value: String(value),
+					});
+				}
 			}
 		}
 
-		// Add sorting if specified
-		if (sortField) {
-			query.IncludeFields = [sortField];
+		// For reference field lookups, we should not filter fields
+		// We need to return all fields to ensure proper label construction
+		// Only apply IncludeFields when this is not a reference field lookup
+		const isReferenceFieldLookup = userFilters.id && typeof userFilters.id === 'object' &&
+			userFilters.id !== null && '$in' in userFilters.id;
+
+		if (!isReferenceFieldLookup) {
+			// Initialize IncludeFields
+			const includeFields = new Set<string>();
+
+			// Add sort field if specified
+			if (sortField) {
+				includeFields.add(sortField);
+			}
+
+			// Add fields required for display name formatting
+			this.getRequiredDisplayFields().forEach(field => includeFields.add(field));
+
+			// Add any additional fields
+			if (additionalFields && additionalFields.length > 0) {
+				additionalFields.forEach(field => includeFields.add(field));
+			}
+
+			// Set IncludeFields in query
+			if (includeFields.size > 0) {
+				query.IncludeFields = Array.from(includeFields);
+				console.debug(`[EntityValueHelper] Including ${query.IncludeFields.length} fields for ${this.entityType} query`);
+			}
+		} else {
+			// When doing reference field lookups, return all fields
+			console.debug(`[EntityValueHelper] Reference field lookup detected for ${this.entityType} - returning all fields`);
+			// IMPORTANT: Delete IncludeFields completely instead of setting to empty array
+			// to avoid API errors with invalid field names
+			delete query.IncludeFields;
 		}
 
 		return query;
@@ -285,9 +407,6 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	 * @param mapping - The mapping configuration defining how to format the name
 	 * @returns Formatted name string or null if required fields are missing
 	 * @example
-	 * // With mapping { nameFields: ['firstName', 'lastName'], bracketField: 'email' }
-	 * // Entity: { firstName: 'John', lastName: 'Doe', email: 'john@example.com' }
-	 * // Returns: "John Doe (john@example.com)"
 	 */
 	private formatMappedName(entity: IDataObject, mapping: IPicklistReferenceFieldMapping): string | null {
 		// Get all name parts

@@ -19,8 +19,10 @@ export interface ISearchFilterBuilderInput {
 					type: 'condition';
 					field: string;
 					op: string;
-					value?: string;
-					valueType?: 'string' | 'number' | 'boolean';
+					value?: string | boolean;
+					dateValue?: string;
+					booleanValue?: boolean;
+					valueType?: 'string' | 'number' | 'boolean' | 'date';
 					udf?: boolean;
 				};
 			}>;

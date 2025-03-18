@@ -14,6 +14,8 @@ import { buildEntityUrl, buildChildEntityUrl } from '../../helpers/http/request'
 import { getEntityMetadata } from '../../constants/entities';
 import { FieldProcessor } from './field-processor';
 import { OperationType } from '../../types/base/entity-types';
+import { processResponseDatesArray } from '../../helpers/date-time';
+import { filterEntitiesBySelectedColumns, getSelectedColumns, prepareIncludeFields } from '../common/select-columns';
 
 /**
  * Base class for retrieving multiple entities
@@ -51,8 +53,37 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 	/**
 	 * Process response data into n8n format
 	 */
-	public processReturnData(items: T[]): INodeExecutionData[] {
-		return items.map(item => ({ json: item }));
+	public processReturnData(items: T[], itemIndex = 0): INodeExecutionData[] {
+		try {
+			// Check for selected columns
+			const selectedColumns = getSelectedColumns(this.context, itemIndex);
+
+			// Most filtering now happens on the API side with IncludeFields
+			// but we still need to handle cases where client-side filtering is needed
+
+			// If no selected columns or server-side filtering failed, return all fields
+			if (!selectedColumns || !selectedColumns.length) {
+				return items.map(item => ({ json: item }));
+			}
+
+			// For safety, do a lightweight client-side filter to ensure only selected columns
+			// are returned (this is a fallback in case server-side filtering was incomplete)
+			const filteredItems = filterEntitiesBySelectedColumns(items, selectedColumns);
+
+			// Log filtered vs original count for debugging
+			const originalFieldCount = items.length > 0 ? Object.keys(items[0]).length : 0;
+			const filteredFieldCount = filteredItems.length > 0 ? Object.keys(filteredItems[0]).length : 0;
+			if (originalFieldCount !== filteredFieldCount) {
+				console.debug(`[GetManyOperation] Additional client-side filtering applied: ${originalFieldCount} -> ${filteredFieldCount} fields`);
+			}
+
+			// Return filtered items
+			return filteredItems.map(item => ({ json: item }));
+		} catch (error) {
+			// If there's an error, log it and return unfiltered items
+			console.warn(`[GetManyOperation] Error handling column filtering: ${error.message}`);
+			return items.map(item => ({ json: item }));
+		}
 	}
 
 	/**
@@ -71,7 +102,7 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 				}
 
 				// Initialize results array
-				const results: T[] = [];
+				let results: T[] = [];
 
 				// Execute initial query
 				const initialResults = await this.executeQuery(filters, undefined);
@@ -112,14 +143,25 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 						);
 
 						// Enrich entities with picklist labels
-						return await fieldProcessor.enrichWithPicklistLabels(results) as T[];
+						results = await fieldProcessor.enrichWithPicklistLabels(results) as T[];
 					}
 				} catch (error) {
 					// If parameter doesn't exist or there's an error, log it but don't fail the operation
 					console.warn(`[GetManyOperation] Error processing picklist labels: ${error.message}`);
 				}
 
-				return results;
+				// Process dates in response before returning
+				try {
+					const processedResults = await processResponseDatesArray.call(
+						this.context,
+						results,
+						`${this.entityType}.getMany`,
+					);
+					return processedResults as T[];
+				} catch (error) {
+					console.warn(`[GetManyOperation] Error processing dates: ${error.message}`);
+					return results; // Return original if conversion fails
+				}
 			},
 			{
 				operation: 'getMany',
@@ -213,6 +255,21 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 					});
 				}
 
+				// Get selected columns and picklist labels flag (for itemIndex 0 by default)
+				const itemIndex = 0; // For non-paginated requests, use itemIndex 0 as default
+				const selectedColumns = getSelectedColumns(this.context, itemIndex);
+
+				// Check if picklist labels should be added
+				let addPicklistLabels = false;
+				try {
+					addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
+				} catch (error) {
+					// If parameter doesn't exist or there's an error, default to false
+				}
+
+				// Prepare include fields for API request
+				const includeFields = prepareIncludeFields(selectedColumns, { addPicklistLabels });
+
 				// Prepare query body
 				const queryBody: IAutotaskQueryInput<T> = {
 					filter: filters.filter,
@@ -221,6 +278,12 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 				// Include MaxRecords if specified
 				if (filters.MaxRecords) {
 					queryBody.MaxRecords = filters.MaxRecords;
+				}
+
+				// Add IncludeFields to query if there are specific fields to include
+				if (includeFields.length > 0) {
+					queryBody.IncludeFields = includeFields;
+					console.debug(`[GetManyOperation] Using IncludeFields with ${includeFields.length} fields for query`);
 				}
 
 				const response = await autotaskApiRequest.call(

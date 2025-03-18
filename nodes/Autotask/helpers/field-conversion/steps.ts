@@ -47,9 +47,6 @@ export const conversionSteps: ConversionStep[] = [
 
 				// Check if this is a parent ID field
 				const isParentIdField = Boolean(parentIdField && context.field.name.toLowerCase() === parentIdField.toLowerCase());
-				if (isParentIdField) {
-					console.debug(`[FieldConversion] ✓ Field ${context.field.name} is the parent ID field (${parentIdField})`);
-				}
 
 				// Set up the basic field properties
 				const result: Partial<ResourceMapperField> = {
@@ -59,11 +56,6 @@ export const conversionSteps: ConversionStep[] = [
 					// For read operations (like getMany), fields should not be required
 					// For write operations, check if field is required based on multiple factors
 					required: (() => {
-						// Debug required field determination
-						console.debug(
-							`[FieldConversion] ${context.field.name} (${context.entityType}.${context.operation}): mode=${context.mode}, required=${context.field.isRequired}, readOnly=${context.field.isReadOnly}, isParentId=${isParentIdField}`
-						);
-
 						if (!context.operation || context.mode !== 'write') {
 							return false;
 						}

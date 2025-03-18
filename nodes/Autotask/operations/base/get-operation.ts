@@ -4,6 +4,7 @@ import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { OperationType } from '../../types/base/entity-types';
 import { BaseOperation } from './base-operation';
 import { FieldProcessor } from './field-processor';
+import { filterEntityBySelectedColumns, getSelectedColumns } from '../common/select-columns';
 
 /**
  * Base class for getting entities
@@ -33,7 +34,7 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 		}
 
 		// Use the base class's getEntityById method
-		const entity = await this.getEntityById(itemIndex, entityId as string | number) as T;
+		let entity = await this.getEntityById(itemIndex, entityId as string | number) as T;
 
 		// Check if picklist labels should be added
 		try {
@@ -50,13 +51,15 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 				);
 
 				// Enrich entity with picklist labels
-				return await fieldProcessor.enrichWithPicklistLabels(entity) as T;
+				entity = await fieldProcessor.enrichWithPicklistLabels(entity) as T;
 			}
 		} catch (error) {
 			// If parameter doesn't exist or there's an error, log it but don't fail the operation
 			console.warn(`[GetOperation] Error processing picklist labels: ${error.message}`);
 		}
 
-		return entity;
+		// Filter entity by selected columns
+		const selectedColumns = getSelectedColumns(this.context, itemIndex);
+		return filterEntityBySelectedColumns(entity, selectedColumns) as T;
 	}
 }

@@ -3,6 +3,7 @@ import { entityInfoOptions } from '../operations/common/entityInfo.description';
 import { getManyAdvancedOptions } from '../operations/common/get-many-advanced';
 import { getManyOptions } from '../operations/common/get-many';
 import { addPicklistLabelOption } from '../operations/common/picklist-labels';
+import { addSelectColumnsOption } from '../operations/common/select-columns';
 
 /**
  * Operation group types
@@ -104,9 +105,21 @@ export function addOperationsToResource(
 
 		const hasPicklistLabelOption = properties.some(prop => prop.name === 'addPicklistLabels');
 
-		if (hasGetOperations && !config.excludeOperations?.includes('picklistLabels') && !hasPicklistLabelOption) {
-			// Add the standardized picklist label option
-			return addPicklistLabelOption(properties, config.resourceName);
+		if (hasGetOperations) {
+			let updatedProperties = [...properties];
+
+			// Add picklist label option if not excluded and not already present
+			if (!config.excludeOperations?.includes('picklistLabels') && !hasPicklistLabelOption) {
+				updatedProperties = addPicklistLabelOption(updatedProperties, config.resourceName);
+			}
+
+			// Add select columns option if not excluded and not already present
+			const hasSelectColumnsOption = updatedProperties.some(prop => prop.name === 'selectColumns');
+			if (!config.excludeOperations?.includes('selectColumns') && !hasSelectColumnsOption) {
+				updatedProperties = addSelectColumnsOption(updatedProperties, config.resourceName);
+			}
+
+			return updatedProperties;
 		}
 	}
 

@@ -5,7 +5,10 @@ import moment from 'moment-timezone';
 import type { IAutotaskCredentials } from '../../types/base/auth';
 import type { IAutotaskField } from '../../types/base/entity-types';
 import { getFields } from '../entity/api';
-import { DATE_FORMATS } from '../../constants/date.constants';
+
+/**
+ * A utility class for date-time operations
+ */
 
 /**
  * Gets the configured timezone from node parameters or credentials
@@ -52,10 +55,11 @@ export function createDateWrapper(
 /**
  * Process date fields in API response
  */
-export async function processResponseDates<T extends IDataObject>(
+export async function processResponseDates<T>(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	response: T,
-	context: string,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	_context: string,
 ): Promise<T> {
 	if (!response) {
 		return response;
@@ -72,7 +76,8 @@ export async function processResponseDates<T extends IDataObject>(
 					// Parse UTC date and convert to target timezone
 					const date = moment.utc(value).tz(timezone);
 					if (date.isValid()) {
-						(result as Record<string, unknown>)[key] = date.format();
+						const formattedDate = date.format();
+						(result as Record<string, unknown>)[key] = formattedDate;
 					}
 				} catch (error) {
 					console.warn(`Failed to process date for field ${key}:`, error);
@@ -84,6 +89,32 @@ export async function processResponseDates<T extends IDataObject>(
 	} catch (error) {
 		console.error('Failed to process response dates:', error);
 		throw error;
+	}
+}
+
+/**
+ * Process date fields in an array of API responses
+ */
+export async function processResponseDatesArray<T extends IDataObject>(
+	this: IExecuteFunctions | ILoadOptionsFunctions,
+	responses: T[],
+	context: string,
+): Promise<T[]> {
+	if (!responses || !responses.length) {
+		return responses;
+	}
+
+	try {
+		const results: T[] = [];
+
+		for (const response of responses) {
+			results.push(await processResponseDates.call(this, response, context) as T);
+		}
+
+		return results;
+	} catch (error) {
+		console.error(`[${context}] Error processing response dates array:`, error);
+		return responses; // Return original data if conversion fails
 	}
 }
 
@@ -164,76 +195,35 @@ export async function convertDatesToUTC(
 			try {
 				const convertedValue = convertValueToUTC(value, fieldType, timezone);
 				result[fieldName] = convertedValue;
-				console.debug(`[${operationName}] Converted ${fieldName}: ${value} → ${convertedValue}`);
+				console.debug(`[${operationName}] Converted ${fieldName} to UTC: ${convertedValue}`);
 			} catch (error) {
-				console.warn(`[${operationName}] Failed to convert ${fieldName}: ${error}`);
+				console.warn(`[${operationName}] Failed to convert ${fieldName} to UTC:`, error);
 			}
 		}
 
 		return result;
 	} catch (error) {
-		console.error(`[${operationName}] Error in date conversion:`, error);
-		return data; // Return original if conversion fails
+		console.error(`[${operationName}] Error converting dates to UTC:`, error);
+		throw error;
 	}
 }
 
 /**
- * Helper function to check if a string matches date patterns
+ * Helper function to check if a string matches a date pattern
  */
 function checkDatePattern(value: string): boolean {
-	// n8n UI specific format: YYYY-MM-DDT00:00:00
-	const isN8nFormat = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value);
-
-	// ISO date format: YYYY-MM-DD
-	const isIsoDate = /^\d{4}-\d{2}-\d{2}$/.test(value);
-
-	// US date format: MM/DD/YYYY
-	const isUsDate = /^\d{1,2}\/\d{1,2}\/\d{4}/.test(value);
-
-	// European date format: DD.MM.YYYY or DD-MM-YYYY
-	const isEuropeanDate = /^\d{1,2}[.-]\d{1,2}[.-]\d{4}/.test(value);
-
-	return isN8nFormat || isIsoDate || isUsDate || isEuropeanDate;
+	return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value);
 }
 
 /**
  * Helper function to convert a date string to UTC
  */
 function convertValueToUTC(value: string, fieldType: string, timezone: string): string {
-	// Handle the n8n UI specific format explicitly
-	if (value.includes('T') && value.includes(':')) {
-		// Strip any trailing Z if present (indicates UTC)
-		const valueToConvert = value.endsWith('Z') ? value.slice(0, -1) : value;
-
-		// Parse with explicit format to ensure reliability
-		const utcDate = moment.tz(valueToConvert, 'YYYY-MM-DDTHH:mm:ss', timezone).utc();
-
-		// Format based on field type
-		return fieldType === 'date'
-			? utcDate.format(DATE_FORMATS.API_DATE)
-			: utcDate.format(DATE_FORMATS.API_DATETIME);
+	if (fieldType === 'date' || fieldType === 'dateTime') {
+		const date = moment.utc(value).tz(timezone);
+		if (date.isValid()) {
+			return date.format();
+		}
 	}
-
-	// For other formats, use moment's auto-detection
-	const utcDate = moment(value).tz(timezone).utc();
-
-	// Format based on field type
-	return fieldType === 'date'
-		? utcDate.format(DATE_FORMATS.API_DATE)
-		: utcDate.format(DATE_FORMATS.API_DATETIME);
-}
-
-/**
- * @deprecated Use convertDatesToUTC instead, which centralizes date conversion
- * Ensures date fields in an object are converted to UTC
- * This is a failsafe to handle cases where validation doesn't properly convert dates
- */
-export async function ensureDateFieldsConverted(
-	data: IDataObject,
-	entityType: string,
-	context: IExecuteFunctions | ILoadOptionsFunctions,
-	operationName = 'Operation',
-): Promise<void> {
-	console.warn(`[${operationName}] ensureDateFieldsConverted is deprecated. Use convertDatesToUTC instead.`);
-	// Original implementation follows...
+	return value;
 }
