@@ -9,7 +9,17 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - [ ] Add support for Contracts child entities
 - [ ] Add webhook support for real-time event processing
 
-## [0.3.3] - 2025-03-18
+## [0.3.4] - 2024-03-19
+
+### Changed
+- Updated README to include comprehensive documentation for all features
+  - Added new section on reference field enrichment
+  - Added new section on column selection
+  - Added new example for using column selection and reference labels together
+  - Added missing resources to the supported resources list
+  - Improved documentation for performance optimisation
+
+## [0.3.3] - 2024-03-18
 
 ### Added
 - Added column selection for get operations
@@ -145,6 +155,7 @@ This section outlines planned features and improvements for future releases.
 ### Planned Features
 - **Webhook Support**: Integration with Autotask webhooks for real-time event processing
 
+[0.3.4]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.4
 [0.3.3]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.3
 [0.3.2]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.2
 [0.3.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.1

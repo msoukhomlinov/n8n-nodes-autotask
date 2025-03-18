@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.3.3-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.3.4-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 This is an n8n community node for integrating with Autotask PSA. It provides a comprehensive set of operations to interact with Autotask entities through their REST API.
@@ -59,8 +59,14 @@ The node supports the following Autotask resources:
 |----------|-------------|
 | Billing Code | Manage billing codes for time entries and charges |
 | Company | Manage organisations in Autotask |
+| Company Alert | Manage alerts associated with companies |
+| Company Location | Manage locations for companies |
 | Company Note | Manage notes attached to companies |
 | Contact | Manage contacts associated with companies |
+| Contract | Manage contracts for companies |
+| Holiday | Manage holiday dates |
+| Holiday Set | Manage holiday sets for resources |
+| Opportunity | Manage sales opportunities |
 | Product | Manage products in the catalogue |
 | Project | Manage projects |
 | Project Charge | Manage charges associated with projects |
@@ -69,6 +75,7 @@ The node supports the following Autotask resources:
 | Project Task | Manage tasks within projects |
 | Resource | Manage staff resources |
 | Search Filter | Build advanced search filters |
+| Service Call | Manage service calls |
 | Ticket | Manage service tickets |
 | Ticket History | View historical changes to tickets |
 | Ticket Note | Manage notes attached to tickets |
@@ -88,6 +95,8 @@ For most resources, the following operations are available:
   - Automatically paginate through large result sets
   - Choose to get all results or limit to a specific number (1-500)
   - Set a maximum number of records to return when not retrieving all records
+  - Select specific columns to return in the response
+  - Add human-readable labels for picklist and reference fields
 - **Get Many Advanced**: Build complex queries with multiple filter conditions and logical operators. This operation provides:
   - Support for complex AND/OR logic in filters
   - Nested condition groups for sophisticated queries
@@ -96,6 +105,9 @@ For most resources, the following operations are available:
   - Support for IN and NOT IN operators with multiple values
   - Choose to get all results or limit to a specific number (1-500)
   - Set a maximum number of records to return when not retrieving all records
+  - Select specific columns to return in the response
+  - Add human-readable labels for picklist and reference fields
+  - Date-based filtering with automatic timezone handling
 - **Count**: Get the number of matching records
 - **Get Entity Info**: Retrieve metadata about the entity
 - **Get Field Info**: Retrieve field definitions for the selected entity
@@ -104,6 +116,9 @@ For most resources, the following operations are available:
 
 - **Resource Mapping**: Dynamically map fields based on entity definitions
 - **Advanced Filtering**: Build complex queries with multiple conditions
+- **Column Selection**: Choose specific fields to return in get operations
+- **Picklist Label Enrichment**: Automatically add human-readable labels for picklist fields
+- **Reference Label Enrichment**: Add human-readable labels for reference fields
 - **File-based Caching**: Improved performance with persistent caching that can be shared between workflows and runs
 - **Timezone Handling**: Automatic conversion between local time and UTC
 
@@ -150,6 +165,18 @@ An AI agent might use the Autotask node to:
 6. Connect to a trigger or previous node
 7. Execute the workflow
 
+### Advanced Example: Using Column Selection and Reference Labels
+
+1. Add an **Autotask** node to your workflow
+2. Select **Ticket** as the resource
+3. Select **Get Many** as the operation
+4. Add filter conditions as needed
+5. Enable **Select Columns** to choose specific fields to return
+6. Select only the fields you need in the response (improves performance)
+7. Enable **Add Picklist Labels** to get human-readable values for picklist fields
+8. Enable **Add Reference Labels** to get human-readable values for reference fields
+9. Execute the workflow to get tickets with only the selected fields and human-readable labels
+
 ### Advanced Example: Complex Filtering with Get Many Advanced
 
 1. Add an **Autotask** node to your workflow
@@ -186,7 +213,9 @@ An AI agent might use the Autotask node to:
 5. Choose whether to retrieve all results or limit the number:
    - Toggle "Get All" to true to retrieve all matching records
    - Toggle "Get All" to false and set "Max Records" (1-500) to limit the results
-6. Execute the workflow to retrieve tickets that are not complete AND either have priority 6 OR are due within the next 3 days
+6. Enable **Select Columns** to choose specific fields to return
+7. Enable **Add Reference Labels** and **Add Picklist Labels** for human-readable values
+8. Execute the workflow to retrieve tickets that are not complete AND either have priority 6 OR are due within the next 3 days
 
 ### Advanced Example: Working with Parent-Child Relationships
 
@@ -215,6 +244,21 @@ The node includes an enhanced file-based caching system to improve performance b
 - **File-based Cache**: Cache is stored in files that can be shared between workflows and runs
 - **Cache Directory**: Optional path to a directory where cache files will be stored
 
+### Label Enrichment
+
+The node provides options to enrich entities with human-readable labels:
+
+- **Add Picklist Labels**: Adds "_label" fields for picklist values (e.g., Status_label: "In Progress")
+- **Add Reference Labels**: Adds "_label" fields for reference values (e.g., Company_label: "Acme Corporation")
+
+### Column Selection
+
+To improve performance and reduce payload size, you can select specific columns to return:
+
+- **Select Columns**: Choose which fields to include in the response
+- Works with all get operations (get, getMany, getManyAdvanced)
+- Compatible with label enrichment features
+
 ### Timezone Handling
 
 All dates and times in the Autotask API are in UTC. The node automatically converts between your selected timezone and UTC:
@@ -241,6 +285,7 @@ All dates and times in the Autotask API are in UTC. The node automatically conve
 ### Performance Considerations
 
 - Large queries may be slow and should be optimised with filters
+- Column selection can significantly improve performance by reducing payload size
 - Complex workflows with many API calls may hit rate limits
 
 ## Troubleshooting
