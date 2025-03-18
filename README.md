@@ -133,6 +133,22 @@ Currently, n8n only allows core nodes to be used as tools by default. To use thi
 1. Set the environment variable `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE` to `true` when running n8n.
 2. Add the Autotask node as a tool in your AI agent workflow.
 
+#### Environment Variable Configuration
+
+For the node to be usable as an AI tool, you must set the following environment variable:
+
+```bash
+N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true
+```
+
+This can be done by:
+- Adding it to your .env file
+- Setting it in your system environment variables
+- Including it in your Docker or container configuration
+- Adding it to your startup command (e.g., `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true n8n start`)
+
+Without this environment variable set to `true`, n8n will not allow AI agents to use this community node as a tool.
+
 #### Example AI Tool Usage
 
 An AI agent might use the Autotask node to:

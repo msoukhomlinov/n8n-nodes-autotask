@@ -71,7 +71,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - Added support for using the node as an AI tool in n8n workflows
   - Added `usableAsTool: true` to node description
   - Added documentation on how to use the node with AI agents
-  - Note: Requires setting the `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE` environment variable
+  - Note: Requires setting the `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE` environment variable to `true`
 
 ## [0.3.0] - 2025-03-16
 
