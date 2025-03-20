@@ -179,5 +179,12 @@ export const REQUIRED_UPDATE_ID_FIELDS: Record<string, string[]> = {
 	'Charge': ['projectID'],
 	'TicketNote': ['ticketID'],
 	'Holiday': ['holidaySetID'],
+	'ContractCharge': ['contractID'],
+	'ContractMilestone': ['contractID'],
+	'ContractNote': ['contractID'],
+	'ContractService': ['contractID'],
+	'ContractBlock': ['contractID'],
+	'ContractBlockHourFactor': ['contractID'],
+	'ContractRate': ['contractID'],
 	// Add more entities and their required ID fields as needed
 } as const;

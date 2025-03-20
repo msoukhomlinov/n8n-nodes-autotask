@@ -30,7 +30,16 @@ import { executeBillingCodeOperation } from './resources/billingCodes/execute';
 import { executeHolidaySetOperation } from './resources/holidaySets/execute';
 import { executeHolidayOperation } from './resources/holidays/execute';
 import { executeServiceCallOperation } from './resources/serviceCalls/execute';
+import { executeServiceOperation } from './resources/services/execute';
 import { executeContractOperation } from './resources/contracts/execute';
+import { executeContractChargeOperation } from './resources/contractCharges/execute';
+import { executeContractNoteOperation } from './resources/contractNotes/execute';
+import { executeContractServiceOperation } from './resources/contractServices/execute';
+import { executeContractMilestoneOperation } from './resources/contractMilestones/execute';
+import { executeContractServiceUnitOperation } from './resources/contractServiceUnits/execute';
+import { executeContractBlockOperation } from './resources/contractBlocks/execute';
+import { executeContractBlockHourFactorOperation } from './resources/contractBlockHourFactors/execute';
+import { executeContractRateOperation } from './resources/contractRates/execute';
 import { executeOpportunityOperation } from './resources/opportunities/execute';
 import { searchFilterDescription, searchFilterOperations, build as executeSearchFilterOperation } from './resources/searchFilter';
 import { getResourceMapperFields } from './helpers/resourceMapper';
@@ -55,7 +64,16 @@ import { billingCodeFields } from './resources/billingCodes/description';
 import { holidaySetFields } from './resources/holidaySets/description';
 import { holidayFields } from './resources/holidays/description';
 import { serviceCallFields } from './resources/serviceCalls/description';
+import { serviceFields } from './resources/services/description';
 import { contractFields } from './resources/contracts/description';
+import { contractChargeFields } from './resources/contractCharges/description';
+import { contractNoteFields } from './resources/contractNotes/description';
+import { contractServiceFields } from './resources/contractServices/description';
+import { contractMilestoneFields } from './resources/contractMilestones/description';
+import { contractServiceUnitFields } from './resources/contractServiceUnits/description';
+import { contractBlockFields } from './resources/contractBlocks/description';
+import { contractBlockHourFactorFields } from './resources/contractBlockHourFactors/description';
+import { contractRateFields } from './resources/contractRates/description';
 import { opportunityFields } from './resources/opportunities/description';
 import { addOperationsToResource } from './helpers/resource-operations.helper';
 
@@ -98,6 +116,14 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(contactFields, { resourceName: 'contact' }),
 			...addOperationsToResource(companyLocationFields, { resourceName: 'companyLocation' }),
 			...addOperationsToResource(contractFields, { resourceName: 'contract' }),
+			...addOperationsToResource(contractChargeFields, { resourceName: 'contractCharge' }),
+			...addOperationsToResource(contractNoteFields, { resourceName: 'contractNote' }),
+			...addOperationsToResource(contractServiceFields, { resourceName: 'contractService' }),
+			...addOperationsToResource(contractMilestoneFields, { resourceName: 'contractMilestone' }),
+			...addOperationsToResource(contractServiceUnitFields, { resourceName: 'contractServiceUnit' }),
+			...addOperationsToResource(contractBlockFields, { resourceName: 'contractBlock' }),
+			...addOperationsToResource(contractBlockHourFactorFields, { resourceName: 'contractBlockHourFactor' }),
+			...addOperationsToResource(contractRateFields, { resourceName: 'contractRate' }),
 			...addOperationsToResource(holidaySetFields, { resourceName: 'holidaySet' }),
 			...addOperationsToResource(holidayFields, { resourceName: 'holiday' }),
 			...addOperationsToResource(opportunityFields, { resourceName: 'opportunity' }),
@@ -108,14 +134,16 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(projectPhaseFields, { resourceName: 'phase' }),
 			...addOperationsToResource(projectTaskFields, { resourceName: 'task' }),
 			...addOperationsToResource(resourceFields, { resourceName: 'resource' }),
+			...addOperationsToResource(serviceCallFields, { resourceName: 'serviceCall' }),
+			...addOperationsToResource(serviceFields, { resourceName: 'service' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
 			...addOperationsToResource(ticketNoteFields, { resourceName: 'ticketNote' }),
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
-			...addOperationsToResource(serviceCallFields, { resourceName: 'serviceCall' }),
+      // These should not have common operations added to them
 			...searchFilterDescription,
-			...searchFilterOperations,
+      ...searchFilterOperations,
 		],
 	};
 
@@ -138,6 +166,22 @@ export class Autotask implements INodeType {
 				return executeCompanyLocationOperation.call(this);
 			case 'contract':
 				return executeContractOperation.call(this);
+			case 'contractCharge':
+				return executeContractChargeOperation.call(this);
+			case 'contractNote':
+				return executeContractNoteOperation.call(this);
+			case 'contractService':
+				return executeContractServiceOperation.call(this);
+			case 'contractMilestone':
+				return executeContractMilestoneOperation.call(this);
+			case 'contractServiceUnit':
+				return executeContractServiceUnitOperation.call(this);
+			case 'contractBlock':
+				return executeContractBlockOperation.call(this);
+			case 'contractBlockHourFactor':
+				return executeContractBlockHourFactorOperation.call(this);
+			case 'contractRate':
+				return executeContractRateOperation.call(this);
 			case 'holidaySet':
 				return executeHolidaySetOperation.call(this);
 			case 'holiday':
@@ -162,6 +206,8 @@ export class Autotask implements INodeType {
 				return executeSearchFilterOperation.call(this);
 			case 'serviceCall':
 				return executeServiceCallOperation.call(this);
+			case 'service':
+				return executeServiceOperation.call(this);
 			case 'ticket':
 				return executeTicketOperation.call(this);
 			case 'ticketNote':

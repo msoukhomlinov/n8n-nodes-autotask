@@ -54,6 +54,26 @@ function formatErrorDetails(errors?: IApiErrorDetail[]): string {
  * Gets detailed error context from error object
  */
 function getErrorContext(error: Error | IApiErrorWithResponse, operation?: string, entityType?: string): IErrorContext {
+	if (!error) {
+		return {
+			type: AutotaskErrorType.Unknown,
+			details: 'An unknown error occurred (no error provided)',
+		};
+	}
+
+	// Special handling for specific error patterns
+	if (error.message) {
+		// Check for NotFound errors
+		if (error.message.includes('[NotFoundError]') ||
+			error.message.toLowerCase().includes('not found') ||
+			(error.message.includes('item') && error.message.includes('null'))) {
+			return {
+				type: AutotaskErrorType.NotFound,
+				details: error.message,
+			};
+		}
+	}
+
 	if ('response' in error) {
 		const status = error.response?.status;
 

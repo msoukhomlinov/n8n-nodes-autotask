@@ -364,8 +364,9 @@ export class BaseOperation {
 			// For update operations that should be done via parent, use parent/child endpoint without entity ID
 			if (this.operation === OperationType.UPDATE && metadata?.operations?.update === 'parent') {
 				// Create a new object without the entityId property
-				const urlOptions = { ...options };
-				delete urlOptions.entityId;
+				const urlOptions = Object.fromEntries(
+					Object.entries(options).filter(([key]) => key !== 'entityId')
+				);
 				return buildChildEntityUrl(
 					this.parentType,
 					this.entityType,

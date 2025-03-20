@@ -359,8 +359,17 @@ export async function autotaskApiRequest<T = JsonObject>(
 		}
 
 		// Handle single entity GET responses
-		if (method === 'GET' && response?.item) {
-			return response as T;
+		if (method === 'GET' && !isQueryEndpoint(endpoint)) {
+			if (response?.item) {
+				return response as T;
+			}
+
+			if (response && response.item === null) {
+				// This indicates the record wasn't found but API returned a valid response
+				const entityType = endpoint.split('/')[0].replace(/\/$/, '');
+				const entityId = endpoint.split('/')[1]?.replace(/\/$/, '') || 'unknown';
+				throw new Error(`[NotFoundError] The ${entityType} with ID ${entityId} was not found. Please verify the ID is correct and that you have permission to access this record.`);
+			}
 		}
 
 		// If we get here, response format is unexpected

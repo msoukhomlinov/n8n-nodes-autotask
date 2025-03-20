@@ -10,6 +10,7 @@ import { BaseOperation } from './base-operation';
 /**
  * Base class for deleting entities
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export class DeleteOperation<T extends IAutotaskEntity> extends BaseOperation {
 	constructor(
 		entityType: string,
@@ -47,8 +48,9 @@ export class DeleteOperation<T extends IAutotaskEntity> extends BaseOperation {
 						const parentId = await this.getParameter(parentIdField, itemIndex);
 
 						if (parentId && (typeof parentId === 'string' || typeof parentId === 'number')) {
-							// Use singular form for both parent and child entities
-							endpoint = `/${metadata.childOf}/${parentId}/${this.entityType}/${entityId}`;
+							// Use parent entity name and child entity subname (if provided)
+							const childEntityPath = metadata.subname || this.entityType;
+							endpoint = `/${metadata.childOf}/${parentId}/${childEntityPath}/${entityId}`;
 						}
 					} catch {
 						// Parent ID is optional for delete operations

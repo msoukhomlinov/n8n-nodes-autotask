@@ -4,10 +4,49 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [Unreleased]
 
-
+ 
 ### Todo
-- [ ] Add support for Contracts child entities
+- [ ] Add support for Configuration items (assets)
+  - ConfigurationItems
+  - ConfigurationItemBillingProductAssociations
+  - ConfigurationItemCategories
+  - ConfigurationItemCategoryUdfAssociations
+  - ConfigurationItemDnsRecords
+  - ConfigurationItemNoteAttachments
+  - ConfigurationItemNotes
+  - ConfigurationItemRelatedItems
+  - ConfigurationItemSslSubjectAlternativeName
+  - ConfigurationItemTypes
+- [ ] Add support for remaining Contracts child entities:
+  - ContractBillingRules
+  - ContractExclusionBillingCodes
+  - ContractExclusionRoles
+  - ContractExclusionSetExcludedRoles
+  - ContractExclusionSetExcludedWorkTypes
+  - ContractExclusionSets
+  - ContractRetainers
+  - ContractRoleCosts
+  - ContractServiceAdjustments
+  - ContractServiceBundleAdjustments
+  - ContractServiceBundles
+  - ContractServiceBundleUnits
+  - ContractTicketPurchases
 - [ ] Add webhook support for real-time event processing
+
+
+## [0.4.0] - 2025-03-20
+
+### Added
+- Added support for ContractCharges entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ContractChargesEntity.htm)
+- Added support for ContractMilestones entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ContractMilestonesEntity.htm)
+- Added support for ContractNotes entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ContractNotesEntity.htm)
+- Added support for ContractServices entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ContractServicesEntity.htm)
+- Added support for ContractServiceUnits entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ContractServiceUnitsEntity.htm)
+- Added support for ContractBlocks entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ContractBlocksEntity.htm)
+- Added support for ContractBlockHourFactors entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ContractBlockHourFactorsEntity.htm)
+- Added support for ContractRates entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ContractRatesEntity.htm)
+- Added support for Services entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ServicesEntity.htm)
+
 
 ## [0.3.4] - 2024-03-19
 
@@ -163,4 +202,5 @@ This section outlines planned features and improvements for future releases.
 [0.2.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.1
 [0.2.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.0
 [0.1.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.1
-[0.1.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.0 
+[0.1.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.0
+[0.4.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.4.0 

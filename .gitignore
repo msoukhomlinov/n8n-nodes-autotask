@@ -64,6 +64,7 @@ credentials.json
 
 # documentation and reference files
 /docs/
+/.docs/
 /references/
 
 .cursorignore
