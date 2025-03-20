@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.3.4-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.4.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 This is an n8n community node for integrating with Autotask PSA. It provides a comprehensive set of operations to interact with Autotask entities through their REST API.
@@ -64,6 +64,14 @@ The node supports the following Autotask resources:
 | Company Note | Manage notes attached to companies |
 | Contact | Manage contacts associated with companies |
 | Contract | Manage contracts for companies |
+| Contract Blocks | Manage block hour contracts |
+| Contract Block Hour Factors | Manage hour factors for block hour contracts |
+| Contract Charges | Manage charges associated with contracts |
+| Contract Milestones | Manage milestones for contracts |
+| Contract Notes | Manage notes attached to contracts |
+| Contract Rates | Manage rates for contract services |
+| Contract Services | Manage services within contracts |
+| Contract Service Units | Manage service units for contracts |
 | Holiday | Manage holiday dates |
 | Holiday Set | Manage holiday sets for resources |
 | Opportunity | Manage sales opportunities |
@@ -75,6 +83,7 @@ The node supports the following Autotask resources:
 | Project Task | Manage tasks within projects |
 | Resource | Manage staff resources |
 | Search Filter | Build advanced search filters |
+| Service | Manage services offered to clients |
 | Service Call | Manage service calls |
 | Ticket | Manage service tickets |
 | Ticket History | View historical changes to tickets |
