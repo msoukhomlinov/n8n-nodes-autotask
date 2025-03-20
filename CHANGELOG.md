@@ -31,6 +31,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundles
   - ContractServiceBundleUnits
   - ContractTicketPurchases
+- [ ] Make resource description more detailed
 - [ ] Add webhook support for real-time event processing
 
 
