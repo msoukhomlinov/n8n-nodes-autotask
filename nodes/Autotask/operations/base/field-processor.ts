@@ -571,8 +571,20 @@ export class FieldProcessor {
 				return false;
 			}
 
-			// For create operations, exclude read-only fields (except parent ID which was handled above)
+			// For create operations, exclude read-only fields with special conditions
 			if (operation === 'create' && field.isReadOnly) {
+				// Always exclude 'id' field for create operations, even if it's marked as required
+				if (field.name === 'id') {
+					console.debug(`[FieldProcessor] Excluding read-only field ${field.name} for create`);
+					return false;
+				}
+
+				// If the field is required, we should include it even if it's read-only
+				if (field.isRequired) {
+					console.debug(`[FieldProcessor] Including required read-only field ${field.name} for create`);
+					return true;
+				}
+
 				console.debug(`[FieldProcessor] Excluding read-only field ${field.name} for create`);
 				return false;
 			}
@@ -781,7 +793,7 @@ export class FieldProcessor {
 						}
 
 						// If still no match, try numeric comparison if the field value is numeric
-						if (!label && !isNaN(Number(stringFieldValue))) {
+						if (!label && !Number.isNaN(Number(stringFieldValue))) {
 							const numericFieldValue = Number(stringFieldValue);
 							for (const [key, val] of valueToLabelMap.entries()) {
 								if (Number(key) === numericFieldValue) {

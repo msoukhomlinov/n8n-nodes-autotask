@@ -2,21 +2,7 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [Unreleased]
-
- 
 ### Todo
-- [ ] Add support for Configuration items (assets)
-  - ConfigurationItems
-  - ConfigurationItemBillingProductAssociations
-  - ConfigurationItemCategories
-  - ConfigurationItemCategoryUdfAssociations
-  - ConfigurationItemDnsRecords
-  - ConfigurationItemNoteAttachments
-  - ConfigurationItemNotes
-  - ConfigurationItemRelatedItems
-  - ConfigurationItemSslSubjectAlternativeName
-  - ConfigurationItemTypes
 - [ ] Add support for remaining Contracts child entities:
   - ContractBillingRules
   - ContractExclusionBillingCodes
@@ -34,6 +20,23 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - [ ] Make resource description more detailed
 - [ ] Add webhook support for real-time event processing
 
+## [Unreleased]
+
+## [0.4.1] - 2025-03-21
+
+### Added
+- Added support for:
+  - Surveys entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/SurveysEntity.htm)
+  - SurveyResults entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/SurveyResultsEntity.htm)
+  - ConfigurationItems entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ConfigurationItemsEntity.htm)
+  - ConfigurationItemTypes entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ConfigurationItemTypesEntity.htm)
+  - ConfigurationItemCategories entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ConfigurationItemCategoriesEntity.htm)
+  - ConfigurationItemNotes entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ConfigurationItemNotesEntity.htm)
+  - ConfigurationItemRelatedItems entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ConfigurationItemRelatedItemsEntity.htm)
+  - ConfigurationItemDnsRecords entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ConfigurationItemDnsRecordsEntity.htm)
+  - ConfigurationItemBillingProductAssociations entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ConfigurationItemBillingProductAssociationsEntity.htm)
+  - ConfigurationItemCategoryUdfAssociations (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ConfigurationItemCategoryUdfAssociationsEntity.htm)
+  - ConfigurationItemSslSubjectAlternativeName (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ConfigurationItemSslSubjectAlternativeNameEntity.htm)
 
 ## [0.4.0] - 2025-03-20
 
@@ -205,3 +208,4 @@ This section outlines planned features and improvements for future releases.
 [0.1.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.1
 [0.1.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.0
 [0.4.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.4.0 
+[0.4.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.4.1 

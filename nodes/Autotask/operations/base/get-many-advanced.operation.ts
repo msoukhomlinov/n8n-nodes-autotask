@@ -130,7 +130,7 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 				// Check for column selection
 				try {
 					const selectedColumns = getSelectedColumns(this.context, itemIndex);
-					if (selectedColumns && selectedColumns.length) {
+					if (selectedColumns?.length) {
 						// Get label options from parameters
 						const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
 						const addReferenceLabels = this.context.getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
@@ -204,7 +204,7 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 					}
 
 					// Apply client-side filtering as a fallback if server-side filtering wasn't used
-					console.debug(`[GetManyAdvancedOperation] Applying client-side filtering as fallback`);
+					console.debug('[GetManyAdvancedOperation] Applying client-side filtering as fallback');
 					const filteredResults = filterEntitiesBySelectedColumns(processedResults as T[], selectedColumns) as T[];
 
 					// Log filtered vs original count for debugging

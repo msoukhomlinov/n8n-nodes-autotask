@@ -57,8 +57,8 @@ import { projectPhaseFields } from './resources/projectPhases/description';
 import { projectChargeFields } from './resources/projectCharges/description';
 import { productFields } from './resources/products/description';
 import { ticketFields } from './resources/tickets/description';
-import { ticketNoteFields } from './resources/ticketNotes/description';
 import { ticketHistoryFields } from './resources/ticketHistories/description';
+import { ticketNoteFields } from './resources/ticketNotes/description';
 import { timeEntryFields } from './resources/timeEntries/description';
 import { billingCodeFields } from './resources/billingCodes/description';
 import { holidaySetFields } from './resources/holidaySets/description';
@@ -76,6 +76,28 @@ import { contractBlockHourFactorFields } from './resources/contractBlockHourFact
 import { contractRateFields } from './resources/contractRates/description';
 import { opportunityFields } from './resources/opportunities/description';
 import { addOperationsToResource } from './helpers/resource-operations.helper';
+import { executeSurveyOperation } from './resources/surveys/execute';
+import { surveyFields } from './resources/surveys/description';
+import { executeSurveyResultsOperation } from './resources/surveyResults/execute';
+import { surveyResultsFields } from './resources/surveyResults/description';
+import { executeConfigurationItemOperation } from './resources/configurationItems/execute';
+import { configurationItemFields } from './resources/configurationItems/description';
+import { executeConfigurationItemTypeOperation } from './resources/configurationItemTypes/execute';
+import { configurationItemTypeFields } from './resources/configurationItemTypes/description';
+import { executeConfigurationItemCategoryOperation } from './resources/configurationItemCategories/execute';
+import { configurationItemCategoryFields } from './resources/configurationItemCategories/description';
+import { executeConfigurationItemCategoryUdfAssociationOperation } from './resources/configurationItemCategoryUdfAssociation/execute';
+import { configurationItemCategoryUdfAssociationFields } from './resources/configurationItemCategoryUdfAssociation/description';
+import { executeConfigurationItemNoteOperation } from './resources/configurationItemNotes/execute';
+import { configurationItemNoteFields } from './resources/configurationItemNotes/description';
+import { executeConfigurationItemRelatedItemOperation } from './resources/configurationItemRelatedItems/execute';
+import { configurationItemRelatedItemFields } from './resources/configurationItemRelatedItems/description';
+import { executeConfigurationItemDnsRecordOperation } from './resources/configurationItemDnsRecords/execute';
+import { configurationItemDnsRecordFields } from './resources/configurationItemDnsRecords/description';
+import { executeConfigurationItemBillingProductAssociationOperation } from './resources/configurationItemBillingProductAssociations/execute';
+import { configurationItemBillingProductAssociationFields } from './resources/configurationItemBillingProductAssociations/description';
+import { executeConfigurationItemSslSubjectAlternativeNameOperation } from './resources/configurationItemSslSubjectAlternativeNames/execute';
+import { configurationItemSslSubjectAlternativeNameFields } from './resources/configurationItemSslSubjectAlternativeNames/description';
 
 /**
  * Autotask node implementation
@@ -113,6 +135,15 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(companyFields, { resourceName: 'company' }),
 			...addOperationsToResource(companyAlertFields, { resourceName: 'companyAlert' }),
 			...addOperationsToResource(companyNoteFields, { resourceName: 'companyNote' }),
+			...addOperationsToResource(configurationItemFields, { resourceName: 'configurationItems' }),
+			...addOperationsToResource(configurationItemCategoryFields, { resourceName: 'configurationItemCategories' }),
+			...addOperationsToResource(configurationItemCategoryUdfAssociationFields, { resourceName: 'configurationItemCategoryUdfAssociation' }),
+			...addOperationsToResource(configurationItemTypeFields, { resourceName: 'configurationItemTypes' }),
+			...addOperationsToResource(configurationItemNoteFields, { resourceName: 'configurationItemNote' }),
+			...addOperationsToResource(configurationItemRelatedItemFields, { resourceName: 'configurationItemRelatedItem' }),
+			...addOperationsToResource(configurationItemDnsRecordFields, { resourceName: 'configurationItemDnsRecord' }),
+			...addOperationsToResource(configurationItemBillingProductAssociationFields, { resourceName: 'configurationItemBillingProductAssociation' }),
+			...addOperationsToResource(configurationItemSslSubjectAlternativeNameFields, { resourceName: 'configurationItemSslSubjectAlternativeName' }),
 			...addOperationsToResource(contactFields, { resourceName: 'contact' }),
 			...addOperationsToResource(companyLocationFields, { resourceName: 'companyLocation' }),
 			...addOperationsToResource(contractFields, { resourceName: 'contract' }),
@@ -141,9 +172,11 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
-      // These should not have common operations added to them
+			...addOperationsToResource(surveyFields, { resourceName: 'survey' }),
+			...addOperationsToResource(surveyResultsFields, { resourceName: 'surveyResults' }),
+			// searchFilterDescription and searchFilterOperations should not have common operations added to them
 			...searchFilterDescription,
-      ...searchFilterOperations,
+			...searchFilterOperations,
 		],
 	};
 
@@ -160,6 +193,24 @@ export class Autotask implements INodeType {
 				return executeCompanyAlertOperation.call(this);
 			case 'companyNote':
 				return executeCompanyNoteOperation.call(this);
+			case 'configurationItems':
+				return executeConfigurationItemOperation.call(this);
+			case 'configurationItemCategories':
+				return executeConfigurationItemCategoryOperation.call(this);
+			case 'configurationItemCategoryUdfAssociation':
+				return executeConfigurationItemCategoryUdfAssociationOperation.call(this);
+			case 'configurationItemNote':
+				return executeConfigurationItemNoteOperation.call(this);
+			case 'configurationItemTypes':
+				return executeConfigurationItemTypeOperation.call(this);
+			case 'configurationItemRelatedItem':
+				return executeConfigurationItemRelatedItemOperation.call(this);
+			case 'configurationItemDnsRecord':
+				return executeConfigurationItemDnsRecordOperation.call(this);
+			case 'configurationItemBillingProductAssociation':
+				return executeConfigurationItemBillingProductAssociationOperation.call(this);
+			case 'configurationItemSslSubjectAlternativeName':
+				return executeConfigurationItemSslSubjectAlternativeNameOperation.call(this);
 			case 'contact':
 				return executeContactOperation.call(this);
 			case 'companyLocation':
@@ -216,6 +267,10 @@ export class Autotask implements INodeType {
 				return executeTicketHistoryOperation.call(this);
 			case 'timeEntry':
 				return executeTimeEntryOperation.call(this);
+			case 'survey':
+				return executeSurveyOperation.call(this);
+			case 'surveyResults':
+				return executeSurveyResultsOperation.call(this);
 			default:
 				throw new NodeOperationError(
 					this.getNode(),
