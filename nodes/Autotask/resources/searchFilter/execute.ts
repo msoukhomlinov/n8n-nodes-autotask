@@ -42,7 +42,7 @@ export async function build(this: IExecuteFunctions): Promise<INodeExecutionData
 					group: rawInput.group.map(group => {
 						// Validate group structure
 						if (!group.items || !group.items.itemType || !Array.isArray(group.items.itemType)) {
-							throw new Error(`Invalid group structure`);
+							throw new Error('Invalid group structure');
 						}
 
 						return {
