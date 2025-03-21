@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.4.0-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.4.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 This is an n8n community node for integrating with Autotask PSA. It provides a comprehensive set of operations to interact with Autotask entities through their REST API.
@@ -62,6 +62,15 @@ The node supports the following Autotask resources:
 | Company Alert | Manage alerts associated with companies |
 | Company Location | Manage locations for companies |
 | Company Note | Manage notes attached to companies |
+| Configuration Item | Manage configuration items (CIs) for companies |
+| Configuration Item Billing Product Association | Manage product associations for configuration items |
+| Configuration Item Category | Manage categories for configuration items |
+| Configuration Item Category UDF Association | Manage UDF associations for CI categories |
+| Configuration Item DNS Record | Manage DNS records for configuration items |
+| Configuration Item Note | Manage notes for configuration items |
+| Configuration Item Related Item | Manage related items for configuration items |
+| Configuration Item SSL Subject Alternative Name | Manage SSL alternative names for configuration items |
+| Configuration Item Type | Manage types for configuration items |
 | Contact | Manage contacts associated with companies |
 | Contract | Manage contracts for companies |
 | Contract Blocks | Manage block hour contracts |
@@ -85,6 +94,8 @@ The node supports the following Autotask resources:
 | Search Filter | Build advanced search filters |
 | Service | Manage services offered to clients |
 | Service Call | Manage service calls |
+| Survey | Manage customer surveys |
+| Survey Result | Manage results from customer surveys |
 | Ticket | Manage service tickets |
 | Ticket History | View historical changes to tickets |
 | Ticket Note | Manage notes attached to tickets |
