@@ -3,7 +3,6 @@ import { BaseOperation } from './base-operation';
 import { OperationType } from '../../types/base/entity-types';
 import { handleErrors } from '../../helpers/errorHandler';
 import { getEntityMetadata } from '../../constants/entities';
-import type { IAutotaskEntity } from '../../types/base/entity-types';
 import type { IEntityInfo } from '../../types/base/entities';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { buildEntityUrl } from '../../helpers/http/request';
@@ -12,7 +11,7 @@ import { autotaskApiRequest } from '../../helpers/http';
 /**
  * Operation to retrieve entity metadata and information
  */
-export class GetEntityInfoOperation<T extends IAutotaskEntity> extends BaseOperation {
+export class GetEntityInfoOperation extends BaseOperation {
 	constructor(
 		entityType: string,
 		context: IExecuteFunctions,
@@ -25,7 +24,7 @@ export class GetEntityInfoOperation<T extends IAutotaskEntity> extends BaseOpera
 	/**
 	 * Execute the operation
 	 */
-	public async execute(itemIndex: number): Promise<INodeExecutionData> {
+	public async execute(): Promise<INodeExecutionData> {
 		return handleErrors(
 			this.context,
 			async () => {

@@ -10,7 +10,6 @@ import { initializeCache } from '../cache/init';
 export async function createReferenceHelper(
 	entityType: string,
 	context: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
-	referenceDepth: number,
 ): Promise<EntityValueHelper<IAutotaskEntity>> {
 	// Initialize cache service
 	const cacheService = await initializeCache(context);
@@ -36,7 +35,7 @@ export async function getReferenceValues(
 	}
 
 	// Create helper and get values
-	const helper = await createReferenceHelper(entityType, context, referenceDepth + 1);
+	const helper = await createReferenceHelper(entityType, context);
 	const entities = await helper.getValues();
 
 	// Map to name/value pairs

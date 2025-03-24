@@ -1,5 +1,4 @@
 import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
-import type { IAutotaskEntity } from '../../types/base/entity-types';
 import { GetEntityInfoOperation } from '../base/getEntityInfo.operation';
 import { GetFieldInfoOperation } from '../base/getFieldInfo.operation';
 
@@ -16,13 +15,13 @@ export async function executeEntityInfoOperations(
 ): Promise<INodeExecutionData> {
 	switch (operation) {
 		case 'getEntityInfo': {
-			const getEntityInfoOp = new GetEntityInfoOperation<IAutotaskEntity>(
+			const getEntityInfoOp = new GetEntityInfoOperation(
 				entityType,
 				context,
 				parentType,
 				parentChain,
 			);
-			return getEntityInfoOp.execute(itemIndex);
+			return getEntityInfoOp.execute();
 		}
 		case 'getFieldInfo': {
 			const getFieldInfoOp = new GetFieldInfoOperation(

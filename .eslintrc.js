@@ -25,7 +25,7 @@ module.exports = {
 		'plugin:@typescript-eslint/recommended',
 	],
 
-	ignorePatterns: ['.eslintrc.js', '**/*.js', '**/node_modules/**', '**/dist/**'],
+	ignorePatterns: ['.eslintrc.js', '**/*.js', '**/node_modules/**', '**/dist/**', 'index.ts'],
 
 	overrides: [
 		{

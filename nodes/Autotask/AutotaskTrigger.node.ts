@@ -82,24 +82,24 @@ export class AutotaskTrigger implements INodeType {
 						description: 'Handle Company webhook events',
 					},
 					{
-						name: 'Contacts',
-						value: AutotaskWebhookEntityType.CONTACTS,
-						description: 'Handle Contacts webhook events',
-					},
-					{
-						name: 'Tickets',
-						value: AutotaskWebhookEntityType.TICKETS,
-						description: 'Handle Tickets webhook events',
-					},
-					{
 						name: 'Configuration Items',
 						value: AutotaskWebhookEntityType.CONFIGURATIONITEMS,
 						description: 'Handle Configuration Items webhook events',
 					},
 					{
+						name: 'Contacts',
+						value: AutotaskWebhookEntityType.CONTACTS,
+						description: 'Handle Contacts webhook events',
+					},
+					{
 						name: 'Ticket Notes',
 						value: AutotaskWebhookEntityType.TICKETNOTES,
 						description: 'Handle Ticket Notes webhook events',
+					},
+					{
+						name: 'Tickets',
+						value: AutotaskWebhookEntityType.TICKETS,
+						description: 'Handle Tickets webhook events',
 					},
 				],
 				description: 'The type of entity to trigger on',
@@ -185,7 +185,7 @@ export class AutotaskTrigger implements INodeType {
 				name: 'displayAlwaysFields',
 				type: 'multiOptions',
 				default: [],
-				description: 'Fields to always include in webhook payloads. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+				description: 'Fields to always include in webhook payloads, in addition to any fields selected in Subscribed Fields. Note that subscribed fields are always returned in webhook payloads. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				typeOptions: {
 					loadOptionsMethod: 'getWebhookFields',
 					loadOptionsDependsOn: ['entityType'],
@@ -424,6 +424,11 @@ export class AutotaskTrigger implements INodeType {
 					if (!isEntityWithoutFieldSupport) {
 						subscribedFields = this.getNodeParameter('subscribedFields', []) as string[];
 						displayAlwaysFields = this.getNodeParameter('displayAlwaysFields', []) as string[];
+
+						// Validate that at least one field is selected for entities that support field selection
+						if (subscribedFields.length === 0) {
+							throw new NodeOperationError(this.getNode(), 'At least one field must be selected in Subscribed Field Names or IDs.');
+						}
 					}
 
 					// Get excluded resources
