@@ -62,6 +62,7 @@ The node supports the following Autotask resources:
 | Company Alert | Manage alerts associated with companies |
 | Company Location | Manage locations for companies |
 | Company Note | Manage notes attached to companies |
+| Company Webhook | Manage webhooks for company events |
 | Configuration Item | Manage configuration items (CIs) for companies |
 | Configuration Item Billing Product Association | Manage product associations for configuration items |
 | Configuration Item Category | Manage categories for configuration items |
@@ -71,7 +72,9 @@ The node supports the following Autotask resources:
 | Configuration Item Related Item | Manage related items for configuration items |
 | Configuration Item SSL Subject Alternative Name | Manage SSL alternative names for configuration items |
 | Configuration Item Type | Manage types for configuration items |
+| Configuration Item Webhook | Manage webhooks for configuration item events |
 | Contact | Manage contacts associated with companies |
+| Contact Webhook | Manage webhooks for contact events |
 | Contract | Manage contracts for companies |
 | Contract Blocks | Manage block hour contracts |
 | Contract Block Hour Factors | Manage hour factors for block hour contracts |
@@ -99,6 +102,7 @@ The node supports the following Autotask resources:
 | Ticket | Manage service tickets |
 | Ticket History | View historical changes to tickets |
 | Ticket Note | Manage notes attached to tickets |
+| Ticket Note Webhook | Manage webhooks for ticket note events |
 | Time Entry | Manage time entries for billing |
 
 ### Operations
@@ -131,6 +135,24 @@ For most resources, the following operations are available:
 - **Count**: Get the number of matching records
 - **Get Entity Info**: Retrieve metadata about the entity
 - **Get Field Info**: Retrieve field definitions for the selected entity
+
+For webhook resources (Company Webhook, Contact Webhook, Configuration Item Webhook, Ticket Note Webhook), the following operations are available:
+- **Get**: Retrieve a single webhook by ID
+- **Get Many**: Retrieve multiple webhooks with basic filtering
+- **Delete**: Remove a webhook
+
+### Webhook Trigger
+
+The node includes an Autotask Trigger node that can receive webhook events from Autotask. The trigger supports:
+
+- Events for multiple entity types (Companies, Contacts, Tickets, Configuration Items, Ticket Notes)
+- Create, Update, and Delete events
+- Field selection for webhook payloads (specify which fields to include)
+- Resource exclusion (exclude specific resources from triggering the workflow)
+- Email notifications for webhook delivery failures
+- Threshold notifications for monitoring webhook performance
+- Automatic webhook registration and cleanup
+- Secure payload verification with HMAC signatures
 
 ### Advanced Features
 
@@ -262,6 +284,20 @@ Many Autotask entities have parent-child relationships (e.g., Companies and Cont
 3. For example, to create a Contact for a Company:
    - First node: Get or create the Company
    - Second node: Create a Contact with the Company ID
+
+### Example: Setting Up a Webhook Trigger
+
+1. Add an **Autotask Trigger** node to your workflow
+2. Select the entity type to monitor (Companies, Contacts, Tickets, etc.)
+3. Select the events to subscribe to (Create, Update, Delete)
+4. Configure the webhook URL (n8n will handle this automatically)
+5. Optionally specify fields to include in the webhook payload
+6. Optionally exclude specific resources from triggering the workflow
+7. Configure email notifications for webhook delivery failures if needed
+8. Save and activate the workflow
+9. The node will automatically register the webhook with Autotask
+10. When events occur in Autotask, they will trigger your workflow
+11. When the workflow is deactivated, the webhook will be automatically removed
 
 ## Configuration
 
