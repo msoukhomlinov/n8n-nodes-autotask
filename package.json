@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-autotask",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "n8n node for Autotask PSA integration",
   "keywords": [
     "n8n-community-node-package",
@@ -44,7 +44,8 @@
       "dist/credentials/AutotaskApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/Autotask/Autotask.node.js"
+      "dist/nodes/Autotask/Autotask.node.js",
+      "dist/nodes/Autotask/AutotaskTrigger.node.js"
     ]
   },
   "devDependencies": {

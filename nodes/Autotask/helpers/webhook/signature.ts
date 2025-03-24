@@ -1,0 +1,167 @@
+import { createHmac } from 'node:crypto';
+
+/**
+ * Processes a JSON string character by character, escaping specific characters inside string values
+ * to match Autotask's escaping format exactly. Operates directly on the raw JSON string.
+ *
+ * This custom processor is necessary because:
+ * 1. JSON.parse() removes Unicode escape sequences by converting them to actual characters
+ * 2. JSON.stringify() doesn't escape characters like & and + by default
+ * 3. Autotask uses a custom escaping scheme for webhook signatures
+ */
+function customEscapeJsonStrings(jsonString: string): string {
+	// Characters to escape with their Unicode escape sequences
+	const escapeMap: Record<string, string> = {
+		'&': '\\u0026',
+		'<': '\\u003C',
+		'>': '\\u003E',
+		"'": '\\u0027',
+		'"': '\\u0022',
+		'`': '\\u0060',
+		'+': '\\u002B',
+	};
+
+	let result = '';
+	let isInsideString = false;
+	let isEscaped = false;
+
+	// Process the JSON string character by character
+	for (let i = 0; i < jsonString.length; i++) {
+		const char = jsonString[i];
+
+		// Special handling for escaped double quotes within strings
+		// This converts \" in the original JSON to \u0022 in the output
+		if (char === '"' && isEscaped && isInsideString) {
+			// Remove the last backslash character and replace with Unicode escape sequence
+			result = result.slice(0, -1) + escapeMap['"'];
+			isEscaped = false;
+			continue;
+		}
+
+		// Handle escape sequences
+		if (char === '\\' && !isEscaped) {
+			isEscaped = true;
+			result += char;
+			continue;
+		}
+
+		// Handle string boundaries
+		if (char === '"' && !isEscaped) {
+			isInsideString = !isInsideString;
+			result += char;
+		}
+		// Apply character escaping only when inside string values
+		else if (isInsideString && !isEscaped && escapeMap[char]) {
+			result += escapeMap[char];
+		}
+		// Keep all other characters unchanged
+		else {
+			result += char;
+		}
+
+		// Reset escape flag after processing a character
+		isEscaped = false;
+	}
+
+	return result;
+}
+
+/**
+ * Verify a webhook signature using HMAC-SHA1
+ * Following Autotask documentation requirements
+ * See: https://ww1.autotask.net/help/developerhelp/Content/APIs/Webhooks/SecretKeyPayloadVerification.htm
+ *
+ * The Autotask documentation specifies:
+ * 1. The secret key and request body are used to generate an HMAC-SHA1
+ * 2. The signature is passed in the X-Hook-Signature header
+ * 3. The format is `sha1=[base64-encoded HMAC]`, e.g., `sha1=UaDXFl2DRDu9dnINVkFle7y5uAE=`
+ *
+ * IMPORTANT: This function must use the raw HTTP body bytes that Autotask originally
+ * signed, not a re-stringified version of a parsed object.
+ */
+export function verifyWebhookSignature(
+	rawPayload: string,
+	signature: string,
+	secretKey: string,
+): boolean {
+	if (!rawPayload || !signature || !secretKey) {
+		console.error('Missing required parameters for signature verification:', {
+			hasPayload: !!rawPayload,
+			hasSignature: !!signature,
+			hasSecretKey: !!secretKey,
+		});
+		return false;
+	}
+
+	try {
+		// Remove the "sha1=" prefix if present
+		const normalizedSignature = signature.replace(/^sha1=/, '');
+
+		// Process the raw JSON string with our custom escaper
+		// This directly produces the format Autotask expects without parse/stringify cycles
+		const escapedPayload = customEscapeJsonStrings(rawPayload);
+
+		// Method 1: Standard string approach with escaped payload
+		const hmac = createHmac('sha1', secretKey);
+		hmac.update(escapedPayload, 'utf8');
+		const generatedSignature = hmac.digest('base64');
+
+		if (generatedSignature === normalizedSignature) {
+			console.log('✓ Webhook signature verified successfully');
+			return true;
+		}
+
+		// Method 2: Try with Buffer encoding for the secret key and escaped payload
+		const hmacAlt = createHmac('sha1', Buffer.from(secretKey, 'utf8'));
+		hmacAlt.update(escapedPayload, 'utf8');
+		const altSignature = hmacAlt.digest('base64');
+
+		if (altSignature === normalizedSignature) {
+			console.log('✓ Webhook signature verified using Buffer-encoded secret key');
+			return true;
+		}
+
+		// Method 3: Try original payload as fallback (for backward compatibility)
+		const hmacFallback = createHmac('sha1', secretKey);
+		hmacFallback.update(rawPayload, 'utf8');
+		const fallbackSignature = hmacFallback.digest('base64');
+
+		if (fallbackSignature === normalizedSignature) {
+			console.log('✓ Webhook signature verified using fallback unescaped payload');
+			return true;
+		}
+
+		console.log('✗ Webhook signature verification failed');
+		return false;
+	} catch (error) {
+		console.error('Error verifying webhook signature:', error);
+		return false;
+	}
+}
+
+/**
+ * Generate an HMAC-SHA1 signature for a webhook payload
+ * Uses the same format as Autotask to verify the signature (Base64)
+ * Following Autotask documentation: https://ww1.autotask.net/help/developerhelp/Content/APIs/Webhooks/SecretKeyPayloadVerification.htm
+ */
+export function generateWebhookSignature(
+	payload: string | unknown,
+	secretKey: string,
+): string {
+	let payloadString: string;
+
+	// Handle both string and object payloads
+	if (typeof payload === 'string') {
+		payloadString = payload;
+	} else {
+		payloadString = JSON.stringify(payload);
+	}
+
+	// Apply the same custom escaping as used in verification
+	const escapedPayload = customEscapeJsonStrings(payloadString);
+
+	// Standard implementation as per Autotask documentation
+	const hmac = createHmac('sha1', secretKey);
+	hmac.update(escapedPayload, 'utf8');
+	return hmac.digest('base64');
+}

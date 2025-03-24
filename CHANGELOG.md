@@ -18,9 +18,15 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 - [ ] Make resource description more detailed
-- [ ] Add webhook support for real-time event processing
+- [ ] Add webhook support
 
 ## [Unreleased]
+
+## [0.5.0] - 2025-03-22
+
+### Added
+- Webhook support
+
 
 ## [0.4.1] - 2025-03-21
 
@@ -209,3 +215,4 @@ This section outlines planned features and improvements for future releases.
 [0.1.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.0
 [0.4.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.4.0 
 [0.4.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.4.1 
+[0.5.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.5.0

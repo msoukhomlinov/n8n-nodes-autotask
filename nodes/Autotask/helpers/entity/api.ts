@@ -139,6 +139,10 @@ function mapUdfField(field: IDataObject): IUdfFieldDefinition {
 				dataType = UdfDataType.String;
 				break;
 			case 'number':
+			case 'double':
+			case 'decimal':
+			case 'integer':
+			case 'long':
 				dataType = UdfDataType.Number;
 				break;
 			case 'datetime':

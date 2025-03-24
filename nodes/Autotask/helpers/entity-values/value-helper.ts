@@ -82,9 +82,9 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		// Only use cache if the service exists and is enabled
 		const cacheEnabled = this.cacheService?.isPicklistEnabled() ?? false;
 
-		if (cacheEnabled) {
-			const cacheKey = this.cacheService!.getPicklistKey(this.entityType, fieldName);
-			values = await this.cacheService!.get<Array<{
+		if (this.cacheService && cacheEnabled) {
+			const cacheKey = this.cacheService.getPicklistKey(this.entityType, fieldName);
+			values = await this.cacheService.get<Array<{
 				value: string;
 				label: string;
 				isDefaultValue: boolean;
@@ -255,33 +255,27 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 
 		if (mapping) {
 			// Add name fields from mapping, filtering out potentially problematic fields
-			mapping.nameFields.forEach(field => {
-				// Avoid fields ending with ID and ResourceID as they might cause API errors
+			for (const field of mapping.nameFields) {
 				if (!field.endsWith('ID') && !field.endsWith('ResourceID')) {
 					requiredFields.add(field);
 				}
-			});
+			}
 
 			// Add bracket fields if any, filtering out potentially problematic fields
 			if (mapping.bracketField) {
-				if (Array.isArray(mapping.bracketField)) {
-					mapping.bracketField.forEach(field => {
-						// Avoid fields ending with ID and ResourceID as they might cause API errors
-						if (!field.endsWith('ID') && !field.endsWith('ResourceID')) {
-							requiredFields.add(field);
-						}
-					});
-				} else if (!mapping.bracketField.endsWith('ID') && !mapping.bracketField.endsWith('ResourceID')) {
-					requiredFields.add(mapping.bracketField);
+				for (const field of mapping.bracketField) {
+					if (!field.endsWith('ID') && !field.endsWith('ResourceID')) {
+						requiredFields.add(field);
+					}
 				}
 			}
 		} else {
 			// No mapping, use default fields, but still filter out problematic fields
-			DEFAULT_PICKLIST_FIELDS.forEach(field => {
+			for (const field of DEFAULT_PICKLIST_FIELDS) {
 				if (field === 'id' || (!field.endsWith('ID') && !field.endsWith('ResourceID'))) {
 					requiredFields.add(field);
 				}
-			});
+			}
 		}
 
 		// Log which fields we're including
@@ -355,11 +349,15 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			}
 
 			// Add fields required for display name formatting
-			this.getRequiredDisplayFields().forEach(field => includeFields.add(field));
+			for (const field of this.getRequiredDisplayFields()) {
+				includeFields.add(field);
+			}
 
 			// Add any additional fields
 			if (additionalFields && additionalFields.length > 0) {
-				additionalFields.forEach(field => includeFields.add(field));
+				for (const field of additionalFields) {
+					includeFields.add(field);
+				}
 			}
 
 			// Set IncludeFields in query
@@ -372,7 +370,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			console.debug(`[EntityValueHelper] Reference field lookup detected for ${this.entityType} - returning all fields`);
 			// IMPORTANT: Delete IncludeFields completely instead of setting to empty array
 			// to avoid API errors with invalid field names
-			delete query.IncludeFields;
+			query.IncludeFields = undefined;
 		}
 
 		return query;

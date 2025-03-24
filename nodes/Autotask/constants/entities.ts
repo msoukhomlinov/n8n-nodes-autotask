@@ -8,7 +8,7 @@ import { OperationType } from '../types/base/entity-types';
 export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	// BillingCode entity (read-only)
 	{ name: 'BillingCode', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
-	{ name: 'Company', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'Company', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' }, supportsWebhookCallouts: true },
 	{ name: 'CompanyAlert', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'CompanyAttachment', childOf: 'Company', subname: 'Attachment', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyNote', childOf: 'Company', subname: 'Notes', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
@@ -17,7 +17,12 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'CompanyWebhookExcludedResource', childOf: 'CompanyWebhook', subname: 'ExcludedResource', parentChain: ['Company', 'CompanyWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyWebhookField', childOf: 'CompanyWebhook', subname: 'Field', parentChain: ['Company', 'CompanyWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyWebhookUdfField', childOf: 'CompanyWebhook', subname: 'UdfField', parentChain: ['Company', 'CompanyWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
-	{ name: 'ConfigurationItem', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
+	// ConfigurationItem entity with webhook support flag
+	{ name: 'ConfigurationItem', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true, supportsWebhookCallouts: true },
+	{ name: 'ConfigurationItemWebhook', childOf: 'ConfigurationItem', subname: 'Webhook', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.DELETE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'ConfigurationItemWebhookExcludedResource', childOf: 'ConfigurationItemWebhook', subname: 'ExcludedResource', parentChain: ['ConfigurationItem', 'ConfigurationItemWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
+	{ name: 'ConfigurationItemWebhookField', childOf: 'ConfigurationItemWebhook', subname: 'Field', parentChain: ['ConfigurationItem', 'ConfigurationItemWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
+	{ name: 'ConfigurationItemWebhookUdfField', childOf: 'ConfigurationItemWebhook', subname: 'UdfField', parentChain: ['ConfigurationItem', 'ConfigurationItemWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'ConfigurationItemCategory', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'ConfigurationItemCategoryUdfAssociation', childOf: 'ConfigurationItemCategory', subname: 'UdfAssociations', parentIdField: 'configurationItemCategoryID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.DELETE]: 'parent' } },
 	{ name: 'ConfigurationItemType', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
@@ -26,7 +31,11 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'ConfigurationItemDnsRecord', childOf: 'ConfigurationItem', subname: 'DnsRecords', parentIdField: 'configurationItemID', operations: { [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'ConfigurationItemBillingProductAssociations', childOf: 'ConfigurationItem', subname: 'BillingProductAssociations', parentIdField: 'configurationItemID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'ConfigurationItemSslSubjectAlternativeName', childOf: 'ConfigurationItem', subname: 'SslSubjectAlternativeNames', parentIdField: 'configurationItemID', operations: { [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
-	{ name: 'Contact', childOf: 'Company', subname: 'Contact', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'Contact', childOf: 'Company', subname: 'Contact', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, supportsWebhookCallouts: true },
+	{ name: 'ContactWebhook', childOf: 'Contact', subname: 'Webhook', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.DELETE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'ContactWebhookExcludedResource', childOf: 'ContactWebhook', subname: 'ExcludedResource', parentChain: ['Company', 'Contact', 'ContactWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
+	{ name: 'ContactWebhookField', childOf: 'ContactWebhook', subname: 'Field', parentChain: ['Company', 'Contact', 'ContactWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
+	{ name: 'ContactWebhookUdfField', childOf: 'ContactWebhook', subname: 'UdfField', parentChain: ['Company', 'Contact', 'ContactWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyLocation', childOf: 'Company', subname: 'Locations', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'Contract', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'ContractCharge', childOf: 'Contract', subname: 'Charges', parentIdField: 'contractID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
@@ -52,13 +61,14 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'Task', childOf: 'Project', subname: 'task', parentIdField: 'projectID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'TaskNote', childOf: 'Task', subname: 'Note', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	// Products entity and its webhook-related entities
-	{ name: 'Product', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true, supportsWebhookCallouts: true },
-	{ name: 'ProductWebhook', childOf: 'Product', subname: 'Webhook', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.DELETE]: 'parent' } },
-	{ name: 'ProductWebhookField', childOf: 'ProductWebhook', subname: 'Field', parentChain: ['Product', 'ProductWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
-	{ name: 'ProductWebhookUdfField', childOf: 'ProductWebhook', subname: 'UdfField', parentChain: ['Product', 'ProductWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
+	{ name: 'Product', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
 	// Tickets entity
-	{ name: 'Ticket', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' }, hasUserDefinedFields: true },
-	{ name: 'TicketNote', childOf: 'Ticket', subname: 'Notes', parentIdField: 'ticketID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'Ticket', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' }, hasUserDefinedFields: true, supportsWebhookCallouts: true },
+	{ name: 'TicketNote', childOf: 'Ticket', subname: 'Notes', parentIdField: 'ticketID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, supportsWebhookCallouts: true },
+	{ name: 'TicketNoteWebhook', childOf: 'TicketNote', subname: 'Webhook', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.DELETE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'TicketNoteWebhookExcludedResource', childOf: 'TicketNoteWebhook', subname: 'ExcludedResource', parentChain: ['Ticket', 'TicketNote', 'TicketNoteWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
+	{ name: 'TicketNoteWebhookField', childOf: 'TicketNoteWebhook', subname: 'Field', parentChain: ['Ticket', 'TicketNote', 'TicketNoteWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
+	{ name: 'TicketNoteWebhookUdfField', childOf: 'TicketNoteWebhook', subname: 'UdfField', parentChain: ['Ticket', 'TicketNote', 'TicketNoteWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	// TicketHistory entity (read-only)
 	{ name: 'TicketHistory', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' }, noPluralize: true },
 	// TimeEntry entity and its attachment

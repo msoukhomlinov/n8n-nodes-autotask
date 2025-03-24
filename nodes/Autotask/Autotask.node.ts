@@ -15,9 +15,13 @@ import { executeProjectOperation } from './resources/projects/execute';
 import { executeCompanyOperation } from './resources/companies/execute';
 import { executeCompanyAlertOperation } from './resources/companyAlerts/execute';
 import { executeContactOperation } from './resources/contacts/execute';
+import { executeContactWebhookOperation } from './resources/contactWebhooks/execute';
 import { executeCompanyLocationOperation } from './resources/companyLocations/execute';
 import { executeResourceOperation } from './resources/resources/execute';
 import { executeCompanyNoteOperation } from './resources/companyNotes/execute';
+import { executeCompanyWebhookOperation } from './resources/companyWebhooks/execute';
+import { executeConfigurationItemWebhookOperation } from './resources/configurationItemWebhooks/execute';
+import { executeTicketNoteWebhookOperation } from './resources/ticketNoteWebhooks/execute';
 import { executeProjectNoteOperation } from './resources/projectNotes/execute';
 import { executeProjectPhaseOperation } from './resources/projectPhases/execute';
 import { executeProjectChargeOperation } from './resources/projectCharges/execute';
@@ -98,6 +102,10 @@ import { executeConfigurationItemBillingProductAssociationOperation } from './re
 import { configurationItemBillingProductAssociationFields } from './resources/configurationItemBillingProductAssociations/description';
 import { executeConfigurationItemSslSubjectAlternativeNameOperation } from './resources/configurationItemSslSubjectAlternativeNames/execute';
 import { configurationItemSslSubjectAlternativeNameFields } from './resources/configurationItemSslSubjectAlternativeNames/description';
+import { companyWebhookFields } from './resources/companyWebhooks';
+import { configurationItemWebhookFields } from './resources/configurationItemWebhooks';
+import { contactWebhookFields } from './resources/contactWebhooks';
+import { ticketNoteWebhookFields } from './resources/ticketNoteWebhooks';
 
 /**
  * Autotask node implementation
@@ -135,6 +143,8 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(companyFields, { resourceName: 'company' }),
 			...addOperationsToResource(companyAlertFields, { resourceName: 'companyAlert' }),
 			...addOperationsToResource(companyNoteFields, { resourceName: 'companyNote' }),
+			...addOperationsToResource(companyWebhookFields, { resourceName: 'companyWebhook' }),
+			...addOperationsToResource(configurationItemWebhookFields, { resourceName: 'configurationItemWebhook' }),
 			...addOperationsToResource(configurationItemFields, { resourceName: 'configurationItems' }),
 			...addOperationsToResource(configurationItemCategoryFields, { resourceName: 'configurationItemCategories' }),
 			...addOperationsToResource(configurationItemCategoryUdfAssociationFields, { resourceName: 'configurationItemCategoryUdfAssociation' }),
@@ -145,6 +155,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(configurationItemBillingProductAssociationFields, { resourceName: 'configurationItemBillingProductAssociation' }),
 			...addOperationsToResource(configurationItemSslSubjectAlternativeNameFields, { resourceName: 'configurationItemSslSubjectAlternativeName' }),
 			...addOperationsToResource(contactFields, { resourceName: 'contact' }),
+			...addOperationsToResource(contactWebhookFields, { resourceName: 'contactWebhook' }),
 			...addOperationsToResource(companyLocationFields, { resourceName: 'companyLocation' }),
 			...addOperationsToResource(contractFields, { resourceName: 'contract' }),
 			...addOperationsToResource(contractChargeFields, { resourceName: 'contractCharge' }),
@@ -169,6 +180,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(serviceFields, { resourceName: 'service' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
 			...addOperationsToResource(ticketNoteFields, { resourceName: 'ticketNote' }),
+			...addOperationsToResource(ticketNoteWebhookFields, { resourceName: 'ticketNoteWebhook' }),
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
@@ -193,6 +205,10 @@ export class Autotask implements INodeType {
 				return executeCompanyAlertOperation.call(this);
 			case 'companyNote':
 				return executeCompanyNoteOperation.call(this);
+			case 'companyWebhook':
+				return executeCompanyWebhookOperation.call(this);
+			case 'configurationItemWebhook':
+				return executeConfigurationItemWebhookOperation.call(this);
 			case 'configurationItems':
 				return executeConfigurationItemOperation.call(this);
 			case 'configurationItemCategories':
@@ -213,6 +229,8 @@ export class Autotask implements INodeType {
 				return executeConfigurationItemSslSubjectAlternativeNameOperation.call(this);
 			case 'contact':
 				return executeContactOperation.call(this);
+			case 'contactWebhook':
+				return executeContactWebhookOperation.call(this);
 			case 'companyLocation':
 				return executeCompanyLocationOperation.call(this);
 			case 'contract':
@@ -271,6 +289,8 @@ export class Autotask implements INodeType {
 				return executeSurveyOperation.call(this);
 			case 'surveyResults':
 				return executeSurveyResultsOperation.call(this);
+			case 'ticketNoteWebhook':
+				return executeTicketNoteWebhookOperation.call(this);
 			default:
 				throw new NodeOperationError(
 					this.getNode(),
