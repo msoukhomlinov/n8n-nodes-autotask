@@ -1,6 +1,8 @@
 import type { IHookFunctions, IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-workflow';
 import { autotaskApiRequest } from '../http';
 import { WebhookUrlType, buildWebhookUrl } from './urls';
+import { handleErrors } from '../errorHandler';
+import { IBatchOptions, IBatchResult } from './batchTypes';
 
 /**
  * Interface for field configuration options
@@ -11,15 +13,6 @@ interface IFieldAdditionOptions {
   fieldId: number;
   isUdf: boolean;
   isDisplayAlwaysField: boolean;
-}
-
-/**
- * Interface for batch processing results
- */
-interface IBatchProcessingResult {
-  success: number;
-  failed: number;
-  failedIds: number[];
 }
 
 /**
@@ -39,6 +32,16 @@ export function normalizeFieldId(fieldId: string | number): number {
  * @param context The function context (IHookFunctions, IExecuteFunctions, etc.)
  * @param options Field addition options
  * @returns Promise resolving to success status
+ *
+ * @example
+ * // Add a field to a webhook
+ * const success = await addFieldToWebhook(this, {
+ *   entityType: 'Tickets',
+ *   webhookId: 123,
+ *   fieldId: 456,
+ *   isUdf: false,
+ *   isDisplayAlwaysField: true
+ * });
  */
 export async function addFieldToWebhook(
   context: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
@@ -47,95 +50,159 @@ export async function addFieldToWebhook(
   const { entityType, webhookId, fieldId, isUdf, isDisplayAlwaysField } = options;
 
   try {
-    const urlType = isUdf ? WebhookUrlType.WEBHOOK_UDF_FIELDS : WebhookUrlType.WEBHOOK_FIELDS;
-    const url = buildWebhookUrl(urlType, { entityType, parentId: webhookId });
+    await handleErrors(context as unknown as IExecuteFunctions, async () => {
+      const urlType = isUdf ? WebhookUrlType.WEBHOOK_UDF_FIELDS : WebhookUrlType.WEBHOOK_FIELDS;
+      const url = buildWebhookUrl(urlType, { entityType, parentId: webhookId });
 
-    const payload = {
-      webhookID: webhookId,
-      [isUdf ? 'udfFieldID' : 'fieldID']: fieldId,
-      isDisplayAlwaysField,
-      isSubscribedField: !isDisplayAlwaysField,
-    };
+      const payload = {
+        webhookID: webhookId,
+        [isUdf ? 'udfFieldID' : 'fieldID']: fieldId,
+        isDisplayAlwaysField,
+        isSubscribedField: !isDisplayAlwaysField,
+      };
 
-    await autotaskApiRequest.call(context, 'POST', url, payload);
-    console.log(`Added ${isUdf ? 'UDF' : 'standard'} field: ${fieldId} (displayAlways=${isDisplayAlwaysField})`);
+      await autotaskApiRequest.call(context, 'POST', url, payload);
+      console.log(`Added ${isUdf ? 'UDF' : 'standard'} field: ${fieldId} (displayAlways=${isDisplayAlwaysField})`);
+    }, {
+      operation: 'addFieldToWebhook',
+      entityType,
+    });
     return true;
   } catch (error) {
-    console.error(`Error adding ${isUdf ? 'UDF' : 'standard'} field ${fieldId} to webhook:`, error);
-    console.error(`Error details: ${(error as Error).message}`);
+    // Detailed error already handled by handleErrors, just return false
     return false;
   }
 }
 
 /**
  * Processes a batch of fields and adds them to the webhook
- * with a concurrency limit
+ * with configurable concurrency and batching
+ *
  * @param context The function context
  * @param fields Array of fields to process
- * @param options Common options for all fields
- * @param concurrencyLimit Maximum number of concurrent requests (default: 10)
+ * @param commonOptions Common options for all fields
+ * @param batchOptions Batching and concurrency options
  * @returns Promise resolving to results of field additions
+ *
+ * @example
+ * // Process fields in batches with custom settings
+ * const result = await processBatchFields(this, fields,
+ *   { entityType: 'Tickets', webhookId: 123 },
+ *   { batchSize: 20, concurrencyLimit: 5, batchPauseMs: 1000 }
+ * );
+ * console.log(`Added ${result.success} fields successfully`);
  */
 export async function processBatchFields(
   context: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
   fields: Array<{ fieldId: number; isDisplayAlwaysField: boolean; isUdf: boolean }>,
-  options: { entityType: string; webhookId: string | number },
-  concurrencyLimit = 10
-): Promise<IBatchProcessingResult> {
-  const { entityType, webhookId } = options;
+  commonOptions: { entityType: string; webhookId: string | number },
+  batchOptions: IBatchOptions = {},
+): Promise<IBatchResult> {
+  const { entityType, webhookId } = commonOptions;
+  const {
+    concurrencyLimit = 10,
+    batchSize = 50,
+    batchPauseMs = 0,
+    throwOnError = false,
+  } = batchOptions;
 
   // Skip processing if no fields
   if (!fields.length) {
+    return { success: 0, failed: 0, failedIds: [] };
+  }
+
+  try {
+    return await handleErrors(context as unknown as IExecuteFunctions, async () => {
+      console.log(`Processing batch of ${fields.length} webhook fields with concurrency limit of ${concurrencyLimit}...`);
+
+      // Results container
+      const results: boolean[] = [];
+      const failedIds: number[] = [];
+      const errors: Record<string, unknown>[] = [];
+      let successCount = 0;
+
+      // Split fields into batches
+      const batches: Array<typeof fields> = [];
+      for (let i = 0; i < fields.length; i += batchSize) {
+        batches.push(fields.slice(i, i + batchSize));
+      }
+
+      // Process each batch
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        console.log(`Processing batch ${batchIndex + 1}/${batches.length} with ${batch.length} fields...`);
+
+        // Process current batch with concurrency limit
+        const batchPromises: Promise<boolean>[] = [];
+
+        // Create chunks within each batch for concurrency control
+        for (let i = 0; i < batch.length; i += concurrencyLimit) {
+          const chunk = batch.slice(i, i + concurrencyLimit);
+
+          // Process each chunk concurrently
+          const chunkPromises = chunk.map(field =>
+            addFieldToWebhook(context, {
+              entityType,
+              webhookId,
+              fieldId: field.fieldId,
+              isUdf: field.isUdf,
+              isDisplayAlwaysField: field.isDisplayAlwaysField,
+            }).catch(error => {
+              errors.push({
+                fieldId: field.fieldId,
+                error: error.message || 'Unknown error',
+              });
+              return false;
+            })
+          );
+
+          // Wait for the current chunk to complete before processing the next chunk
+          const chunkResults = await Promise.all(chunkPromises);
+          batchPromises.push(...chunkPromises);
+          results.push(...chunkResults);
+        }
+
+        // Add pause between batches if configured (not after the final batch)
+        if (batchPauseMs > 0 && batchIndex < batches.length - 1) {
+          console.log(`Pausing for ${batchPauseMs}ms before next batch...`);
+          await new Promise(resolve => setTimeout(resolve, batchPauseMs));
+        }
+      }
+
+      // Calculate final statistics
+      results.forEach((succeeded, index) => {
+        if (succeeded) {
+          successCount++;
+        } else if (index < fields.length) { // Safety check for index
+          failedIds.push(fields[index].fieldId);
+        }
+      });
+
+      console.log(`Batch processing completed: ${successCount} succeeded, ${failedIds.length} failed`);
+
+      return {
+        success: successCount,
+        failed: failedIds.length,
+        failedIds,
+        errors: errors.length > 0 ? errors : undefined,
+      };
+    }, {
+      operation: 'processBatchFields',
+      entityType,
+    });
+  } catch (error) {
+    // If the entire batch operation fails
+    console.error(`Batch processing failed for ${entityType} webhook ${webhookId}`);
+
+    if (throwOnError) {
+      throw error;
+    }
+
     return {
       success: 0,
-      failed: 0,
-      failedIds: [],
+      failed: fields.length,
+      failedIds: fields.map(field => field.fieldId),
+      errors: [{ error: (error as Error).message || 'Unknown error' }],
     };
   }
-
-  console.log(`Processing batch of ${fields.length} webhook fields with concurrency limit of ${concurrencyLimit}...`);
-
-  // Results container
-  const results: boolean[] = [];
-  const failedIds: number[] = [];
-  let successCount = 0;
-
-  // Process fields in chunks respecting the concurrency limit
-  for (let i = 0; i < fields.length; i += concurrencyLimit) {
-    const chunk = fields.slice(i, i + concurrencyLimit);
-    console.log(`Processing chunk ${i / concurrencyLimit + 1} with ${chunk.length} fields...`);
-
-    // Process current chunk concurrently
-    const chunkResults = await Promise.all(
-      chunk.map(field =>
-        addFieldToWebhook(context, {
-          entityType,
-          webhookId,
-          fieldId: field.fieldId,
-          isUdf: field.isUdf,
-          isDisplayAlwaysField: field.isDisplayAlwaysField,
-        })
-      )
-    );
-
-    // Record results from this chunk
-    results.push(...chunkResults);
-  }
-
-  // Calculate final statistics
-  results.forEach((succeeded, index) => {
-    if (succeeded) {
-      successCount++;
-    } else {
-      failedIds.push(fields[index].fieldId);
-    }
-  });
-
-  console.log(`Batch processing completed: ${successCount} succeeded, ${failedIds.length} failed`);
-
-  return {
-    success: successCount,
-    failed: failedIds.length,
-    failedIds,
-  };
 }

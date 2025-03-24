@@ -1,4 +1,18 @@
 import { createHmac } from 'node:crypto';
+import { AutotaskErrorType } from '../errorHandler';
+
+/**
+ * Standardized error logging utility for webhook operations
+ * @param operation The name of the operation being performed
+ * @param errorType The type of error that occurred
+ * @param message Human-readable error message
+ * @param error Optional error object or additional context
+ */
+function logError(operation: string, errorType: AutotaskErrorType, message: string, error?: unknown): void {
+	const errorDetails = error instanceof Error ? `: ${error.message}` : '';
+	const contextInfo = typeof error === 'object' && error !== null ? JSON.stringify(error) : '';
+	console.error(`[${errorType}] Operation: ${operation}${errorDetails ? ', Details' + errorDetails : ''}${contextInfo ? ', Context: ' + contextInfo : ''}, ${message}`);
+}
 
 /**
  * Processes a JSON string character by character, escaping specific characters inside string values
@@ -85,11 +99,16 @@ export function verifyWebhookSignature(
 	secretKey: string,
 ): boolean {
 	if (!rawPayload || !signature || !secretKey) {
-		console.error('Missing required parameters for signature verification:', {
-			hasPayload: !!rawPayload,
-			hasSignature: !!signature,
-			hasSecretKey: !!secretKey,
-		});
+		logError(
+			'verifyWebhookSignature',
+			AutotaskErrorType.Validation,
+			'Missing required parameters for signature verification',
+			{
+				hasPayload: !!rawPayload,
+				hasSignature: !!signature,
+				hasSecretKey: !!secretKey,
+			}
+		);
 		return false;
 	}
 
@@ -131,10 +150,23 @@ export function verifyWebhookSignature(
 			return true;
 		}
 
-		console.log('✗ Webhook signature verification failed');
+		logError(
+			'verifyWebhookSignature',
+			AutotaskErrorType.Validation,
+			'Webhook signature verification failed',
+			{
+				signatureLength: signature.length,
+				payloadLength: rawPayload.length,
+			}
+		);
 		return false;
 	} catch (error) {
-		console.error('Error verifying webhook signature:', error);
+		logError(
+			'verifyWebhookSignature',
+			AutotaskErrorType.Unknown,
+			'Error verifying webhook signature',
+			error
+		);
 		return false;
 	}
 }
@@ -148,20 +180,43 @@ export function generateWebhookSignature(
 	payload: string | unknown,
 	secretKey: string,
 ): string {
-	let payloadString: string;
-
-	// Handle both string and object payloads
-	if (typeof payload === 'string') {
-		payloadString = payload;
-	} else {
-		payloadString = JSON.stringify(payload);
+	if (!payload || !secretKey) {
+		logError(
+			'generateWebhookSignature',
+			AutotaskErrorType.Validation,
+			'Missing required parameters for signature generation',
+			{
+				hasPayload: !!payload,
+				hasSecretKey: !!secretKey,
+			}
+		);
+		throw new Error('Missing required parameters for signature generation');
 	}
 
-	// Apply the same custom escaping as used in verification
-	const escapedPayload = customEscapeJsonStrings(payloadString);
+	try {
+		let payloadString: string;
 
-	// Standard implementation as per Autotask documentation
-	const hmac = createHmac('sha1', secretKey);
-	hmac.update(escapedPayload, 'utf8');
-	return hmac.digest('base64');
+		// Handle both string and object payloads
+		if (typeof payload === 'string') {
+			payloadString = payload;
+		} else {
+			payloadString = JSON.stringify(payload);
+		}
+
+		// Apply the same custom escaping as used in verification
+		const escapedPayload = customEscapeJsonStrings(payloadString);
+
+		// Standard implementation as per Autotask documentation
+		const hmac = createHmac('sha1', secretKey);
+		hmac.update(escapedPayload, 'utf8');
+		return hmac.digest('base64');
+	} catch (error) {
+		logError(
+			'generateWebhookSignature',
+			AutotaskErrorType.Unknown,
+			'Error generating webhook signature',
+			error
+		);
+		throw new Error(`Error generating webhook signature: ${error instanceof Error ? error.message : 'Unknown error'}`);
+	}
 }

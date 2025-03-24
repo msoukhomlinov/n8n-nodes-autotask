@@ -1,8 +1,7 @@
 import type { ILoadOptionsFunctions, ResourceMapperFields, IExecuteFunctions, INodePropertyOptions } from 'n8n-workflow';
 import { handleErrors } from '../errorHandler';
 import { autotaskApiRequest } from '../http';
-import { WebhookUrlType, buildWebhookUrl } from './urls';
-import { AutotaskWebhookEntityType } from '../../types/webhook';
+import { WebhookUrlType, buildWebhookUrl, validateEntityType } from './urls';
 
 /**
  * Interface for the structure of field information
@@ -55,18 +54,6 @@ interface IInternalField {
 }
 
 /**
- * Validates if the provided entity type is supported for webhooks
- * @param entityType The entity type to validate
- * @throws Error if the entity type is not supported
- */
-function validateEntityType(entityType: string): void {
-	const supportedTypes = Object.values(AutotaskWebhookEntityType);
-	if (!supportedTypes.includes(entityType as AutotaskWebhookEntityType)) {
-		throw new Error(`Unsupported entity type: ${entityType}. Supported types are: ${supportedTypes.join(', ')}`);
-	}
-}
-
-/**
  * Get webhook-supported fields for an entity type
  * Returns only fields that support webhook operations (isSupportedWebhookField=true)
  *
@@ -85,7 +72,7 @@ export async function getWebhookSupportedFields(
 		}
 
 		// Validate the entity type
-		validateEntityType(entityType);
+		validateEntityType(entityType, true, 'getWebhookSupportedFields');
 
 		// Internal collection of fields
 		const internalFields: IInternalField[] = [];

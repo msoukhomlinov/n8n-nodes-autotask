@@ -1,4 +1,21 @@
 import pluralize from 'pluralize';
+import { AutotaskErrorType } from '../errorHandler';
+import { AutotaskWebhookEntityType } from '../../types/webhook';
+
+/**
+ * Logs an error and throws it with standardized formatting
+ * @param operation The name of the operation being performed
+ * @param errorType The type of error that occurred
+ * @param message Human-readable error message
+ * @param context Optional additional context information
+ * @throws Error with formatted message
+ */
+function logAndThrowError(operation: string, errorType: AutotaskErrorType, message: string, context?: Record<string, unknown>): never {
+  const contextInfo = context ? `, Context: ${JSON.stringify(context)}` : '';
+  const errorMessage = `[${errorType}] Operation: ${operation}${contextInfo}, ${message}`;
+  console.error(errorMessage);
+  throw new Error(errorMessage);
+}
 
 /**
  * URL endpoint types for webhook operations
@@ -14,6 +31,46 @@ export enum WebhookUrlType {
   ENTITY_FIELDS = 'entityFields',       // /{entityPlural}/entityInformation/fields
   ENTITY_UDF_FIELDS = 'entityUdfFields', // /{entityPlural}/entityInformation/userDefinedFields
   GENERAL_QUERY = 'generalQuery',       // Direct endpoint query (e.g., Resources/query)
+}
+
+/**
+ * Validates if an entity type is supported for webhooks
+ * @param entityType The entity type to validate
+ * @param strict If true, throw error for invalid types; if false, return boolean
+ * @param operation Optional operation name for error context
+ * @returns True if valid (when strict=false), otherwise throws
+ */
+export function validateEntityType(
+  entityType: string | undefined,
+  strict = true,
+  operation = 'validateEntityType'
+): boolean {
+  // Allow undefined/empty when not in strict mode
+  if (!entityType) {
+    if (strict) {
+      logAndThrowError(
+        operation,
+        AutotaskErrorType.Validation,
+        'Entity type is required',
+        { entityType }
+      );
+    }
+    return false;
+  }
+
+  const supportedTypes = Object.values(AutotaskWebhookEntityType);
+  const isValid = supportedTypes.includes(entityType as AutotaskWebhookEntityType);
+
+  if (!isValid && strict) {
+    logAndThrowError(
+      operation,
+      AutotaskErrorType.Validation,
+      `Unsupported entity type: ${entityType}. Supported types are: ${supportedTypes.join(', ')}`,
+      { entityType }
+    );
+  }
+
+  return isValid;
 }
 
 /**
@@ -57,53 +114,166 @@ export function buildWebhookUrl(
   },
 ): string {
   const { entityType, id, endpoint, parentId } = options;
+  const operation = 'buildWebhookUrl';
 
   switch (urlType) {
     case WebhookUrlType.WEBHOOK_BASE:
-      if (!entityType) throw new Error('Entity type is required for webhook URLs');
-      return `/${getSingularEntityName(entityType)}Webhooks`;
+      if (!entityType) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Entity type is required for webhook URLs',
+          { urlType }
+        );
+      }
+      validateEntityType(entityType, true, operation);
+      return `/${getSingularEntityName(entityType!)}Webhooks`;
 
     case WebhookUrlType.WEBHOOK_SPECIFIC:
-      if (!entityType) throw new Error('Entity type is required for webhook URLs');
-      if (!id) throw new Error('ID is required for specific webhook URLs');
-      return `/${getSingularEntityName(entityType)}Webhooks/${id}`;
+      if (!entityType) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Entity type is required for webhook URLs',
+          { urlType }
+        );
+      }
+      validateEntityType(entityType, true, operation);
+      if (!id) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'ID is required for specific webhook URLs',
+          { urlType, entityType }
+        );
+      }
+      return `/${getSingularEntityName(entityType!)}Webhooks/${id}`;
 
     case WebhookUrlType.WEBHOOK_FIELDS:
-      if (!entityType) throw new Error('Entity type is required for webhook field URLs');
-      if (!parentId) throw new Error('Parent webhook ID is required for webhook field URLs');
-      return `/${getSingularEntityName(entityType)}Webhooks/${parentId}/Fields`;
+      if (!entityType) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Entity type is required for webhook field URLs',
+          { urlType }
+        );
+      }
+      validateEntityType(entityType, true, operation);
+      if (!parentId) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Parent webhook ID is required for webhook field URLs',
+          { urlType, entityType }
+        );
+      }
+      return `/${getSingularEntityName(entityType!)}Webhooks/${parentId}/Fields`;
 
     case WebhookUrlType.WEBHOOK_UDF_FIELDS:
-      if (!entityType) throw new Error('Entity type is required for webhook UDF field URLs');
-      if (!parentId) throw new Error('Parent webhook ID is required for webhook UDF field URLs');
-      return `/${getSingularEntityName(entityType)}Webhooks/${parentId}/UdfFields`;
+      if (!entityType) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Entity type is required for webhook UDF field URLs',
+          { urlType }
+        );
+      }
+      validateEntityType(entityType, true, operation);
+      if (!parentId) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Parent webhook ID is required for webhook UDF field URLs',
+          { urlType, entityType }
+        );
+      }
+      return `/${getSingularEntityName(entityType!)}Webhooks/${parentId}/UdfFields`;
 
     case WebhookUrlType.WEBHOOK_RESOURCES:
-      if (!entityType) throw new Error('Entity type is required for webhook resource URLs');
-      if (!parentId) throw new Error('Parent webhook ID is required for webhook resource URLs');
-      return `/${getSingularEntityName(entityType)}Webhooks/${parentId}/ExcludedResources`;
+      if (!entityType) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Entity type is required for webhook resource URLs',
+          { urlType }
+        );
+      }
+      validateEntityType(entityType, true, operation);
+      if (!parentId) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Parent webhook ID is required for webhook resource URLs',
+          { urlType, entityType }
+        );
+      }
+      return `/${getSingularEntityName(entityType!)}Webhooks/${parentId}/ExcludedResources`;
 
     case WebhookUrlType.WEBHOOK_FIELD_INFO:
-      if (!entityType) throw new Error('Entity type is required for webhook field info URLs');
-      return `/${getSingularEntityName(entityType)}WebhookFields/entityInformation/fields`;
+      if (!entityType) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Entity type is required for webhook field info URLs',
+          { urlType }
+        );
+      }
+      validateEntityType(entityType, true, operation);
+      return `/${getSingularEntityName(entityType!)}WebhookFields/entityInformation/fields`;
 
     case WebhookUrlType.WEBHOOK_UDF_FIELD_INFO:
-      if (!entityType) throw new Error('Entity type is required for webhook UDF field info URLs');
-      return `/${getSingularEntityName(entityType)}WebhookUdfFields/entityInformation/fields`;
+      if (!entityType) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Entity type is required for webhook UDF field info URLs',
+          { urlType }
+        );
+      }
+      validateEntityType(entityType, true, operation);
+      return `/${getSingularEntityName(entityType!)}WebhookUdfFields/entityInformation/fields`;
 
     case WebhookUrlType.ENTITY_FIELDS:
-      if (!entityType) throw new Error('Entity type is required for entity field URLs');
-      return `/${pluralize(entityType)}/entityInformation/fields`;
+      if (!entityType) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Entity type is required for entity field URLs',
+          { urlType }
+        );
+      }
+      validateEntityType(entityType, true, operation);
+      return `/${pluralize(entityType!)}entityInformation/fields`;
 
     case WebhookUrlType.ENTITY_UDF_FIELDS:
-      if (!entityType) throw new Error('Entity type is required for entity UDF field URLs');
-      return `/${pluralize(entityType)}/entityInformation/userDefinedFields`;
+      if (!entityType) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Entity type is required for entity UDF field URLs',
+          { urlType }
+        );
+      }
+      validateEntityType(entityType, true, operation);
+      return `/${pluralize(entityType!)}entityInformation/userDefinedFields`;
 
     case WebhookUrlType.GENERAL_QUERY:
-      if (!endpoint) throw new Error('Endpoint is required for general query URLs');
+      if (!endpoint) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Endpoint is required for general query URLs',
+          { urlType }
+        );
+      }
       return endpoint;
 
     default:
-      throw new Error(`Unknown URL type: ${urlType}`);
+      logAndThrowError(
+        operation,
+        AutotaskErrorType.Unknown,
+        `Unknown URL type: ${urlType}`,
+        { urlType, options }
+      );
   }
 }

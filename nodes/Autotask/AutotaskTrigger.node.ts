@@ -17,7 +17,7 @@ import { verifyWebhookSignature } from './helpers/webhook/signature';
 import { autotaskApiRequest } from './helpers/http';
 import type { IFieldDescription } from './helpers/webhook/fields';
 import { getWebhookSupportedFields, formatWebhookFieldsForDisplay } from './helpers/webhook/fields';
-import { getResourcesForExclusion, formatExcludedResources } from './helpers/webhook/resources';
+import { getResourcesForExclusion, processBatchResources } from './helpers/webhook/resources';
 import { WebhookUrlType, buildWebhookUrl } from './helpers/webhook/urls';
 import { randomBytes } from 'node:crypto';
 import { normalizeFieldId, processBatchFields } from './helpers/webhook/fieldConfiguration';
@@ -593,7 +593,7 @@ export class AutotaskTrigger implements INodeType {
 										this,
 										standardFields,
 										{ entityType, webhookId },
-										10 // Add concurrency limit of 10
+										{ concurrencyLimit: 10 }
 									);
 
 									if (standardResults.failed > 0) {
@@ -607,7 +607,7 @@ export class AutotaskTrigger implements INodeType {
 										this,
 										udfFields,
 										{ entityType, webhookId },
-										10 // Add concurrency limit of 10
+										{ concurrencyLimit: 10 }
 									);
 
 									if (udfResults.failed > 0) {
@@ -621,30 +621,17 @@ export class AutotaskTrigger implements INodeType {
 					// Add excluded resources to the webhook if specified
 					if (excludedResourceIds.length > 0) {
 						console.log(`Processing ${excludedResourceIds.length} excluded resources...`);
-						// Format resource IDs for API submission
-						const excludedResources = formatExcludedResources(excludedResourceIds);
 
-						// Add excluded resources to the webhook
-						for (const resource of excludedResources) {
-							try {
-								const resourceUrl = buildWebhookUrl(WebhookUrlType.WEBHOOK_RESOURCES, {
-									entityType,
-									parentId: webhookId,
-								});
+						// Process resources in batches
+						const resourceResults = await processBatchResources(
+							this,
+							excludedResourceIds,
+							{ entityType, webhookId },
+							{ concurrencyLimit: 10, batchSize: 20 }
+						);
 
-								await autotaskApiRequest.call(
-									this,
-									'POST',
-									resourceUrl,
-									{
-										webhookID: webhookId,
-										resourceID: resource.resourceID,
-									},
-								);
-							} catch (error) {
-								// Log error but continue with other resources
-								console.error(`Error excluding resource ${resource.resourceID}: ${(error as Error).message}`);
-							}
+						if (resourceResults.failed > 0) {
+							console.warn(`Failed to exclude ${resourceResults.failed} resources`);
 						}
 					}
 
