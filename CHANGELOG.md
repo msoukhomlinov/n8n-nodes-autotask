@@ -17,11 +17,10 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundles
   - ContractServiceBundleUnits
   - ContractTicketPurchases
-- [ ] Make resource description more detailed
 
 ## [Unreleased]
 
-## [0.5.0] - 2025-03-22
+## [0.5.0] - 2025-03-25
 
 ### Added
 - Comprehensive webhook support:
@@ -30,6 +29,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
     - Company webhooks
     - Contact webhooks
     - Configuration Item webhooks
+    - Ticket webhooks
     - Ticket Note webhooks
   - Added webhook resource operations:
     - Get webhook by ID
@@ -42,7 +42,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - Added automatic webhook registration and cleanup
   - Implemented secure payload verification with HMAC signatures
   - Created helper utility modules for webhook operations
-
+- Made resource descriptions more detailed with improved clarity and context
 
 ## [0.4.1] - 2025-03-21
 
