@@ -4,7 +4,7 @@ import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { OperationType } from '../../types/base/entity-types';
 import { BaseOperation } from './base-operation';
 import { FieldProcessor } from './field-processor';
-import { filterEntityBySelectedColumns, getSelectedColumns } from '../common/select-columns';
+import { flattenUdfs } from '../../helpers/udf/flatten';
 
 /**
  * Base class for getting entities
@@ -71,8 +71,21 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 			console.warn(`[GetOperation] Error processing picklist labels: ${error.message}`);
 		}
 
-		// Filter entity by selected columns
-		const selectedColumns = getSelectedColumns(this.context, itemIndex);
-		return filterEntityBySelectedColumns(entity, selectedColumns) as T;
+		// Check if UDFs should be flattened
+		try {
+			const shouldFlattenUdfs = this.context.getNodeParameter('flattenUdfs', itemIndex, false) as boolean;
+
+			if (shouldFlattenUdfs && entity.userDefinedFields) {
+				console.debug(`[GetOperation] Flattening UDFs for ${this.entityType} entity`);
+				entity = flattenUdfs(entity);
+			}
+		} catch (error) {
+			// If parameter doesn't exist or there's an error, log it but don't fail the operation
+			console.warn(`[GetOperation] Error flattening UDFs: ${error.message}`);
+		}
+
+		// Return entity directly without client-side filtering
+		console.debug(`[GetOperation] Returning ${this.entityType} entity from API response`);
+		return entity;
 	}
 }

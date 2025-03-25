@@ -87,7 +87,7 @@ export async function executeResourceOperation(
 						const response = await getManyOp.execute(queryParams, i);
 
 						// Process and return results
-						returnData.push(...getManyOp.processReturnData(response, i));
+						returnData.push(...getManyOp.processReturnData(response));
 					} catch (error) {
 						if (this.continueOnFail()) {
 							returnData.push({ json: { error: error.message } });

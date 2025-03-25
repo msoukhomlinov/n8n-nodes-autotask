@@ -5,6 +5,7 @@ import { getManyOptions } from '../operations/common/get-many';
 import { addPicklistLabelOption } from '../operations/common/picklist-labels';
 import { addReferenceLabelOption } from '../operations/common/reference-labels';
 import { addSelectColumnsOption } from '../operations/common/select-columns';
+import { flattenUdfsOption } from '../operations/common/udf-flattening';
 
 /**
  * Operation group types
@@ -124,6 +125,22 @@ export function addOperationsToResource(
 			const hasSelectColumnsOption = updatedProperties.some(prop => prop.name === 'selectColumns');
 			if (!config.excludeOperations?.includes('selectColumns') && !hasSelectColumnsOption) {
 				updatedProperties = addSelectColumnsOption(updatedProperties, config.resourceName);
+			}
+
+			// Add UDF flattening option if not excluded and not already present
+			const hasFlattenUdfsOption = updatedProperties.some(prop => prop.name === 'flattenUdfs');
+			if (!config.excludeOperations?.includes('flattenUdfs') && !hasFlattenUdfsOption) {
+				// Add UDF flattening option with resource-specific display options
+				updatedProperties.push({
+					...flattenUdfsOption,
+					displayOptions: {
+						...flattenUdfsOption.displayOptions,
+						show: {
+							...flattenUdfsOption.displayOptions?.show,
+							resource: [config.resourceName],
+						},
+					},
+				});
 			}
 
 			return updatedProperties;

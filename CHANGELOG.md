@@ -18,7 +18,22 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
-## [Unreleased]
+
+## [0.5.2] - 2024-03-26
+
+### Fixed
+- Removed client-side filtering from all get operations when using IncludeFields parameter
+  - Fixed issue where User Defined Fields (UDF) would not be properly returned in responses
+  - Improved operation classes to rely solely on server-side filtering via API IncludeFields parameter
+  - Optimised all get operations (Get, GetMany, GetManyAdvanced) for more reliable handling of UDF fields
+  - Ensures all selected fields, including UDF fields, are properly included in API responses
+
+### Added
+- Added UDF flattening option for get operations
+  - New "Flatten User-Defined Fields" toggle for get, getMany, and getManyAdvanced operations
+  - When enabled, brings UDF fields up to the top level of each object for easier access
+  - Makes UDFs directly accessible as top-level properties instead of being nested in the userDefinedFields array
+  - Maintains original userDefinedFields array for backward compatibility
 
 ## [0.5.1] - 2025-03-25
 
@@ -236,3 +251,5 @@ This section outlines planned features and improvements for future releases.
 [0.4.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.4.0 
 [0.4.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.4.1 
 [0.5.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.5.0
+[0.5.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.5.1
+[0.5.2]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.5.2

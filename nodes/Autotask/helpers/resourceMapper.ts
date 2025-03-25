@@ -18,11 +18,29 @@ export async function getResourceMapperFields(
 		const operation = this.getNodeParameter('operation', 0) as ResourceOperation;
 		const mode = WRITE_OPERATIONS.includes(operation as OperationType.CREATE | OperationType.UPDATE | OperationType.DELETE) ? 'write' : 'read';
 
+		console.debug(`[getResourceMapperFields] Starting to fetch fields for ${entityType} (mode: ${mode})`);
+
 		// Get both standard and UDF fields using the unified API
 		const [standardApiFields, udfApiFields] = await Promise.all([
 			getFields(entityType, this, { fieldType: 'standard', }),
 			getFields(entityType, this, { fieldType: 'udf', isActive: true }),
 		]);
+
+		console.debug(`[getResourceMapperFields] Retrieved ${standardApiFields.length} standard fields and ${udfApiFields.length} UDF fields for ${entityType}`);
+
+		// Log UDF picklist fields
+		const udfPicklistFields = udfApiFields.filter(field => 'isPickList' in field && field.isPickList === true);
+		if (udfPicklistFields.length > 0) {
+			console.debug(`[getResourceMapperFields] Found ${udfPicklistFields.length} UDF picklist fields for ${entityType}`);
+			console.debug('[getResourceMapperFields] Sample UDF picklist field details:',
+				udfPicklistFields.slice(0, 1).map(field => ({
+					name: field.name,
+					isPickList: field.isPickList,
+					hasPicklistValues: 'picklistValues' in field && Array.isArray(field.picklistValues),
+					picklistValuesCount: 'picklistValues' in field && Array.isArray(field.picklistValues) ? field.picklistValues.length : 0
+				}))
+			);
+		}
 
 		// Get processor instance
 		const processor = FieldProcessor.getInstance(
@@ -43,6 +61,8 @@ export async function getResourceMapperFields(
 			}),
 		]);
 
+		console.debug(`[getResourceMapperFields] Processed ${standardFields.length} standard fields and ${udfFields.length} UDF fields for ${entityType}`);
+
 		// Combine and deduplicate fields
 		const uniqueFields = new Map();
 		for (const field of [...standardFields, ...udfFields]) {
@@ -52,12 +72,16 @@ export async function getResourceMapperFields(
 			}
 		}
 
+		const resultFields = Array.from(uniqueFields.values()).map(field => ({
+			...field,
+			defaultMatch: false,
+		}));
+
+		console.debug(`[getResourceMapperFields] Returning ${resultFields.length} unique fields for ${entityType}`);
+
 		// Add defaultMatch property
 		return {
-			fields: Array.from(uniqueFields.values()).map(field => ({
-				...field,
-				defaultMatch: false,
-			})),
+			fields: resultFields,
 		};
 	});
 }

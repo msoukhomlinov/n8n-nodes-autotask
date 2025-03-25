@@ -15,7 +15,8 @@ import { getEntityMetadata } from '../../constants/entities';
 import { FieldProcessor } from './field-processor';
 import { OperationType } from '../../types/base/entity-types';
 import { processResponseDatesArray } from '../../helpers/date-time';
-import { filterEntitiesBySelectedColumns, getSelectedColumns, prepareIncludeFields } from '../common/select-columns';
+import { getSelectedColumns, prepareIncludeFields } from '../common/select-columns';
+import { flattenUdfsArray } from '../../helpers/udf/flatten';
 
 /**
  * Base class for retrieving multiple entities
@@ -23,6 +24,13 @@ import { filterEntitiesBySelectedColumns, getSelectedColumns, prepareIncludeFiel
 export class GetManyOperation<T extends IAutotaskEntity> {
 	private readonly paginationHandler: PaginationHandler;
 	private readonly parentType?: string;
+	private readonly options?: {
+		pageSize?: number;
+		maxPages?: number;
+		isPicklistQuery?: boolean;
+		picklistFields?: string[];
+		parentType?: string;
+	};
 
 	constructor(
 		private readonly entityType: string,
@@ -37,6 +45,7 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 	) {
 		this.paginationHandler = new PaginationHandler(entityType, context, options);
 		this.parentType = options?.parentType;
+		this.options = options;
 	}
 
 	/**
@@ -53,37 +62,10 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 	/**
 	 * Process response data into n8n format
 	 */
-	public processReturnData(items: T[], itemIndex = 0): INodeExecutionData[] {
-		try {
-			// Check for selected columns
-			const selectedColumns = getSelectedColumns(this.context, itemIndex);
-
-			// Most filtering now happens on the API side with IncludeFields
-			// but we still need to handle cases where client-side filtering is needed
-
-			// If no selected columns or server-side filtering failed, return all fields
-			if (!selectedColumns || !selectedColumns.length) {
-				return items.map(item => ({ json: item }));
-			}
-
-			// For safety, do a lightweight client-side filter to ensure only selected columns
-			// are returned (this is a fallback in case server-side filtering was incomplete)
-			const filteredItems = filterEntitiesBySelectedColumns(items, selectedColumns);
-
-			// Log filtered vs original count for debugging
-			const originalFieldCount = items.length > 0 ? Object.keys(items[0]).length : 0;
-			const filteredFieldCount = filteredItems.length > 0 ? Object.keys(filteredItems[0]).length : 0;
-			if (originalFieldCount !== filteredFieldCount) {
-				console.debug(`[GetManyOperation] Additional client-side filtering applied: ${originalFieldCount} -> ${filteredFieldCount} fields`);
-			}
-
-			// Return filtered items
-			return filteredItems.map(item => ({ json: item }));
-		} catch (error) {
-			// If there's an error, log it and return unfiltered items
-			console.warn(`[GetManyOperation] Error handling column filtering: ${error.message}`);
-			return items.map(item => ({ json: item }));
-		}
+	public processReturnData(items: T[]): INodeExecutionData[] {
+		// Simply map items to INodeExecutionData format without any client-side filtering
+		console.debug(`[GetManyOperation] Processing ${items.length} items from API response`);
+		return items.map(item => ({ json: item }));
 	}
 
 	/**
@@ -170,9 +152,37 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 						results,
 						`${this.entityType}.getMany`,
 					);
+
+					// Check if UDFs should be flattened
+					try {
+						const shouldFlattenUdfs = this.context.getNodeParameter('flattenUdfs', itemIndex, false) as boolean;
+
+						if (shouldFlattenUdfs) {
+							console.debug(`[GetManyOperation] Flattening UDFs for ${processedResults.length} ${this.entityType} entities`);
+							return flattenUdfsArray(processedResults as T[]);
+						}
+					} catch (error) {
+						// If parameter doesn't exist or there's an error, log it but don't fail the operation
+						console.warn(`[GetManyOperation] Error flattening UDFs: ${error.message}`);
+					}
+
 					return processedResults as T[];
 				} catch (error) {
 					console.warn(`[GetManyOperation] Error processing dates: ${error.message}`);
+
+					// Check if UDFs should be flattened even though date processing failed
+					try {
+						const shouldFlattenUdfs = this.context.getNodeParameter('flattenUdfs', itemIndex, false) as boolean;
+
+						if (shouldFlattenUdfs) {
+							console.debug(`[GetManyOperation] Flattening UDFs for ${results.length} ${this.entityType} entities`);
+							return flattenUdfsArray(results);
+						}
+					} catch (error) {
+						// If parameter doesn't exist or there's an error, log it but don't fail the operation
+						console.warn(`[GetManyOperation] Error flattening UDFs: ${error.message}`);
+					}
+
 					return results; // Return original if conversion fails
 				}
 			},
@@ -293,10 +303,17 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 					queryBody.MaxRecords = filters.MaxRecords;
 				}
 
-				// Add IncludeFields to query if there are specific fields to include
-				if (includeFields.length > 0) {
-					queryBody.IncludeFields = includeFields;
-					console.debug(`[GetManyOperation] Using IncludeFields with ${includeFields.length} fields for query`);
+				// Check if this is a picklist query
+				if (this.options?.isPicklistQuery) {
+					// For picklist queries, don't specify IncludeFields to get all fields
+					// This avoids issues with incorrect fields being included
+					console.debug(`[GetManyOperation] Picklist query detected for ${this.entityType} - not using IncludeFields`);
+				} else {
+					// For regular queries, add IncludeFields if there are specific fields to include
+					if (includeFields.length > 0) {
+						queryBody.IncludeFields = includeFields;
+						console.debug(`[GetManyOperation] Using IncludeFields with ${includeFields.length} fields for query`);
+					}
 				}
 
 				const response = await autotaskApiRequest.call(

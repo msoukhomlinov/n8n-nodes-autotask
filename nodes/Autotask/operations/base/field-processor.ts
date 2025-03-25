@@ -157,6 +157,19 @@ export class FieldProcessor {
 	}
 
 	/**
+	 * Check if the current context is a LoadOptionsFunctions context
+	 * Used to determine if we should skip expensive operations when just loading dropdown options
+	 * @private
+	 */
+	private isLoadOptionsContext(): boolean {
+		if (!this.context) return false;
+
+		// IExecuteFunctions has getInputData and emit methods, ILoadOptionsFunctions doesn't
+		const isExecuteContext = 'getInputData' in this.context || 'emit' in this.context;
+		return !isExecuteContext;
+	}
+
+	/**
 	 * Gets or creates an EntityValueHelper instance for the given entity type
 	 * @private
 	 */
@@ -262,8 +275,37 @@ export class FieldProcessor {
 			? fields as IEntityField[]
 			: await this.convertToEntityFields(fields as IAutotaskField[]);
 
-		// Load reference values for all fields
-		return this.loadReferenceValues(entityFields);
+		// Check if we're in loadOptions context (populating dropdown options)
+		// In this case, we should NEVER load reference values to avoid unnecessary API calls
+		if (this.isLoadOptionsContext()) {
+			console.debug('[normalizeFields] In loadOptions context, skipping reference value loading');
+			return entityFields;
+		}
+
+		// Only proceed with reference loading if not in loadOptions context
+		// Check if 'Add Reference Labels' is enabled before loading reference values
+		try {
+			// Only attempt to get the parameter if we have a context
+			if (this.context) {
+				const itemIndex = 0; // Default to first item
+				const addReferenceLabels = (this.context as IExecuteFunctions).getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
+
+				// Only load reference values if enabled
+				if (addReferenceLabels) {
+					console.debug('[normalizeFields] "Add Reference Labels" is enabled, loading reference values');
+					return this.loadReferenceValues(entityFields);
+				}
+
+				console.debug('[normalizeFields] "Add Reference Labels" is disabled, skipping reference value loading');
+				return entityFields;
+			}
+		} catch (error) {
+			// Parameter might not exist or we could be in a context where it can't be accessed
+			console.debug('[normalizeFields] Could not determine "Add Reference Labels" setting, defaulting to no reference loading');
+		}
+
+		// Default path - don't load reference values
+		return entityFields;
 	}
 
 	/**
@@ -707,11 +749,17 @@ export class FieldProcessor {
 		return await handleErrors(
 			this.context as IExecuteFunctions,
 			async () => {
-				// Get all fields for this entity type - THIS ALREADY INCLUDES PICKLIST VALUES
-				const fields = await this.getFieldsForEntity(this.entityType, 'standard');
+				// Get both standard and UDF fields for this entity type
+				const [standardFields, udfFields] = await Promise.all([
+					this.getFieldsForEntity(this.entityType, 'standard'),
+					this.getFieldsForEntity(this.entityType, 'udf')
+				]);
+
+				// Combine standard and UDF fields
+				const allFields = [...standardFields, ...udfFields];
 
 				// Filter for picklist fields that are not references
-				const picklistFields = fields.filter(field =>
+				const picklistFields = allFields.filter(field =>
 					field.isPickList === true && field.isReference !== true
 				);
 

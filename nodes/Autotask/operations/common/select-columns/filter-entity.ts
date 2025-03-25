@@ -47,14 +47,14 @@ export function filterEntityBySelectedColumns<T extends IAutotaskEntity>(
 	if (labelFields.length > 0) {
 		console.debug(`[filterEntityBySelectedColumns] Found ${labelFields.length} label fields in entity`);
 
-		labelFields.forEach(key => {
+		for (const key of labelFields) {
 			const baseField = key.replace('_label', '');
 			// If the base field was selected and this label field exists, include it
 			if (columns.includes(baseField) && key in entity) {
 				filteredEntity[key as keyof T] = entity[key as keyof T];
 				console.debug(`[filterEntityBySelectedColumns] Including label field: ${key} for selected base field: ${baseField}`);
 			}
-		});
+		}
 	}
 
 	return filteredEntity;

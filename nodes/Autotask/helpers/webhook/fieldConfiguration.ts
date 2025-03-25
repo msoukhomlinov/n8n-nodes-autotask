@@ -170,13 +170,13 @@ export async function processBatchFields(
       }
 
       // Calculate final statistics
-      results.forEach((succeeded, index) => {
+      for (const [index, succeeded] of results.entries()) {
         if (succeeded) {
           successCount++;
         } else if (index < fields.length) { // Safety check for index
           failedIds.push(fields[index].fieldId);
         }
-      });
+      }
 
       console.log(`Batch processing completed: ${successCount} succeeded, ${failedIds.length} failed`);
 

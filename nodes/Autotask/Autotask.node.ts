@@ -308,16 +308,43 @@ export class Autotask implements INodeType {
 		loadOptions: {
 			async getSelectColumns(this: ILoadOptionsFunctions) {
 				const resource = this.getNodeParameter('resource', 0) as string;
+				console.debug(`[getSelectColumns] Starting to load column options for resource: ${resource}`);
 
 				try {
 					// Get fields using the same function that powers the resource mapper
+					console.debug(`[getSelectColumns] Calling getResourceMapperFields for ${resource}`);
 					const { fields } = await getResourceMapperFields.call(this, resource);
+					console.debug(`[getSelectColumns] Retrieved ${fields.length} fields for ${resource}`);
+
+					// Count UDF fields and picklist fields
+					const udfFields = fields.filter(field => field.id.startsWith('UDF') || 'isUdf' in field && field.isUdf === true);
+					const picklistFields = fields.filter(field => 'isPickList' in field && field.isPickList === true);
+					const udfPicklistFields = udfFields.filter(field => 'isPickList' in field && field.isPickList === true);
+
+					console.debug(`[getSelectColumns] Field breakdown for ${resource}:
+- Total fields: ${fields.length}
+- UDF fields: ${udfFields.length}
+- Picklist fields: ${picklistFields.length}
+- UDF Picklist fields: ${udfPicklistFields.length}`);
+
+					if (udfPicklistFields.length > 0) {
+						console.debug('[getSelectColumns] First few UDF picklist fields:',
+							udfPicklistFields.slice(0, 3).map(f => ({
+								id: f.id,
+								displayName: f.displayName,
+								hasOptions: 'options' in f && Array.isArray(f.options) && f.options.length > 0
+							}))
+						);
+					}
 
 					// Format fields for multiOptions
-					return fields.map(field => ({
+					const formattedOptions = fields.map(field => ({
 						name: field.displayName || field.id,
 						value: field.id,
 					}));
+					console.debug(`[getSelectColumns] Formatted ${formattedOptions.length} options for the dropdown`);
+
+					return formattedOptions;
 				} catch (error) {
 					console.error(`Error loading select columns options: ${error.message}`);
 					return [];

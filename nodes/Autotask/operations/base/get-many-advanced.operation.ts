@@ -6,8 +6,9 @@ import { BaseOperation } from './base-operation';
 import { OperationType } from '../../types/base/entity-types';
 import { FieldProcessor } from './field-processor';
 import { processResponseDatesArray } from '../../helpers/date-time';
-import { filterEntitiesBySelectedColumns, getSelectedColumns, prepareIncludeFields } from '../common/select-columns';
+import { getSelectedColumns, prepareIncludeFields } from '../common/select-columns';
 import { handleErrors } from '../../helpers/errorHandler';
+import { flattenUdfsArray } from '../../helpers/udf/flatten';
 
 /**
  * Base class for retrieving multiple entities using advanced JSON filtering
@@ -56,7 +57,9 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 					if (!['and', 'or'].includes(filter.op)) {
 						throw new Error('Group operator must be "and" or "or"');
 					}
-					filter.items.forEach(validateFilter);
+					for (const item of filter.items) {
+						validateFilter(item);
+					}
 				} else {
 					// Leaf condition
 					if (!filter.field || !filter.op) {
@@ -65,7 +68,9 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 				}
 			};
 
-			queryInput.filter.forEach(validateFilter);
+			for (const filterItem of queryInput.filter) {
+				validateFilter(filterItem);
+			}
 
 			// Handle IncludeFields for API-side column filtering
 			// Check if user already included IncludeFields in their advanced filter
@@ -194,38 +199,40 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 						`${this.entityType}.getManyAdvanced`,
 					);
 
-					// Get selected columns to determine if client-side filtering is needed
-					const selectedColumns = getSelectedColumns(this.context, itemIndex);
+					// Check if UDFs should be flattened
+					try {
+						const shouldFlattenUdfs = this.context.getNodeParameter('flattenUdfs', itemIndex, false) as boolean;
 
-					// If no columns selected or server-side filtering was used via IncludeFields,
-					// we can skip client-side filtering
-					if (!selectedColumns || !selectedColumns.length || queryInput.IncludeFields?.length) {
-						return processedResults as T[];
+						if (shouldFlattenUdfs) {
+							console.debug(`[GetManyAdvancedOperation] Flattening UDFs for ${processedResults.length} ${this.entityType} entities`);
+							return flattenUdfsArray(processedResults as T[]);
+						}
+					} catch (error) {
+						// If parameter doesn't exist or there's an error, log it but don't fail the operation
+						console.warn(`[GetManyAdvancedOperation] Error flattening UDFs: ${error.message}`);
 					}
 
-					// Apply client-side filtering as a fallback if server-side filtering wasn't used
-					console.debug('[GetManyAdvancedOperation] Applying client-side filtering as fallback');
-					const filteredResults = filterEntitiesBySelectedColumns(processedResults as T[], selectedColumns) as T[];
-
-					// Log filtered vs original count for debugging
-					const originalFieldCount = processedResults.length > 0 ? Object.keys(processedResults[0]).length : 0;
-					const filteredFieldCount = filteredResults.length > 0 ? Object.keys(filteredResults[0]).length : 0;
-					if (originalFieldCount !== filteredFieldCount) {
-						console.debug(`[GetManyAdvancedOperation] Additional client-side filtering applied: ${originalFieldCount} -> ${filteredFieldCount} fields`);
-					}
-
-					return filteredResults;
+					// Return processed results directly without client-side filtering
+					console.debug(`[GetManyAdvancedOperation] Returning ${processedResults.length} items from API response`);
+					return processedResults as T[];
 				} catch (error) {
 					console.warn(`[GetManyAdvancedOperation] Error processing dates: ${error.message}`);
 
-					// Handle error case - apply client-side filtering if selected columns exist
-					const selectedColumns = getSelectedColumns(this.context, itemIndex);
-					if (selectedColumns?.length) {
-						const filteredResults = filterEntitiesBySelectedColumns(results, selectedColumns) as T[];
-						return filteredResults;
+					// Check if UDFs should be flattened even though date processing failed
+					try {
+						const shouldFlattenUdfs = this.context.getNodeParameter('flattenUdfs', itemIndex, false) as boolean;
+
+						if (shouldFlattenUdfs) {
+							console.debug(`[GetManyAdvancedOperation] Flattening UDFs for ${results.length} ${this.entityType} entities`);
+							return flattenUdfsArray(results);
+						}
+					} catch (error) {
+						// If parameter doesn't exist or there's an error, log it but don't fail the operation
+						console.warn(`[GetManyAdvancedOperation] Error flattening UDFs: ${error.message}`);
 					}
 
-					return results; // Return original if conversion fails and no filtering requested
+					// Return original results if date processing fails
+					return results;
 				}
 			},
 			{
