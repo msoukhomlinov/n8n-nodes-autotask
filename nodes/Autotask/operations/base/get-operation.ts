@@ -5,6 +5,9 @@ import { OperationType } from '../../types/base/entity-types';
 import { BaseOperation } from './base-operation';
 import { FieldProcessor } from './field-processor';
 import { flattenUdfs } from '../../helpers/udf/flatten';
+import { getSelectedColumns } from '../common/select-columns';
+import { GetManyOperation } from './get-many';
+import { FilterOperators } from '../../constants/filters';
 
 /**
  * Base class for getting entities
@@ -33,8 +36,49 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 			);
 		}
 
-		// Use the base class's getEntityById method
-		let entity = await this.getEntityById(itemIndex, entityId as string | number) as T;
+		// Check if columns are selected
+		const selectedColumns = getSelectedColumns(this.context, itemIndex);
+		let entity: T;
+
+		if (selectedColumns && selectedColumns.length > 0) {
+			// If columns are selected, use a GetManyOperation with ID filter
+			// This is because IncludeFields works properly with query operations but not with get-by-id
+			console.debug(`[GetOperation] Using GetManyOperation for ${this.entityType} because ${selectedColumns.length} columns are selected`);
+
+			// Create GetManyOperation instance
+			const getManyOp = new GetManyOperation<T>(this.entityType, this.context, { parentType: this.parentType });
+
+			// Create filter for specific ID
+			const filter = {
+				filter: [
+					{
+						field: 'id',
+						op: FilterOperators.eq,
+						value: entityId,
+					},
+				],
+			};
+
+			// Execute query - this will handle selected columns automatically
+			const results = await getManyOp.execute(filter, itemIndex);
+
+			// Check if we got exactly one result
+			if (results.length !== 1) {
+				throw new Error(
+					ERROR_TEMPLATES.notFound
+						.replace('{type}', 'NotFoundError')
+						.replace('{entity}', this.entityType)
+						.replace('{details}', `Entity with ID ${entityId} not found or returned multiple results`)
+				);
+			}
+
+			// Use the single result
+			entity = results[0];
+		} else {
+			// No columns selected, use original implementation with getEntityById
+			console.debug(`[GetOperation] Using standard getEntityById for ${this.entityType} as no columns are selected`);
+			entity = await this.getEntityById(itemIndex, entityId as string | number) as T;
+		}
 
 		// Get field processor instance for enrichment
 		const fieldProcessor = FieldProcessor.getInstance(

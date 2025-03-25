@@ -19,6 +19,14 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractTicketPurchases
 
 
+## [0.5.3] - 2024-03-26
+
+### Fixed
+- Fixed issue with "Select Columns Names or IDs" option being ignored in get (get by ID) operations
+  - Modified get operations to use query endpoint with ID filter when columns are selected
+  - The fix ensures that column selection works properly across all get operations
+  - This workaround addresses a limitation in the Autotask API where IncludeFields parameter is ignored in get-by-ID endpoint
+
 ## [0.5.2] - 2024-03-26
 
 ### Fixed
