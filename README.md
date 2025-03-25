@@ -76,14 +76,14 @@ The node supports the following Autotask resources:
 | Contact | Manage contacts associated with companies |
 | Contact Webhook | Manage webhooks for contact events |
 | Contract | Manage contracts for companies |
-| Contract Blocks | Manage block hour contracts |
-| Contract Block Hour Factors | Manage hour factors for block hour contracts |
-| Contract Charges | Manage charges associated with contracts |
-| Contract Milestones | Manage milestones for contracts |
-| Contract Notes | Manage notes attached to contracts |
-| Contract Rates | Manage rates for contract services |
-| Contract Services | Manage services within contracts |
-| Contract Service Units | Manage service units for contracts |
+| Contract Block | Manage block hour contracts |
+| Contract Block Hour Factor | Manage hour factors for block hour contracts |
+| Contract Charge | Manage charges associated with contracts |
+| Contract Milestone | Manage milestones for contracts |
+| Contract Note | Manage notes attached to contracts |
+| Contract Rate | Manage rates for contract services |
+| Contract Service | Manage services within contracts |
+| Contract Service Unit | Manage service units for contracts |
 | Holiday | Manage holiday dates |
 | Holiday Set | Manage holiday sets for resources |
 | Opportunity | Manage sales opportunities |
@@ -98,7 +98,7 @@ The node supports the following Autotask resources:
 | Service | Manage services offered to clients |
 | Service Call | Manage service calls |
 | Survey | Manage customer surveys |
-| Survey Result | Manage results from customer surveys |
+| Survey Results | Manage results from customer surveys |
 | Ticket | Manage service tickets |
 | Ticket History | View historical changes to tickets |
 | Ticket Note | Manage notes attached to tickets |
