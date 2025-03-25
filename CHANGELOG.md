@@ -20,6 +20,14 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [Unreleased]
 
+## [0.5.1] - 2025-03-25
+
+### Added
+- Added "Who Am I" operation to Resources entity
+  - Retrieves the resource details of the API user specified in the node credentials
+  - Extracts username from credentials email and queries matching resources
+  - Supports standard options: Add Picklist Labels, Add Reference Labels, and Select Columns
+
 ## [0.5.0] - 2025-03-25
 
 ### Added

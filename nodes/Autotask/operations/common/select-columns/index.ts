@@ -13,5 +13,5 @@ export {
 	filterEntitiesBySelectedColumns,
 	getSelectedColumns,
 	prepareIncludeFields,
-	IPrepareIncludeFieldsOptions
+	type IPrepareIncludeFieldsOptions
 };

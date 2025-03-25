@@ -1,5 +1,9 @@
 import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
-import type { IAutotaskEntity } from '../../types';
+import type {
+	IAutotaskEntity,
+	IAutotaskCredentials,
+	IAutotaskQueryInput
+} from '../../types';
 import {
 	UpdateOperation,
 	GetOperation,
@@ -8,6 +12,7 @@ import {
 } from '../../operations/base';
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
+import { getSelectedColumns, prepareIncludeFields } from '../../operations/common/select-columns';
 
 const ENTITY_TYPE = 'resource';
 
@@ -41,6 +46,55 @@ export async function executeResourceOperation(
 					const filters = getManyOp.buildFiltersFromResourceMapper(i);
 					const response = await getManyOp.execute({ filter: filters }, i);
 					returnData.push(...getManyOp.processReturnData(response));
+					break;
+				}
+
+				case 'whoAmI': {
+					try {
+						// Get credentials
+						const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+						const email = credentials.Username as string;
+
+						if (!email) {
+							throw new Error('Username not found in credentials');
+						}
+
+						// Extract username (part before @)
+						const username = email.includes('@') ? email.split('@')[0] : email;
+
+						// Create filter for username
+						const filter = [
+							{
+								op: 'eq',
+								field: 'userName',
+								value: username,
+							},
+						];
+
+						// Execute query
+						const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+
+						// Handle include fields for server-side filtering if needed
+						const selectedColumns = getSelectedColumns(this, i);
+						const includeFields = prepareIncludeFields(selectedColumns);
+
+						// Add includeFields to the query if columns are selected
+						const queryParams: IAutotaskQueryInput<IAutotaskEntity> = {
+							filter,
+							...(includeFields ? { includeFields } : {})
+						};
+
+						const response = await getManyOp.execute(queryParams, i);
+
+						// Process and return results
+						returnData.push(...getManyOp.processReturnData(response, i));
+					} catch (error) {
+						if (this.continueOnFail()) {
+							returnData.push({ json: { error: error.message } });
+						} else {
+							throw error;
+						}
+					}
 					break;
 				}
 

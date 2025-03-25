@@ -27,6 +27,12 @@ export const resourceFields: INodeProperties[] = [
 				action: 'Get multiple resources',
 			},
 			{
+				name: 'Who Am I',
+				value: 'whoAmI',
+				description: 'Retrieve the resource details of the API user specified in the node credentials',
+				action: 'Get API user resource details',
+			},
+			{
 				name: 'Update',
 				value: 'update',
 				description: 'Update a resource',
