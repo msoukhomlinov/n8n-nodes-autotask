@@ -2,6 +2,7 @@ import type { ILoadOptionsFunctions, ResourceMapperFields, IExecuteFunctions, IN
 import { handleErrors } from '../errorHandler';
 import { autotaskApiRequest } from '../http';
 import { WebhookUrlType, buildWebhookUrl, validateEntityType } from './urls';
+import { initializeCache } from '../cache/init';
 
 /**
  * Interface for the structure of field information
@@ -73,6 +74,20 @@ export async function getWebhookSupportedFields(
 
 		// Validate the entity type
 		validateEntityType(entityType, true, 'getWebhookSupportedFields');
+
+		// Initialize cache service
+		const cacheService = await initializeCache(this);
+		const cacheEnabled = cacheService?.isEntityInfoEnabled() ?? false;
+
+		// Try to get from cache first if caching is enabled
+		if (cacheService && cacheEnabled) {
+			const cacheKey = cacheService.getEntityInfoKey(`${entityType}_webhook_fields`);
+			const cachedFields = await cacheService.get<ResourceMapperFields | Record<string, IFieldDescription>>(cacheKey);
+			if (cachedFields) {
+				console.log(`Using cached webhook fields for ${entityType}`);
+				return cachedFields;
+			}
+		}
 
 		// Internal collection of fields
 		const internalFields: IInternalField[] = [];
@@ -161,9 +176,10 @@ export async function getWebhookSupportedFields(
 		}
 
 		// Now convert to the appropriate output format based on context
+		let result: ResourceMapperFields | Record<string, IFieldDescription>;
 		if (isExecuteContext(this)) {
 			// Return ResourceMapperFields format for IExecuteFunctions context
-			return {
+			result = {
 				fields: internalFields.map(field => ({
 					id: field.id,
 					displayName: field.displayName,
@@ -174,20 +190,29 @@ export async function getWebhookSupportedFields(
 					display: true,
 				})),
 			} as ResourceMapperFields;
+		} else {
+			// Return dictionary format for ILoadOptionsFunctions context
+			const fieldDict: Record<string, IFieldDescription> = {};
+			for (const field of internalFields) {
+				fieldDict[field.id] = {
+					displayName: field.displayName,
+					description: field.description,
+					type: field.type,
+					isRequired: field.isRequired,
+					isUdf: field.isUdf,
+				};
+			}
+			result = fieldDict;
 		}
 
-		// Return dictionary format for ILoadOptionsFunctions context
-		const fieldDict: Record<string, IFieldDescription> = {};
-		for (const field of internalFields) {
-			fieldDict[field.id] = {
-				displayName: field.displayName,
-				description: field.description,
-				type: field.type,
-				isRequired: field.isRequired,
-				isUdf: field.isUdf,
-			};
+		// Store in cache if enabled
+		if (cacheService && cacheEnabled) {
+			const cacheKey = cacheService.getEntityInfoKey(`${entityType}_webhook_fields`);
+			await cacheService.set(cacheKey, result, cacheService.getEntityInfoTTL());
+			console.log(`Cached webhook fields for ${entityType}`);
 		}
-		return fieldDict;
+
+		return result;
 	});
 }
 

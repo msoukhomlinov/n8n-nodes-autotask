@@ -2,7 +2,8 @@ import type { ILoadOptionsFunctions, IHookFunctions, IExecuteFunctions } from 'n
 import { autotaskApiRequest } from '../http';
 import { WebhookUrlType, buildWebhookUrl, validateEntityType } from './urls';
 import { handleErrors } from '../errorHandler';
-import { IBatchOptions, IBatchResult } from './batchTypes';
+import type { IBatchOptions, IBatchResult } from './batchTypes';
+import { initializeCache } from '../cache/init';
 
 /**
  * Interface for resource (user) data
@@ -48,6 +49,23 @@ export async function getResourcesForExclusion(
 			// Validate entity type if provided
 			if (entityType) {
 				validateEntityType(entityType, false, 'getResourcesForExclusion');
+			}
+
+			// Initialize cache service
+			const cacheService = await initializeCache(this);
+			const cacheEnabled = cacheService?.isReferenceEnabled() ?? false;
+
+			// Create a cache key that includes the query parameters
+			const cacheKeyParams = `Resources_${includeInactive ? 'all' : 'active'}_${maxRecords}`;
+
+			// Try to get from cache first if caching is enabled
+			if (cacheService && cacheEnabled) {
+				const cacheKey = cacheService.getReferenceKey(cacheKeyParams);
+				const cachedResources = await cacheService.get<IResource[]>(cacheKey);
+				if (cachedResources) {
+					console.log(`Using cached resources for exclusion (${cachedResources.length} items)`);
+					return cachedResources;
+				}
 			}
 
 			// Use direct endpoint approach to avoid double processing of query path
@@ -133,6 +151,13 @@ export async function getResourcesForExclusion(
 			// Sort resources alphabetically by name
 			allResources.sort((a, b) => a.name.localeCompare(b.name));
 
+			// Store in cache if enabled
+			if (cacheService && cacheEnabled) {
+				const cacheKey = cacheService.getReferenceKey(cacheKeyParams);
+				await cacheService.set(cacheKey, allResources, cacheService.getReferenceFieldTTL());
+				console.log(`Cached ${allResources.length} resources for exclusion`);
+			}
+
 			return allResources;
 		}, {
 			operation: 'getResourcesForExclusion',
@@ -152,9 +177,7 @@ export async function getResourcesForExclusion(
  * @returns Formatted array for API submission
  *
  * @example
- * // Format resource IDs for API submission
  * const formattedResources = formatExcludedResources([123, 456, 789]);
- * // Result: [{resourceID: 123}, {resourceID: 456}, {resourceID: 789}]
  */
 export function formatExcludedResources(resourceIds: number[]): Array<{ resourceID: number }> {
 	return resourceIds.map(id => ({ resourceID: id }));
@@ -168,9 +191,7 @@ export function formatExcludedResources(resourceIds: number[]): Array<{ resource
  * @returns Array of batched resource arrays for API submission
  *
  * @example
- * // Create batches of resource IDs (2 per batch)
  * const batches = batchResourcesForExclusion([123, 456, 789, 101], { batchSize: 2 });
- * // Result: [[{resourceID: 123}, {resourceID: 456}], [{resourceID: 789}, {resourceID: 101}]]
  */
 export function batchResourcesForExclusion(
 	resourceIds: number[],
@@ -213,8 +234,7 @@ export function batchResourcesForExclusion(
  * @returns Promise resolving to results of resource additions
  *
  * @example
- * // Process resources in batches with custom settings
- * const result = await processBatchResources(this, resourceIds,
+  * const result = await processBatchResources(this, resourceIds,
  *   { entityType: 'Tickets', webhookId: 123 },
  *   { batchSize: 20, concurrencyLimit: 5, batchPauseMs: 1000 }
  * );

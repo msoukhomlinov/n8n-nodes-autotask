@@ -127,7 +127,7 @@ export function buildWebhookUrl(
         );
       }
       validateEntityType(entityType, true, operation);
-      return `/${getSingularEntityName(entityType!)}Webhooks`;
+      return `/${getSingularEntityName(entityType)}Webhooks`;
 
     case WebhookUrlType.WEBHOOK_SPECIFIC:
       if (!entityType) {
@@ -147,7 +147,7 @@ export function buildWebhookUrl(
           { urlType, entityType }
         );
       }
-      return `/${getSingularEntityName(entityType!)}Webhooks/${id}`;
+      return `/${getSingularEntityName(entityType)}Webhooks/${id}`;
 
     case WebhookUrlType.WEBHOOK_FIELDS:
       if (!entityType) {
@@ -167,7 +167,7 @@ export function buildWebhookUrl(
           { urlType, entityType }
         );
       }
-      return `/${getSingularEntityName(entityType!)}Webhooks/${parentId}/Fields`;
+      return `/${getSingularEntityName(entityType)}Webhooks/${parentId}/Fields`;
 
     case WebhookUrlType.WEBHOOK_UDF_FIELDS:
       if (!entityType) {
@@ -187,7 +187,7 @@ export function buildWebhookUrl(
           { urlType, entityType }
         );
       }
-      return `/${getSingularEntityName(entityType!)}Webhooks/${parentId}/UdfFields`;
+      return `/${getSingularEntityName(entityType)}Webhooks/${parentId}/UdfFields`;
 
     case WebhookUrlType.WEBHOOK_RESOURCES:
       if (!entityType) {
@@ -207,7 +207,7 @@ export function buildWebhookUrl(
           { urlType, entityType }
         );
       }
-      return `/${getSingularEntityName(entityType!)}Webhooks/${parentId}/ExcludedResources`;
+      return `/${getSingularEntityName(entityType)}Webhooks/${parentId}/ExcludedResources`;
 
     case WebhookUrlType.WEBHOOK_FIELD_INFO:
       if (!entityType) {
@@ -219,7 +219,7 @@ export function buildWebhookUrl(
         );
       }
       validateEntityType(entityType, true, operation);
-      return `/${getSingularEntityName(entityType!)}WebhookFields/entityInformation/fields`;
+      return `/${getSingularEntityName(entityType)}WebhookFields/entityInformation/fields`;
 
     case WebhookUrlType.WEBHOOK_UDF_FIELD_INFO:
       if (!entityType) {
@@ -231,7 +231,13 @@ export function buildWebhookUrl(
         );
       }
       validateEntityType(entityType, true, operation);
-      return `/${getSingularEntityName(entityType!)}WebhookUdfFields/entityInformation/fields`;
+
+      // Special case for TicketNotes - uses a different endpoint pattern
+      if (entityType === AutotaskWebhookEntityType.TICKETNOTES) {
+        return `/${getSingularEntityName(entityType)}WebhookFields/entityInformation/userDefinedFields`;
+      }
+
+      return `/${getSingularEntityName(entityType)}WebhookUdfFields/entityInformation/fields`;
 
     case WebhookUrlType.ENTITY_FIELDS:
       if (!entityType) {
@@ -243,7 +249,7 @@ export function buildWebhookUrl(
         );
       }
       validateEntityType(entityType, true, operation);
-      return `/${pluralize(entityType!)}entityInformation/fields`;
+      return `/${pluralize(entityType)}entityInformation/fields`;
 
     case WebhookUrlType.ENTITY_UDF_FIELDS:
       if (!entityType) {
@@ -255,7 +261,7 @@ export function buildWebhookUrl(
         );
       }
       validateEntityType(entityType, true, operation);
-      return `/${pluralize(entityType!)}entityInformation/userDefinedFields`;
+      return `/${pluralize(entityType)}entityInformation/userDefinedFields`;
 
     case WebhookUrlType.GENERAL_QUERY:
       if (!endpoint) {

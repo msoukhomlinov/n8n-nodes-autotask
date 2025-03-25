@@ -130,33 +130,34 @@ export class AutotaskTrigger implements INodeType {
 				description: 'The event types to trigger on. Select at least one.',
 			},
 			{
+				displayName: 'Send Threshold Notifications',
+				name: 'sendThresholdNotifications',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to receive notifications if the activity by the webhook exceeds API query thresholds',
+			},
+			{
+				displayName: 'Sends emails to the notification email address when webhook requests exceed the hourly threshold and when they return to normal',
+				name: 'thresholdNotificationInfo',
+				type: 'notice',
+				default: '',
+				displayOptions: {
+					show: {
+						sendThresholdNotifications: [true],
+					},
+				},
+			},
+			{
 				displayName: 'Notification Email Address',
 				name: 'notificationEmailAddress',
 				type: 'string',
 				default: '',
 				placeholder: 'name@email.com',
-				description: 'Optional. Email address to receive notifications about webhook delivery failures.',
-			},
-			{
-				displayName: 'Send Threshold Notifications',
-				name: 'sendThresholdNotifications',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to receive notifications when webhook delivery thresholds are exceeded. Requires a notification email address. If no email address is provided, this setting will be ignored.',
-				hint: 'Sends emails to the notification email address when webhook requests exceed the hourly threshold and when they return to normal. Will be disabled automatically if no notification email is provided.',
-			},
-			{
-				displayName: 'No Fields Available',
-				name: 'noFieldsMessage',
-				type: 'notice',
-				default: '',
-				description: 'This entity type does not support field selection. All available fields will be included in webhook payloads.',
+				description: 'Email address to receive notifications about webhook delivery failures and threshold alerts',
+				required: true,
 				displayOptions: {
 					show: {
-						entityType: [
-							AutotaskWebhookEntityType.TICKETNOTES,
-							AutotaskWebhookEntityType.TICKETS,
-						],
+						sendThresholdNotifications: [true],
 					},
 				},
 			},
@@ -166,6 +167,7 @@ export class AutotaskTrigger implements INodeType {
 				type: 'multiOptions',
 				default: [],
 				description: 'Fields to subscribe to receive updates from. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+				required: true,
 				typeOptions: {
 					loadOptionsMethod: 'getWebhookFields',
 					loadOptionsDependsOn: ['entityType'],
@@ -176,6 +178,8 @@ export class AutotaskTrigger implements INodeType {
 							AutotaskWebhookEntityType.COMPANIES,
 							AutotaskWebhookEntityType.CONTACTS,
 							AutotaskWebhookEntityType.CONFIGURATIONITEMS,
+							AutotaskWebhookEntityType.TICKETNOTES,
+							AutotaskWebhookEntityType.TICKETS,
 						],
 					},
 				},
@@ -186,6 +190,7 @@ export class AutotaskTrigger implements INodeType {
 				type: 'multiOptions',
 				default: [],
 				description: 'Fields to always include in webhook payloads, in addition to any fields selected in Subscribed Fields. Note that subscribed fields are always returned in webhook payloads. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+				required: true,
 				typeOptions: {
 					loadOptionsMethod: 'getWebhookFields',
 					loadOptionsDependsOn: ['entityType'],
@@ -196,6 +201,8 @@ export class AutotaskTrigger implements INodeType {
 							AutotaskWebhookEntityType.COMPANIES,
 							AutotaskWebhookEntityType.CONTACTS,
 							AutotaskWebhookEntityType.CONFIGURATIONITEMS,
+							AutotaskWebhookEntityType.TICKETNOTES,
+							AutotaskWebhookEntityType.TICKETS,
 						],
 					},
 				},
@@ -208,7 +215,6 @@ export class AutotaskTrigger implements INodeType {
 				description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				typeOptions: {
 					loadOptionsMethod: 'getResources',
-					loadOptionsDependsOn: ['entityType'],
 				},
 				displayOptions: {
 					show: {
@@ -412,23 +418,17 @@ export class AutotaskTrigger implements INodeType {
 					// Format: n8n-{entityType}-{eventTypesAbbreviated}-{workflowId}-{timestamp}
 					const webhookName = `n8n-${entityType}-${eventTypeCode}-${workflowId}-${timestamp}`;
 
-					// For entities that don't support field selection (like TicketNotes), we don't show field selection UI
-					// and shouldn't try to get or process fields
-					const isEntityWithoutFieldSupport = entityType === AutotaskWebhookEntityType.TICKETNOTES ||
-						entityType === AutotaskWebhookEntityType.TICKETS;
-
-					// Only get fields for inclusion if the entity supports field selection
+					// Get fields for webhook configuration
 					let subscribedFields: string[] = [];
 					let displayAlwaysFields: string[] = [];
 
-					if (!isEntityWithoutFieldSupport) {
-						subscribedFields = this.getNodeParameter('subscribedFields', []) as string[];
-						displayAlwaysFields = this.getNodeParameter('displayAlwaysFields', []) as string[];
+					// Get fields from the node parameters
+					subscribedFields = this.getNodeParameter('subscribedFields', []) as string[];
+					displayAlwaysFields = this.getNodeParameter('displayAlwaysFields', []) as string[];
 
-						// Validate that at least one field is selected for entities that support field selection
-						if (subscribedFields.length === 0) {
-							throw new NodeOperationError(this.getNode(), 'At least one field must be selected in Subscribed Field Names or IDs.');
-						}
+					// Validate that at least one field is selected
+					if (subscribedFields.length === 0) {
+						throw new NodeOperationError(this.getNode(), 'At least one field must be selected in Subscribed Field Names or IDs.');
 					}
 
 					// Get excluded resources
@@ -485,7 +485,7 @@ export class AutotaskTrigger implements INodeType {
 					webhookStaticData.secretKey = secretKey;
 
 					// If webhook was successfully created and we have selected fields, add them
-					if (webhookId && (subscribedFields.length > 0 || displayAlwaysFields.length > 0) && !isEntityWithoutFieldSupport) {
+					if (webhookId && (subscribedFields.length > 0 || displayAlwaysFields.length > 0)) {
 						// Get field metadata to determine if each field is standard or UDF
 						const fieldMetadata = await getWebhookSupportedFields.call(
 							this as unknown as ILoadOptionsFunctions,

@@ -2,7 +2,7 @@ import type { IHookFunctions, IExecuteFunctions, ILoadOptionsFunctions } from 'n
 import { autotaskApiRequest } from '../http';
 import { WebhookUrlType, buildWebhookUrl } from './urls';
 import { handleErrors } from '../errorHandler';
-import { IBatchOptions, IBatchResult } from './batchTypes';
+import type { IBatchOptions, IBatchResult } from './batchTypes';
 
 /**
  * Interface for field configuration options
