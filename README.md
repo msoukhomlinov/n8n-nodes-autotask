@@ -136,7 +136,7 @@ For most resources, the following operations are available:
 - **Get Entity Info**: Retrieve metadata about the entity
 - **Get Field Info**: Retrieve field definitions for the selected entity
 
-For webhook resources (Company Webhook, Contact Webhook, Configuration Item Webhook, Ticket Note Webhook), the following operations are available:
+For webhook resources (Company Webhook, Contact Webhook, Configuration Item Webhook, Ticket Webhook, Ticket Note Webhook), the following operations are available:
 - **Get**: Retrieve a single webhook by ID
 - **Get Many**: Retrieve multiple webhooks with basic filtering
 - **Delete**: Remove a webhook
