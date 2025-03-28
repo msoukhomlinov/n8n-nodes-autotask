@@ -18,8 +18,26 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
+## [0.5.4] - 2025-03-28
 
-## [0.5.3] - 2024-03-26
+### Added
+- Added support for Ticket Webhook operations:
+  - Added TicketWebhook entity and related entities to support webhook management
+  - Implemented webhook resource operations for tickets:
+    - Get webhook by ID
+    - Get multiple webhooks
+    - Delete webhooks
+  - Added support for webhook field configuration and excluded resources
+  - Follows the same pattern as other webhook-enabled entities (Company, Contact, etc.)
+  - Enables real-time ticket event notifications through the AutotaskTrigger node
+
+### Fixed
+- Fixed issue with ticket webhook creation in AutotaskTrigger node
+  - Resolved error "Invalid entity type. Received Ticket, expected Tickets"
+  - Updated entity type validation to handle plural form correctly
+  - Ensures webhook creation works consistently across all supported entities
+
+## [0.5.3] - 2025-03-26
 
 ### Fixed
 - Fixed issue with "Select Columns Names or IDs" option being ignored in get (get by ID) operations
@@ -27,7 +45,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - The fix ensures that column selection works properly across all get operations
   - This workaround addresses a limitation in the Autotask API where IncludeFields parameter is ignored in get-by-ID endpoint
 
-## [0.5.2] - 2024-03-26
+## [0.5.2] - 2025-03-26
 
 ### Fixed
 - Removed client-side filtering from all get operations when using IncludeFields parameter

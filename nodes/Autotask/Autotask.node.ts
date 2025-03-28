@@ -106,6 +106,8 @@ import { companyWebhookFields } from './resources/companyWebhooks';
 import { configurationItemWebhookFields } from './resources/configurationItemWebhooks';
 import { contactWebhookFields } from './resources/contactWebhooks';
 import { ticketNoteWebhookFields } from './resources/ticketNoteWebhooks';
+import { executeTicketWebhookOperation } from './resources/ticketWebhooks/execute';
+import { ticketWebhookFields } from './resources/ticketWebhooks/description';
 
 /**
  * Autotask node implementation
@@ -181,6 +183,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
 			...addOperationsToResource(ticketNoteFields, { resourceName: 'ticketNote' }),
 			...addOperationsToResource(ticketNoteWebhookFields, { resourceName: 'ticketNoteWebhook' }),
+			...addOperationsToResource(ticketWebhookFields, { resourceName: 'ticketWebhook' }),
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
@@ -281,6 +284,10 @@ export class Autotask implements INodeType {
 				return executeTicketOperation.call(this);
 			case 'ticketNote':
 				return executeTicketNoteOperation.call(this);
+			case 'ticketNoteWebhook':
+				return executeTicketNoteWebhookOperation.call(this);
+			case 'ticketWebhook':
+				return executeTicketWebhookOperation.call(this);
 			case 'TicketHistory':
 				return executeTicketHistoryOperation.call(this);
 			case 'timeEntry':
@@ -289,8 +296,6 @@ export class Autotask implements INodeType {
 				return executeSurveyOperation.call(this);
 			case 'surveyResults':
 				return executeSurveyResultsOperation.call(this);
-			case 'ticketNoteWebhook':
-				return executeTicketNoteWebhookOperation.call(this);
 			default:
 				throw new NodeOperationError(
 					this.getNode(),

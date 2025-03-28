@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.5.1-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.5.4-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 This is an n8n community node for integrating with Autotask PSA. It provides a comprehensive set of operations to interact with Autotask entities through their REST API.
@@ -103,6 +103,7 @@ The node supports the following Autotask resources:
 | Ticket History | View historical changes to tickets |
 | Ticket Note | Manage notes attached to tickets |
 | Ticket Note Webhook | Manage webhooks for ticket note events |
+| Ticket Webhook | Manage webhooks for ticket events |
 | Time Entry | Manage time entries for billing |
 
 ### Operations

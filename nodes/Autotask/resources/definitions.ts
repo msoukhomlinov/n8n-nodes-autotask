@@ -235,6 +235,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Autotask Ticket Note Webhooks',
 	},
 	{
+		name: 'Ticket Webhook',
+		value: 'ticketWebhook',
+		description: 'Manage Autotask Ticket Webhooks',
+	},
+	{
 		name: 'Time Entry',
 		value: 'timeEntry',
 		description: 'Manage Time Entries, which record resource work hours against tickets, tasks, or general activities such as meetings, travel, or training',
