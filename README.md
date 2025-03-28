@@ -1,7 +1,9 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.5.4-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.5.5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+
+> **IMPORTANT**: After updating this node to a new version, a restart of your n8n instance is highly recommended to ensure all changes are properly applied.
 
 This is an n8n community node for integrating with Autotask PSA. It provides a comprehensive set of operations to interact with Autotask entities through their REST API.
 

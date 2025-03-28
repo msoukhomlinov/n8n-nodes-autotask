@@ -18,6 +18,16 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
+## [0.5.5] - 2025-03-29
+
+### Fixed
+- Fixed entity type handling in webhook processing:
+  - Added missing entity type aliases for singular-to-plural mapping
+  - Resolved "Invalid entity type. Received Ticket, expected Tickets" error
+  - Added support for "Ticket", "Contact", "ConfigurationItem", and "TicketNote" to match their plural counterparts
+  - Ensures consistent webhook handling across all entity types
+  - Improves reliability for all webhook trigger operations
+
 ## [0.5.4] - 2025-03-28
 
 ### Added

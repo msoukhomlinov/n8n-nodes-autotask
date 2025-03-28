@@ -785,6 +785,10 @@ export class AutotaskTrigger implements INodeType {
 		// Map of Autotask API entity types to our node's entity types (aliases)
 		const entityTypeAliases: Record<string, string> = {
 			'Account': AutotaskWebhookEntityType.COMPANIES, // Autotask uses "Account" and "Companies" interchangeably
+			'Ticket': AutotaskWebhookEntityType.TICKETS, // Autotask uses "Ticket" and "Tickets" interchangeably
+			'Contact': AutotaskWebhookEntityType.CONTACTS, // Autotask uses "Contact" and "Contacts" interchangeably
+			'ConfigurationItem': AutotaskWebhookEntityType.CONFIGURATIONITEMS, // Autotask uses "ConfigurationItem" and "ConfigurationItems" interchangeably
+			'TicketNote': AutotaskWebhookEntityType.TICKETNOTES, // Autotask uses "TicketNote" and "TicketNotes" interchangeably
 		};
 
 		// Get the normalized entity type from the incoming payload
