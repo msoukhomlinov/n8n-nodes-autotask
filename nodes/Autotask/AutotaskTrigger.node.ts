@@ -189,7 +189,7 @@ export class AutotaskTrigger implements INodeType {
 				name: 'displayAlwaysFields',
 				type: 'multiOptions',
 				default: [],
-				description: 'Fields to always include in webhook payloads, in addition to any fields selected in Subscribed Fields. Note that subscribed fields are always returned in webhook payloads. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+				description: 'Fields to include in webhook payloads. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				required: true,
 				typeOptions: {
 					loadOptionsMethod: 'getWebhookFields',
@@ -526,7 +526,7 @@ export class AutotaskTrigger implements INodeType {
 							}
 
 							// Process and normalize webhook fields using the new helper functions
-							const allFieldConfigurations: Array<{ fieldId: number; isDisplayAlwaysField: boolean; isUdf: boolean }> = [];
+							const allFieldConfigurations: Array<{ fieldId: number; isDisplayAlwaysField: boolean; isSubscribedField: boolean; isUdf: boolean }> = [];
 
 							// Process all subscribedFields
 							for (const fieldId of subscribedFields) {
@@ -545,10 +545,14 @@ export class AutotaskTrigger implements INodeType {
 										continue;
 									}
 
+									// Check if this field is also in displayAlwaysFields
+									const isAlsoDisplayAlways = displayAlwaysFields.includes(fieldId);
+
 									// Add to the unified configuration array
 									allFieldConfigurations.push({
 										fieldId: normalizedFieldId,
-										isDisplayAlwaysField: false, // subscribedFields have isSubscribedField=true
+										isDisplayAlwaysField: isAlsoDisplayAlways, // Set to true if also in displayAlwaysFields
+										isSubscribedField: true, // subscribedFields should have isSubscribedField=true
 										isUdf: Boolean(fieldInfo.isUdf),
 									});
 								} catch (error) {
@@ -556,10 +560,13 @@ export class AutotaskTrigger implements INodeType {
 								}
 							}
 
-							// Process displayAlwaysFields (only those not already in subscribedFields)
+							// Process displayAlwaysFields that are not already processed
 							for (const fieldId of displayAlwaysFields) {
-								// Skip special placeholder values and already processed fields
-								if (fieldId === '__ALL_FIELDS__' || subscribedFields.includes(fieldId)) continue;
+								// Skip special placeholder values
+								if (fieldId === '__ALL_FIELDS__') continue;
+
+								// Skip fields that are already processed (those that were in subscribedFields)
+								if (subscribedFields.includes(fieldId)) continue;
 
 								try {
 									// Normalize field ID
@@ -577,6 +584,7 @@ export class AutotaskTrigger implements INodeType {
 									allFieldConfigurations.push({
 										fieldId: normalizedFieldId,
 										isDisplayAlwaysField: true, // displayAlwaysFields have isDisplayAlwaysField=true
+										isSubscribedField: false, // Not a subscribed field
 										isUdf: Boolean(fieldInfo.isUdf),
 									});
 								} catch (error) {

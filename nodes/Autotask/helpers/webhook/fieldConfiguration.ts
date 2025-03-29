@@ -13,6 +13,7 @@ interface IFieldAdditionOptions {
   fieldId: number;
   isUdf: boolean;
   isDisplayAlwaysField: boolean;
+  isSubscribedField: boolean;
 }
 
 /**
@@ -40,14 +41,15 @@ export function normalizeFieldId(fieldId: string | number): number {
  *   webhookId: 123,
  *   fieldId: 456,
  *   isUdf: false,
- *   isDisplayAlwaysField: true
+ *   isDisplayAlwaysField: true,
+ *   isSubscribedField: false
  * });
  */
 export async function addFieldToWebhook(
   context: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
   options: IFieldAdditionOptions
 ): Promise<boolean> {
-  const { entityType, webhookId, fieldId, isUdf, isDisplayAlwaysField } = options;
+  const { entityType, webhookId, fieldId, isUdf, isDisplayAlwaysField, isSubscribedField } = options;
 
   try {
     await handleErrors(context as unknown as IExecuteFunctions, async () => {
@@ -58,11 +60,11 @@ export async function addFieldToWebhook(
         webhookID: webhookId,
         [isUdf ? 'udfFieldID' : 'fieldID']: fieldId,
         isDisplayAlwaysField,
-        isSubscribedField: !isDisplayAlwaysField,
+        isSubscribedField,
       };
 
       await autotaskApiRequest.call(context, 'POST', url, payload);
-      console.log(`Added ${isUdf ? 'UDF' : 'standard'} field: ${fieldId} (displayAlways=${isDisplayAlwaysField})`);
+      console.log(`Added ${isUdf ? 'UDF' : 'standard'} field: ${fieldId} (displayAlways=${isDisplayAlwaysField}, subscribed=${isSubscribedField})`);
     }, {
       operation: 'addFieldToWebhook',
       entityType,
@@ -94,7 +96,7 @@ export async function addFieldToWebhook(
  */
 export async function processBatchFields(
   context: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-  fields: Array<{ fieldId: number; isDisplayAlwaysField: boolean; isUdf: boolean }>,
+  fields: Array<{ fieldId: number; isDisplayAlwaysField: boolean; isSubscribedField: boolean; isUdf: boolean }>,
   commonOptions: { entityType: string; webhookId: string | number },
   batchOptions: IBatchOptions = {},
 ): Promise<IBatchResult> {
@@ -147,6 +149,7 @@ export async function processBatchFields(
               fieldId: field.fieldId,
               isUdf: field.isUdf,
               isDisplayAlwaysField: field.isDisplayAlwaysField,
+              isSubscribedField: field.isSubscribedField,
             }).catch(error => {
               errors.push({
                 fieldId: field.fieldId,

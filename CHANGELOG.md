@@ -18,6 +18,16 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
+## [0.5.6] - 2025-03-30
+
+### Fixed
+- Fixed issue with webhook field configurations:
+  - Resolved problem where fields selected in both Subscribed Fields and Always Display Fields were not configured correctly
+  - Modified implementation to allow fields to have both isSubscribedField and isDisplayAlwaysField flags set to true
+  - Updated field processing logic to handle fields that appear in both selection lists
+  - Ensures all selected fields appear in the Autotask webhook configuration as expected
+  - Improves consistency between n8n UI configuration and Autotask webhook settings
+
 ## [0.5.5] - 2025-03-29
 
 ### Fixed
