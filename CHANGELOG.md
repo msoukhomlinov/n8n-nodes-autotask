@@ -18,6 +18,11 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
+## [0.5.7] - 2024-03-31
+
+### Fixed
+- Added version-aware caching to ensure cache invalidation on node updates
+
 ## [0.5.6] - 2025-03-30
 
 ### Fixed
