@@ -35,11 +35,13 @@ export class CacheService {
 		hits: number;
 		misses: number;
 	} = { hits: 0, misses: 0 };
+	private packageVersion: string;
 
 	private constructor(config: ICacheConfig, credentialsId: string, cacheDir?: string, maxSizeMB?: number) {
 		this.config = config;
 		this.namespace = `autotask:${credentialsId}`;
 		this.maxSizeMB = maxSizeMB;
+		this.packageVersion = this.getPackageVersion();
 
 		try {
 			if (cacheDir) {
@@ -102,7 +104,8 @@ export class CacheService {
 			referenceFields: config.referenceFields,
 			picklists: config.picklists,
 			filePath: this.filePath,
-			maxSizeMB: this.maxSizeMB
+			maxSizeMB: this.maxSizeMB,
+			version: this.packageVersion
 		});
 	}
 
@@ -313,37 +316,62 @@ export class CacheService {
 	}
 
 	/**
-	 * Generate a cache key for entity information
+	 * Get the package version from package.json
+	 */
+	private getPackageVersion(): string {
+		try {
+			const packageJsonPath = path.resolve(__dirname, '../../../../package.json');
+			const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+			return packageJson.version;
+		} catch (error) {
+			console.warn('Failed to read package version:', error);
+			return 'unknown';
+		}
+	}
+
+	/**
+	 * Create a versioned cache key
+	 */
+	private createVersionedKey(baseKey: string): string {
+		return `v${this.packageVersion}:${baseKey}`;
+	}
+
+	/**
+	 * Get the entity info cache key
 	 */
 	public getEntityInfoKey(entityType: string): string {
-		return `${entityType}:info`;
+		const baseKey = `entity_info:${entityType}`;
+		return this.createVersionedKey(baseKey);
 	}
 
 	/**
-	 * Generate a cache key for entity fields
+	 * Get the fields cache key
 	 */
 	public getFieldsKey(entityType: string, fieldType: string): string {
-		return `${entityType}:fields:${fieldType}`;
+		const baseKey = `fields:${entityType}:${fieldType}`;
+		return this.createVersionedKey(baseKey);
 	}
 
 	/**
-	 * Generate a cache key for reference field values
+	 * Get the reference cache key
 	 * Note: Keys are always lowercase for consistency
 	 */
 	public getReferenceKey(entityType: string): string {
 		if (!entityType) {
 			throw new Error('Cannot generate reference cache key: entityType is required');
 		}
-		const key = `${entityType.toLowerCase()}:reference:values`;
+		const baseKey = `reference:${entityType.toLowerCase()}`;
+		const key = this.createVersionedKey(baseKey);
 		console.debug(`Generated reference cache key for entity '${entityType}': ${key}`);
 		return key;
 	}
 
 	/**
-	 * Generate a cache key for picklist values
+	 * Get the picklist cache key
 	 */
 	public getPicklistKey(entityType: string, fieldName: string): string {
-		return `picklist:${entityType}:${fieldName}`;
+		const baseKey = `picklist:${entityType}:${fieldName}`;
+		return this.createVersionedKey(baseKey);
 	}
 
 	/**
