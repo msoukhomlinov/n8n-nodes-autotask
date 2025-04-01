@@ -20,6 +20,18 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [0.5.8] - 2025-04-01
 
+### Added
+- Added API Threshold resource for checking API usage limits:
+  - Added new 'API Threshold' resource with a single 'Get API Usage' operation
+  - Provides information about current API usage, limits, and remaining requests
+  - Returns usage statistics including:
+    - Current usage count
+    - Maximum threshold (limit)
+    - Usage percentage
+    - Usage level (Normal, Moderate, High, Critical)
+    - Remaining available requests
+    - Timeframe duration
+
 ### Fixed
 - Improved webhook creation error handling:
   - Added field/resource configuration retries (3 attempts with exponential backoff)
@@ -27,7 +39,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - Implemented automatic cleanup of partial webhooks on failure
   - Enhanced error reporting and validation
 
-## [0.5.7] - 2024-03-31
+## [0.5.7] - 2025-03-31
 
 ### Fixed
 - Added version-aware caching to ensure cache invalidation on node updates
@@ -153,7 +165,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - Added support for Services entity (https://ww1.autotask.net/help/DeveloperHelp/Content/APIs/REST/Entities/ServicesEntity.htm)
 
 
-## [0.3.4] - 2024-03-19
+## [0.3.4] - 2025-03-19
 
 ### Changed
 - Updated README to include comprehensive documentation for all features
@@ -163,7 +175,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - Added missing resources to the supported resources list
   - Improved documentation for performance optimisation
 
-## [0.3.3] - 2024-03-18
+## [0.3.3] - 2025-03-18
 
 ### Added
 - Added column selection for get operations

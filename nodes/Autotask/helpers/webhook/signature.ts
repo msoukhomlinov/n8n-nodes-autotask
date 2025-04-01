@@ -8,10 +8,17 @@ import { AutotaskErrorType } from '../errorHandler';
  * @param message Human-readable error message
  * @param error Optional error object or additional context
  */
-function logError(operation: string, errorType: AutotaskErrorType, message: string, error?: unknown): void {
+function logError(
+	operation: string,
+	errorType: AutotaskErrorType,
+	message: string,
+	error?: unknown,
+): void {
 	const errorDetails = error instanceof Error ? `: ${error.message}` : '';
 	const contextInfo = typeof error === 'object' && error !== null ? JSON.stringify(error) : '';
-	console.error(`[${errorType}] Operation: ${operation}${errorDetails ? ', Details' + errorDetails : ''}${contextInfo ? ', Context: ' + contextInfo : ''}, ${message}`);
+	console.error(
+		`[${errorType}] Operation: ${operation}${errorDetails ? `, Details${errorDetails}` : ''}${contextInfo ? `, Context: ${contextInfo}` : ''}, ${message}`,
+	);
 }
 
 /**
@@ -107,7 +114,7 @@ export function verifyWebhookSignature(
 				hasPayload: !!rawPayload,
 				hasSignature: !!signature,
 				hasSecretKey: !!secretKey,
-			}
+			},
 		);
 		return false;
 	}
@@ -157,7 +164,7 @@ export function verifyWebhookSignature(
 			{
 				signatureLength: signature.length,
 				payloadLength: rawPayload.length,
-			}
+			},
 		);
 		return false;
 	} catch (error) {
@@ -165,7 +172,7 @@ export function verifyWebhookSignature(
 			'verifyWebhookSignature',
 			AutotaskErrorType.Unknown,
 			'Error verifying webhook signature',
-			error
+			error,
 		);
 		return false;
 	}
@@ -176,10 +183,7 @@ export function verifyWebhookSignature(
  * Uses the same format as Autotask to verify the signature (Base64)
  * Following Autotask documentation: https://ww1.autotask.net/help/developerhelp/Content/APIs/Webhooks/SecretKeyPayloadVerification.htm
  */
-export function generateWebhookSignature(
-	payload: string | unknown,
-	secretKey: string,
-): string {
+export function generateWebhookSignature(payload: string | unknown, secretKey: string): string {
 	if (!payload || !secretKey) {
 		logError(
 			'generateWebhookSignature',
@@ -188,7 +192,7 @@ export function generateWebhookSignature(
 			{
 				hasPayload: !!payload,
 				hasSecretKey: !!secretKey,
-			}
+			},
 		);
 		throw new Error('Missing required parameters for signature generation');
 	}
@@ -215,8 +219,10 @@ export function generateWebhookSignature(
 			'generateWebhookSignature',
 			AutotaskErrorType.Unknown,
 			'Error generating webhook signature',
-			error
+			error,
 		);
-		throw new Error(`Error generating webhook signature: ${error instanceof Error ? error.message : 'Unknown error'}`);
+		throw new Error(
+			`Error generating webhook signature: ${error instanceof Error ? error.message : 'Unknown error'}`,
+		);
 	}
 }

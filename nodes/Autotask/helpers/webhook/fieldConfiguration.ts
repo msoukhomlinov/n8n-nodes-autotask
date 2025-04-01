@@ -88,7 +88,7 @@ export async function addFieldToWebhook(
       attempts++;
       if (attempts < maxRetries) {
         // Exponential backoff with jitter
-        const delayMs = Math.min(1000 * Math.pow(2, attempts) + Math.random() * 500, 10000);
+        const delayMs = Math.min(1000 * (2 ** attempts) + Math.random() * 500, 10000);
         console.log(`Retrying field ${fieldId} (attempt ${attempts+1}/${maxRetries}) after ${delayMs}ms delay...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
