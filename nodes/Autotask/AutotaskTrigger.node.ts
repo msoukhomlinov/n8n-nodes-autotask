@@ -385,6 +385,8 @@ export class AutotaskTrigger implements INodeType {
 			 * Create a webhook in Autotask when a workflow is activated
 			 */
 			async create(this: IHookFunctions): Promise<boolean> {
+				let webhookId: string | number | undefined;
+
 				try {
 					console.log('Creating Autotask webhook...');
 
@@ -472,7 +474,7 @@ export class AutotaskTrigger implements INodeType {
 					) as { item?: { id?: string | number; itemId?: string | number } };
 
 					// Store the webhook ID for later deletion - check both id and itemId fields
-					const webhookId = response.item?.id || response.item?.itemId;
+					webhookId = response.item?.id || response.item?.itemId;
 					if (!webhookId) {
 						throw new NodeOperationError(this.getNode(), 'Failed to create webhook - no ID returned');
 					}
@@ -486,165 +488,165 @@ export class AutotaskTrigger implements INodeType {
 
 					// If webhook was successfully created and we have selected fields, add them
 					if (webhookId && (subscribedFields.length > 0 || displayAlwaysFields.length > 0)) {
-						// Get field metadata to determine if each field is standard or UDF
-						const fieldMetadata = await getWebhookSupportedFields.call(
-							this as unknown as ILoadOptionsFunctions,
-							entityType
-						);
+						try {
+							// Get field metadata to determine if each field is standard or UDF
+							const fieldMetadata = await getWebhookSupportedFields.call(
+								this as unknown as ILoadOptionsFunctions,
+								entityType
+							);
 
-						// Skip field processing if no field metadata was found
-						if (!fieldMetadata || Object.keys(fieldMetadata).length === 0) {
-							console.log('No field metadata found. Skipping field processing.');
-						} else {
-							// Determine the structure of the returned field metadata
-							const isResourceMapperFormat = 'fields' in fieldMetadata && Array.isArray(fieldMetadata.fields);
-
-							// Convert to dictionary format if needed
-							let fieldDictionary: Record<string, IFieldDescription>;
-
-							if (isResourceMapperFormat) {
-								// Cast with a more specific type for the fields
-								const resourceMapperFields = fieldMetadata as ResourceMapperFields;
-								const fields = resourceMapperFields.fields || [];
-
-								fieldDictionary = {};
-
-								// Simplify conversion to avoid type errors
-								for (const field of fields) {
-									// Use our custom interface to safely access fields
-									const typedField = field as unknown as IWebhookResourceMapperField;
-									fieldDictionary[typedField.id] = {
-										displayName: typedField.displayName || 'Unknown Field',
-										description: '', // Use empty string to avoid type errors
-										type: typedField.type || 'string',
-										isRequired: Boolean(typedField.required),
-										isUdf: Boolean(typedField.id?.toString().includes('udf')),
-									};
-								}
+							// Skip field processing if no field metadata was found
+							if (!fieldMetadata || Object.keys(fieldMetadata).length === 0) {
+								console.log('No field metadata found. Skipping field processing.');
 							} else {
-								fieldDictionary = fieldMetadata as Record<string, IFieldDescription>;
-							}
+								// Determine the structure of the returned field metadata
+								const isResourceMapperFormat = 'fields' in fieldMetadata && Array.isArray(fieldMetadata.fields);
 
-							// Process and normalize webhook fields using the new helper functions
-							const allFieldConfigurations: Array<{ fieldId: number; isDisplayAlwaysField: boolean; isSubscribedField: boolean; isUdf: boolean }> = [];
+								// Convert to dictionary format if needed
+								let fieldDictionary: Record<string, IFieldDescription>;
 
-							// Process all subscribedFields
-							for (const fieldId of subscribedFields) {
-								// Skip special placeholder values
-								if (fieldId === '__ALL_FIELDS__') continue;
+								if (isResourceMapperFormat) {
+									// Cast with a more specific type for the fields
+									const resourceMapperFields = fieldMetadata as ResourceMapperFields;
+									const fields = resourceMapperFields.fields || [];
 
-								try {
-									// Normalize field ID
-									const normalizedFieldId = normalizeFieldId(fieldId);
+									fieldDictionary = {};
 
-									// Lookup field metadata
-									const fieldInfo = fieldDictionary[fieldId] || fieldDictionary[normalizedFieldId.toString()];
-
-									if (!fieldInfo) {
-										console.warn(`Field info not found for field ID: ${fieldId}. Skipping this field.`);
-										continue;
+									// Simplify conversion to avoid type errors
+									for (const field of fields) {
+										// Use our custom interface to safely access fields
+										const typedField = field as unknown as IWebhookResourceMapperField;
+										fieldDictionary[typedField.id] = {
+											displayName: typedField.displayName || 'Unknown Field',
+											description: '', // Use empty string to avoid type errors
+											type: typedField.type || 'string',
+											isRequired: Boolean(typedField.required),
+											isUdf: Boolean(typedField.id?.toString().includes('udf')),
+										};
 									}
-
-									// Check if this field is also in displayAlwaysFields
-									const isAlsoDisplayAlways = displayAlwaysFields.includes(fieldId);
-
-									// Add to the unified configuration array
-									allFieldConfigurations.push({
-										fieldId: normalizedFieldId,
-										isDisplayAlwaysField: isAlsoDisplayAlways, // Set to true if also in displayAlwaysFields
-										isSubscribedField: true, // subscribedFields should have isSubscribedField=true
-										isUdf: Boolean(fieldInfo.isUdf),
-									});
-								} catch (error) {
-									console.error(`Error processing field ID ${fieldId}: ${(error as Error).message}`);
+								} else {
+									fieldDictionary = fieldMetadata as Record<string, IFieldDescription>;
 								}
-							}
 
-							// Process displayAlwaysFields that are not already processed
-							for (const fieldId of displayAlwaysFields) {
-								// Skip special placeholder values
-								if (fieldId === '__ALL_FIELDS__') continue;
+								// Process and normalize webhook fields using the new helper functions
+								const allFieldConfigurations: Array<{ fieldId: number; isDisplayAlwaysField: boolean; isSubscribedField: boolean; isUdf: boolean }> = [];
 
-								// Skip fields that are already processed (those that were in subscribedFields)
-								if (subscribedFields.includes(fieldId)) continue;
+								// Process all subscribedFields
+								for (const fieldId of subscribedFields) {
+									// Skip special placeholder values
+									if (fieldId === '__ALL_FIELDS__') continue;
 
-								try {
-									// Normalize field ID
-									const normalizedFieldId = normalizeFieldId(fieldId);
+									try {
+										// Normalize field ID
+										const normalizedFieldId = normalizeFieldId(fieldId);
 
-									// Lookup field metadata
-									const fieldInfo = fieldDictionary[fieldId] || fieldDictionary[normalizedFieldId.toString()];
+										// Lookup field metadata
+										const fieldInfo = fieldDictionary[fieldId] || fieldDictionary[normalizedFieldId.toString()];
 
-									if (!fieldInfo) {
-										console.warn(`Field info not found for field ID: ${fieldId}. Skipping this field.`);
-										continue;
-									}
+										if (!fieldInfo) {
+											console.warn(`Field info not found for field ID: ${fieldId}. Skipping this field.`);
+											continue;
+										}
 
-									// Add to the unified configuration array
-									allFieldConfigurations.push({
-										fieldId: normalizedFieldId,
-										isDisplayAlwaysField: true, // displayAlwaysFields have isDisplayAlwaysField=true
-										isSubscribedField: false, // Not a subscribed field
-										isUdf: Boolean(fieldInfo.isUdf),
-									});
-								} catch (error) {
-									console.error(`Error processing field ID ${fieldId}: ${(error as Error).message}`);
-								}
-							}
+										// Check if this field is also in displayAlwaysFields
+										const isAlsoDisplayAlways = displayAlwaysFields.includes(fieldId);
 
-							console.log(`Processing ${allFieldConfigurations.length} fields for webhook...`);
-
-							// Process fields in batch for efficiency
-							if (allFieldConfigurations.length > 0) {
-								// Group by UDF status for better logging
-								const standardFields = allFieldConfigurations.filter(f => !f.isUdf);
-								const udfFields = allFieldConfigurations.filter(f => f.isUdf);
-
-								// Process standard fields
-								if (standardFields.length > 0) {
-									const standardResults = await processBatchFields(
-										this,
-										standardFields,
-										{ entityType, webhookId },
-										{ concurrencyLimit: 10 }
-									);
-
-									if (standardResults.failed > 0) {
-										console.warn(`Failed to add ${standardResults.failed} standard fields`);
+										// Add to the unified configuration array
+										allFieldConfigurations.push({
+											fieldId: normalizedFieldId,
+											isDisplayAlwaysField: isAlsoDisplayAlways, // Set to true if also in displayAlwaysFields
+											isSubscribedField: true, // subscribedFields should have isSubscribedField=true
+											isUdf: Boolean(fieldInfo.isUdf),
+										});
+									} catch (error) {
+										console.error(`Error processing field ID ${fieldId}: ${(error as Error).message}`);
 									}
 								}
 
-								// Process UDF fields
-								if (udfFields.length > 0) {
-									const udfResults = await processBatchFields(
-										this,
-										udfFields,
-										{ entityType, webhookId },
-										{ concurrencyLimit: 10 }
-									);
+								// Process displayAlwaysFields that are not already processed
+								for (const fieldId of displayAlwaysFields) {
+									// Skip special placeholder values
+									if (fieldId === '__ALL_FIELDS__') continue;
 
-									if (udfResults.failed > 0) {
-										console.warn(`Failed to add ${udfResults.failed} UDF fields`);
+									// Skip fields that are already processed (those that were in subscribedFields)
+									if (subscribedFields.includes(fieldId)) continue;
+
+									try {
+										// Normalize field ID
+										const normalizedFieldId = normalizeFieldId(fieldId);
+
+										// Lookup field metadata
+										const fieldInfo = fieldDictionary[fieldId] || fieldDictionary[normalizedFieldId.toString()];
+
+										if (!fieldInfo) {
+											console.warn(`Field info not found for field ID: ${fieldId}. Skipping this field.`);
+											continue;
+										}
+
+										// Add to the unified configuration array
+										allFieldConfigurations.push({
+											fieldId: normalizedFieldId,
+											isDisplayAlwaysField: true, // displayAlwaysFields have isDisplayAlwaysField=true
+											isSubscribedField: false, // Not a subscribed field
+											isUdf: Boolean(fieldInfo.isUdf),
+										});
+									} catch (error) {
+										console.error(`Error processing field ID ${fieldId}: ${(error as Error).message}`);
+									}
+								}
+
+								console.log(`Processing ${allFieldConfigurations.length} fields for webhook...`);
+
+								// Process fields in batch for efficiency - throw error if any field fails
+								if (allFieldConfigurations.length > 0) {
+									// Group by UDF status for better logging
+									const standardFields = allFieldConfigurations.filter(f => !f.isUdf);
+									const udfFields = allFieldConfigurations.filter(f => f.isUdf);
+
+									// Process standard fields
+									if (standardFields.length > 0) {
+										await processBatchFields(
+											this,
+											standardFields,
+											{ entityType, webhookId },
+											{ concurrencyLimit: 10, throwOnError: true }
+										);
+									}
+
+									// Process UDF fields
+									if (udfFields.length > 0) {
+										await processBatchFields(
+											this,
+											udfFields,
+											{ entityType, webhookId },
+											{ concurrencyLimit: 10, throwOnError: true }
+										);
 									}
 								}
 							}
+						} catch (error) {
+							// An error occurred during field configuration, clean up the webhook and re-throw
+							console.error(`Field configuration failed: ${(error as Error).message}`);
+							throw error;
 						}
 					}
 
 					// Add excluded resources to the webhook if specified
 					if (excludedResourceIds.length > 0) {
-						console.log(`Processing ${excludedResourceIds.length} excluded resources...`);
+						try {
+							console.log(`Processing ${excludedResourceIds.length} excluded resources...`);
 
-						// Process resources in batches
-						const resourceResults = await processBatchResources(
-							this,
-							excludedResourceIds,
-							{ entityType, webhookId },
-							{ concurrencyLimit: 10, batchSize: 20 }
-						);
-
-						if (resourceResults.failed > 0) {
-							console.warn(`Failed to exclude ${resourceResults.failed} resources`);
+							// Process resources in batches - throw error if any resource fails
+							await processBatchResources(
+								this,
+								excludedResourceIds,
+								{ entityType, webhookId },
+								{ concurrencyLimit: 10, batchSize: 20, throwOnError: true }
+							);
+						} catch (error) {
+							// An error occurred during resource exclusion, clean up the webhook and re-throw
+							console.error(`Resource exclusion failed: ${(error as Error).message}`);
+							throw error;
 						}
 					}
 
@@ -652,6 +654,34 @@ export class AutotaskTrigger implements INodeType {
 					return true;
 				} catch (error) {
 					console.error('Webhook creation failed with error:', error);
+
+					// Clean up partially created webhook
+					if (webhookId) {
+						try {
+							const entityType = this.getNodeParameter('entityType') as string;
+							console.log(`Cleaning up partially created webhook with ID ${webhookId}...`);
+							await autotaskApiRequest.call(
+								this,
+								'DELETE',
+								buildWebhookUrl(WebhookUrlType.WEBHOOK_SPECIFIC, {
+									entityType,
+									id: webhookId as string | number
+								}),
+								{},
+							);
+							console.log(`Successfully deleted partially created webhook ${webhookId}`);
+
+							// Clear webhook ID from static data
+							const webhookStaticData = this.getWorkflowStaticData('node');
+							webhookStaticData.webhookId = undefined;
+							webhookStaticData.secretKey = undefined;
+						} catch (cleanupError) {
+							console.error(`Failed to clean up webhook ${webhookId}:`, cleanupError);
+							// Continue with the original error even if cleanup fails
+						}
+					}
+
+					// Re-throw with clear error message
 					throw new NodeOperationError(
 						this.getNode(),
 						`Error creating webhook: ${(error as Error).message}`,

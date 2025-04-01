@@ -18,6 +18,15 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
+## [0.5.8] - 2025-04-01
+
+### Fixed
+- Improved webhook creation error handling:
+  - Added field/resource configuration retries (3 attempts with exponential backoff)
+  - Fixed detection of field configuration failures
+  - Implemented automatic cleanup of partial webhooks on failure
+  - Enhanced error reporting and validation
+
 ## [0.5.7] - 2024-03-31
 
 ### Fixed

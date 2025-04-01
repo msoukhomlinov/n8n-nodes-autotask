@@ -32,11 +32,12 @@ export function normalizeFieldId(fieldId: string | number): number {
  * Adds a field to a webhook with appropriate configuration
  * @param context The function context (IHookFunctions, IExecuteFunctions, etc.)
  * @param options Field addition options
- * @returns Promise resolving to success status
+ * @param maxRetries Maximum number of retry attempts for transient errors
+ * @returns Promise resolving to success status with optional error information
  *
  * @example
  * // Add a field to a webhook
- * const success = await addFieldToWebhook(this, {
+ * const result = await addFieldToWebhook(this, {
  *   entityType: 'Tickets',
  *   webhookId: 123,
  *   fieldId: 456,
@@ -47,12 +48,15 @@ export function normalizeFieldId(fieldId: string | number): number {
  */
 export async function addFieldToWebhook(
   context: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-  options: IFieldAdditionOptions
-): Promise<boolean> {
+  options: IFieldAdditionOptions,
+  maxRetries = 3
+): Promise<{ success: boolean; error?: string }> {
   const { entityType, webhookId, fieldId, isUdf, isDisplayAlwaysField, isSubscribedField } = options;
+  let attempts = 0;
+  let lastError: Error | null = null;
 
-  try {
-    await handleErrors(context as unknown as IExecuteFunctions, async () => {
+  while (attempts < maxRetries) {
+    try {
       const urlType = isUdf ? WebhookUrlType.WEBHOOK_UDF_FIELDS : WebhookUrlType.WEBHOOK_FIELDS;
       const url = buildWebhookUrl(urlType, { entityType, parentId: webhookId });
 
@@ -65,15 +69,36 @@ export async function addFieldToWebhook(
 
       await autotaskApiRequest.call(context, 'POST', url, payload);
       console.log(`Added ${isUdf ? 'UDF' : 'standard'} field: ${fieldId} (displayAlways=${isDisplayAlwaysField}, subscribed=${isSubscribedField})`);
-    }, {
-      operation: 'addFieldToWebhook',
-      entityType,
-    });
-    return true;
-  } catch (error) {
-    // Detailed error already handled by handleErrors, just return false
-    return false;
+      return { success: true };
+    } catch (error) {
+      lastError = error as Error;
+
+      // Check if error is retryable
+      const isRetryable =
+        lastError.message.includes('timeout') ||
+        lastError.message.includes('network') ||
+        lastError.message.includes('429') ||
+        lastError.message.includes('503');
+
+      if (!isRetryable) {
+        // Non-retryable error, break immediately
+        break;
+      }
+
+      attempts++;
+      if (attempts < maxRetries) {
+        // Exponential backoff with jitter
+        const delayMs = Math.min(1000 * Math.pow(2, attempts) + Math.random() * 500, 10000);
+        console.log(`Retrying field ${fieldId} (attempt ${attempts+1}/${maxRetries}) after ${delayMs}ms delay...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
   }
+
+  // All retries failed
+  const errorMsg = `Failed to add field ${fieldId} after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`;
+  console.error(errorMsg);
+  return { success: false, error: errorMsg };
 }
 
 /**
@@ -118,7 +143,6 @@ export async function processBatchFields(
       console.log(`Processing batch of ${fields.length} webhook fields with concurrency limit of ${concurrencyLimit}...`);
 
       // Results container
-      const results: boolean[] = [];
       const failedIds: number[] = [];
       const errors: Record<string, unknown>[] = [];
       let successCount = 0;
@@ -135,8 +159,6 @@ export async function processBatchFields(
         console.log(`Processing batch ${batchIndex + 1}/${batches.length} with ${batch.length} fields...`);
 
         // Process current batch with concurrency limit
-        const batchPromises: Promise<boolean>[] = [];
-
         // Create chunks within each batch for concurrency control
         for (let i = 0; i < batch.length; i += concurrencyLimit) {
           const chunk = batch.slice(i, i + concurrencyLimit);
@@ -150,19 +172,35 @@ export async function processBatchFields(
               isUdf: field.isUdf,
               isDisplayAlwaysField: field.isDisplayAlwaysField,
               isSubscribedField: field.isSubscribedField,
+            }, 3).then(result => {
+              if (!result.success) {
+                errors.push({
+                  fieldId: field.fieldId,
+                  error: result.error || 'Unknown error',
+                });
+                return { success: false, fieldId: field.fieldId };
+              }
+              return { success: true, fieldId: field.fieldId };
             }).catch(error => {
               errors.push({
                 fieldId: field.fieldId,
                 error: error.message || 'Unknown error',
               });
-              return false;
+              return { success: false, fieldId: field.fieldId };
             })
           );
 
           // Wait for the current chunk to complete before processing the next chunk
           const chunkResults = await Promise.all(chunkPromises);
-          batchPromises.push(...chunkPromises);
-          results.push(...chunkResults);
+
+          // Record results
+          for (const result of chunkResults) {
+            if (result.success) {
+              successCount++;
+            } else {
+              failedIds.push(result.fieldId);
+            }
+          }
         }
 
         // Add pause between batches if configured (not after the final batch)
@@ -172,16 +210,13 @@ export async function processBatchFields(
         }
       }
 
-      // Calculate final statistics
-      for (const [index, succeeded] of results.entries()) {
-        if (succeeded) {
-          successCount++;
-        } else if (index < fields.length) { // Safety check for index
-          failedIds.push(fields[index].fieldId);
-        }
-      }
-
       console.log(`Batch processing completed: ${successCount} succeeded, ${failedIds.length} failed`);
+
+      // If throwOnError is true and we have failures, throw an error
+      if (throwOnError && failedIds.length > 0) {
+        const errorMsg = `Failed to configure ${failedIds.length} webhook fields after retries: ${failedIds.join(', ')}`;
+        throw new Error(errorMsg);
+      }
 
       return {
         success: successCount,
