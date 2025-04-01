@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.5.7-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.5.8-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 > **IMPORTANT**: After updating this node to a new version, a restart of your n8n instance is highly recommended to ensure all changes are properly applied.
@@ -59,6 +59,7 @@ The node supports the following Autotask resources:
 
 | Resource | Description |
 |----------|-------------|
+| API Threshold | Check Autotask API usage limits and current usage levels |
 | Billing Code | Manage billing codes for time entries and charges |
 | Company | Manage organisations in Autotask |
 | Company Alert | Manage alerts associated with companies |
@@ -166,6 +167,18 @@ The node includes an Autotask Trigger node that can receive webhook events from 
 - **Reference Label Enrichment**: Add human-readable labels for reference fields
 - **File-based Caching**: Improved performance with persistent caching that can be shared between workflows and runs
 - **Timezone Handling**: Automatic conversion between local time and UTC
+- **API Usage Monitoring**: Check current API usage thresholds and limits using the API Threshold resource to help prevent hitting rate limits and ensure smooth operations
+
+### API Threshold Resource
+
+The API Threshold resource provides a simple way to monitor your Autotask API usage limits and current consumption. This helps users:
+- Track how many API requests have been made in the current timeframe
+- See the maximum allowed requests (threshold limit)
+- View the usage as a percentage and categorized level (Normal, Moderate, High, Critical)
+- Calculate remaining available requests
+- Monitor timeframe duration for rate limits
+
+This is particularly useful for workflows that make many API calls, allowing you to implement conditional logic based on current usage levels to avoid hitting rate limits and ensure continuous operation.
 
 ### AI Tool Integration
 
@@ -277,6 +290,24 @@ An AI agent might use the Autotask node to:
 6. Enable **Select Columns** to choose specific fields to return
 7. Enable **Add Reference Labels** and **Add Picklist Labels** for human-readable values
 8. Execute the workflow to retrieve tickets that are not complete AND either have priority 6 OR are due within the next 3 days
+
+### Example: Monitoring API Usage with API Threshold
+
+1. Add an **Autotask** node to your workflow
+2. Select **API Threshold** as the resource
+3. The operation **Get API Usage** will be automatically selected (it's the only available operation)
+4. Execute the node to receive current API usage information including:
+   - Current usage count
+   - Maximum threshold (limit)
+   - Usage percentage
+   - Usage level (Normal, Moderate, High, Critical)
+   - Remaining requests
+   - Timeframe duration
+5. You can use this information with IF nodes to implement conditional logic:
+   - Pause workflows when usage is too high
+   - Throttle requests during peak usage periods
+   - Log warnings when approaching limits
+   - Only execute non-critical operations when usage is below certain thresholds
 
 ### Advanced Example: Working with Parent-Child Relationships
 

@@ -5,6 +5,11 @@ import type { INodePropertyOptions, INodeProperties } from 'n8n-workflow';
  */
 export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 	{
+		name: 'API Threshold',
+		value: 'apiThreshold',
+		description: 'Check Autotask API usage limits and current threshold levels',
+	},
+	{
 		name: 'Billing Code',
 		value: 'billingCode',
 		description: 'Query Billing Codes (Allocation Codes), which categorise billing items such as work types, materials, expenses, and services',

@@ -28,6 +28,14 @@ export const API_CONSTANTS = {
 	MAX_UDF_PER_QUERY: 1,
 	/** Maximum length of GET request URLs */
 	MAX_GET_LENGTH: 2048,
+	/** Maximum number of API requests per hour */
+	MAX_REQUESTS_PER_HOUR: 10000,
+	/** Maximum number of retry attempts */
+	MAX_RETRIES: 3,
+	/** Base delay for exponential backoff (ms) */
+	BASE_BACKOFF_DELAY: 1000,
+	/** Maximum backoff delay (ms) */
+	MAX_BACKOFF_DELAY: 30000,
 } as const;
 
 /** Pagination limits */

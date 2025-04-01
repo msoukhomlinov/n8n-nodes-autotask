@@ -21,6 +21,8 @@ import { getResourcesForExclusion, processBatchResources } from './helpers/webho
 import { WebhookUrlType, buildWebhookUrl } from './helpers/webhook/urls';
 import { randomBytes } from 'node:crypto';
 import { normalizeFieldId, processBatchFields } from './helpers/webhook/fieldConfiguration';
+import { fetchThresholdInformation } from './helpers/http/request';
+import { initializeRateTracker } from './helpers/http/initRateTracker';
 
 // Create a more specific interface for the ResourceMapperField
 interface IWebhookResourceMapperField {
@@ -386,6 +388,24 @@ export class AutotaskTrigger implements INodeType {
 			 */
 			async create(this: IHookFunctions): Promise<boolean> {
 				try {
+					// Initialize rate tracker with API threshold information
+					await initializeRateTracker(this);
+
+					// Check Autotask API usage
+					try {
+						const thresholdInfo = await fetchThresholdInformation.call(this);
+						if (thresholdInfo) {
+							const usagePercent = (thresholdInfo.currentTimeframeRequestCount / thresholdInfo.externalRequestThreshold) * 100;
+							console.log(`Current Autotask API usage: ${thresholdInfo.currentTimeframeRequestCount}/${thresholdInfo.externalRequestThreshold} (${usagePercent.toFixed(2)}%)`);
+
+							if (usagePercent > 75) {
+								console.warn(`High Autotask API usage detected: ${usagePercent.toFixed(2)}%`);
+							}
+						}
+					} catch (error) {
+						console.error('Failed to check Autotask API usage:', error);
+					}
+
 					console.log('Creating Autotask webhook...');
 
 					const webhookUrl = this.getNodeWebhookUrl('default');
@@ -637,14 +657,34 @@ export class AutotaskTrigger implements INodeType {
 
 						// Process resources in batches
 						const resourceResults = await processBatchResources(
-							this,
 							excludedResourceIds,
-							{ entityType, webhookId },
+							async (resourceId) => {
+								try {
+									const resourceUrl = buildWebhookUrl(WebhookUrlType.WEBHOOK_RESOURCES, {
+										entityType,
+										parentId: webhookId,
+									});
+
+									await autotaskApiRequest.call(
+										this,
+										'POST',
+										resourceUrl,
+										{
+											webhookID: webhookId,
+											resourceID: resourceId,
+										},
+									);
+									return true;
+								} catch (error) {
+									console.error(`Failed to exclude resource ${resourceId}:`, error);
+									return false;
+								}
+							},
 							{ concurrencyLimit: 10, batchSize: 20 }
 						);
 
-						if (resourceResults.failed > 0) {
-							console.warn(`Failed to exclude ${resourceResults.failed} resources`);
+						if (resourceResults.failures > 0) {
+							console.warn(`Failed to exclude ${resourceResults.failures} resources`);
 						}
 					}
 

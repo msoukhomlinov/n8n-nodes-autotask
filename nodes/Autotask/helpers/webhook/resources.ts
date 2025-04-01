@@ -2,8 +2,9 @@ import type { ILoadOptionsFunctions, IHookFunctions, IExecuteFunctions } from 'n
 import { autotaskApiRequest } from '../http';
 import { WebhookUrlType, buildWebhookUrl, validateEntityType } from './urls';
 import { handleErrors } from '../errorHandler';
-import type { IBatchOptions, IBatchResult } from './batchTypes';
+import type { IBatchOptions } from './batchTypes';
 import { initializeCache } from '../cache/init';
+import { API_CONSTANTS } from '../../constants/api';
 
 /**
  * Interface for resource (user) data
@@ -224,142 +225,108 @@ export function batchResourcesForExclusion(
 }
 
 /**
- * Processes a batch of resources and adds them to the webhook
- * with configurable concurrency and batching
- *
- * @param context The function context
- * @param resourceIds Array of resource IDs to process
- * @param commonOptions Common options for all resources
- * @param batchOptions Batching and concurrency options
- * @returns Promise resolving to results of resource additions
- *
- * @example
-  * const result = await processBatchResources(this, resourceIds,
- *   { entityType: 'Tickets', webhookId: 123 },
- *   { batchSize: 20, concurrencyLimit: 5, batchPauseMs: 1000 }
- * );
- * console.log(`Added ${result.success} resources successfully`);
+ * Process a batch of resources with optimised API usage and rate limiting
  */
-export async function processBatchResources(
-	context: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	resourceIds: number[],
-	commonOptions: { entityType: string; webhookId: string | number },
-	batchOptions: IBatchOptions = {},
-): Promise<IBatchResult> {
-	const { entityType, webhookId } = commonOptions;
+export async function processBatchResources<T>(
+	resources: T[],
+	processFunction: (resource: T) => Promise<boolean>,
+	options: IBatchOptions = {},
+): Promise<{ successes: number; failures: number }> {
 	const {
-		concurrencyLimit = 10,
-		batchSize = 50,
+		batchSize = API_CONSTANTS.MAX_BATCH_SIZE,
 		batchPauseMs = 0,
+		concurrencyLimit = API_CONSTANTS.MAX_CONCURRENT_REQUESTS,
 		throwOnError = false,
-	} = batchOptions;
+		maxRetries = API_CONSTANTS.MAX_RETRIES,
+		retryPauseMs = API_CONSTANTS.BASE_BACKOFF_DELAY,
+	} = options;
 
-	// Skip processing if no resources
-	if (!resourceIds.length) {
-		return { success: 0, failed: 0, failedIds: [] };
-	}
+	const results = {
+		successes: 0,
+		failures: 0,
+	};
 
-	try {
-		return await handleErrors(context as unknown as IExecuteFunctions, async () => {
-			console.log(`Processing batch of ${resourceIds.length} excluded resources with concurrency limit of ${concurrencyLimit}...`);
+	// Process resources in batches
+	for (let i = 0; i < resources.length; i += batchSize) {
+		const batch = resources.slice(i, i + batchSize);
+		const failedResources: T[] = [];
 
-			// Results container
-			const failedIds: number[] = [];
-			const errors: Record<string, unknown>[] = [];
-			let successCount = 0;
+		// Process batch with concurrency limit
+		const promises = batch.map(resource => {
+			return processFunction(resource)
+				.then(success => {
+					if (success) {
+						results.successes++;
+					} else {
+						failedResources.push(resource);
+						results.failures++;
+					}
+				})
+				.catch(error => {
+					console.error('Error processing resource:', error);
+					failedResources.push(resource);
+					results.failures++;
+					if (throwOnError) {
+						throw error;
+					}
+				});
+		});
 
-			// Format and batch resources
-			const formattedResources = formatExcludedResources(resourceIds);
+		// Execute promises with concurrency limit
+		for (let j = 0; j < promises.length; j += concurrencyLimit) {
+			const batchPromises = promises.slice(j, j + concurrencyLimit);
+			await Promise.all(batchPromises);
 
-			// Split into batches
-			const batches: Array<Array<{ resourceID: number }>> = [];
-			for (let i = 0; i < formattedResources.length; i += batchSize) {
-				batches.push(formattedResources.slice(i, i + batchSize));
+			// Add pause between concurrent batches if specified
+			if (batchPauseMs > 0 && j + concurrencyLimit < promises.length) {
+				await new Promise(resolve => setTimeout(resolve, batchPauseMs));
 			}
+		}
 
-			// Process each batch
-			for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-				const batch = batches[batchIndex];
-				console.log(`Processing batch ${batchIndex + 1}/${batches.length} with ${batch.length} resources...`);
+		// Retry failed resources with reduced concurrency
+		if (failedResources.length > 0 && maxRetries > 0) {
+			console.log(`Retrying ${failedResources.length} failed resources...`);
 
-				// Process current batch with concurrency limit
-				for (let i = 0; i < batch.length; i += concurrencyLimit) {
-					const chunk = batch.slice(i, i + concurrencyLimit);
+			// Reset failure count for retries
+			results.failures -= failedResources.length;
 
-					// Process each resource in the chunk concurrently
-					const chunkPromises = chunk.map(resource =>
-						(async () => {
-							try {
-								const resourceUrl = buildWebhookUrl(WebhookUrlType.WEBHOOK_RESOURCES, {
-									entityType,
-									parentId: webhookId,
-								});
+			// Process retries sequentially with exponential backoff
+			for (const resource of failedResources) {
+				let retryAttempt = 0;
+				let success = false;
 
-								await autotaskApiRequest.call(
-									context,
-									'POST',
-									resourceUrl,
-									{
-										webhookID: webhookId,
-										resourceID: resource.resourceID,
-									},
-								);
-								return { success: true, resourceId: resource.resourceID };
-							} catch (error) {
-								errors.push({
-									resourceId: resource.resourceID,
-									error: (error as Error).message || 'Unknown error',
-								});
-								return { success: false, resourceId: resource.resourceID };
-							}
-						})()
-					);
+				while (retryAttempt < maxRetries && !success) {
+					try {
+						// Add exponential backoff delay
+						const backoffDelay = retryPauseMs * (2 ** retryAttempt);
+						await new Promise(resolve => setTimeout(resolve, backoffDelay));
 
-					// Wait for the current chunk to complete before processing the next chunk
-					const chunkResults = await Promise.all(chunkPromises);
-
-					// Record results
-					for (const result of chunkResults) {
-						if (result.success) {
-							successCount++;
+						success = await processFunction(resource);
+						if (success) {
+							results.successes++;
 						} else {
-							failedIds.push(result.resourceId);
+							results.failures++;
+							retryAttempt++;
+						}
+					} catch (error) {
+						console.error(`Retry attempt ${retryAttempt + 1} failed:`, error);
+						retryAttempt++;
+						if (retryAttempt === maxRetries) {
+							results.failures++;
+							if (throwOnError) {
+								throw error;
+							}
 						}
 					}
 				}
-
-				// Add pause between batches if configured (not after the final batch)
-				if (batchPauseMs > 0 && batchIndex < batches.length - 1) {
-					console.log(`Pausing for ${batchPauseMs}ms before next batch...`);
-					await new Promise(resolve => setTimeout(resolve, batchPauseMs));
-				}
 			}
-
-			console.log(`Batch processing completed: ${successCount} resources added successfully, ${failedIds.length} failed`);
-
-			return {
-				success: successCount,
-				failed: failedIds.length,
-				failedIds,
-				errors: errors.length > 0 ? errors : undefined,
-			};
-		}, {
-			operation: 'processBatchResources',
-			entityType,
-		});
-	} catch (error) {
-		// If the entire batch operation fails
-		console.error(`Batch processing failed for ${entityType} webhook ${webhookId}`);
-
-		if (throwOnError) {
-			throw error;
 		}
 
-		return {
-			success: 0,
-			failed: resourceIds.length,
-			failedIds: resourceIds,
-			errors: [{ error: (error as Error).message || 'Unknown error' }],
-		};
+		// Add pause between main batches if specified
+		if (batchPauseMs > 0 && i + batchSize < resources.length) {
+			await new Promise(resolve => setTimeout(resolve, batchPauseMs));
+		}
 	}
+
+	return results;
 }

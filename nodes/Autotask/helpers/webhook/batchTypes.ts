@@ -29,6 +29,18 @@ export interface IBatchOptions {
    * @default false
    */
   throwOnError?: boolean;
+
+  /**
+   * Maximum number of retry attempts for failed items
+   * @default 3
+   */
+  maxRetries?: number;
+
+  /**
+   * Pause between retry attempts (in milliseconds)
+   * @default 1000
+   */
+  retryPauseMs?: number;
 }
 
 /**

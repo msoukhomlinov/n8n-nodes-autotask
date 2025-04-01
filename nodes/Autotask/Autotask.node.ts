@@ -108,6 +108,8 @@ import { contactWebhookFields } from './resources/contactWebhooks';
 import { ticketNoteWebhookFields } from './resources/ticketNoteWebhooks';
 import { executeTicketWebhookOperation } from './resources/ticketWebhooks/execute';
 import { ticketWebhookFields } from './resources/ticketWebhooks/description';
+import { apiThresholdDescription } from './resources/apiThreshold/description';
+import { executeApiThresholdOperation } from './resources/apiThreshold/execute';
 
 /**
  * Autotask node implementation
@@ -142,6 +144,18 @@ export class Autotask implements INodeType {
 				options: RESOURCE_DEFINITIONS,
 				default: 'company',
 			},
+			...addOperationsToResource(apiThresholdDescription, {
+				resourceName: 'apiThreshold',
+				excludeOperations: [
+					'entityInfo',
+					'getMany',
+					'getManyAdvanced',
+					'picklistLabels',
+					'referenceLabels',
+					'selectColumns',
+					'flattenUdfs'
+				]
+			}),
 			...addOperationsToResource(companyFields, { resourceName: 'company' }),
 			...addOperationsToResource(companyAlertFields, { resourceName: 'companyAlert' }),
 			...addOperationsToResource(companyNoteFields, { resourceName: 'companyNote' }),
@@ -200,6 +214,8 @@ export class Autotask implements INodeType {
 
 		// Handle resource-specific operations
 		switch (resource) {
+			case 'apiThreshold':
+				return executeApiThresholdOperation.call(this);
 			case 'billingCode':
 				return executeBillingCodeOperation.call(this);
 			case 'company':
