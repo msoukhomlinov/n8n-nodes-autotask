@@ -283,6 +283,17 @@ export class AutotaskApi implements ICredentialType {
 				},
 			},
 		},
+		{
+			displayName: 'WARNING: Disabling Cache Causes High API Usage',
+			name: 'cachingWarning',
+			type: 'notice',
+			default: 'This node uses dynamic picklists and field enrichers that convert numerical values to human-readable labels. Disabling caching will result in separate API calls for each lookup, potentially causing high API usage and rate limits.',
+			displayOptions: {
+				show: {
+					cacheEnabled: [false],
+				},
+			},
+		},
 	];
 
 	authenticate: IAuthenticateGeneric = {

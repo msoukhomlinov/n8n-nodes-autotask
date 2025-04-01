@@ -350,6 +350,8 @@ The node includes an enhanced file-based caching system to improve performance b
 - **File-based Cache**: Cache is stored in files that can be shared between workflows and runs
 - **Cache Directory**: Optional path to a directory where cache files will be stored
 
+> **IMPORTANT**: This node uses dynamic picklists and field enrichers to convert numerical values into human-readable labels through dynamic lookups. It's strongly recommended to keep caching enabled to avoid excessive API calls. Without caching, each picklist and reference field lookup requires separate API calls, which can quickly consume your API rate limits, especially in workflows with many operations or large data sets.
+
 ### Label Enrichment
 
 The node provides options to enrich entities with human-readable labels:
@@ -393,6 +395,7 @@ All dates and times in the Autotask API are in UTC. The node automatically conve
 - Large queries may be slow and should be optimised with filters
 - Column selection can significantly improve performance by reducing payload size
 - Complex workflows with many API calls may hit rate limits
+- Disabling caching when using picklist or reference label enrichment can lead to a high volume of API calls, potentially triggering rate limits. Each field being enriched requires a separate API call when cache is not available.
 
 ## Troubleshooting
 
