@@ -295,73 +295,12 @@ export async function processBatchResources<T>(
 				let retryAttempt = 0;
 				let success = false;
 
-<<<<<<< HEAD
+				// Try up to maxRetries times for transient errors
 				while (retryAttempt < maxRetries && !success) {
 					try {
 						// Add exponential backoff delay
 						const backoffDelay = retryPauseMs * (2 ** retryAttempt);
 						await new Promise(resolve => setTimeout(resolve, backoffDelay));
-=======
-								// Try up to 3 times for transient errors
-								let attempts = 0;
-								const maxRetries = 3;
-								let lastError: Error | null = null;
-
-								while (attempts < maxRetries) {
-									try {
-										await autotaskApiRequest.call(
-											context,
-											'POST',
-											resourceUrl,
-											{
-												webhookID: webhookId,
-												resourceID: resource.resourceID,
-											},
-										);
-										return { success: true, resourceId: resource.resourceID };
-									} catch (error) {
-										lastError = error as Error;
-
-										// Check if error is retryable
-										const isRetryable =
-											lastError.message.includes('timeout') ||
-											lastError.message.includes('network') ||
-											lastError.message.includes('429') ||
-											lastError.message.includes('503');
-
-										if (!isRetryable) {
-											// Non-retryable error, break immediately
-											break;
-										}
-
-										attempts++;
-										if (attempts < maxRetries) {
-											// Exponential backoff with jitter
-											const delayMs = Math.min(1000 * Math.pow(2, attempts) + Math.random() * 500, 10000);
-											console.log(`Retrying resource ${resource.resourceID} (attempt ${attempts+1}/${maxRetries}) after ${delayMs}ms delay...`);
-											await new Promise(resolve => setTimeout(resolve, delayMs));
-										}
-									}
-								}
-
-								// All retries failed
-								const errorMsg = `Failed to add resource ${resource.resourceID} after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`;
-								console.error(errorMsg);
-								errors.push({
-									resourceId: resource.resourceID,
-									error: errorMsg,
-								});
-								return { success: false, resourceId: resource.resourceID };
-							} catch (error) {
-								errors.push({
-									resourceId: resource.resourceID,
-									error: (error as Error).message || 'Unknown error',
-								});
-								return { success: false, resourceId: resource.resourceID };
-							}
-						})()
-					);
->>>>>>> 0e4d842b047f1b710e4dec4dc6af21ced2d0aa16
 
 						success = await processFunction(resource);
 						if (success) {
@@ -382,34 +321,6 @@ export async function processBatchResources<T>(
 					}
 				}
 			}
-<<<<<<< HEAD
-=======
-
-			console.log(`Batch processing completed: ${successCount} resources added successfully, ${failedIds.length} failed`);
-
-			// If throwOnError is true and we have failures, throw an error
-			if (throwOnError && failedIds.length > 0) {
-				const errorMsg = `Failed to exclude ${failedIds.length} resources after retries: ${failedIds.join(', ')}`;
-				throw new Error(errorMsg);
-			}
-
-			return {
-				success: successCount,
-				failed: failedIds.length,
-				failedIds,
-				errors: errors.length > 0 ? errors : undefined,
-			};
-		}, {
-			operation: 'processBatchResources',
-			entityType,
-		});
-	} catch (error) {
-		// If the entire batch operation fails
-		console.error(`Batch processing failed for ${entityType} webhook ${webhookId}`);
-
-		if (throwOnError) {
-			throw error;
->>>>>>> 0e4d842b047f1b710e4dec4dc6af21ced2d0aa16
 		}
 
 		// Add pause between main batches if specified
