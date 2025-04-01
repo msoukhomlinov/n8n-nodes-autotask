@@ -301,7 +301,6 @@ export async function autotaskApiRequest<T = JsonObject>(
 	body: IRequestConfig['body'] = {},
 	query: IRequestConfig['query'] = {},
 ): Promise<T> {
-	console.debug('\nDebug: Starting API request:', { method, endpoint });
 	const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
 	const baseUrl = credentials.zone;
 
@@ -331,11 +330,6 @@ export async function autotaskApiRequest<T = JsonObject>(
 		options.body = body;
 	}
 
-	console.debug(`API ${method} ${options.url}`);
-	if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
-		console.debug('Request Body:', JSON.stringify(options.body, null, 2));
-	}
-
 	let retryAttempt = 0;
 	const maxRetries = API_CONSTANTS.MAX_RETRIES;
 
@@ -345,7 +339,6 @@ export async function autotaskApiRequest<T = JsonObject>(
 			await handleRateLimit(retryAttempt);
 
 			const response = await this.helpers.request(options);
-			console.debug('API Response:', JSON.stringify(response, null, 2));
 
 			// Handle empty responses
 			if (!response) {
@@ -372,14 +365,10 @@ export async function autotaskApiRequest<T = JsonObject>(
 
 			// Handle modification operations next (POST, PUT, PATCH, DELETE)
 			if (isModificationOperation(method, endpoint)) {
-				console.debug('Debug: Processing modification response:', JSON.stringify(response, null, 2));
 				const modResponse = response as IAutotaskSuccessResponse;
-				console.debug('Debug: Parsed modResponse:', JSON.stringify(modResponse, null, 2));
 
 				// For child entity operations (e.g. tasks under projects)
 				if (endpoint.includes('/') && endpoint.split('/').length > 2) {
-					console.debug('Debug: Handling child entity operation');
-
 					const modResponse = response as IAutotaskSuccessResponse;
 					if ('itemId' in modResponse) {
 						return { item: { itemId: modResponse.itemId } } as T;
@@ -389,10 +378,8 @@ export async function autotaskApiRequest<T = JsonObject>(
 				// For regular entity operations
 				if ('id' in modResponse || 'itemId' in modResponse) {
 					const idField = 'id' in modResponse ? 'id' : 'itemId';
-					console.debug(`Debug: Found ${idField} in response with value:`, modResponse[idField]);
 					return { item: { [idField]: modResponse[idField] } } as T;
 				}
-				console.debug('Debug: No id/itemId property found in response');
 				throw new Error(`Invalid modification response: missing id/itemId for ${method} ${endpoint}`);
 			}
 

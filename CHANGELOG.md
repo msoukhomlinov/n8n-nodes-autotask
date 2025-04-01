@@ -18,7 +18,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
-## [0.5.8] - 2025-04-01
+## [0.5.9] - 2025-04-01
 
 ### Added
 - Added API Threshold resource for checking API usage limits:
@@ -32,6 +32,9 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
     - Remaining available requests
     - Timeframe duration
 
+
+## [0.5.8] - 2025-04-01
+
 ### Fixed
 - Improved webhook creation error handling:
   - Added field/resource configuration retries (3 attempts with exponential backoff)
@@ -39,10 +42,12 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - Implemented automatic cleanup of partial webhooks on failure
   - Enhanced error reporting and validation
 
+
 ## [0.5.7] - 2025-03-31
 
 ### Fixed
 - Added version-aware caching to ensure cache invalidation on node updates
+
 
 ## [0.5.6] - 2025-03-30
 
