@@ -20,6 +20,7 @@ import type { IApiError } from '../../types/base/api';
 import type { OperationType } from '../../types/base/entity-types';
 import { handleRateLimit } from './rateLimit';
 import { API_CONSTANTS } from '../../constants/api';
+import { endpointThreadTracker } from './threadLimit';
 
 interface IAutotaskSuccessResponse {
 	id?: number;
@@ -333,8 +334,15 @@ export async function autotaskApiRequest<T = JsonObject>(
 	let retryAttempt = 0;
 	const maxRetries = API_CONSTANTS.MAX_RETRIES;
 
+	// Extract the base endpoint name for thread tracking
+	// This gets the root entity type (e.g., "Tickets" from "Tickets/123" or "Tickets/query")
+	const baseEndpoint = endpoint.split('/')[0];
+
 	do {
 		try {
+			// Acquire a thread for this endpoint before proceeding
+			await endpointThreadTracker.acquireThread(baseEndpoint);
+
 			// Handle rate limiting before making the request
 			await handleRateLimit(retryAttempt);
 
@@ -452,6 +460,9 @@ export async function autotaskApiRequest<T = JsonObject>(
 			};
 			error.statusCode = error.response?.status;
 			throw new NodeApiError(this.getNode(), error);
+		} finally {
+			// Release the thread when done (whether successful or failed)
+			endpointThreadTracker.releaseThread(baseEndpoint);
 		}
 	} while (retryAttempt < maxRetries);
 

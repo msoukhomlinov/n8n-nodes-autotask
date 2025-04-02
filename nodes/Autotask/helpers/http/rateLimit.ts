@@ -7,7 +7,7 @@ class RequestRateTracker {
     private counterResetTime = 0;
     private readonly hourInMs = 3600000;
     private readonly maxRequestsPerHour = 10000;
-    private readonly enableDebugLogs = true; // Toggle debug logging
+    private readonly enableDebugLogs = false; // Toggle debug logging - set to false to disable startup logs
 
     // Threshold sync properties
     private lastSyncTime = 0;

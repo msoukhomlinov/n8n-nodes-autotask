@@ -136,18 +136,7 @@ export class AutotaskTrigger implements INodeType {
 				name: 'sendThresholdNotifications',
 				type: 'boolean',
 				default: false,
-				description: 'Whether to receive notifications if the activity by the webhook exceeds API query thresholds',
-			},
-			{
-				displayName: 'Sends emails to the notification email address when webhook requests exceed the hourly threshold and when they return to normal',
-				name: 'thresholdNotificationInfo',
-				type: 'notice',
-				default: '',
-				displayOptions: {
-					show: {
-						sendThresholdNotifications: [true],
-					},
-				},
+				description: 'Whether to receive notifications if webhook requests exceed the hourly threshold and when they return to normal',
 			},
 			{
 				displayName: 'Notification Email Address',
@@ -160,6 +149,23 @@ export class AutotaskTrigger implements INodeType {
 				displayOptions: {
 					show: {
 						sendThresholdNotifications: [true],
+					},
+				},
+			},
+			{
+				displayName: 'Each field requires an API call during setup. Fields selected in Subscribed and Always Display lists count as one call.',
+				name: 'subscribedFieldsWarning',
+				type: 'notice',
+				default: '',
+				displayOptions: {
+					show: {
+						entityType: [
+							AutotaskWebhookEntityType.COMPANIES,
+							AutotaskWebhookEntityType.CONTACTS,
+							AutotaskWebhookEntityType.CONFIGURATIONITEMS,
+							AutotaskWebhookEntityType.TICKETNOTES,
+							AutotaskWebhookEntityType.TICKETS,
+						],
 					},
 				},
 			},

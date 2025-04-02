@@ -18,6 +18,17 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
+## [0.6.1] - 2025-04-02
+
+### Added
+- Added support for Autotask API thread limiting with per-endpoint concurrency control
+- Added warning notices about API limits in webhook configuration UI
+- Improved webhook field and resource selection with API limit warnings
+
+### Fixed
+- Fixed thread tracking for API endpoints to respect Autotask's 3-thread limit per endpoint
+
+
 ## [0.5.9] - 2025-04-01
 
 ### Added

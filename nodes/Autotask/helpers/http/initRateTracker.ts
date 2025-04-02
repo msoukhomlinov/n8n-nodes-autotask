@@ -53,16 +53,13 @@ export async function initializeRateTracker(
  */
 export function initializeRateTrackerEarly(): void {
     try {
-        console.log('[RateTracker] Early initialization (without API sync)');
+        // Silently initialize the rate tracker without logging
+        // This line ensures the singleton is instantiated
+        rateTracker;
 
-        // Just ensure the rate tracker is instantiated
-        // It will use local counting until a proper fetcher is set
-        const instance = rateTracker;
-
-        if (instance) {
-            console.log('[RateTracker] Early initialization successful, using local counting until API sync is available');
-        }
+        // No console output to keep n8n startup clean
     } catch (error) {
-        console.error('[RateTracker] Failed early initialization:', error);
+        // Only log critical errors
+        console.error('[RateTracker] Critical initialization error:', error);
     }
 }
