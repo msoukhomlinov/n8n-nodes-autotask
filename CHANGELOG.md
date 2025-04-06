@@ -18,6 +18,16 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
+## [0.6.2] - 2025-04-03
+
+### Fixed
+- Fixed webhook signature verification failing with non-English characters:
+  - Enhanced Unicode character handling to properly escape all non-ASCII characters
+  - Fixed webhook verification issues when payloads contain accented characters (é, è, etc.)
+  - Added proper encoding of all Unicode characters to match Autotask's escaping format
+  - Resolved signature validation failures with French and other non-English text content
+  - Improved compatibility with international character sets in all webhook operations
+
 ## [0.6.1] - 2025-04-02
 
 ### Added

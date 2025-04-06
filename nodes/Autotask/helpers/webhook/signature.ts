@@ -29,6 +29,7 @@ function logError(
  * 1. JSON.parse() removes Unicode escape sequences by converting them to actual characters
  * 2. JSON.stringify() doesn't escape characters like & and + by default
  * 3. Autotask uses a custom escaping scheme for webhook signatures
+ * 4. Non-ASCII characters (like accented letters) need to be escaped as Unicode sequences
  */
 function customEscapeJsonStrings(jsonString: string): string {
 	// Characters to escape with their Unicode escape sequences
@@ -72,8 +73,20 @@ function customEscapeJsonStrings(jsonString: string): string {
 			result += char;
 		}
 		// Apply character escaping only when inside string values
-		else if (isInsideString && !isEscaped && escapeMap[char]) {
-			result += escapeMap[char];
+		else if (isInsideString && !isEscaped) {
+			if (escapeMap[char]) {
+				// Use predefined escape sequences for specific characters
+				result += escapeMap[char];
+			} else if (char.charCodeAt(0) > 127) {
+				// Escape all non-ASCII characters (> 127) to Unicode escape sequences
+				// Format: \uXXXX where XXXX is the hexadecimal code point (zero-padded to 4 digits)
+				const codePoint = char.charCodeAt(0);
+				const hexCode = codePoint.toString(16).padStart(4, '0').toUpperCase();
+				result += `\\u${hexCode}`;
+			} else {
+				// Keep standard ASCII characters unchanged
+				result += char;
+			}
 		}
 		// Keep all other characters unchanged
 		else {
