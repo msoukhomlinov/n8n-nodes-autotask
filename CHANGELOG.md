@@ -18,7 +18,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
-## [0.6.2] - 2025-04-03
+## [0.6.2] - 2025-04-06
 
 ### Fixed
 - Fixed webhook signature verification failing with non-English characters:
