@@ -68,7 +68,8 @@ async function convertValue(
 				}
 
 				// Return in the API_DATE format
-				return date.format(DATE_FORMATS.API_DATE);
+				// Return in the API_DATETIME format to preserve time components
+				return date.format(DATE_FORMATS.API_DATETIME);
 			}
 
 			// For other formats, use moment's auto-detection but with timezone context

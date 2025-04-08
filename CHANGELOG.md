@@ -18,6 +18,15 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
+## [0.6.3] - 2025-04-09
+
+### Fixed
+- Fixed DateTime handling in search filter operations:
+  - Fixed issue where DateTime values with time components were being truncated to just date
+  - Modified search filter builder to preserve time information when present in input
+  - Now correctly formats DateTime values with full time components in filter conditions
+  - Ensures DateTime filters with specific times (e.g., 2025-04-08T19:18:19.738-04:00) are processed correctly
+
 ## [0.6.2] - 2025-04-06
 
 ### Fixed
