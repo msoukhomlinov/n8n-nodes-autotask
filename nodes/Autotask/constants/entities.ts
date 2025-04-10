@@ -58,6 +58,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'ProjectCharge', childOf: 'Project', subname: 'Charges', parentIdField: 'projectID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'Phase', childOf: 'Project', subname: 'Phases', parentIdField: 'projectID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Resource', operations: { [OperationType.QUERY]: 'self', [OperationType.READ]: 'self', [OperationType.COUNT]: 'self', [OperationType.UPDATE]: 'self' } },
+	{ name: 'ResourceRole', childOf: 'Resource', subname: 'Roles', parentIdField: 'resourceID', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Task', childOf: 'Project', subname: 'task', parentIdField: 'projectID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'TaskNote', childOf: 'Task', subname: 'Note', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	// Products entity and its webhook-related entities

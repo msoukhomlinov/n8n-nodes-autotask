@@ -195,6 +195,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Resources, which represent users with Autotask accounts that have access to the system based on license type and security level',
 	},
 	{
+		name: 'Resource Role',
+		value: 'resourceRole',
+		description: 'Query Resource Roles, which represent associations between Resources and Department/Role relationships, service desk queues, and service desk roles (note: only active roles are returned)',
+	},
+	{
 		name: 'Search Filter',
 		value: 'searchFilter',
 		description: 'Build JSON search filters query for Autotask Get Mnay Advanced operations',
