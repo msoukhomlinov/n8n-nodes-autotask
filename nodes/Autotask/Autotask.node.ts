@@ -18,6 +18,7 @@ import { executeContactOperation } from './resources/contacts/execute';
 import { executeContactWebhookOperation } from './resources/contactWebhooks/execute';
 import { executeCompanyLocationOperation } from './resources/companyLocations/execute';
 import { executeResourceOperation } from './resources/resources/execute';
+import { executeResourceRoleOperation } from './resources/resourceRoles/execute';
 import { executeCompanyNoteOperation } from './resources/companyNotes/execute';
 import { executeCompanyWebhookOperation } from './resources/companyWebhooks/execute';
 import { executeConfigurationItemWebhookOperation } from './resources/configurationItemWebhooks/execute';
@@ -55,6 +56,7 @@ import { companyAlertFields } from './resources/companyAlerts/description';
 import { contactFields } from './resources/contacts/description';
 import { companyLocationFields } from './resources/companyLocations/description';
 import { resourceFields } from './resources/resources/description';
+import { resourceRoleFields } from './resources/resourceRoles/description';
 import { companyNoteFields } from './resources/companyNotes/description';
 import { projectNoteFields } from './resources/projectNotes/description';
 import { projectPhaseFields } from './resources/projectPhases/description';
@@ -192,6 +194,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(projectPhaseFields, { resourceName: 'phase' }),
 			...addOperationsToResource(projectTaskFields, { resourceName: 'task' }),
 			...addOperationsToResource(resourceFields, { resourceName: 'resource' }),
+			...addOperationsToResource(resourceRoleFields, { resourceName: 'resourceRole' }),
 			...addOperationsToResource(serviceCallFields, { resourceName: 'serviceCall' }),
 			...addOperationsToResource(serviceFields, { resourceName: 'service' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
@@ -290,6 +293,8 @@ export class Autotask implements INodeType {
 				return executeProjectTaskOperation.call(this);
 			case 'resource':
 				return executeResourceOperation.call(this);
+			case 'resourceRole':
+				return executeResourceRoleOperation.call(this);
 			case 'searchFilter':
 				return executeSearchFilterOperation.call(this);
 			case 'serviceCall':

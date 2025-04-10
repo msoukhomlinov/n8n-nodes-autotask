@@ -18,6 +18,12 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - ContractServiceBundleUnits
   - ContractTicketPurchases
 
+## [0.6.4] - 2025-04-11
+
+### Added
+- Added support for ResourceRole entity:
+  - Enables retrieval of department/role relationships, service desk queues, and service desk roles
+
 ## [0.6.3] - 2025-04-09
 
 ### Fixed
