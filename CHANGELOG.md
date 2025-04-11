@@ -2,21 +2,37 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-### Todo
-- [ ] Continue adding support for other entities, such as remaining Contracts child entities:
-  - ContractBillingRules
-  - ContractExclusionBillingCodes
-  - ContractExclusionRoles
-  - ContractExclusionSetExcludedRoles
-  - ContractExclusionSetExcludedWorkTypes
-  - ContractExclusionSets
-  - ContractRetainers
-  - ContractRoleCosts
-  - ContractServiceAdjustments
-  - ContractServiceBundleAdjustments
-  - ContractServiceBundles
-  - ContractServiceBundleUnits
-  - ContractTicketPurchases
+## [0.6.5] - 2025-04-11
+
+### Added
+- Added support for Roles entity
+- Added support for ContractBillingRules entity
+- Added support for ContractExclusionBillingCodes entity:
+- Added support for ContractRoleCosts entity
+- Added support for ContractExclusionRoles entity
+- Added support for ContractExclusionSetExcludedRoles entity
+- Added support for ContractExclusionSetExcludedWorkTypes entity
+- Added support for ContractExclusionSets entity
+- Added support for ContractRetainers entity
+- Added support for ContractServiceAdjustments entity
+- Added support for ContractServiceBundleAdjustments entity
+- Added support for ContractServiceBundles entity
+- Added support for ContractServiceBundleUnits entity
+- Added support for ContractTicketPurchases entity
+- Added support for DomainRegistrars entity
+- Added support for Invoices entity
+- Added support for ProductVendors entity
+- Added support for NotificationHistory entity
+- Added support for ContactGroups entity
+- Added support for ContactGroupContacts entity
+
+
+### Fixed
+- Fixed issue with reference type fields not populating in resource mapper:
+  - Modified FieldProcessor to properly handle reference field loading in resource mapper context
+  - Ensures reference picklists are populated consistently like regular picklists
+  - Improves field selection experience by showing all available reference values
+  - Previously, reference fields appeared empty while regular picklists worked fine
 
 ## [0.6.4] - 2025-04-11
 
@@ -334,35 +350,3 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - Entity support is currently limited but will likely be expanded in future versions
 - The integration has had limited production testing, so it should be used with care
 - Please refer to the README for detailed information on functionality and usage
-
-## Upcoming Changes
-
-This section outlines planned features and improvements for future releases.
-
-### Planned Entity Support
-- **Contract**: Manage service contracts and agreements
-- **Contract Service**: Manage services within contracts
-- **Contract Service Bundle**: Manage service bundles for contracts
-- **Contract Service Adjustment**: Manage adjustments to contract services
-- **Opportunity**: Manage sales opportunities
-- **Ticket Additional Contact**: Manage additional contacts for tickets
-- **Ticket Note**: Manage notes attached to tickets
-- **Ticket Secondary Resource**: Manage secondary resources assigned to tickets
-
-### Planned Features
-- **Webhook Support**: Integration with Autotask webhooks for real-time event processing
-
-[0.3.4]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.4
-[0.3.3]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.3
-[0.3.2]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.2
-[0.3.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.1
-[0.3.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.3.0
-[0.2.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.1
-[0.2.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.2.0
-[0.1.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.1
-[0.1.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.1.0
-[0.4.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.4.0 
-[0.4.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.4.1 
-[0.5.0]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.5.0
-[0.5.1]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.5.1
-[0.5.2]: https://github.com/msoukhomlinov/n8n-nodes-autotask/releases/tag/v0.5.2

@@ -100,6 +100,16 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Autotask Contact Webhooks',
 	},
 	{
+		name: 'Contact Groups',
+		value: 'contactGroups',
+		description: 'Manage Contact Groups, which represent associations of contacts from one or more companies for bulk email and note creation',
+	},
+	{
+		name: 'Contact Group Contacts',
+		value: 'contactGroupContacts',
+		description: 'Manage Contact Group Contacts, which associate Contacts with Contact Groups for bulk operations',
+	},
+	{
 		name: 'Contract',
 		value: 'contract',
 		description: 'Manage Contracts, which specify billing arrangements with companies such as Time and Materials, Fixed Price, Block Hours, or Recurring Service',
@@ -115,9 +125,39 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Block Hour Factors, which apply multipliers to role rates in Block Hours contracts to adjust how much pre-purchased time is consumed by different roles',
 	},
 	{
+		name: 'Contract Billing Rule',
+		value: 'contractBillingRule',
+		description: 'Manage Contract Billing Rules, which generate charges that allow you to bill your customer by the end user or by the asset',
+	},
+	{
 		name: 'Contract Charge',
 		value: 'contractCharge',
 		description: 'Manage Contract Charges, which represent billable or non-billable costs for products and materials associated with contracts',
+	},
+	{
+		name: 'Contract Exclusion Billing Code',
+		value: 'contractExclusionBillingCode',
+		description: 'Manage Contract Exclusion Billing Codes, which represent Work Type billing codes that are excluded from a Contract',
+	},
+	{
+		name: 'Contract Exclusion Role',
+		value: 'contractExclusionRoles',
+		description: 'Manage Contract Exclusion Roles, which represent billing Roles that have been excluded from a Contract',
+	},
+	{
+		name: 'Contract Exclusion Sets',
+		value: 'contractExclusionSets',
+		description: 'Manage Contract Exclusion Sets, which describe reusable sets of roles and work types that are excluded from the contract the set is applied to',
+	},
+	{
+		name: 'Contract Exclusion Set Excluded Role',
+		value: 'contractExclusionSetExcludedRole',
+		description: 'Manage Contract Exclusion Set Excluded Roles, which represent billing roles that are excluded from the contract the set is applied to',
+	},
+	{
+		name: 'Contract Exclusion Set Excluded Work Type',
+		value: 'contractExclusionSetExcludedWorkType',
+		description: 'Manage Contract Exclusion Set Excluded Work Types, which represent billing Work Types (Allocation Codes) that are excluded from the contract the set is applied to',
 	},
 	{
 		name: 'Contract Milestone',
@@ -135,14 +175,54 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Contract Rates, which override standard role rates for specific contracts to customise billing for Time and Materials, Fixed Price, and Retainer contracts',
 	},
 	{
+		name: 'Contract Role Costs',
+		value: 'contractRoleCosts',
+		description: 'Manage Contract Role Costs, which define per hour cost for labor set at the contract level that override a resource\'s internal cost rate',
+	},
+	{
+		name: 'Contract Retainer',
+		value: 'contractRetainer',
+		description: 'Manage Contract Retainers, which describe payment amounts applied to Retainer type contracts and set the time period covered by the purchase',
+	},
+	{
 		name: 'Contract Service',
 		value: 'contractService',
 		description: 'Manage Contract Services, which associate predefined service offerings with recurring service contracts and specify customised pricing',
 	},
 	{
+		name: 'Contract Service Adjustment',
+		value: 'contractServiceAdjustment',
+		description: 'Manage Contract Service Adjustments, which adjust the quantity of units of a service that are added to a Recurring Service type Contract',
+	},
+	{
+		name: 'Contract Service Bundle Adjustment',
+		value: 'contractServiceBundleAdjustment',
+		description: 'Manage Contract Service Bundle Adjustments, which adjust the quantity of units of a Service Bundle that are added to a Recurring Service type Contract',
+	},
+	{
+		name: 'Contract Service Bundle',
+		value: 'contractServiceBundle',
+		description: 'Manage Contract Service Bundles, which group multiple Services added to a Recurring Service type contract',
+	},
+	{
+		name: 'Contract Service Bundle Unit',
+		value: 'contractServiceBundleUnit',
+		description: 'Query Service Bundle Units, which track the quantity of service bundles associated with recurring contracts for specific date ranges used in billing calculations',
+	},
+	{
+		name: 'Contract Ticket Purchase',
+		value: 'contractTicketPurchase',
+		description: 'Manage Contract Ticket Purchases, which describe payment amounts applied to the purchase of (or pre-payment for) one or more Service Desk Tickets through a Per Ticket Contract',
+	},
+	{
 		name: 'Contract Service Unit',
 		value: 'contractServiceUnit',
 		description: 'Query Service Units, which track the quantity of services associated with recurring contracts for specific date ranges used in billing calculations',
+	},
+	{
+		name: 'Domain Registrar',
+		value: 'DomainRegistrar',
+		description: 'Manage Domain Registrars, which contain WHOIS details for Domain assets',
 	},
 	{
 		name: 'Holiday',
@@ -155,6 +235,16 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Holiday Sets, which group holidays assigned to internal locations for tracking time off and managing work schedules',
 	},
 	{
+		name: 'Invoice',
+		value: 'invoice',
+		description: 'Manage Invoices, which include billing items that have been approved and posted and are being billed to a customer',
+	},
+	{
+		name: 'Notification History',
+		value: 'notificationHistory',
+		description: 'Query Notification History, which lists notifications sent from Autotask in the previous 30 days',
+	},
+	{
 		name: 'Opportunity',
 		value: 'opportunity',
 		description: 'Manage Opportunities, which track potential sales with forecasted revenue, probability, due dates, and progress for sales forecasting',
@@ -163,6 +253,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		name: 'Product',
 		value: 'product',
 		description: 'Manage Products, which represent hardware, software, or material items that companies sell or support for customers',
+	},
+	{
+		name: 'Product Vendor',
+		value: 'productVendor',
+		description: 'Manage Product Vendors, which are vendor companies associated with products in your inventory',
 	},
 	{
 		name: 'Project',
@@ -200,6 +295,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Query Resource Roles, which represent associations between Resources and Department/Role relationships, service desk queues, and service desk roles (note: only active roles are returned)',
 	},
 	{
+		name: 'Role',
+		value: 'role',
+		description: 'Manage Roles, which are associated with departments and have standard billing rates used for resource time tracking and billing',
+	},
+	{
 		name: 'Search Filter',
 		value: 'searchFilter',
 		description: 'Build JSON search filters query for Autotask Get Mnay Advanced operations',
@@ -213,6 +313,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		name: 'Service Call',
 		value: 'serviceCall',
 		description: 'Manage Service Calls, which schedule resources for specific time periods to perform work for companies with associated tasks and tickets',
+	},
+	{
+		name: 'Skill',
+		value: 'skill',
+		description: 'Query Skills, which can be associated with Resources through the ResourceSkill entity to match resources to tickets based on their skill level',
 	},
 	{
 		name: 'Survey',

@@ -16,9 +16,11 @@ import { executeCompanyOperation } from './resources/companies/execute';
 import { executeCompanyAlertOperation } from './resources/companyAlerts/execute';
 import { executeContactOperation } from './resources/contacts/execute';
 import { executeContactWebhookOperation } from './resources/contactWebhooks/execute';
+import { executeContactGroupsOperation } from './resources/contactGroups/execute';
 import { executeCompanyLocationOperation } from './resources/companyLocations/execute';
 import { executeResourceOperation } from './resources/resources/execute';
 import { executeResourceRoleOperation } from './resources/resourceRoles/execute';
+import { executeRoleOperation } from './resources/roles/execute';
 import { executeCompanyNoteOperation } from './resources/companyNotes/execute';
 import { executeCompanyWebhookOperation } from './resources/companyWebhooks/execute';
 import { executeConfigurationItemWebhookOperation } from './resources/configurationItemWebhooks/execute';
@@ -27,6 +29,7 @@ import { executeProjectNoteOperation } from './resources/projectNotes/execute';
 import { executeProjectPhaseOperation } from './resources/projectPhases/execute';
 import { executeProjectChargeOperation } from './resources/projectCharges/execute';
 import { executeProductOperation } from './resources/products/execute';
+import { executeProductVendorOperation } from './resources/productVendors/execute';
 import { executeTicketOperation } from './resources/tickets/execute';
 import { executeTicketNoteOperation } from './resources/ticketNotes/execute';
 import { executeTicketHistoryOperation } from './resources/ticketHistories/execute';
@@ -34,17 +37,28 @@ import { executeTimeEntryOperation } from './resources/timeEntries/execute';
 import { executeBillingCodeOperation } from './resources/billingCodes/execute';
 import { executeHolidaySetOperation } from './resources/holidaySets/execute';
 import { executeHolidayOperation } from './resources/holidays/execute';
+import { executeInvoiceOperation } from './resources/invoices/execute';
+import { executeNotificationHistoryOperation } from './resources/notificationHistory/execute';
 import { executeServiceCallOperation } from './resources/serviceCalls/execute';
 import { executeServiceOperation } from './resources/services/execute';
 import { executeContractOperation } from './resources/contracts/execute';
 import { executeContractChargeOperation } from './resources/contractCharges/execute';
 import { executeContractNoteOperation } from './resources/contractNotes/execute';
 import { executeContractServiceOperation } from './resources/contractServices/execute';
+import { executeContractServiceAdjustmentOperation } from './resources/contractServiceAdjustments/execute';
+import { executeContractServiceBundleAdjustmentOperation } from './resources/contractServiceBundleAdjustments/execute';
+import { executeContractServiceBundleOperation } from './resources/contractServiceBundles/execute';
+import { executeContractServiceBundleUnitOperation } from './resources/contractServiceBundleUnits/execute';
 import { executeContractMilestoneOperation } from './resources/contractMilestones/execute';
 import { executeContractServiceUnitOperation } from './resources/contractServiceUnits/execute';
 import { executeContractBlockOperation } from './resources/contractBlocks/execute';
 import { executeContractBlockHourFactorOperation } from './resources/contractBlockHourFactors/execute';
 import { executeContractRateOperation } from './resources/contractRates/execute';
+import { executeContractExclusionBillingCodeOperation } from './resources/contractExclusionBillingCodes/execute';
+import { executeContractExclusionRoleOperation } from './resources/contractExclusionRoles/execute';
+import { executeContractExclusionSetsOperation } from './resources/contract-exclusion-sets/execute';
+import { executeContractExclusionSetExcludedRolesOperation } from './resources/contractExclusionSetExcludedRoles/execute';
+import { executeContractExclusionSetExcludedWorkTypesOperation } from './resources/contractExclusionSetExcludedWorkTypes/execute';
 import { executeOpportunityOperation } from './resources/opportunities/execute';
 import { searchFilterDescription, searchFilterOperations, build as executeSearchFilterOperation } from './resources/searchFilter';
 import { getResourceMapperFields } from './helpers/resourceMapper';
@@ -57,11 +71,13 @@ import { contactFields } from './resources/contacts/description';
 import { companyLocationFields } from './resources/companyLocations/description';
 import { resourceFields } from './resources/resources/description';
 import { resourceRoleFields } from './resources/resourceRoles/description';
+import { roleFields } from './resources/roles/description';
 import { companyNoteFields } from './resources/companyNotes/description';
 import { projectNoteFields } from './resources/projectNotes/description';
 import { projectPhaseFields } from './resources/projectPhases/description';
 import { projectChargeFields } from './resources/projectCharges/description';
 import { productFields } from './resources/products/description';
+import { productVendorFields } from './resources/productVendors/description';
 import { ticketFields } from './resources/tickets/description';
 import { ticketHistoryFields } from './resources/ticketHistories/description';
 import { ticketNoteFields } from './resources/ticketNotes/description';
@@ -69,17 +85,29 @@ import { timeEntryFields } from './resources/timeEntries/description';
 import { billingCodeFields } from './resources/billingCodes/description';
 import { holidaySetFields } from './resources/holidaySets/description';
 import { holidayFields } from './resources/holidays/description';
+import { invoiceFields } from './resources/invoices/description';
+import { notificationHistoryFields } from './resources/notificationHistory/description';
 import { serviceCallFields } from './resources/serviceCalls/description';
 import { serviceFields } from './resources/services/description';
 import { contractFields } from './resources/contracts/description';
 import { contractChargeFields } from './resources/contractCharges/description';
 import { contractNoteFields } from './resources/contractNotes/description';
 import { contractServiceFields } from './resources/contractServices/description';
+import { contractServiceAdjustmentFields } from './resources/contractServiceAdjustments/description';
+import { contractServiceBundleAdjustmentFields } from './resources/contractServiceBundleAdjustments/description';
+import { contractServiceBundleFields } from './resources/contractServiceBundles/description';
+import { contractServiceBundleUnitFields } from './resources/contractServiceBundleUnits/description';
 import { contractMilestoneFields } from './resources/contractMilestones/description';
 import { contractServiceUnitFields } from './resources/contractServiceUnits/description';
 import { contractBlockFields } from './resources/contractBlocks/description';
 import { contractBlockHourFactorFields } from './resources/contractBlockHourFactors/description';
 import { contractRateFields } from './resources/contractRates/description';
+import { contractRoleCostsFields } from './resources/contractRoleCosts/description';
+import { contractExclusionBillingCodeFields } from './resources/contractExclusionBillingCodes/description';
+import { contractExclusionRoleFields } from './resources/contractExclusionRoles/description';
+import { contractExclusionSetsFields } from './resources/contract-exclusion-sets/description';
+import { contractExclusionSetExcludedRolesFields } from './resources/contractExclusionSetExcludedRoles/description';
+import { contractExclusionSetExcludedWorkTypesFields } from './resources/contractExclusionSetExcludedWorkTypes/description';
 import { opportunityFields } from './resources/opportunities/description';
 import { addOperationsToResource } from './helpers/resource-operations.helper';
 import { executeSurveyOperation } from './resources/surveys/execute';
@@ -112,6 +140,20 @@ import { executeTicketWebhookOperation } from './resources/ticketWebhooks/execut
 import { ticketWebhookFields } from './resources/ticketWebhooks/description';
 import { apiThresholdDescription } from './resources/apiThreshold/description';
 import { executeApiThresholdOperation } from './resources/apiThreshold/execute';
+import { executeContractBillingRuleOperation } from './resources/contractBillingRules/execute';
+import { contractBillingRuleFields } from './resources/contractBillingRules/description';
+import { executeContractRoleCostsOperation } from './resources/contractRoleCosts/execute';
+import { executeContractRetainersOperation } from './resources/contractRetainers/execute';
+import { contractRetainersFields } from './resources/contractRetainers/description';
+import { executeContractTicketPurchasesOperation } from './resources/contractTicketPurchases/execute';
+import { contractTicketPurchasesFields } from './resources/contractTicketPurchases/description';
+import { executeDomainRegistrarOperation } from './resources/domainRegistrar/execute';
+import { domainRegistrarFields } from './resources/domainRegistrar/description';
+import { executeSkillOperation } from './resources/skills/execute';
+import { skillFields } from './resources/skills/description';
+import { contactGroupsFields } from './resources/contactGroups/description';
+import { executeContactGroupContactsOperation } from './resources/contactGroupContacts/execute';
+import { contactGroupContactsFields } from './resources/contactGroupContacts/description';
 
 /**
  * Autotask node implementation
@@ -174,20 +216,37 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(configurationItemSslSubjectAlternativeNameFields, { resourceName: 'configurationItemSslSubjectAlternativeName' }),
 			...addOperationsToResource(contactFields, { resourceName: 'contact' }),
 			...addOperationsToResource(contactWebhookFields, { resourceName: 'contactWebhook' }),
+			...addOperationsToResource(contactGroupsFields, { resourceName: 'contactGroups' }),
+			...addOperationsToResource(contactGroupContactsFields, { resourceName: 'contactGroupContacts' }),
 			...addOperationsToResource(companyLocationFields, { resourceName: 'companyLocation' }),
+			...addOperationsToResource(domainRegistrarFields, { resourceName: 'DomainRegistrar' }),
 			...addOperationsToResource(contractFields, { resourceName: 'contract' }),
 			...addOperationsToResource(contractChargeFields, { resourceName: 'contractCharge' }),
 			...addOperationsToResource(contractNoteFields, { resourceName: 'contractNote' }),
 			...addOperationsToResource(contractServiceFields, { resourceName: 'contractService' }),
+			...addOperationsToResource(contractBillingRuleFields, { resourceName: 'contractBillingRule' }),
+			...addOperationsToResource(contractRoleCostsFields, { resourceName: 'contractRoleCosts' }),
+			...addOperationsToResource(contractRetainersFields, { resourceName: 'contractRetainer' }),
+			...addOperationsToResource(contractTicketPurchasesFields, { resourceName: 'contractTicketPurchase' }),
+			...addOperationsToResource(contractServiceBundleFields, { resourceName: 'contractServiceBundle' }),
+			...addOperationsToResource(contractServiceBundleUnitFields, { resourceName: 'contractServiceBundleUnit' }),
 			...addOperationsToResource(contractMilestoneFields, { resourceName: 'contractMilestone' }),
 			...addOperationsToResource(contractServiceUnitFields, { resourceName: 'contractServiceUnit' }),
 			...addOperationsToResource(contractBlockFields, { resourceName: 'contractBlock' }),
 			...addOperationsToResource(contractBlockHourFactorFields, { resourceName: 'contractBlockHourFactor' }),
 			...addOperationsToResource(contractRateFields, { resourceName: 'contractRate' }),
+			...addOperationsToResource(contractExclusionBillingCodeFields, { resourceName: 'contractExclusionBillingCode' }),
+			...addOperationsToResource(contractExclusionRoleFields, { resourceName: 'contractExclusionRoles' }),
+			...addOperationsToResource(contractExclusionSetsFields, { resourceName: 'contractExclusionSets' }),
+			...addOperationsToResource(contractExclusionSetExcludedRolesFields, { resourceName: 'contractExclusionSetExcludedRole' }),
+			...addOperationsToResource(contractExclusionSetExcludedWorkTypesFields, { resourceName: 'contractExclusionSetExcludedWorkType' }),
 			...addOperationsToResource(holidaySetFields, { resourceName: 'holidaySet' }),
 			...addOperationsToResource(holidayFields, { resourceName: 'holiday' }),
+			...addOperationsToResource(invoiceFields, { resourceName: 'invoice' }),
+			...addOperationsToResource(notificationHistoryFields, { resourceName: 'notificationHistory' }),
 			...addOperationsToResource(opportunityFields, { resourceName: 'opportunity' }),
 			...addOperationsToResource(productFields, { resourceName: 'product' }),
+			...addOperationsToResource(productVendorFields, { resourceName: 'productVendor' }),
 			...addOperationsToResource(projectFields, { resourceName: 'project' }),
 			...addOperationsToResource(projectChargeFields, { resourceName: 'projectCharge' }),
 			...addOperationsToResource(projectNoteFields, { resourceName: 'projectNote' }),
@@ -195,6 +254,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(projectTaskFields, { resourceName: 'task' }),
 			...addOperationsToResource(resourceFields, { resourceName: 'resource' }),
 			...addOperationsToResource(resourceRoleFields, { resourceName: 'resourceRole' }),
+			...addOperationsToResource(roleFields, { resourceName: 'role' }),
 			...addOperationsToResource(serviceCallFields, { resourceName: 'serviceCall' }),
 			...addOperationsToResource(serviceFields, { resourceName: 'service' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
@@ -206,9 +266,11 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
 			...addOperationsToResource(surveyFields, { resourceName: 'survey' }),
 			...addOperationsToResource(surveyResultsFields, { resourceName: 'surveyResults' }),
-			// searchFilterDescription and searchFilterOperations should not have common operations added to them
+			...contractServiceAdjustmentFields,
+			...contractServiceBundleAdjustmentFields,
 			...searchFilterDescription,
 			...searchFilterOperations,
+			...addOperationsToResource(skillFields, { resourceName: 'skill' }),
 		],
 	};
 
@@ -253,16 +315,30 @@ export class Autotask implements INodeType {
 				return executeContactOperation.call(this);
 			case 'contactWebhook':
 				return executeContactWebhookOperation.call(this);
+			case 'contactGroups':
+				return executeContactGroupsOperation.call(this);
+			case 'contactGroupContacts':
+				return executeContactGroupContactsOperation.call(this);
 			case 'companyLocation':
 				return executeCompanyLocationOperation.call(this);
 			case 'contract':
 				return executeContractOperation.call(this);
+			case 'contractBillingRule':
+				return executeContractBillingRuleOperation.call(this);
 			case 'contractCharge':
 				return executeContractChargeOperation.call(this);
 			case 'contractNote':
 				return executeContractNoteOperation.call(this);
 			case 'contractService':
 				return executeContractServiceOperation.call(this);
+			case 'contractServiceAdjustment':
+				return executeContractServiceAdjustmentOperation.call(this);
+			case 'contractServiceBundleAdjustment':
+				return executeContractServiceBundleAdjustmentOperation.call(this);
+			case 'contractServiceBundle':
+				return executeContractServiceBundleOperation.call(this);
+			case 'contractServiceBundleUnit':
+				return executeContractServiceBundleUnitOperation.call(this);
 			case 'contractMilestone':
 				return executeContractMilestoneOperation.call(this);
 			case 'contractServiceUnit':
@@ -273,14 +349,38 @@ export class Autotask implements INodeType {
 				return executeContractBlockHourFactorOperation.call(this);
 			case 'contractRate':
 				return executeContractRateOperation.call(this);
+			case 'contractRoleCosts':
+				return executeContractRoleCostsOperation.call(this);
+			case 'contractRetainer':
+				return executeContractRetainersOperation.call(this);
+			case 'contractTicketPurchase':
+				return executeContractTicketPurchasesOperation.call(this);
+			case 'DomainRegistrar':
+				return executeDomainRegistrarOperation.call(this);
+			case 'contractExclusionBillingCode':
+				return executeContractExclusionBillingCodeOperation.call(this);
+			case 'contractExclusionRoles':
+				return executeContractExclusionRoleOperation.call(this);
+			case 'contractExclusionSets':
+				return executeContractExclusionSetsOperation.call(this);
+			case 'contractExclusionSetExcludedRole':
+				return executeContractExclusionSetExcludedRolesOperation.call(this);
+			case 'contractExclusionSetExcludedWorkType':
+				return executeContractExclusionSetExcludedWorkTypesOperation.call(this);
 			case 'holidaySet':
 				return executeHolidaySetOperation.call(this);
 			case 'holiday':
 				return executeHolidayOperation.call(this);
+			case 'invoice':
+				return executeInvoiceOperation.call(this);
+			case 'notificationHistory':
+				return executeNotificationHistoryOperation.call(this);
 			case 'opportunity':
 				return executeOpportunityOperation.call(this);
 			case 'product':
 				return executeProductOperation.call(this);
+			case 'productVendor':
+				return executeProductVendorOperation.call(this);
 			case 'project':
 				return executeProjectOperation.call(this);
 			case 'projectCharge':
@@ -295,6 +395,8 @@ export class Autotask implements INodeType {
 				return executeResourceOperation.call(this);
 			case 'resourceRole':
 				return executeResourceRoleOperation.call(this);
+			case 'role':
+				return executeRoleOperation.call(this);
 			case 'searchFilter':
 				return executeSearchFilterOperation.call(this);
 			case 'serviceCall':
@@ -317,6 +419,8 @@ export class Autotask implements INodeType {
 				return executeSurveyOperation.call(this);
 			case 'surveyResults':
 				return executeSurveyResultsOperation.call(this);
+			case 'skill':
+				return executeSkillOperation.call(this);
 			default:
 				throw new NodeOperationError(
 					this.getNode(),

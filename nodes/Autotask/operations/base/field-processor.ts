@@ -276,10 +276,10 @@ export class FieldProcessor {
 			: await this.convertToEntityFields(fields as IAutotaskField[]);
 
 		// Check if we're in loadOptions context (populating dropdown options)
-		// In this case, we should NEVER load reference values to avoid unnecessary API calls
+		// In this case, we should always load reference values to populate reference picklists
 		if (this.isLoadOptionsContext()) {
-			console.debug('[normalizeFields] In loadOptions context, skipping reference value loading');
-			return entityFields;
+			console.debug('[normalizeFields] In loadOptions context (resource mapper), loading reference values for picklists');
+			return this.loadReferenceValues(entityFields);
 		}
 
 		// Only proceed with reference loading if not in loadOptions context

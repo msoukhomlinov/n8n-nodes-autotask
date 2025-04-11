@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.6.4-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.6.5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 > **IMPORTANT**: After updating this node to a new version, a restart of your n8n instance is highly recommended to ensure all changes are properly applied.
@@ -77,26 +77,47 @@ The node supports the following Autotask resources:
 | Configuration Item Type | Manage types for configuration items |
 | Configuration Item Webhook | Manage webhooks for configuration item events |
 | Contact | Manage contacts associated with companies |
+| Contact Groups | Manage contact groups |
+| Contact Group Contacts | Manage contacts within contact groups |
 | Contact Webhook | Manage webhooks for contact events |
 | Contract | Manage contracts for companies |
+| Contract Billing Rules | Manage billing rules for contracts |
 | Contract Block | Manage block hour contracts |
 | Contract Block Hour Factor | Manage hour factors for block hour contracts |
 | Contract Charge | Manage charges associated with contracts |
+| Contract Exclusion Billing Codes | Manage excluded billing codes for contracts |
+| Contract Exclusion Roles | Manage excluded roles for contracts |
+| Contract Exclusion Set Excluded Roles | Manage excluded roles within exclusion sets |
+| Contract Exclusion Set Excluded Work Types | Manage excluded work types within exclusion sets |
+| Contract Exclusion Sets | Manage exclusion sets for contracts |
 | Contract Milestone | Manage milestones for contracts |
 | Contract Note | Manage notes attached to contracts |
 | Contract Rate | Manage rates for contract services |
+| Contract Retainers | Manage retainers for contracts |
+| Contract Role Costs | Manage role costs for contracts |
 | Contract Service | Manage services within contracts |
+| Contract Service Adjustments | Manage adjustments for contract services |
+| Contract Service Bundle Adjustments | Manage adjustments for service bundles |
+| Contract Service Bundles | Manage service bundles within contracts |
+| Contract Service Bundle Units | Manage service bundle units |
 | Contract Service Unit | Manage service units for contracts |
+| Contract Ticket Purchases | Manage ticket purchases for contracts |
+| Domain Registrars | Manage domain registrars |
 | Holiday | Manage holiday dates |
 | Holiday Set | Manage holiday sets for resources |
+| Invoices | Manage invoices |
+| Notification History | View notification history |
 | Opportunity | Manage sales opportunities |
 | Product | Manage products in the catalogue |
+| Product Vendors | Manage vendor associations for products |
 | Project | Manage projects |
 | Project Charge | Manage charges associated with projects |
 | Project Note | Manage notes attached to projects |
 | Project Phase | Manage phases within projects |
 | Project Task | Manage tasks within projects |
 | Resource | Manage staff resources |
+| Resource Role | Manage department/role relationships, service desk queues, and service desk roles |
+| Roles | Manage roles in the system |
 | Search Filter | Build advanced search filters |
 | Service | Manage services offered to clients |
 | Service Call | Manage service calls |
@@ -425,6 +446,45 @@ Bug reports should be submitted via GitHub at: https://github.com/msoukhomlinov/
 - [n8n Documentation](https://docs.n8n.io/)
 - [GitHub Repository](https://github.com/msoukhomlinov/n8n-nodes-autotask)
 
+## Changelog
+
+### [0.6.5] - 2025-04-11
+
+#### Added
+- Added support for Roles entity
+- Added support for ContractBillingRules entity
+- Added support for ContractExclusionBillingCodes entity
+- Added support for ContractRoleCosts entity
+- Added support for ContractExclusionRoles entity
+- Added support for ContractExclusionSetExcludedRoles entity
+- Added support for ContractExclusionSetExcludedWorkTypes entity
+- Added support for ContractExclusionSets entity
+- Added support for ContractRetainers entity
+- Added support for ContractServiceAdjustments entity
+- Added support for ContractServiceBundleAdjustments entity
+- Added support for ContractServiceBundles entity
+- Added support for ContractServiceBundleUnits entity
+- Added support for ContractTicketPurchases entity
+- Added support for DomainRegistrars entity
+- Added support for Invoices entity
+- Added support for ProductVendors entity
+- Added support for NotificationHistory entity
+- Added support for ContactGroups entity
+- Added support for ContactGroupContacts entity
+
+#### Fixed
+- Fixed issue with reference type fields not populating in resource mapper:
+  - Modified FieldProcessor to properly handle reference field loading in resource mapper context
+  - Ensures reference picklists are populated consistently like regular picklists
+  - Improves field selection experience by showing all available reference values
+  - Previously, reference fields appeared empty while regular picklists worked fine
+
+### [0.6.4] - 2025-04-11
+
+#### Added
+- Added support for ResourceRole entity:
+  - Enables retrieval of department/role relationships, service desk queues, and service desk roles
+
 ## License
 
-[MIT](LICENSE) 
+[MIT](LICENSE)
