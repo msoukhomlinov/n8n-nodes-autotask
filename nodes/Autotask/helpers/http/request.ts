@@ -81,15 +81,28 @@ function getErrorMessage(error: IAutotaskError): string {
 		return 'Resource not found';
 	}
 
-	// Handle API errors
+	// Handle API errors with detailed information
 	const errorData = error.response?.data as IApiError;
 	if (errorData?.errors?.length) {
-		return JSON.stringify(errorData);
+		// Extract messages with more context
+		const formattedErrors = errorData.errors.map(e => {
+			let message = e.message || 'Unknown error';
+			if (e.field) {
+				message = `Field '${e.field}': ${message}`;
+			}
+			if (e.code) {
+				message = `[${e.code}] ${message}`;
+			}
+			return message;
+		});
+
+		// Return formatted detailed message
+		return `API Error (${error.response?.status}): ${formattedErrors.join(' | ')}`;
 	}
 
 	// Handle any non-200 status as error
 	if (error.response?.status && error.response.status !== 200) {
-		return `Operation failed with status ${error.response.status}`;
+		return `Operation failed with status ${error.response.status}${error.message ? `: ${error.message}` : ''}`;
 	}
 
 	return error.message || 'Unknown error occurred';
@@ -441,24 +454,53 @@ export async function autotaskApiRequest<T = JsonObject>(
 				continue;
 			}
 
-			// For API errors with error messages, use AutotaskApiError
+			// For API errors with error messages, use NodeApiError with enhanced context
 			const errorData = error.response?.data as IApiError;
 			if (errorData?.errors?.length) {
-				const messages = errorData.errors.map(e => e.message || '').filter(Boolean);
+				// Format detailed error messages
+				const errorMessages = errorData.errors.map(e => {
+					// Include field and code information if available
+					let message = e.message || '';
+					if (e.field) {
+						message = `Field '${e.field}': ${message}`;
+					}
+					if (e.code) {
+						message = `[${e.code}] ${message}`;
+					}
+					return message;
+				}).filter(Boolean);
+
+				// Include the full error context
+				const detailedMessage = `Autotask API Error (${status}): ${errorMessages.join(' | ')}`;
+
+				// Create error object with both human-readable message and raw error details
 				error.error = {
-					message: messages.join('\n'),
+					message: detailedMessage,
 					status: error.response?.status,
+					context: {
+						url,
+						method,
+						errorDetails: errorData.errors,
+						rawResponse: JSON.stringify(errorData)
+					}
 				};
 				error.statusCode = error.response?.status;
+				error.message = detailedMessage; // Also update the error message property
 				throw new NodeApiError(this.getNode(), error);
 			}
 
-			// For other errors, throw NodeApiError with simple message
+			// For other errors, create a more informative error message
+			const errorMessage = `Operation failed: ${method} ${url} returned status ${status}${
+				error.message ? ` - ${error.message}` : ''
+			}`;
+
 			error.error = {
-				message: `Operation failed with status ${status}`,
+				message: errorMessage,
 				status: error.response?.status,
+				context: { url, method }
 			};
 			error.statusCode = error.response?.status;
+			error.message = errorMessage; // Also update the error message property
 			throw new NodeApiError(this.getNode(), error);
 		} finally {
 			// Release the thread when done (whether successful or failed)

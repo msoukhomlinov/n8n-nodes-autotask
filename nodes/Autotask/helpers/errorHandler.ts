@@ -77,6 +77,34 @@ function getErrorContext(error: Error | IApiErrorWithResponse, operation?: strin
 	if ('response' in error) {
 		const status = error.response?.status;
 
+		// Extract detailed error information if available
+		if (error.response?.data && 'errors' in error.response.data) {
+			const errorData = error.response.data;
+
+			// Format detailed error messages if available
+			if (Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+				const errorDetails = errorData.errors.map((e: IApiErrorDetail) => {
+					let message = e.message || 'Unknown error';
+					if (e.field) {
+						message = `Field '${e.field}': ${message}`;
+					}
+					if (e.code) {
+						message = `[${e.code}] ${message}`;
+					}
+					return message;
+				}).join(' | ');
+
+				// Use detailed error messages in the context
+				const errorContext = {
+					type: getErrorTypeByStatus(status),
+					statusCode: status,
+					details: errorDetails || formatErrorDetails(errorData.errors) || 'API error occurred',
+				};
+
+				return errorContext;
+			}
+		}
+
 		switch (status) {
 			case 400:
 				return {
@@ -181,6 +209,29 @@ function getErrorContext(error: Error | IApiErrorWithResponse, operation?: strin
 		type: AutotaskErrorType.Unknown,
 		details: error.message || 'An unknown error occurred',
 	};
+}
+
+/**
+ * Gets error type based on HTTP status code
+ */
+function getErrorTypeByStatus(status?: number): AutotaskErrorType {
+	if (!status) return AutotaskErrorType.Unknown;
+
+	if (status === 401) return AutotaskErrorType.Authentication;
+	if (status === 403) return AutotaskErrorType.Authorization;
+	if (status === 404) return AutotaskErrorType.NotFound;
+	if (status === 400) return AutotaskErrorType.BadRequest;
+	if (status === 422) return AutotaskErrorType.Validation;
+	if (status === 409) return AutotaskErrorType.Conflict;
+	if (status === 429) return AutotaskErrorType.TooManyRequests;
+	if (status === 500) return AutotaskErrorType.InternalServer;
+	if (status === 503) return AutotaskErrorType.ServiceUnavailable;
+	if (status === 504) return AutotaskErrorType.GatewayTimeout;
+
+	if (status >= 400 && status < 500) return AutotaskErrorType.BadRequest;
+	if (status >= 500) return AutotaskErrorType.InternalServer;
+
+	return AutotaskErrorType.Unknown;
 }
 
 /**
