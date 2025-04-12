@@ -21,6 +21,16 @@ interface RawFilterInput {
 
 export async function build(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 	try {
+		const operation = this.getNodeParameter('operation', 0) as string;
+		const isDynamicBuild = operation === 'dynamicBuild';
+
+		// For dynamic build, we can optionally get the entity type, though
+		// we don't need it for the filtering logic itself
+		if (isDynamicBuild) {
+			const entityType = this.getNodeParameter('entityType', 0) as string;
+			console.debug(`Building dynamic filter for entity type: ${entityType}`);
+		}
+
 		// Get the raw input from the node parameter
 		let rawInput: RawFilterInput;
 		try {
@@ -95,3 +105,7 @@ export async function build(this: IExecuteFunctions): Promise<INodeExecutionData
 		return [[{ json: { error: 'Unexpected error in search filter', details: (error as Error).message } }]];
 	}
 }
+
+// For the dynamicBuild operation, we'll reuse the same function
+// since the filter structure is identical
+export const dynamicBuild = build;

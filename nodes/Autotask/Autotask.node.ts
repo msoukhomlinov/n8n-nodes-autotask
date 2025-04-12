@@ -60,7 +60,7 @@ import { executeContractExclusionSetsOperation } from './resources/contract-excl
 import { executeContractExclusionSetExcludedRolesOperation } from './resources/contractExclusionSetExcludedRoles/execute';
 import { executeContractExclusionSetExcludedWorkTypesOperation } from './resources/contractExclusionSetExcludedWorkTypes/execute';
 import { executeOpportunityOperation } from './resources/opportunities/execute';
-import { searchFilterDescription, searchFilterOperations, build as executeSearchFilterOperation } from './resources/searchFilter';
+import { searchFilterDescription, searchFilterOperations, build as executeSearchFilterOperation, dynamicBuild as executeDynamicSearchFilterOperation } from './resources/searchFilter';
 import { getResourceMapperFields } from './helpers/resourceMapper';
 import { RESOURCE_DEFINITIONS } from './resources/definitions';
 import { projectTaskFields } from './resources/projectTasks/description';
@@ -154,6 +154,7 @@ import { skillFields } from './resources/skills/description';
 import { contactGroupsFields } from './resources/contactGroups/description';
 import { executeContactGroupContactsOperation } from './resources/contactGroupContacts/execute';
 import { contactGroupContactsFields } from './resources/contactGroupContacts/description';
+import { getQueryableEntities, getEntityFields } from './helpers/options';
 
 /**
  * Autotask node implementation
@@ -276,6 +277,7 @@ export class Autotask implements INodeType {
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const resource = this.getNodeParameter('resource', 0) as string;
+		const operation = this.getNodeParameter('operation', 0) as string;
 
 		// Handle resource-specific operations
 		switch (resource) {
@@ -398,6 +400,9 @@ export class Autotask implements INodeType {
 			case 'role':
 				return executeRoleOperation.call(this);
 			case 'searchFilter':
+				if (operation === 'dynamicBuild') {
+					return executeDynamicSearchFilterOperation.call(this);
+				}
 				return executeSearchFilterOperation.call(this);
 			case 'serviceCall':
 				return executeServiceCallOperation.call(this);
@@ -480,6 +485,8 @@ export class Autotask implements INodeType {
 					return [];
 				}
 			},
+			getQueryableEntities,
+			getEntityFields,
 		},
 	};
 }

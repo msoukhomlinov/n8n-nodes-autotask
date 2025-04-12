@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.6.9] - 2025-04-13
+
+### Added
+- Enhanced Search Filter resource with new "Dynamic Build" operation:
+  - Added entity-driven field selection workflow distinct from standard "Build" operation
+  - Implemented dynamic field loading based on entity selection
+  - Added UDF field support with clear type indicators
+
 ## [0.6.8] - 2025-04-12
 
 ### Fixed

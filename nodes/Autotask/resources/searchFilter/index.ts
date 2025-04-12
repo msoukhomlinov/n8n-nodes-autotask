@@ -1,4 +1,4 @@
-import { build } from './execute';
+import { build, dynamicBuild } from './execute';
 import { searchFilterDescription, searchFilterOperations } from './description';
 
-export { build, searchFilterDescription, searchFilterOperations };
+export { build, dynamicBuild, searchFilterDescription, searchFilterOperations };

@@ -18,8 +18,31 @@ export const searchFilterDescription: INodeProperties[] = [
 				description: 'Build a search filter for Autotask API queries',
 				action: 'Build a search filter',
 			},
+			{
+				name: 'Dynamic Build',
+				value: 'dynamicBuild',
+				description: 'Build a search filter with dynamic field selection based on entity type',
+				action: 'Build a dynamic search filter',
+			},
 		],
 		default: 'build',
+	},
+	{
+		displayName: 'Entity Type Name or ID',
+		name: 'entityType',
+		type: 'options',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['searchFilter'],
+				operation: ['dynamicBuild'],
+			},
+		},
+		typeOptions: {
+			loadOptionsMethod: 'getQueryableEntities',
+		},
+		default: '',
+		description: 'The entity type to build a filter for. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 	},
 ];
 
@@ -31,7 +54,7 @@ export const searchFilterOperations: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['searchFilter'],
-				operation: ['build'],
+				operation: ['build', 'dynamicBuild'],
 			},
 		},
 		typeOptions: {
@@ -77,6 +100,27 @@ export const searchFilterOperations: INodeProperties[] = [
 										type: 'string',
 										default: '',
 										description: 'API field name or UDF field name',
+										displayOptions: {
+											show: {
+												'/operation': ['build'],
+											},
+										},
+									},
+									{
+										displayName: 'Field Name or ID',
+										name: 'field',
+										type: 'options',
+										typeOptions: {
+											loadOptionsMethod: 'getEntityFields',
+											loadOptionsDependsOn: ['entityType'],
+										},
+										default: '',
+										description: 'Select a field from the entity. UDF fields are prefixed with "UDF:". Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+										displayOptions: {
+											show: {
+												'/operation': ['dynamicBuild'],
+											},
+										},
 									},
 									{
 										displayName: 'Operator',
