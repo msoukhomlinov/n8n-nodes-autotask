@@ -2,6 +2,19 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.6.7] - 2025-04-12
+
+### Fixed
+- Fixed UI field reloading when resource or operation changes:
+  - Added loadOptionsDependsOn property to "Select Columns" option
+  - Added loadOptionsDependsOn to "Add Picklist Labels" option
+  - Added loadOptionsDependsOn to "Add Reference Labels" option
+  - Added loadOptionsDependsOn to "Flatten User-Defined Fields" option
+  - Added loadOptionsDependsOn to "Get All" (returnAll) option
+  - Added loadOptionsDependsOn to "Max Records" option
+  - Added loadOptionsDependsOn to Advanced Filter option
+  - Ensures all fields properly refresh when resource or operation is changed
+
 ## [0.6.5] - 2025-04-11
 
 ### Added

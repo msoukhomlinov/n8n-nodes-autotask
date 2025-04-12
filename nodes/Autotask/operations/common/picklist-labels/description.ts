@@ -14,6 +14,9 @@ export const picklistLabelOption: INodeProperties = {
 			operation: ['get', 'getMany', 'getManyAdvanced', 'whoAmI'],
 		},
 	},
+	typeOptions: {
+		loadOptionsDependsOn: ['resource', 'operation'],
+	},
 };
 
 /**

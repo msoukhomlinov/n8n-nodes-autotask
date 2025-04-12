@@ -15,6 +15,9 @@ export const getManyOptions: INodeProperties[] = [
 				operation: ['getMany'],
 			},
 		},
+		typeOptions: {
+			loadOptionsDependsOn: ['resource', 'operation'],
+		},
 	},
 	{
 		displayName: 'Max Records',
@@ -25,6 +28,7 @@ export const getManyOptions: INodeProperties[] = [
 		typeOptions: {
 			minValue: 1,
 			maxValue: 500,
+			loadOptionsDependsOn: ['resource', 'operation'],
 		},
 		displayOptions: {
 			show: {

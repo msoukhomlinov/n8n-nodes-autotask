@@ -15,6 +15,9 @@ export const getManyAdvancedOptions: INodeProperties[] = [
 				operation: ['getManyAdvanced'],
 			},
 		},
+		typeOptions: {
+			loadOptionsDependsOn: ['resource', 'operation'],
+		},
 	},
 	{
 		displayName: 'Max Records',
@@ -25,6 +28,7 @@ export const getManyAdvancedOptions: INodeProperties[] = [
 		typeOptions: {
 			minValue: 1,
 			maxValue: 500,
+			loadOptionsDependsOn: ['resource', 'operation'],
 		},
 		displayOptions: {
 			show: {
@@ -43,6 +47,7 @@ export const getManyAdvancedOptions: INodeProperties[] = [
 		required: true,
 		typeOptions: {
 			alwaysOpenEditWindow: true,
+			loadOptionsDependsOn: ['resource', 'operation'],
 		},
 		displayOptions: {
 			show: {

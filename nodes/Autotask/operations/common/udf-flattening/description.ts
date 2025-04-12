@@ -15,6 +15,9 @@ export const flattenUdfsOption: INodeProperties = {
 			operation: ['get', 'getMany', 'getManyAdvanced'],
 		},
 	},
+	typeOptions: {
+		loadOptionsDependsOn: ['resource', 'operation'],
+	},
 };
 
 /**
