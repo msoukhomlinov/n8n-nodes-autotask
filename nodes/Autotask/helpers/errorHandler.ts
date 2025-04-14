@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, ILoadOptionsFunctions, IHookFunctions } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import type { IApiErrorWithResponse, IApiErrorDetail } from '../types/base/api';
+import type { IAutotaskErrorDetail, IAutotaskError } from '../types/base/errors';
 
 /**
  * Autotask error types with their corresponding HTTP status codes
@@ -43,15 +44,72 @@ interface IErrorContext {
 }
 
 /**
- * Formats error details from API response
+ * Formats error details from API response with enhanced context
  */
-function formatErrorDetails(errors?: IApiErrorDetail[]): string {
+function formatErrorDetails(errors?: IApiErrorDetail[] | IAutotaskErrorDetail[]): string {
 	if (!errors?.length) return '';
-	return errors.map(e => e.message).join(', ');
+
+	return errors.map(e => {
+		let message = e.message || 'Unknown error';
+		if (e.field) {
+			message = `Field '${e.field}': ${message}`;
+		}
+		if (e.code) {
+			message = `[${e.code}] ${message}`;
+		}
+		return message;
+	}).join(' | ');
 }
 
 /**
- * Gets detailed error context from error object
+ * Gets error type based on multiple context factors
+ * Consolidated error type classification function
+ */
+function getErrorTypeByContext(
+	status?: number,
+	message?: string,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	errors?: IApiErrorDetail[] | IAutotaskErrorDetail[]
+): AutotaskErrorType {
+	// Special case handling for message patterns
+	if (message) {
+		if (message.includes('[NotFoundError]') ||
+			message.toLowerCase().includes('not found') ||
+			(message.includes('item') && message.includes('null'))) {
+			return AutotaskErrorType.NotFound;
+		}
+	}
+
+	// In Phase 2, we'll use errors parameter to detect business rule violations
+	// Currently unused but keeping the parameter for future implementation
+
+	// Status-based classification
+	if (!status) return AutotaskErrorType.Unknown;
+
+	// Map status codes to error types
+	const statusErrorMap: Record<number, AutotaskErrorType> = {
+		400: AutotaskErrorType.BadRequest,
+		401: AutotaskErrorType.Authentication,
+		403: AutotaskErrorType.Authorization,
+		404: AutotaskErrorType.NotFound,
+		409: AutotaskErrorType.Conflict,
+		422: AutotaskErrorType.Validation,
+		429: AutotaskErrorType.TooManyRequests,
+		500: AutotaskErrorType.InternalServer,
+		503: AutotaskErrorType.ServiceUnavailable,
+		504: AutotaskErrorType.GatewayTimeout,
+	};
+
+	if (statusErrorMap[status]) return statusErrorMap[status];
+
+	if (status >= 400 && status < 500) return AutotaskErrorType.BadRequest;
+	if (status >= 500) return AutotaskErrorType.InternalServer;
+
+	return AutotaskErrorType.Unknown;
+}
+
+/**
+ * Creates a standardized error context object from various error types
  */
 function getErrorContext(error: Error | IApiErrorWithResponse, operation?: string, entityType?: string): IErrorContext {
 	if (!error) {
@@ -61,177 +119,83 @@ function getErrorContext(error: Error | IApiErrorWithResponse, operation?: strin
 		};
 	}
 
-	// Special handling for specific error patterns
-	if (error.message) {
-		// Check for NotFound errors
-		if (error.message.includes('[NotFoundError]') ||
-			error.message.toLowerCase().includes('not found') ||
-			(error.message.includes('item') && error.message.includes('null'))) {
-			return {
-				type: AutotaskErrorType.NotFound,
-				details: error.message,
-			};
+	let details = '';
+	let statusCode;
+	let specificErrors: IApiErrorDetail[] | IAutotaskErrorDetail[] = [];
+
+	// Extract status code and attempt to extract specific error details from the response
+	if ('response' in error && error.response) {
+		statusCode = error.response.status;
+
+		// Check for the errors array in the response data
+		if (error.response.data && Array.isArray(error.response.data.errors) && error.response.data.errors.length > 0) {
+			specificErrors = error.response.data.errors;
+			details = formatErrorDetails(specificErrors);
 		}
 	}
 
-	if ('response' in error) {
-		const status = error.response?.status;
-
-		// Extract detailed error information if available
-		if (error.response?.data && 'errors' in error.response.data) {
-			const errorData = error.response.data;
-
-			// Format detailed error messages if available
-			if (Array.isArray(errorData.errors) && errorData.errors.length > 0) {
-				const errorDetails = errorData.errors.map((e: IApiErrorDetail) => {
-					let message = e.message || 'Unknown error';
-					if (e.field) {
-						message = `Field '${e.field}': ${message}`;
-					}
-					if (e.code) {
-						message = `[${e.code}] ${message}`;
-					}
-					return message;
-				}).join(' | ');
-
-				// Use detailed error messages in the context
-				const errorContext = {
-					type: getErrorTypeByStatus(status),
-					statusCode: status,
-					details: errorDetails || formatErrorDetails(errorData.errors) || 'API error occurred',
-				};
-
-				return errorContext;
-			}
-		}
-
-		switch (status) {
-			case 400:
-				return {
-					type: AutotaskErrorType.BadRequest,
-					statusCode: status,
-					details: formatErrorDetails(error.response?.data?.errors) || 'Invalid request format or parameters',
-				};
-			case 401:
-				return {
-					type: AutotaskErrorType.Authentication,
-					statusCode: status,
-					details: 'Authentication failed: Invalid credentials',
-				};
-			case 403:
-				return {
-					type: AutotaskErrorType.Authorization,
-					statusCode: status,
-					details: 'Authorization failed: Insufficient permissions',
-				};
-			case 404:
-				return {
-					type: AutotaskErrorType.NotFound,
-					statusCode: status,
-					details: `Resource not found${entityType ? `: ${entityType}` : ''}`,
-				};
-			case 409:
-				return {
-					type: AutotaskErrorType.Conflict,
-					statusCode: status,
-					details: 'Resource state conflict',
-				};
-			case 422:
-				return {
-					type: AutotaskErrorType.Validation,
-					statusCode: status,
-					details: formatErrorDetails(error.response?.data?.errors) || 'Validation error',
-				};
-			case 429:
-				return {
-					type: AutotaskErrorType.TooManyRequests,
-					statusCode: status,
-					details: 'Rate limit exceeded',
-				};
-			case 500:
-				return {
-					type: AutotaskErrorType.InternalServer,
-					statusCode: status,
-					details: 'Internal server error',
-				};
-			case 503:
-				return {
-					type: AutotaskErrorType.ServiceUnavailable,
-					statusCode: status,
-					details: 'Service temporarily unavailable',
-				};
-			case 504:
-				return {
-					type: AutotaskErrorType.GatewayTimeout,
-					statusCode: status,
-					details: 'Gateway timeout',
-				};
-			default:
-				if (status && status >= 400 && status < 500) {
-					return {
-						type: AutotaskErrorType.BadRequest,
-						statusCode: status,
-						details: formatErrorDetails(error.response?.data?.errors) || `Client error: ${status}`,
-					};
-				}
-				if (status && status >= 500) {
-					return {
-						type: AutotaskErrorType.InternalServer,
-						statusCode: status,
-						details: `Server error: ${status}`,
-					};
-				}
-		}
+	// If no specific details were extracted from the response body, use the general error message
+	if (!details && error.message) {
+		details = error.message;
 	}
 
-	if (error instanceof Error) {
-		if (error.name === 'NetworkError') {
-			return {
-				type: AutotaskErrorType.Network,
-				details: error.message || 'Network connection error',
-			};
-		}
-		if (error.name === 'TimeoutError') {
-			return {
-				type: AutotaskErrorType.Timeout,
-				details: error.message || 'Request timeout',
-			};
-		}
-		if (error.name === 'SyntaxError' || error.name === 'TypeError') {
-			return {
-				type: AutotaskErrorType.ParseError,
-				details: error.message || 'Failed to parse API response',
-			};
-		}
-	}
+	// Determine the error type based on context (status code, message, and specific errors if available)
+	const type = getErrorTypeByContext(
+		statusCode,
+		error.message, // Pass the general message for context
+		specificErrors // Pass the specific errors for potential type refinement
+	);
 
 	return {
-		type: AutotaskErrorType.Unknown,
-		details: error.message || 'An unknown error occurred',
+		type,
+		operation,
+		entityType,
+		statusCode,
+		details: details || 'An error occurred', // Ensure we always have a details string
 	};
 }
 
 /**
- * Gets error type based on HTTP status code
+ * Creates a standardized error object with consistent structure
  */
-function getErrorTypeByStatus(status?: number): AutotaskErrorType {
-	if (!status) return AutotaskErrorType.Unknown;
+export function createStandardErrorObject(error: Error | IApiErrorWithResponse, context: {
+	url: string;
+	method: string;
+	status?: number;
+	operation?: string;
+	entityType?: string;
+}): IAutotaskError {
+	const { url, method, status, operation, entityType } = context;
+	let details: IAutotaskErrorDetail[] = [];
 
-	if (status === 401) return AutotaskErrorType.Authentication;
-	if (status === 403) return AutotaskErrorType.Authorization;
-	if (status === 404) return AutotaskErrorType.NotFound;
-	if (status === 400) return AutotaskErrorType.BadRequest;
-	if (status === 422) return AutotaskErrorType.Validation;
-	if (status === 409) return AutotaskErrorType.Conflict;
-	if (status === 429) return AutotaskErrorType.TooManyRequests;
-	if (status === 500) return AutotaskErrorType.InternalServer;
-	if (status === 503) return AutotaskErrorType.ServiceUnavailable;
-	if (status === 504) return AutotaskErrorType.GatewayTimeout;
+	// Extract details from API error response
+	if ('response' in error && error.response?.data?.errors) {
+		if (Array.isArray(error.response.data.errors)) {
+			details = error.response.data.errors;
+		}
+	}
 
-	if (status >= 400 && status < 500) return AutotaskErrorType.BadRequest;
-	if (status >= 500) return AutotaskErrorType.InternalServer;
+	// Get error context information
+	const errorContext = getErrorContext(error, operation, entityType);
 
-	return AutotaskErrorType.Unknown;
+	// Prepare the rawResponse with proper type guard
+	const rawResponse = 'response' in error && error.response?.data
+		? JSON.stringify(error.response.data)
+		: undefined;
+
+	return {
+		statusCode: status,
+		message: errorContext.details || error.message || 'Unknown error',
+		details,
+		context: {
+			url,
+			method,
+			operation,
+			entityType,
+			errorDetails: details,
+			rawResponse
+		}
+	};
 }
 
 /**
@@ -250,16 +214,47 @@ export async function handleErrors<T>(
 	try {
 		return await operation();
 	} catch (error) {
-		const lastError = error instanceof Error ? error : new Error('Unknown error');
-		const errorContext = getErrorContext(lastError, opName, entityType);
+		// Get standardized error context
+		const errorContext = getErrorContext(error as Error | IApiErrorWithResponse, opName, entityType);
 
-		if (!context) {
-			throw lastError;
+		// Check if error.message or error.description have been set by request.ts
+		// This preserves specific API error messages formatted in the request handler
+		const errorMessage = (error as { description?: string }).description ||
+			(error as Error).message ||
+			errorContext.details ||
+			'An unknown error occurred';
+
+		// Look for errors array in various locations
+		const apiErrors =
+			((error as IApiErrorWithResponse).response?.data?.errors) || // Direct from response
+			((error as { error?: { errors?: IApiErrorDetail[] | IAutotaskErrorDetail[] } }).error?.errors) || // From standardized error object
+			[];
+
+		// Format API-specific error message if available but not already formatted
+		const formattedApiErrors = Array.isArray(apiErrors) && apiErrors.length > 0
+			? apiErrors.map((e: IApiErrorDetail | IAutotaskErrorDetail | string) =>
+				typeof e === 'string' ? e : e.message).filter(Boolean).join(' | ')
+			: '';
+
+		// Use the most specific error message available with priority:
+		// 1. Pre-formatted message from request.ts
+		// 2. API errors array formatted here
+		// 3. Error context details
+		// 4. Generic message
+		const detailedMessage = errorMessage !== 'An unknown error occurred'
+			? errorMessage
+			: formattedApiErrors || errorContext.details || 'An unknown error occurred';
+
+		// Throw n8n error with consistent formatting
+		if (context) {
+			throw new NodeOperationError(
+				context.getNode(),
+				detailedMessage,
+				{ itemIndex: 0 }
+			);
 		}
 
-		throw new NodeOperationError(context.getNode(), lastError, {
-			description: errorContext.details,
-			message: `[${errorContext.type}] ${opName ? `Operation: ${opName}, ` : ''}${entityType ? `Entity: ${entityType}, ` : ''}${errorContext.details}`,
-		});
+		// If no context available, rethrow with enhanced message
+		throw new Error(`${detailedMessage} [${errorContext.type}]`);
 	}
 }

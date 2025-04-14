@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.7.0] - 2025-04-14
+
+### Fixed
+- Improved error handling to display specific API error messages in n8n UI:
+  - Enhanced error extraction from API responses for all status codes
+
 ## [0.6.9] - 2025-04-13
 
 ### Added

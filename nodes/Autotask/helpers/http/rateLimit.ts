@@ -229,28 +229,31 @@ class RequestRateTracker {
 }
 
 /**
- * Calculates exponential backoff duration for retries
+ * Calculates base throttle duration based on usage
  */
-export function calculateBackoff(retryAttempt: number, baseDelay = 1000): number {
-    const maxDelay = 30000; // Cap at 30 seconds
-    const exponentialDelay = Math.min(maxDelay, baseDelay * (2 ** (retryAttempt - 1)));
-    const jitter = Math.random() * 1000; // Add up to 1 second of jitter
-    return exponentialDelay + jitter;
+export function calculateThrottleDuration(usagePercent: number): number {
+    if (usagePercent >= 90) {
+        return 5000; // 5 seconds when close to limit (90%+)
+    } else if (usagePercent >= 75) {
+        return 2000; // 2 seconds at high usage (75-90%)
+    } else if (usagePercent >= 50) {
+        return 1000; // 1 second at moderate usage (50-75%)
+    }
+    return 0; // No throttling at low usage
 }
 
 /**
- * Handles rate limiting and backoff for API requests
+ * Handles rate limiting for API requests
  */
-export async function handleRateLimit(retryAttempt = 0): Promise<void> {
+export async function handleRateLimit(): Promise<void> {
     const rateTracker = RequestRateTracker.getInstance();
     const usagePercent = rateTracker.trackRequest();
 
     // If we're over the rate limit, wait before proceeding
     if (rateTracker.shouldThrottle()) {
         const baseDelay = rateTracker.getThrottleDuration();
-        const backoffDelay = calculateBackoff(retryAttempt, baseDelay);
-        console.debug(`[RateLimit] Adding backoff delay of ${backoffDelay}ms (retry attempt: ${retryAttempt})`);
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        console.debug(`[RateLimit] Adding throttle delay of ${baseDelay}ms (at limit)`);
+        await new Promise(resolve => setTimeout(resolve, baseDelay));
     }
 
     // Add small delay based on current usage

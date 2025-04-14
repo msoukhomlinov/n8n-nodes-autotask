@@ -237,8 +237,8 @@ export async function processBatchResources<T>(
 		batchPauseMs = 0,
 		concurrencyLimit = API_CONSTANTS.MAX_CONCURRENT_REQUESTS,
 		throwOnError = false,
-		maxRetries = API_CONSTANTS.MAX_RETRIES,
-		retryPauseMs = API_CONSTANTS.BASE_BACKOFF_DELAY,
+		maxRetries = 3, // Default: 3 retries
+		retryPauseMs = 1000, // Default: 1000ms base delay
 	} = options;
 
 	const results = {

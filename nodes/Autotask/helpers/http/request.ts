@@ -16,10 +16,9 @@ import { NodeApiError } from 'n8n-workflow';
 import { plural, singular } from 'pluralize';
 import { getEntityMetadata } from '../../constants/entities';
 import type { IQueryResponse } from '../../types/base/entity-types';
-import type { IApiError } from '../../types/base/api';
+import type { IApiError, IApiErrorDetail } from '../../types/base/api';
 import type { OperationType } from '../../types/base/entity-types';
 import { handleRateLimit } from './rateLimit';
-import { API_CONSTANTS } from '../../constants/api';
 import { endpointThreadTracker } from './threadLimit';
 
 interface IAutotaskSuccessResponse {
@@ -27,7 +26,8 @@ interface IAutotaskSuccessResponse {
 	itemId?: number;
 }
 
-interface IAutotaskError {
+// Rename to avoid conflict with imported interface
+interface IAutotaskErrorResponse {
 	response?: {
 		status?: number;
 		data?: IApiError | IAutotaskSuccessResponse;
@@ -72,7 +72,7 @@ function isModificationOperation(method: string, endpoint: string): boolean {
 /**
  * Gets error message from API error response
  */
-function getErrorMessage(error: IAutotaskError): string {
+function getErrorMessage(error: IAutotaskErrorResponse): string {
 	if (error.response?.status === 401) {
 		return 'Authentication failed: Invalid credentials';
 	}
@@ -84,20 +84,8 @@ function getErrorMessage(error: IAutotaskError): string {
 	// Handle API errors with detailed information
 	const errorData = error.response?.data as IApiError;
 	if (errorData?.errors?.length) {
-		// Extract messages with more context
-		const formattedErrors = errorData.errors.map(e => {
-			let message = e.message || 'Unknown error';
-			if (e.field) {
-				message = `Field '${e.field}': ${message}`;
-			}
-			if (e.code) {
-				message = `[${e.code}] ${message}`;
-			}
-			return message;
-		});
-
-		// Return formatted detailed message
-		return `API Error (${error.response?.status}): ${formattedErrors.join(' | ')}`;
+		// Format errors using our standard format
+		return formatErrorDetails(errorData.errors);
 	}
 
 	// Handle any non-200 status as error
@@ -106,6 +94,25 @@ function getErrorMessage(error: IAutotaskError): string {
 	}
 
 	return error.message || 'Unknown error occurred';
+}
+
+/**
+ * Formats error details with consistent pattern
+ * @internal
+ */
+function formatErrorDetails(errors: IApiErrorDetail[]): string {
+	if (!errors?.length) return 'Unknown error occurred';
+
+	return errors.map(e => {
+		let message = e.message || 'Unknown error';
+		if (e.field) {
+			message = `Field '${e.field}': ${message}`;
+		}
+		if (e.code) {
+			message = `[${e.code}] ${message}`;
+		}
+		return message;
+	}).join(' | ');
 }
 
 /**
@@ -344,170 +351,157 @@ export async function autotaskApiRequest<T = JsonObject>(
 		options.body = body;
 	}
 
-	let retryAttempt = 0;
-	const maxRetries = API_CONSTANTS.MAX_RETRIES;
-
 	// Extract the base endpoint name for thread tracking
 	// This gets the root entity type (e.g., "Tickets" from "Tickets/123" or "Tickets/query")
 	const baseEndpoint = endpoint.split('/')[0];
 
-	do {
-		try {
-			// Acquire a thread for this endpoint before proceeding
-			await endpointThreadTracker.acquireThread(baseEndpoint);
+	try {
+		// Acquire a thread for this endpoint before proceeding
+		await endpointThreadTracker.acquireThread(baseEndpoint);
 
-			// Handle rate limiting before making the request
-			await handleRateLimit(retryAttempt);
+		// Handle rate limiting before making the request (single attempt)
+		await handleRateLimit();
 
-			const response = await this.helpers.request(options);
+		const response = await this.helpers.request(options);
 
-			// Handle empty responses
-			if (!response) {
-				throw new Error('Empty response from API');
-			}
+		// Handle empty responses
+		if (!response) {
+			throw new Error('Empty response from API');
+		}
 
-			// Handle entity information responses first (most specific)
-			if (endpoint.includes('entityInformation')) {
-				// Fields response
-				if (endpoint.endsWith('fields') || endpoint.endsWith('userDefinedFields')) {
-					const fieldsResponse = response as { fields: unknown[] };
-					if (!fieldsResponse?.fields || !Array.isArray(fieldsResponse.fields)) {
-						throw new Error(`Invalid fields response: missing or invalid fields array for ${endpoint}`);
-					}
-					return response as T;
-				}
-				// Entity info response
-				const infoResponse = response as { info: Record<string, unknown> };
-				if (!infoResponse?.info || typeof infoResponse.info !== 'object') {
-					throw new Error('Invalid entity information response: missing or invalid info object');
+		// Handle entity information responses first (most specific)
+		if (endpoint.includes('entityInformation')) {
+			// Fields response
+			if (endpoint.endsWith('fields') || endpoint.endsWith('userDefinedFields')) {
+				const fieldsResponse = response as { fields: unknown[] };
+				if (!fieldsResponse?.fields || !Array.isArray(fieldsResponse.fields)) {
+					throw new Error(`Invalid fields response: missing or invalid fields array for ${endpoint}`);
 				}
 				return response as T;
 			}
-
-			// Handle modification operations next (POST, PUT, PATCH, DELETE)
-			if (isModificationOperation(method, endpoint)) {
-				const modResponse = response as IAutotaskSuccessResponse;
-
-				// For child entity operations (e.g. tasks under projects)
-				if (endpoint.includes('/') && endpoint.split('/').length > 2) {
-					const modResponse = response as IAutotaskSuccessResponse;
-					if ('itemId' in modResponse) {
-						return { item: { itemId: modResponse.itemId } } as T;
-					}
-				}
-
-				// For regular entity operations
-				if ('id' in modResponse || 'itemId' in modResponse) {
-					const idField = 'id' in modResponse ? 'id' : 'itemId';
-					return { item: { [idField]: modResponse[idField] } } as T;
-				}
-				throw new Error(`Invalid modification response: missing id/itemId for ${method} ${endpoint}`);
+			// Entity info response
+			const infoResponse = response as { info: Record<string, unknown> };
+			if (!infoResponse?.info || typeof infoResponse.info !== 'object') {
+				throw new Error('Invalid entity information response: missing or invalid info object');
 			}
-
-			// Handle count query responses
-			if (endpoint.includes('/query/count')) {
-				const countResponse = response as { queryCount: number };
-				if (typeof countResponse?.queryCount === 'number') {
-					return response as T;
-				}
-				throw new Error(`Invalid count response: missing or invalid queryCount value. Response: ${JSON.stringify(response)}`);
-			}
-
-			// Handle query responses
-			if (isQueryEndpoint(endpoint)) {
-				const queryResponse = response as IQueryResponse<T>;
-				if (queryResponse?.items && Array.isArray(queryResponse.items) && queryResponse?.pageDetails) {
-					return response as T;
-				}
-				throw new Error('Invalid query response: missing items array or pageDetails');
-			}
-
-			// Handle single entity GET responses
-			if (method === 'GET' && !isQueryEndpoint(endpoint)) {
-				if (response?.item) {
-					return response as T;
-				}
-
-				if (response && response.item === null) {
-					// This indicates the record wasn't found but API returned a valid response
-					const entityType = endpoint.split('/')[0].replace(/\/$/, '');
-					const entityId = endpoint.split('/')[1]?.replace(/\/$/, '') || 'unknown';
-					throw new Error(`[NotFoundError] The ${entityType} with ID ${entityId} was not found. Please verify the ID is correct and that you have permission to access this record.`);
-				}
-			}
-
-			// If we get here, response format is unexpected
-			throw new Error(`Invalid API response format for ${method} ${endpoint}: ${JSON.stringify(response)}`);
-		} catch (error) {
-			console.error('API Error:', error);
-			console.error('Error Response:', error.response?.data);
-			console.error('Error Status:', error.response?.status);
-
-			const status = error.response?.status;
-			const url = options.url;
-			console.warn(`API ${method} ${url} failed (${status}): ${getErrorMessage(error)}`);
-
-			// Check if we should retry
-			const shouldRetry = (status === 429 || (status >= 500 && status < 600)) && retryAttempt < maxRetries;
-			if (shouldRetry) {
-				retryAttempt++;
-				continue;
-			}
-
-			// For API errors with error messages, use NodeApiError with enhanced context
-			const errorData = error.response?.data as IApiError;
-			if (errorData?.errors?.length) {
-				// Format detailed error messages
-				const errorMessages = errorData.errors.map(e => {
-					// Include field and code information if available
-					let message = e.message || '';
-					if (e.field) {
-						message = `Field '${e.field}': ${message}`;
-					}
-					if (e.code) {
-						message = `[${e.code}] ${message}`;
-					}
-					return message;
-				}).filter(Boolean);
-
-				// Include the full error context
-				const detailedMessage = `Autotask API Error (${status}): ${errorMessages.join(' | ')}`;
-
-				// Create error object with both human-readable message and raw error details
-				error.error = {
-					message: detailedMessage,
-					status: error.response?.status,
-					context: {
-						url,
-						method,
-						errorDetails: errorData.errors,
-						rawResponse: JSON.stringify(errorData)
-					}
-				};
-				error.statusCode = error.response?.status;
-				error.message = detailedMessage; // Also update the error message property
-				throw new NodeApiError(this.getNode(), error);
-			}
-
-			// For other errors, create a more informative error message
-			const errorMessage = `Operation failed: ${method} ${url} returned status ${status}${
-				error.message ? ` - ${error.message}` : ''
-			}`;
-
-			error.error = {
-				message: errorMessage,
-				status: error.response?.status,
-				context: { url, method }
-			};
-			error.statusCode = error.response?.status;
-			error.message = errorMessage; // Also update the error message property
-			throw new NodeApiError(this.getNode(), error);
-		} finally {
-			// Release the thread when done (whether successful or failed)
-			endpointThreadTracker.releaseThread(baseEndpoint);
+			return response as T;
 		}
-	} while (retryAttempt < maxRetries);
 
-	// This line should never be reached due to the error handling above
-	throw new Error('Maximum retry attempts exceeded');
+		// Handle modification operations next (POST, PUT, PATCH, DELETE)
+		if (isModificationOperation(method, endpoint)) {
+			const modResponse = response as IAutotaskSuccessResponse;
+
+			// For child entity operations (e.g. tasks under projects)
+			if (endpoint.includes('/') && endpoint.split('/').length > 2) {
+				const modResponse = response as IAutotaskSuccessResponse;
+				if ('itemId' in modResponse) {
+					return { item: { itemId: modResponse.itemId } } as T;
+				}
+			}
+
+			// For regular entity operations
+			if ('id' in modResponse || 'itemId' in modResponse) {
+				const idField = 'id' in modResponse ? 'id' : 'itemId';
+				return { item: { [idField]: modResponse[idField] } } as T;
+			}
+			throw new Error(`Invalid modification response: missing id/itemId for ${method} ${endpoint}`);
+		}
+
+		// Handle count query responses
+		if (endpoint.includes('/query/count')) {
+			const countResponse = response as { queryCount: number };
+			if (typeof countResponse?.queryCount === 'number') {
+				return response as T;
+			}
+			throw new Error(`Invalid count response: missing or invalid queryCount value. Response: ${JSON.stringify(response)}`);
+		}
+
+		// Handle query responses
+		if (isQueryEndpoint(endpoint)) {
+			const queryResponse = response as IQueryResponse<T>;
+			if (queryResponse?.items && Array.isArray(queryResponse.items) && queryResponse?.pageDetails) {
+				return response as T;
+			}
+			throw new Error('Invalid query response: missing items array or pageDetails');
+		}
+
+		// Handle single entity GET responses
+		if (method === 'GET' && !isQueryEndpoint(endpoint)) {
+			if (response?.item) {
+				return response as T;
+			}
+
+			if (response && response.item === null) {
+				// This indicates the record wasn't found but API returned a valid response
+				const entityType = endpoint.split('/')[0].replace(/\/$/, '');
+				const entityId = endpoint.split('/')[1]?.replace(/\/$/, '') || 'unknown';
+				throw new Error(`[NotFoundError] The ${entityType} with ID ${entityId} was not found. Please verify the ID is correct and that you have permission to access this record.`);
+			}
+		}
+
+		// If we get here, response format is unexpected
+		throw new Error(`Invalid API response format for ${method} ${endpoint}: ${JSON.stringify(response)}`);
+	} catch (error) {
+		console.error('API Error:', error);
+
+		const status = error.response?.status;
+		const url = options.url;
+		console.warn(`API ${method} ${url} failed (${status}): ${getErrorMessage(error)}`);
+
+		// Import the createStandardErrorObject function
+		const { createStandardErrorObject } = await import('../../helpers/errorHandler');
+
+		// Create standardized error object with all context
+		const standardError = createStandardErrorObject(error, {
+			url,
+			method,
+			status,
+			// Add operation and entity context if available
+			operation: endpoint.split('/')[0],
+			entityType: endpoint.split('/')[0]
+		});
+
+		// Extract API error messages from response
+		const responseErrors = error.response?.data?.errors;
+		const directErrors = error.error?.errors;
+		const errorsArray = responseErrors || directErrors || [];
+
+		// Format the error message for display with API specifics
+		const apiErrorMessages = Array.isArray(errorsArray) && errorsArray.length > 0
+			? errorsArray.map(e => typeof e === 'string' ? e : e.message).filter(Boolean).join(' | ')
+			: '';
+
+		// Use API specific error message if available
+		const detailedMessage = apiErrorMessages || standardError.message || error.message || 'An unknown error occurred';
+
+		// Set consistent properties on the error object to ensure n8n displays the right message
+		error.message = detailedMessage;
+		error.description = detailedMessage;
+
+		// These properties are used by n8n to display error messages in the UI
+		error.statusCode = standardError.statusCode;
+		error.error = {
+			message: detailedMessage,
+			status: standardError.statusCode,
+			context: standardError.context
+		};
+
+		// Log error details (useful for debugging)
+		const hasSpecificErrors = Array.isArray(errorsArray) && errorsArray.length > 0;
+
+		console.debug('Error details:', {
+			status,
+			hasSpecificErrors,
+			errorCount: errorsArray.length || 0,
+			errorMessages: apiErrorMessages,
+			responseDataErrors: error.response?.data?.errors,
+			errorObjectErrors: error.error?.errors
+		});
+
+		// Throw standardized error with the detailed message
+		throw new NodeApiError(this.getNode(), error);
+	} finally {
+		// Release the thread when done (whether successful or failed)
+		endpointThreadTracker.releaseThread(baseEndpoint);
+	}
 }
