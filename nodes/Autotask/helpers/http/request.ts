@@ -323,7 +323,8 @@ export async function autotaskApiRequest<T = JsonObject>(
 	query: IRequestConfig['query'] = {},
 ): Promise<T> {
 	const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-	const baseUrl = credentials.zone;
+	// Determine the correct base URL based on the zone selection
+	const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl : credentials.zone;
 
 	const options: IRequestOptions = {
 		method,
