@@ -2,7 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [0.7.1] - 2025-04-15
+## [0.7.2] - 2025-04-17
+
+### Fixed
+- Updated documentation in README:
+  - Corrected Advanced Example for Complex Filtering with Get Many Advanced operation
+
+## [0.7.1] - 2025-04-17
 
 ### Changed
 - Updated "Other (Use Zone Information API)" option in credentials to "Other (Custom URL)":
