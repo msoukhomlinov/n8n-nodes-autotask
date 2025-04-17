@@ -133,26 +133,26 @@ export class AutotaskApi implements ICredentialType {
 					value: 'https://webservices12.autotask.net/atservicesrest',
 				},
 				{
-					name: 'Other (Use Zone Information API)',
+					name: 'Other (Custom URL)',
 					value: 'other',
 				},
 			],
 			default: 'https://webservices6.autotask.net/atservicesrest',
 			required: true,
-			description: 'Select your Autotask instance zone. If unsure, use "Other" which will automatically detect your zone. Zone list sourced from: https://ww6.autotask.net/help/developerhelp/Content/APIs/General/API_Zones.htm',
+			description: 'Select your Autotask instance zone. If unsure, use "Other" to specify a custom URL. Zone list sourced from: https://ww6.autotask.net/help/developerhelp/Content/APIs/General/API_Zones.htm',
 		},
 		{
 			displayName: 'Custom Zone URL',
 			name: 'customZoneUrl',
 			type: 'string',
-			default: 'https://webservices.autotask.net/atservicesrest',
+			default: '',
 			required: true,
 			displayOptions: {
 				show: {
 					zone: ['other'],
 				},
 			},
-			description: 'Enter your custom Autotask zone URL. You can find your zone URL using the Zone Information API or from your Autotask administrator.',
+			description: 'Enter your custom Autotask zone URL. You can get this information from your Autotask administrator.',
 		},
 		{
 			displayName: 'Timezone',

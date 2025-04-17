@@ -284,7 +284,7 @@ export async function fetchThresholdInformation(
 } | null> {
 	try {
 		const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-		const baseUrl = credentials.zone;
+		const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
 		const apiPath = `${baseUrl.replace(/\/+$/, '')}/${API_VERSION.VERSION}/`;
 
 		const options: IRequestOptions = {
@@ -323,7 +323,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 	query: IRequestConfig['query'] = {},
 ): Promise<T> {
 	const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-	const baseUrl = credentials.zone;
+	const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
 
 	const options: IRequestOptions = {
 		method,

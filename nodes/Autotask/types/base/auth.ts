@@ -3,6 +3,7 @@ export interface IAutotaskCredentials {
 	Username: string;
 	Secret: string;
 	zone: string;
+	customZoneUrl?: string;
 	timezone: string;
 }
 

@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.7.1] - 2025-04-15
+
+### Changed
+- Updated "Other (Use Zone Information API)" option in credentials to "Other (Custom URL)":
+  - Modified the credential option to better reflect its actual functionality
+  - The custom URL is now used directly without any zone lookup
+
 ## [0.7.0] - 2025-04-14
 
 ### Fixed
