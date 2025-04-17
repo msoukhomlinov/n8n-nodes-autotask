@@ -280,31 +280,36 @@ An AI agent might use the Autotask node to:
 4. Build a complex filter, for example:
    ```json
    {
-     "op": "and",
-     "items": [
-       {
-         "field": "Status",
-         "op": "notEqual",
-         "value": 5
-       },
-       {
-         "op": "or",
-         "items": [
-           {
-             "field": "Priority",
-             "op": "Equal",
-             "value": 6
-           },
-           {
-             "field": "DueDateTime",
-             "op": "lessThan",
-             "value": "{{ $now.plus(3, 'days').toLocal()}}"
+      "filter": [
+      {
+        "op": "and",
+        "items": [
+          {
+            "field": "status",
+            "op": "noteq",
+            "value": 5
+          },
+          {
+            "op": "or",
+            "items": [
+              {
+                "field": "priority",
+                "op": "eq",
+                "value": 6
+              },
+              {
+                "field": "dueDateTime",
+                "op": "lt",
+                "value": "{{ $now.plus(3, 'days').toLocal()}}"
+              }
+             ]
            }
          ]
-       }
-     ]
+      }
+    ]
    }
    ```
+   [Valid filter operators and filter documentation can be found here](https://ww15.autotask.net/help/DeveloperHelp/Content/APIs/REST/API_Calls/REST_Basic_Query_Calls.htm?Highlight=filter#List2)
 5. Choose whether to retrieve all results or limit the number:
    - Toggle "Get All" to true to retrieve all matching records
    - Toggle "Get All" to false and set "Max Records" (1-500) to limit the results
