@@ -334,7 +334,20 @@ export async function autotaskApiRequest<T = JsonObject>(
 
 	// For pagination URLs, use the URL as-is and preserve the original body
 	if (endpoint.startsWith('http') && endpoint.includes('/query/')) {
-		options.url = endpoint;
+		// Check if using custom URL
+		if (credentials.zone === 'other' && credentials.customZoneUrl) {
+			// Extract the path from the endpoint URL (everything after the domain)
+			const urlObj = new URL(endpoint);
+			const pathWithQuery = urlObj.pathname + urlObj.search;
+
+			// Combine custom URL with the extracted path
+			const customBaseUrl = credentials.customZoneUrl.replace(/\/+$/, '');
+			options.url = `${customBaseUrl}${pathWithQuery}`;
+		} else {
+			// Standard behavior - use the full URL as-is
+			options.url = endpoint;
+		}
+
 		// For pagination requests, we must preserve the original filter criteria
 		// but should not include IncludeFields as they're already in the URL
 		if (body && typeof body === 'object') {
