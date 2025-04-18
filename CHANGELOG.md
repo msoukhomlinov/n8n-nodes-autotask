@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.7.3] - 2025-04-18
+
+### Fixed
+- Fixed issue with custom URL not being used for pagination requests:
+  - Modified request handling to use custom URL consistently for all API calls
+  - Fixed pagination URLs to work properly with proxy/custom URL configurations
+  - Ensures all requests in a paginated sequence use the same base URL
+
 ## [0.7.2] - 2025-04-17
 
 ### Fixed
