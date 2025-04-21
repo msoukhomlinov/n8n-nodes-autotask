@@ -45,6 +45,19 @@ export class AutotaskTrigger implements INodeType {
 		version: 1,
 		subtitle: '={{$parameter["entityType"] + ": " + ($parameter["eventTypes"].length > 0 ? $parameter["eventTypes"].join(", ") : "all events")}}',
 		description: 'Handle Autotask Webhook events',
+		codex: {
+			categories: ['Business', 'Customer Management', 'Operations', 'Sales & CRM'],
+			resources: {
+				primaryDocumentation: [
+					{
+						url: 'https://github.com/msoukhomlinov/n8n-nodes-autotask',
+					},
+					{
+						url: 'https://ww6.autotask.net/help/developerhelp/Content/APIs/REST/REST_API_Home.htm',
+					},
+				],
+			},
+		},
 		defaults: {
 			name: 'Autotask Trigger',
 		},

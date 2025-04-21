@@ -168,7 +168,20 @@ export class Autotask implements INodeType {
 		usableAsTool: true,
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
-		description: 'Consume Autotask REST API',
+		description: 'Interact with Kaseya\'s Autotask PSA REST API to manage companies, tickets, contracts, and more.',
+		codex: {
+			categories: ['Business', 'Customer Management', 'Operations', 'Sales & CRM'],
+			resources: {
+				primaryDocumentation: [
+					{
+						url: 'https://github.com/msoukhomlinov/n8n-nodes-autotask',
+					},
+					{
+						url: 'https://ww6.autotask.net/help/developerhelp/Content/APIs/REST/REST_API_Home.htm',
+					},
+				],
+			},
+		},
 		defaults: {
 			name: 'Autotask',
 		},
