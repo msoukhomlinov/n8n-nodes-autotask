@@ -1,7 +1,9 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.7.3-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.7.4-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
 
 > **IMPORTANT**: After updating this node to a new version, a restart of your n8n instance is highly recommended to ensure all changes are properly applied.
 
@@ -19,6 +21,7 @@ This is an n8n community node for integrating with Autotask PSA. It provides a c
 [Limitations](#limitations)  
 [Troubleshooting](#troubleshooting)  
 [Resources](#resources)  
+[Support](#support)  
 [License](#license)
 
 ## Installation
@@ -146,6 +149,7 @@ For most resources, the following operations are available:
   - Set a maximum number of records to return when not retrieving all records
   - Select specific columns to return in the response
   - Add human-readable labels for picklist and reference fields
+  - Flatten User-Defined Fields for easier access in workflows
 - **Get Many Advanced**: Build complex queries with multiple filter conditions and logical operators. This operation provides:
   - Support for complex AND/OR logic in filters
   - Nested condition groups for sophisticated queries
@@ -156,6 +160,7 @@ For most resources, the following operations are available:
   - Set a maximum number of records to return when not retrieving all records
   - Select specific columns to return in the response
   - Add human-readable labels for picklist and reference fields
+  - Flatten User-Defined Fields for easier access in workflows
   - Date-based filtering with automatic timezone handling
 - **Count**: Get the number of matching records
 - **Get Entity Info**: Retrieve metadata about the entity
@@ -186,6 +191,7 @@ The node includes an Autotask Trigger node that can receive webhook events from 
 - **Column Selection**: Choose specific fields to return in get operations
 - **Picklist Label Enrichment**: Automatically add human-readable labels for picklist fields
 - **Reference Label Enrichment**: Add human-readable labels for reference fields
+- **UDF Flattening**: Bring user-defined fields up to the top level of response objects for easier access
 - **File-based Caching**: Improved performance with persistent caching that can be shared between workflows and runs
 - **Timezone Handling**: Automatic conversion between local time and UTC
 - **API Usage Monitoring**: Check current API usage thresholds and limits using the API Threshold resource to help prevent hitting rate limits and ensure smooth operations
@@ -270,7 +276,8 @@ An AI agent might use the Autotask node to:
 6. Select only the fields you need in the response (improves performance)
 7. Enable **Add Picklist Labels** to get human-readable values for picklist fields
 8. Enable **Add Reference Labels** to get human-readable values for reference fields
-9. Execute the workflow to get tickets with only the selected fields and human-readable labels
+9. Enable **Flatten User-Defined Fields** to bring UDFs to the top level of response objects
+10. Execute the workflow to get tickets with only the selected fields and human-readable labels
 
 ### Advanced Example: Complex Filtering with Get Many Advanced
 
@@ -378,12 +385,13 @@ The node includes an enhanced file-based caching system to improve performance b
 
 > **IMPORTANT**: This node uses dynamic picklists and field enrichers to convert numerical values into human-readable labels through dynamic lookups. It's strongly recommended to keep caching enabled to avoid excessive API calls. Without caching, each picklist and reference field lookup requires separate API calls, which can quickly consume your API rate limits, especially in workflows with many operations or large data sets.
 
-### Label Enrichment
+### Label Enrichment and Field Processing
 
-The node provides options to enrich entities with human-readable labels:
+The node provides options to enrich entities with human-readable labels and simplify field access:
 
 - **Add Picklist Labels**: Adds "_label" fields for picklist values (e.g., Status_label: "In Progress")
 - **Add Reference Labels**: Adds "_label" fields for reference values (e.g., Company_label: "Acme Corporation")
+- **Flatten User-Defined Fields**: When enabled, brings UDFs up to the top level of each response object for easier access instead of being nested in the userDefinedFields array (maintains the original array for backward compatibility)
 
 ### Column Selection
 
@@ -451,44 +459,52 @@ Bug reports should be submitted via GitHub at: https://github.com/msoukhomlinov/
 - [n8n Documentation](https://docs.n8n.io/)
 - [GitHub Repository](https://github.com/msoukhomlinov/n8n-nodes-autotask)
 
+## Support
+
+If you find this node helpful and want to support its ongoing development, you can buy me a coffee:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
+
+Your support helps maintain this project and develop new features.
+
 ## Changelog
 
-### [0.6.5] - 2025-04-11
+Below are the 5 most recent changes. For a complete changelog, see [CHANGELOG.md](CHANGELOG.md).
 
-#### Added
-- Added support for Roles entity
-- Added support for ContractBillingRules entity
-- Added support for ContractExclusionBillingCodes entity
-- Added support for ContractRoleCosts entity
-- Added support for ContractExclusionRoles entity
-- Added support for ContractExclusionSetExcludedRoles entity
-- Added support for ContractExclusionSetExcludedWorkTypes entity
-- Added support for ContractExclusionSets entity
-- Added support for ContractRetainers entity
-- Added support for ContractServiceAdjustments entity
-- Added support for ContractServiceBundleAdjustments entity
-- Added support for ContractServiceBundles entity
-- Added support for ContractServiceBundleUnits entity
-- Added support for ContractTicketPurchases entity
-- Added support for DomainRegistrars entity
-- Added support for Invoices entity
-- Added support for ProductVendors entity
-- Added support for NotificationHistory entity
-- Added support for ContactGroups entity
-- Added support for ContactGroupContacts entity
+### [0.7.3] - 2025-04-18
 
-#### Fixed
-- Fixed issue with reference type fields not populating in resource mapper:
-  - Modified FieldProcessor to properly handle reference field loading in resource mapper context
-  - Ensures reference picklists are populated consistently like regular picklists
-  - Improves field selection experience by showing all available reference values
-  - Previously, reference fields appeared empty while regular picklists worked fine
+### Fixed
+- Fixed issue with custom URL not being used for pagination requests:
+  - Modified request handling to use custom URL consistently for all API calls
+  - Fixed pagination URLs to work properly with proxy/custom URL configurations
+  - Ensures all requests in a paginated sequence use the same base URL
 
-### [0.6.4] - 2025-04-11
+### [0.7.2] - 2025-04-17
 
-#### Added
-- Added support for ResourceRole entity:
-  - Enables retrieval of department/role relationships, service desk queues, and service desk roles
+### Fixed
+- Updated documentation in README:
+  - Corrected Advanced Example for Complex Filtering with Get Many Advanced operation
+
+### [0.7.1] - 2025-04-17
+
+### Changed
+- Updated "Other (Use Zone Information API)" option in credentials to "Other (Custom URL)":
+  - Modified the credential option to better reflect its actual functionality
+  - The custom URL is now used directly without any zone lookup
+
+### [0.7.0] - 2025-04-14
+
+### Fixed
+- Improved error handling to display specific API error messages in n8n UI:
+  - Enhanced error extraction from API responses for all status codes
+
+### [0.6.9] - 2025-04-13
+
+### Added
+- Enhanced Search Filter resource with new "Dynamic Build" operation:
+  - Added entity-driven field selection workflow distinct from standard "Build" operation
+  - Implemented dynamic field loading based on entity selection
+  - Added UDF field support with clear type indicators
 
 ## License
 

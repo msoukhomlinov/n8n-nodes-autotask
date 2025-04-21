@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.7.4] - 2025-04-21
+
+### Added
+- Added structured metadata to nodes for better categorisation
+
 ## [0.7.3] - 2025-04-18
 
 ### Fixed
