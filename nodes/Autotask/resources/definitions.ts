@@ -335,6 +335,26 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Service Calls, which schedule resources for specific time periods to perform work for companies with associated tasks and tickets',
 	},
 	{
+		name: 'Service Call Ticket',
+		value: 'serviceCallTicket',
+		description: 'Manage Service Call Tickets, which link tickets to service calls for scheduling and tracking work',
+	},
+	{
+		name: 'Service Call Ticket Resource',
+		value: 'serviceCallTicketResource',
+		description: 'Manage Service Call Ticket Resources, which associate resources with service call tickets for scheduling and assignment',
+	},
+	{
+		name: 'Service Call Task',
+		value: 'serviceCallTask',
+		description: 'Manage Service Call Tasks, which define work items associated with service calls',
+	},
+	{
+		name: 'Service Call Task Resource',
+		value: 'serviceCallTaskResource',
+		description: 'Manage Service Call Task Resources, which associate resources with service call tasks for scheduling and assignment',
+	},
+	{
 		name: 'Skill',
 		value: 'skill',
 		description: 'Query Skills, which can be associated with Resources through the ResourceSkill entity to match resources to tickets based on their skill level',

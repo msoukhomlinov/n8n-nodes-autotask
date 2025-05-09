@@ -82,6 +82,10 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'Role', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Service', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'ServiceCall', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'ServiceCallTicket', childOf: 'ServiceCall', subname: 'Tickets', parentIdField: 'serviceCallID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	{ name: 'ServiceCallTicketResource', childOf: 'ServiceCallTicket', subname: 'Resources', parentIdField: 'serviceCallTicketID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	{ name: 'ServiceCallTask', childOf: 'ServiceCall', subname: 'Tasks', parentIdField: 'serviceCallID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	{ name: 'ServiceCallTaskResource', childOf: 'ServiceCallTask', subname: 'Resources', parentIdField: 'serviceCallTaskID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	// Skills entity (read-only)
 	{ name: 'Skill', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Survey', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
