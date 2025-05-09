@@ -128,6 +128,10 @@ The node supports the following Autotask resources:
 | Search Filter | Build advanced search filters |
 | Service | Manage services offered to clients |
 | Service Call | Manage service calls |
+| Service Call Task | Manage tasks associated with service calls |
+| Service Call Task Resource | Manage resources assigned to service call tasks |
+| Service Call Ticket | Manage tickets linked to service calls |
+| Service Call Ticket Resource | Manage resources assigned to service call tickets |
 | Survey | Manage customer surveys |
 | Survey Results | Manage results from customer surveys |
 | Ticket | Manage service tickets |
