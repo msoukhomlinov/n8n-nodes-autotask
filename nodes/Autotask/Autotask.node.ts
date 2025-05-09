@@ -155,6 +155,14 @@ import { contactGroupsFields } from './resources/contactGroups/description';
 import { executeContactGroupContactsOperation } from './resources/contactGroupContacts/execute';
 import { contactGroupContactsFields } from './resources/contactGroupContacts/description';
 import { getQueryableEntities, getEntityFields } from './helpers/options';
+import { executeQuoteOperation } from './resources/quotes/execute';
+import { quoteFields } from './resources/quotes/description';
+import { executeQuoteItemOperation } from './resources/quoteItems/execute';
+import { quoteItemFields } from './resources/quoteItems/description';
+import { executeQuoteLocationOperation } from './resources/quoteLocations/execute';
+import { quoteLocationFields } from './resources/quoteLocations/description';
+import { executeQuoteTemplateOperation } from './resources/quoteTemplates/execute';
+import { quoteTemplateFields } from './resources/quoteTemplates/description';
 
 /**
  * Autotask node implementation
@@ -200,7 +208,8 @@ export class Autotask implements INodeType {
 				type: 'options',
 				noDataExpression: true,
 				options: RESOURCE_DEFINITIONS,
-				default: 'company',
+				default: '',
+				required: true,
 			},
 			...addOperationsToResource(apiThresholdDescription, {
 				resourceName: 'apiThreshold',
@@ -266,6 +275,10 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(projectNoteFields, { resourceName: 'projectNote' }),
 			...addOperationsToResource(projectPhaseFields, { resourceName: 'phase' }),
 			...addOperationsToResource(projectTaskFields, { resourceName: 'task' }),
+			...addOperationsToResource(quoteFields, { resourceName: 'quote' }),
+			...addOperationsToResource(quoteItemFields, { resourceName: 'quoteItem' }),
+			...addOperationsToResource(quoteLocationFields, { resourceName: 'quoteLocation' }),
+			...addOperationsToResource(quoteTemplateFields, { resourceName: 'quoteTemplate' }),
 			...addOperationsToResource(resourceFields, { resourceName: 'resource' }),
 			...addOperationsToResource(resourceRoleFields, { resourceName: 'resourceRole' }),
 			...addOperationsToResource(roleFields, { resourceName: 'role' }),
@@ -406,6 +419,14 @@ export class Autotask implements INodeType {
 				return executeProjectPhaseOperation.call(this);
 			case 'task':
 				return executeProjectTaskOperation.call(this);
+			case 'quote':
+				return executeQuoteOperation.call(this);
+			case 'quoteItem':
+				return executeQuoteItemOperation.call(this);
+			case 'quoteLocation':
+				return executeQuoteLocationOperation.call(this);
+			case 'quoteTemplate':
+				return executeQuoteTemplateOperation.call(this);
 			case 'resource':
 				return executeResourceOperation.call(this);
 			case 'resourceRole':

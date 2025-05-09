@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.7.5] - 2025-05-09
+
+### Added
+- Added support for Quotes, QuoteItems, QuoteLocations and QuoteTemplates entities
+
 ## [0.7.4] - 2025-04-21
 
 ### Added
