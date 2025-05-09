@@ -204,5 +204,6 @@ export const REQUIRED_UPDATE_ID_FIELDS: Record<string, string[]> = {
 	'ContractExclusionSetExcludedWorkTypes': ['contractExclusionSetID'],
 	'ContractTicketPurchases': ['contractID'],
 	'ProductVendors': ['productID'],
+	'QuoteItem': ['quoteID'],
 	// Add more entities and their required ID fields as needed
 } as const;

@@ -285,6 +285,26 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Project Tasks, which define work items assigned to resources within projects for scheduling, tracking, and completion',
 	},
 	{
+		name: 'Quote',
+		value: 'quote',
+		description: 'Manage Quotes, which allow users to specify and track multiple products, services, labor items, etc., to further define an Opportunity',
+	},
+	{
+		name: 'Quote Item',
+		value: 'quoteItem',
+		description: 'Manage Quote Items, which define line items added to an Autotask Quote, such as products, services, labor rates, or material costs',
+	},
+	{
+		name: 'Quote Location',
+		value: 'quoteLocation',
+		description: 'Manage Quote Locations, which define address information for a Quote entity shipToLocationID and/or billToLocationID',
+	},
+	{
+		name: 'Quote Template',
+		value: 'quoteTemplate',
+		description: 'Query Quote Templates, which define the content and appearance of Autotask Quotes for presentation to customers',
+	},
+	{
 		name: 'Resource',
 		value: 'resource',
 		description: 'Manage Resources, which represent users with Autotask accounts that have access to the system based on license type and security level',
