@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.8.1] - 2025-05-10
+
+### Added
+- Added support for ServiceCallTasks, ServiceCallTickets, ServiceCallTaskResources and ServiceCallTicketResources entities
+
 ## [0.8.0] - 2025-05-09
 
 ### Added
