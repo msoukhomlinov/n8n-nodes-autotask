@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.7.4-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.7.5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -118,6 +118,10 @@ The node supports the following Autotask resources:
 | Project Note | Manage notes attached to projects |
 | Project Phase | Manage phases within projects |
 | Project Task | Manage tasks within projects |
+| Quote | Manage quotes for opportunities with pricing for products, services, and labor |
+| Quote Item | Manage line items for quotes including products, services, and labor |
+| Quote Location | Manage shipping and billing address information for quotes |
+| Quote Template | Query quote templates that define content and appearance of quotes |
 | Resource | Manage staff resources |
 | Resource Role | Manage department/role relationships, service desk queues, and service desk roles |
 | Roles | Manage roles in the system |
@@ -471,6 +475,11 @@ Your support helps maintain this project and develop new features.
 
 Below are the 5 most recent changes. For a complete changelog, see [CHANGELOG.md](CHANGELOG.md).
 
+### [0.7.5] - 2025-05-09
+
+### Added
+- Added support for Quotes, QuoteItems, QuoteLocations and QuoteTemplates entities
+
 ### [0.7.3] - 2025-04-18
 
 ### Fixed
@@ -497,14 +506,6 @@ Below are the 5 most recent changes. For a complete changelog, see [CHANGELOG.md
 ### Fixed
 - Improved error handling to display specific API error messages in n8n UI:
   - Enhanced error extraction from API responses for all status codes
-
-### [0.6.9] - 2025-04-13
-
-### Added
-- Enhanced Search Filter resource with new "Dynamic Build" operation:
-  - Added entity-driven field selection workflow distinct from standard "Build" operation
-  - Implemented dynamic field loading based on entity selection
-  - Added UDF field support with clear type indicators
 
 ## License
 
