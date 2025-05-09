@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.8.0-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.8.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -475,6 +475,11 @@ Your support helps maintain this project and develop new features.
 
 Below are the 5 most recent changes. For a complete changelog, see [CHANGELOG.md](CHANGELOG.md).
 
+## [0.8.1] - 2025-05-10
+
+### Added
+- Added support for ServiceCallTasks, ServiceCallTickets, ServiceCallTaskResources and ServiceCallTicketResources entities
+
 ### [0.8.0] - 2025-05-09
 
 ### Added
@@ -484,33 +489,6 @@ Below are the 5 most recent changes. For a complete changelog, see [CHANGELOG.md
 
 ### Added
 - Added structured metadata to nodes for better categorisation
-
-### [0.7.3] - 2025-04-18
-
-### Fixed
-- Fixed issue with custom URL not being used for pagination requests:
-  - Modified request handling to use custom URL consistently for all API calls
-  - Fixed pagination URLs to work properly with proxy/custom URL configurations
-  - Ensures all requests in a paginated sequence use the same base URL
-
-### [0.7.2] - 2025-04-17
-
-### Fixed
-- Updated documentation in README:
-  - Corrected Advanced Example for Complex Filtering with Get Many Advanced operation
-
-### [0.7.1] - 2025-04-17
-
-### Changed
-- Updated "Other (Use Zone Information API)" option in credentials to "Other (Custom URL)":
-  - Modified the credential option to better reflect its actual functionality
-  - The custom URL is now used directly without any zone lookup
-
-### [0.7.0] - 2025-04-14
-
-### Fixed
-- Improved error handling to display specific API error messages in n8n UI:
-  - Enhanced error extraction from API responses for all status codes
 
 ## License
 
