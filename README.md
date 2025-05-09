@@ -480,6 +480,11 @@ Below are the 5 most recent changes. For a complete changelog, see [CHANGELOG.md
 ### Added
 - Added support for Quotes, QuoteItems, QuoteLocations and QuoteTemplates entities
 
+### [0.7.4] - 2025-04-21
+
+### Added
+- Added structured metadata to nodes for better categorisation
+
 ### [0.7.3] - 2025-04-18
 
 ### Fixed
