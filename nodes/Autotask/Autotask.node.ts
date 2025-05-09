@@ -40,6 +40,9 @@ import { executeHolidayOperation } from './resources/holidays/execute';
 import { executeInvoiceOperation } from './resources/invoices/execute';
 import { executeNotificationHistoryOperation } from './resources/notificationHistory/execute';
 import { executeServiceCallOperation } from './resources/serviceCalls/execute';
+import { executeServiceCallTicketOperation } from './resources/serviceCallTickets/execute';
+import { executeServiceCallTaskOperation } from './resources/serviceCallTasks/execute';
+import { executeServiceCallTaskResourceOperation } from './resources/serviceCallTaskResources/execute';
 import { executeServiceOperation } from './resources/services/execute';
 import { executeContractOperation } from './resources/contracts/execute';
 import { executeContractChargeOperation } from './resources/contractCharges/execute';
@@ -88,6 +91,9 @@ import { holidayFields } from './resources/holidays/description';
 import { invoiceFields } from './resources/invoices/description';
 import { notificationHistoryFields } from './resources/notificationHistory/description';
 import { serviceCallFields } from './resources/serviceCalls/description';
+import { serviceCallTicketFields } from './resources/serviceCallTickets/description';
+import { serviceCallTaskFields } from './resources/serviceCallTasks/description';
+import { serviceCallTaskResourceFields } from './resources/serviceCallTaskResources/description';
 import { serviceFields } from './resources/services/description';
 import { contractFields } from './resources/contracts/description';
 import { contractChargeFields } from './resources/contractCharges/description';
@@ -163,6 +169,8 @@ import { executeQuoteLocationOperation } from './resources/quoteLocations/execut
 import { quoteLocationFields } from './resources/quoteLocations/description';
 import { executeQuoteTemplateOperation } from './resources/quoteTemplates/execute';
 import { quoteTemplateFields } from './resources/quoteTemplates/description';
+import { executeServiceCallTicketResourceOperation } from './resources/serviceCallTicketResources/execute';
+import { serviceCallTicketResourceFields } from './resources/serviceCallTicketResources/description';
 
 /**
  * Autotask node implementation
@@ -283,6 +291,10 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(resourceRoleFields, { resourceName: 'resourceRole' }),
 			...addOperationsToResource(roleFields, { resourceName: 'role' }),
 			...addOperationsToResource(serviceCallFields, { resourceName: 'serviceCall' }),
+			...addOperationsToResource(serviceCallTicketFields, { resourceName: 'serviceCallTicket' }),
+			...addOperationsToResource(serviceCallTicketResourceFields, { resourceName: 'serviceCallTicketResource' }),
+			...addOperationsToResource(serviceCallTaskFields, { resourceName: 'serviceCallTask' }),
+			...addOperationsToResource(serviceCallTaskResourceFields, { resourceName: 'serviceCallTaskResource' }),
 			...addOperationsToResource(serviceFields, { resourceName: 'service' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
 			...addOperationsToResource(ticketNoteFields, { resourceName: 'ticketNote' }),
@@ -440,6 +452,14 @@ export class Autotask implements INodeType {
 				return executeSearchFilterOperation.call(this);
 			case 'serviceCall':
 				return executeServiceCallOperation.call(this);
+			case 'serviceCallTicket':
+				return executeServiceCallTicketOperation.call(this);
+			case 'serviceCallTicketResource':
+				return executeServiceCallTicketResourceOperation.call(this);
+			case 'serviceCallTask':
+				return executeServiceCallTaskOperation.call(this);
+			case 'serviceCallTaskResource':
+				return executeServiceCallTaskResourceOperation.call(this);
 			case 'service':
 				return executeServiceOperation.call(this);
 			case 'ticket':
