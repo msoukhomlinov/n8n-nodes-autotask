@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.8.1-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.8.2-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -474,25 +474,6 @@ If you find this node helpful and want to support its ongoing development, you c
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
 
 Your support helps maintain this project and develop new features.
-
-## Changelog
-
-Below are the 5 most recent changes. For a complete changelog, see [CHANGELOG.md](CHANGELOG.md).
-
-## [0.8.1] - 2025-05-10
-
-### Added
-- Added support for ServiceCallTasks, ServiceCallTickets, ServiceCallTaskResources and ServiceCallTicketResources entities
-
-### [0.8.0] - 2025-05-09
-
-### Added
-- Added support for Quotes, QuoteItems, QuoteLocations and QuoteTemplates entities
-
-### [0.7.4] - 2025-04-21
-
-### Added
-- Added structured metadata to nodes for better categorisation
 
 ## License
 
