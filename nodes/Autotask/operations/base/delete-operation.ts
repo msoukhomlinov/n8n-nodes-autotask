@@ -28,7 +28,7 @@ export class DeleteOperation<T extends IAutotaskEntity> extends BaseOperation {
 			async () => {
 				// Get entity ID using the same parameter handling as other operations
 				const entityId = await this.getParameter('id', itemIndex);
-				if (!entityId || (typeof entityId !== 'string' && typeof entityId !== 'number')) {
+				if (entityId === undefined || entityId === null || (typeof entityId !== 'string' && typeof entityId !== 'number')) {
 					throw new Error(
 						ERROR_TEMPLATES.validation
 							.replace('{type}', 'ValidationError')

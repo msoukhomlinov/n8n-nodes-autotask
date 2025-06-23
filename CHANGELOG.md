@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.8.2] - 2025-05-24
+
+### Fixed
+- Fixed ID validation for get and delete operations: IDs of 0 are now accepted as valid values
+
 ## [0.8.1] - 2025-05-10
 
 ### Added

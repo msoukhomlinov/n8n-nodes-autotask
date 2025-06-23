@@ -27,7 +27,7 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 	async execute(itemIndex: number): Promise<T> {
 		// Get entity ID from node parameters
 		const entityId = await this.getParameter('id', itemIndex);
-		if (!entityId || (typeof entityId !== 'string' && typeof entityId !== 'number')) {
+		if (entityId === undefined || entityId === null || (typeof entityId !== 'string' && typeof entityId !== 'number')) {
 			throw new Error(
 				ERROR_TEMPLATES.validation
 					.replace('{type}', 'ValidationError')
