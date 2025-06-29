@@ -220,6 +220,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Query Service Units, which track the quantity of services associated with recurring contracts for specific date ranges used in billing calculations',
 	},
 	{
+		name: 'Country',
+		value: 'country',
+		description: 'Query Countries, which are used in address information for companies, contacts, and resources',
+	},
+	{
 		name: 'Domain Registrar',
 		value: 'DomainRegistrar',
 		description: 'Manage Domain Registrars, which contain WHOIS details for Domain assets',

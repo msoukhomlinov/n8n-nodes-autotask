@@ -112,16 +112,24 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	}
 
 	/**
-	 * Get all values for this entity type
+	 * Retrieve entities for pick-list / reference purposes.
+	 *
+	 * @param activeOnly When true (default) adds an `isActive=true` filter if the
+	 *                   entity supports it.  For reference-label enrichment we
+	 *                   pass `false` so labels can still be generated for IDs
+	 *                   that point to inactive (historical) records.
 	 */
-	public async getValues(): Promise<T[]> {
+	public async getValues(activeOnly = true): Promise<T[]> {
 		try {
 			// Apply any configured filters from PICKLIST_REFERENCE_FIELD_MAPPINGS
 			const mapping = PICKLIST_REFERENCE_FIELD_MAPPINGS[this.entityType];
-			const filters = {
-				isActive: true, // Always filter for active records
-				...(mapping?.filters || {}), // Allow overriding in mapping if needed
+			const filters: Record<string, unknown> = {
+				...(mapping?.filters || {}),
 			};
+
+			if (activeOnly && !('isActive' in filters)) {
+				filters.isActive = true;
+			}
 
 			// Create query with filters
 			const query: IAutotaskQueryInput<T> = {
@@ -132,10 +140,26 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 				})),
 			};
 
+			// Debug: log the full query body for deeper troubleshooting, especially for Country look-ups
+			if (this.entityType.toLowerCase() === 'country') {
+				console.debug('[CountryLookup] Query filters:', JSON.stringify(filters));
+			}
+
 			console.debug(`Loading reference values for ${this.entityType} with filters:`, filters);
 
 			// Get entities with filters applied
-			return await this.getManyOperation.execute(query);
+			const results = await this.getManyOperation.execute(query);
+
+			// Extra debug for Country reference resolution
+			if (this.entityType.toLowerCase() === 'country') {
+				const sample = results.slice(0, 5).map(c => {
+					const obj = c as unknown as IDataObject;
+					return { id: obj.id, code: obj.countryCode, name: obj.displayName };
+				});
+				console.debug(`[CountryLookup] Retrieved ${results.length} rows. Sample:`, sample);
+			}
+
+			return results;
 		} catch (error) {
 			throw new Error(
 				ERROR_TEMPLATES.reference

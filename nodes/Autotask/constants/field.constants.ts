@@ -7,7 +7,6 @@ import type { IDataObject } from 'n8n-workflow';
 export const PICKLIST_REFERENCE_FIELD_MAPPINGS: Record<string, IPicklistReferenceFieldMapping> = {
 	'Resource': {
 		nameFields: ['firstName', 'lastName'],
-		bracketField: ['email', 'id'],
 		filters: { isActive: true } as IDataObject,
 	},
 	//'Company': {
@@ -15,16 +14,18 @@ export const PICKLIST_REFERENCE_FIELD_MAPPINGS: Record<string, IPicklistReferenc
 	//},
 	'Contact': {
 		nameFields: ['firstName', 'lastName'],
-		bracketField: 'email',
 		separator: ' ',
 	},
 	'Ticket': {
-		nameFields: ['ticketNumber', 'title'],
-		separator: ' - ',
+		nameFields: ['title'],
+		bracketField: ['ticketNumber'],
 	},
 	'Project': {
 		nameFields: ['projectName'],
 		bracketField: ['projectNumber'],
+	},
+	'Country': {
+		nameFields: ['displayName'],
 	},
 } as const;
 
@@ -36,6 +37,7 @@ export const REFERENCE_ENABLED_ENTITIES = [
 	'BillingCode',
 	// 'Contact',
 	// 'Contract',
+	'Country',
 	'Queue',
 	'Resource',
 	'ServiceLevelAgreement',

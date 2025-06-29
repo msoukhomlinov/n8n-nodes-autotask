@@ -258,3 +258,17 @@ export async function handleErrors<T>(
 		throw new Error(`${detailedMessage} [${errorContext.type}]`);
 	}
 }
+
+/**
+ * Detects whether an error represents an authentication / authorisation failure.
+ * We treat HTTP 401 and 403 responses – or messages that clearly mention invalid
+ * credentials / access-denied – as non-retryable so we don't lock accounts out.
+ */
+export function isAuthenticationError(error: unknown): boolean {
+	// Axios-style response?
+	const status = (error as { response?: { status?: number } }).response?.status;
+	if (status === 401 || status === 403) return true;
+
+	const msg = (error as { message?: string }).message?.toLowerCase() || '';
+	return msg.includes('access denied') || msg.includes('authentication') || msg.includes('invalid credentials');
+}

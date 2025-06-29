@@ -2,6 +2,17 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.8.3] - 2025-06-29
+
+### Added
+- Added support for `Countries` entity to enable `CountryID` reference field enrichment.
+
+### Changed
+- Modified the display name format for several reference fields to provide a cleaner and more consistent UI:
+  - **Resource**: Changed from `FirstName LastName [Email] [ID]` to `FirstName LastName`.
+  - **Contact**: Changed from `FirstName LastName [Email]` to `FirstName LastName`.
+  - **Ticket**: Changed from `TicketNumber - Title` to `Title [TicketNumber]`.
+
 ## [0.8.2] - 2025-05-24
 
 ### Fixed

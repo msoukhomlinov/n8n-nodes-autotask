@@ -62,6 +62,8 @@ export class FieldProcessor {
 	private readonly pipeline: FieldConversionPipeline;
 	private readonly _entityHelpers: Map<string, EntityValueHelper<IAutotaskEntity>>;
 	private cacheService?: CacheService;
+	// Promise used to ensure cache initialisation completes before first use
+	private _cacheInitPromise: Promise<void> | undefined;
 
 	// Instance management
 	private static instances: Map<string, FieldProcessor> = new Map();
@@ -126,9 +128,9 @@ export class FieldProcessor {
 	) {
 		this.entityType = entityType;
 		this.context = context;
-		this.operationHandler = new OperationTypeValidator();
 		this.pipeline = new FieldConversionPipeline(this);
 		this._entityHelpers = new Map();
+		this.operationHandler = new OperationTypeValidator();
 
 		// Check for parent relationship in metadata if not provided in options
 		if (!options.parentType || !options.isChildEntity) {
@@ -141,7 +143,7 @@ export class FieldProcessor {
 
 		// Initialize cache service if context is available
 		if (context) {
-			this.initializeCache().catch(error => {
+			this._cacheInitPromise = this.initializeCache().catch(error => {
 				console.warn('Failed to initialize cache:', error);
 			});
 		}
@@ -325,6 +327,17 @@ export class FieldProcessor {
 	private async loadReferenceValues(fields: IEntityField[]): Promise<IEntityField[]> {
 		if (!this.context) return fields;
 
+		// Ensure cache initialisation has completed before first use
+		if (this._cacheInitPromise) {
+			await this._cacheInitPromise;
+		}
+
+		// Determine whether we should restrict results to active entities only.
+		// In loadOptions context (building UI pick-lists) we only need active rows.
+		// When enriching reference labels during execution we need **all** rows so
+		// historical/inactive references can still be resolved.
+		const activeOnly = this.isLoadOptionsContext();
+
 		// Group reference fields by entity type
 		const referenceFieldsByType = fields.reduce((acc, field) => {
 			if (field.isReference &&
@@ -344,21 +357,21 @@ export class FieldProcessor {
 				await handleErrors(
 					this.context,
 					async () => {
-						// Try to get values from cache first
+						// Build a cache key that differentiates active-only vs. full look-ups
+						const cacheKeyBase = `${entityType}_${activeOnly ? 'active' : 'all'}`;
 						let entities: IDataObject[] | undefined;
-						const cacheKey = this.cacheService?.getReferenceKey(entityType);
+						const cacheKey = this.cacheService?.getReferenceKey(cacheKeyBase);
 
-						// Only attempt cache operations if we have both a cache service and a valid key
+						// Attempt to load from cache when available
 						if (this.cacheService?.isReferenceEnabled() && cacheKey) {
 							console.debug(`[${new Date().toISOString()}] Attempting to load reference values from cache for entity '${entityType}' using key: ${cacheKey}`);
 							entities = await this.cacheService.get<IDataObject[]>(cacheKey);
 
-							// If not in cache, fetch from API
 							if (!entities?.length) {
-								console.debug(`[${new Date().toISOString()}] Cache miss for key '${cacheKey}' - fetching reference values from API for entity '${entityType}'`);
-								entities = await this.getEntityValueHelper(entityType).getValues();
+								console.debug(`[${new Date().toISOString()}] Cache miss for key '${cacheKey}' – fetching reference values from API for entity '${entityType}'`);
+								entities = await this.getEntityValueHelper(entityType).getValues(activeOnly);
 
-								// Cache the results if we have data
+								// Cache fresh results
 								if (entities?.length) {
 									console.debug(`[${new Date().toISOString()}] Caching ${entities.length} reference values for entity '${entityType}' with key: ${cacheKey}`);
 									await this.cacheService.set(
@@ -368,12 +381,12 @@ export class FieldProcessor {
 									);
 								}
 							} else {
-								console.debug(`[${new Date().toISOString()}] Cache HIT for key '${cacheKey}' - loaded ${entities.length} reference values for entity '${entityType}'`);
+								console.debug(`[${new Date().toISOString()}] Cache HIT for key '${cacheKey}' – loaded ${entities.length} reference values for entity '${entityType}'`);
 							}
 						} else {
-							// No cache available or invalid key, fetch directly from API
-							console.debug(`[${new Date().toISOString()}] Cache not available for entity '${entityType}' - fetching from API`);
-							entities = await this.getEntityValueHelper(entityType).getValues();
+							// Cache disabled or invalid key – direct API fetch
+							console.debug(`[${new Date().toISOString()}] Cache not available for entity '${entityType}' – fetching from API`);
+							entities = await this.getEntityValueHelper(entityType).getValues(activeOnly);
 						}
 
 						if (!entities?.length) {
@@ -969,7 +982,7 @@ export class FieldProcessor {
 					const entityHelper = this.getEntityValueHelper(referenceEntityType);
 
 					// Get all entities for this type first
-					const allEntities = await entityHelper.getValues();
+					const allEntities = await entityHelper.getValues(false);
 
 					// Create a map of ID -> entity for quick lookups
 					const entityMap = new Map<string | number, IDataObject>();

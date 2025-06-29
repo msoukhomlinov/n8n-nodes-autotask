@@ -1,7 +1,7 @@
 import type { IHookFunctions, IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-workflow';
 import { autotaskApiRequest } from '../http';
 import { WebhookUrlType, buildWebhookUrl } from './urls';
-import { handleErrors } from '../errorHandler';
+import { handleErrors, isAuthenticationError } from '../errorHandler';
 import type { IBatchOptions, IBatchResult } from './batchTypes';
 
 /**
@@ -73,7 +73,13 @@ export async function addFieldToWebhook(
     } catch (error) {
       lastError = error as Error;
 
-      // Check if error is retryable
+      // Abort immediately on auth failures
+      if (isAuthenticationError(lastError)) {
+        console.error('Authentication/authorisation error – aborting retries:', lastError.message);
+        break;
+      }
+
+      // Check if error is retryable (transient)
       const isRetryable =
         lastError.message.includes('timeout') ||
         lastError.message.includes('network') ||
