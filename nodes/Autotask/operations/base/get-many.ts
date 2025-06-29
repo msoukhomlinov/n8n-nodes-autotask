@@ -75,12 +75,24 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 		return await handleErrors(
 			this.context,
 			async () => {
-				// Check if returnAll is false, if so, get the maxRecords parameter
-				const returnAll = this.context.getNodeParameter('returnAll', itemIndex, true) as boolean;
-				if (!returnAll) {
-					const maxRecords = this.context.getNodeParameter('maxRecords', itemIndex, 10) as number;
-					// Add MaxRecords to the filters object
-					filters.MaxRecords = maxRecords;
+				// When this GetManyOperation is being used for picklist/reference queries we
+				// must ignore the node-level pagination settings (returnAll / maxRecords) that
+				// end-users configure for their primary entity request. Those settings would
+				// otherwise bleed into this helper lookup and cap the result set (often at 10),
+				// preventing reference-label enrichment for IDs beyond the cap.
+
+				const isPicklistQuery = this.options?.isPicklistQuery === true;
+
+				let returnAll = true;
+				if (!isPicklistQuery) {
+					// Respect the user parameters only for regular data queries
+					returnAll = this.context.getNodeParameter('returnAll', itemIndex, true) as boolean;
+
+					if (!returnAll) {
+						const maxRecords = this.context.getNodeParameter('maxRecords', itemIndex, 10) as number;
+						// Add MaxRecords to the filters object
+						filters.MaxRecords = maxRecords;
+					}
 				}
 
 				// Initialize results array

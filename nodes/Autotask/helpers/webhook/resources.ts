@@ -1,7 +1,7 @@
 import type { ILoadOptionsFunctions, IHookFunctions, IExecuteFunctions } from 'n8n-workflow';
 import { autotaskApiRequest } from '../http';
 import { WebhookUrlType, buildWebhookUrl, validateEntityType } from './urls';
-import { handleErrors } from '../errorHandler';
+import { handleErrors, isAuthenticationError } from '../errorHandler';
 import type { IBatchOptions } from './batchTypes';
 import { initializeCache } from '../cache/init';
 import { API_CONSTANTS } from '../../constants/api';
@@ -263,6 +263,12 @@ export async function processBatchResources<T>(
 					}
 				})
 				.catch(error => {
+					if (isAuthenticationError(error)) {
+						console.error('Auth error – aborting further retries for this resource:', (error as Error).message);
+						results.failures++;
+						if (throwOnError) throw error;
+						return; // stop retries for this resource
+					}
 					console.error('Error processing resource:', error);
 					failedResources.push(resource);
 					results.failures++;
@@ -310,6 +316,12 @@ export async function processBatchResources<T>(
 							retryAttempt++;
 						}
 					} catch (error) {
+						if (isAuthenticationError(error)) {
+							console.error('Auth error during retry – aborting:', (error as Error).message);
+							results.failures++;
+							if (throwOnError) throw error;
+							break;
+						}
 						console.error(`Retry attempt ${retryAttempt + 1} failed:`, error);
 						retryAttempt++;
 						if (retryAttempt === maxRetries) {

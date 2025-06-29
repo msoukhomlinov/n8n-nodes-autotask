@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.8.2-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.8.3-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -105,6 +105,7 @@ The node supports the following Autotask resources:
 | Contract Service Bundle Units | Manage service bundle units |
 | Contract Service Unit | Manage service units for contracts |
 | Contract Ticket Purchases | Manage ticket purchases for contracts |
+| Countries | Query countries, which are used in address information for companies, contacts, and resources |
 | Domain Registrars | Manage domain registrars |
 | Holiday | Manage holiday dates |
 | Holiday Set | Manage holiday sets for resources |

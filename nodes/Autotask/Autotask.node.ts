@@ -153,6 +153,7 @@ import { executeContractRetainersOperation } from './resources/contractRetainers
 import { contractRetainersFields } from './resources/contractRetainers/description';
 import { executeContractTicketPurchasesOperation } from './resources/contractTicketPurchases/execute';
 import { contractTicketPurchasesFields } from './resources/contractTicketPurchases/description';
+import { executeCountryOperation } from './resources/countries/execute';
 import { executeDomainRegistrarOperation } from './resources/domainRegistrar/execute';
 import { domainRegistrarFields } from './resources/domainRegistrar/description';
 import { executeSkillOperation } from './resources/skills/execute';
@@ -171,6 +172,7 @@ import { executeQuoteTemplateOperation } from './resources/quoteTemplates/execut
 import { quoteTemplateFields } from './resources/quoteTemplates/description';
 import { executeServiceCallTicketResourceOperation } from './resources/serviceCallTicketResources/execute';
 import { serviceCallTicketResourceFields } from './resources/serviceCallTicketResources/description';
+import { countryFields } from './resources/countries/description';
 
 /**
  * Autotask node implementation
@@ -271,6 +273,10 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(contractExclusionSetsFields, { resourceName: 'contractExclusionSets' }),
 			...addOperationsToResource(contractExclusionSetExcludedRolesFields, { resourceName: 'contractExclusionSetExcludedRole' }),
 			...addOperationsToResource(contractExclusionSetExcludedWorkTypesFields, { resourceName: 'contractExclusionSetExcludedWorkType' }),
+			...addOperationsToResource(countryFields, {
+				resourceName: 'country',
+				excludeOperations: ['getManyAdvanced']
+			}),
 			...addOperationsToResource(holidaySetFields, { resourceName: 'holidaySet' }),
 			...addOperationsToResource(holidayFields, { resourceName: 'holiday' }),
 			...addOperationsToResource(invoiceFields, { resourceName: 'invoice' }),
@@ -395,6 +401,8 @@ export class Autotask implements INodeType {
 				return executeContractRetainersOperation.call(this);
 			case 'contractTicketPurchase':
 				return executeContractTicketPurchasesOperation.call(this);
+			case 'country':
+				return executeCountryOperation.call(this);
 			case 'DomainRegistrar':
 				return executeDomainRegistrarOperation.call(this);
 			case 'contractExclusionBillingCode':
