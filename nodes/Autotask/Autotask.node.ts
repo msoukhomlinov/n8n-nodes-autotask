@@ -9,6 +9,7 @@ import type {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	INodePropertyOptions,
 } from 'n8n-workflow';
 import { executeProjectTaskOperation } from './resources/projectTasks/execute';
 import { executeProjectOperation } from './resources/projects/execute';
@@ -172,7 +173,14 @@ import { executeQuoteTemplateOperation } from './resources/quoteTemplates/execut
 import { quoteTemplateFields } from './resources/quoteTemplates/description';
 import { executeServiceCallTicketResourceOperation } from './resources/serviceCallTicketResources/execute';
 import { serviceCallTicketResourceFields } from './resources/serviceCallTicketResources/description';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { countryFields } from './resources/countries/description';
+
+// -----------------------------------------------------------------------------
+// Memoisation cache for select-columns dropdown.  Key = credentialsId|resource
+// This lives at module scope so all Autotask nodes in the editor share it.
+// -----------------------------------------------------------------------------
+const selectColumnsCache: Map<string, INodePropertyOptions[]> = new Map();
 
 /**
  * Autotask node implementation
@@ -503,47 +511,61 @@ export class Autotask implements INodeType {
 			},
 		},
 		loadOptions: {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			async getSelectColumns(this: ILoadOptionsFunctions) {
 				const resource = this.getNodeParameter('resource', 0) as string;
-				console.debug(`[getSelectColumns] Starting to load column options for resource: ${resource}`);
+
+				// Identify credentials so different tenants don't share cached metadata
+				let credentialId = 'anonymous';
+				try {
+					const creds = await this.getCredentials('autotaskApi') as { id?: string; credentialsId?: string; username?: string };
+					credentialId = (creds?.id ?? creds?.credentialsId ?? creds?.username ?? 'anonymous').toString();
+				} catch {
+					// ignore – keep default id
+				}
+
+				const cacheKey = `${credentialId}|${resource}`;
+
+				if (selectColumnsCache.has(cacheKey)) {
+					console.debug(`[getSelectColumns] Using cached options for key: ${cacheKey}`);
+					return selectColumnsCache.get(cacheKey)!;
+				}
+
+				console.debug(`[getSelectColumns] Cache miss for ${cacheKey}. Loading from API…`);
 
 				try {
-					// Get fields using the same function that powers the resource mapper
-					console.debug(`[getSelectColumns] Calling getResourceMapperFields for ${resource}`);
+					// Fetch combined standard + UDF fields
 					const { fields } = await getResourceMapperFields.call(this, resource);
-					console.debug(`[getSelectColumns] Retrieved ${fields.length} fields for ${resource}`);
 
-					// Count UDF fields and picklist fields
-					const udfFields = fields.filter(field => field.id.startsWith('UDF') || 'isUdf' in field && field.isUdf === true);
-					const picklistFields = fields.filter(field => 'isPickList' in field && field.isPickList === true);
-					const udfPicklistFields = udfFields.filter(field => 'isPickList' in field && field.isPickList === true);
-
-					console.debug(`[getSelectColumns] Field breakdown for ${resource}:
-- Total fields: ${fields.length}
-- UDF fields: ${udfFields.length}
-- Picklist fields: ${picklistFields.length}
-- UDF Picklist fields: ${udfPicklistFields.length}`);
-
-					if (udfPicklistFields.length > 0) {
-						console.debug('[getSelectColumns] First few UDF picklist fields:',
-							udfPicklistFields.slice(0, 3).map(f => ({
-								id: f.id,
-								displayName: f.displayName,
-								hasOptions: 'options' in f && Array.isArray(f.options) && f.options.length > 0
-							}))
-						);
+					// Strip heavy picklist arrays to minimise payload held in memory/UI
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					for (const f of fields as any[]) {
+						// eslint-disable-next-line @typescript-eslint/no-explicit-any
+						if ((f as any).picklistValues !== undefined) {
+							delete (f as any).picklistValues;
+						}
 					}
 
-					// Format fields for multiOptions
-					const formattedOptions = fields.map(field => ({
-						name: field.displayName || field.id,
+					// Diagnostic counts (optional)
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					const udfFields = (fields as any[]).filter(f => (f as any).isUdf === true || String(f.id).startsWith('UDF'));
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					const picklistFields = (fields as any[]).filter(f => (f as any).isPickList === true);
+
+					console.debug(`[getSelectColumns] Stats for ${resource} – total:${fields.length}, udf:${udfFields.length}, picklist:${picklistFields.length}`);
+
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					const formattedOptions: INodePropertyOptions[] = (fields as any[]).map((field: any) => ({
+						name: field.displayName || field.label || field.name || field.id,
 						value: field.id,
 					}));
-					console.debug(`[getSelectColumns] Formatted ${formattedOptions.length} options for the dropdown`);
+
+					// Store in cache for future calls
+					selectColumnsCache.set(cacheKey, formattedOptions);
 
 					return formattedOptions;
 				} catch (error) {
-					console.error(`Error loading select columns options: ${error.message}`);
+					console.error(`Error loading select columns options for ${resource}:`, error.message || error);
 					return [];
 				}
 			},
