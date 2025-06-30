@@ -2,6 +2,10 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.8.4] - 2025-06-30
+### Changed
+- Performance: Introduced provisional in-memory memoisation and pick-list trimming for the "Select Columns" dropdown as part of ongoing UI-performance tuning for larger workflows.
+
 ## [0.8.3] - 2025-06-29
 
 ### Added
