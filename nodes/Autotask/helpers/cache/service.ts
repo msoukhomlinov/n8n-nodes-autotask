@@ -37,6 +37,17 @@ export class CacheService {
 	} = { hits: 0, misses: 0 };
 	private packageVersion: string;
 
+	// -----------------------------------------------------------------------------
+	// Helper – ANSI colour codes for improved console readability.
+	// Colour support is widespread in modern terminals (including PowerShell Core),
+	// and the codes gracefully degrade to plain text where colour is unsupported.
+	// -----------------------------------------------------------------------------
+
+	private static ANSI_RESET = '\x1b[0m';
+	private static ANSI_GREEN = '\x1b[32m';
+	private static ANSI_RED = '\x1b[31m';
+	private static ANSI_YELLOW = '\x1b[33m';
+
 	private constructor(config: ICacheConfig, credentialsId: string, cacheDir?: string, maxSizeMB?: number) {
 		this.config = config;
 		this.namespace = `autotask:${credentialsId}`;
@@ -231,17 +242,17 @@ export class CacheService {
 
 			if (value !== undefined) {
 				this.metrics.hits++;
-				console.debug(`[${new Date().toISOString()}] Cache HIT for key: ${key} (${duration}ms)`);
+				console.debug(`${CacheService.ANSI_GREEN}[CACHE HIT]${CacheService.ANSI_RESET} ${key} (${duration}ms)`);
 			} else {
 				this.metrics.misses++;
-				console.debug(`[${new Date().toISOString()}] Cache MISS for key: ${key} (${duration}ms)`);
+				console.debug(`${CacheService.ANSI_RED}[CACHE MISS]${CacheService.ANSI_RESET} ${key} (${duration}ms)`);
 
-				// Check if cache file exists
+				// Check if cache file exists for additional troubleshooting information
 				if (this.filePath && fs.existsSync(this.filePath)) {
 					try {
 						const fileContent = fs.readFileSync(this.filePath, 'utf8');
 						const hasKey = fileContent.includes(key);
-						console.debug(`Cache file check for key ${key}: ${hasKey ? 'Key exists in file but not retrieved' : 'Key not found in file'}`);
+						console.debug(`  ↳ Cache file ${hasKey ? 'contains' : 'does not contain'} key`);
 					} catch (error) {
 						console.warn(`Failed to check cache file for key ${key}:`, error);
 					}
@@ -285,12 +296,13 @@ export class CacheService {
 					console.warn(`Slow cache set operation (${duration}ms) for key: ${key}`);
 				}
 
-				console.debug(`Cache SET for key: ${key}, TTL: ${effectiveTTL}ms (${duration}ms)`);
+				const ttlSeconds = Math.round(effectiveTTL / 1000);
+				console.debug(`${CacheService.ANSI_YELLOW}[CACHE SET]${CacheService.ANSI_RESET} ${key} ttl=${ttlSeconds}s (${duration}ms)`);
 
 				// Verify the file was updated
 				if (this.filePath && fs.existsSync(this.filePath)) {
 					const stats = fs.statSync(this.filePath);
-					console.debug(`Cache file after set: ${this.filePath}, size: ${(stats.size / 1024).toFixed(2)} KB`);
+					console.debug(`  ↳ Cache file after set: ${this.filePath}, size: ${(stats.size / 1024).toFixed(2)} KB`);
 				}
 			} catch (error) {
 				console.warn(`Cache set error for key ${key}:`, error);
