@@ -18,6 +18,8 @@ export const selectColumnsOption: INodeProperties = {
 	typeOptions: {
 		loadOptionsMethod: 'getSelectColumns',
 		loadOptionsDependsOn: ['resource', 'operation'],
+		showOnlySelected: true,
+		searchable: true,
 	},
 };
 

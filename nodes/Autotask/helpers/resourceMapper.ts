@@ -26,21 +26,9 @@ export async function getResourceMapperFields(
 			getFields(entityType, this, { fieldType: 'udf', isActive: true }),
 		]);
 
-		console.debug(`[getResourceMapperFields] Retrieved ${standardApiFields.length} standard fields and ${udfApiFields.length} UDF fields for ${entityType}`);
-
-		// Log UDF picklist fields
-		const udfPicklistFields = udfApiFields.filter(field => 'isPickList' in field && field.isPickList === true);
-		if (udfPicklistFields.length > 0) {
-			console.debug(`[getResourceMapperFields] Found ${udfPicklistFields.length} UDF picklist fields for ${entityType}`);
-			console.debug('[getResourceMapperFields] Sample UDF picklist field details:',
-				udfPicklistFields.slice(0, 1).map(field => ({
-					name: field.name,
-					isPickList: field.isPickList,
-					hasPicklistValues: 'picklistValues' in field && Array.isArray(field.picklistValues),
-					picklistValuesCount: 'picklistValues' in field && Array.isArray(field.picklistValues) ? field.picklistValues.length : 0
-				}))
-			);
-		}
+		// Summarise fetched field stats
+		const udfPicklistCount = udfApiFields.filter(field => 'isPickList' in field && field.isPickList === true).length;
+		console.debug(`[getResourceMapperFields] Retrieved ${standardApiFields.length} standard, ${udfApiFields.length} UDF (${udfPicklistCount} picklists) fields for ${entityType}`);
 
 		// Get processor instance
 		const processor = FieldProcessor.getInstance(
