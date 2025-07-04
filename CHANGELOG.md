@@ -2,9 +2,9 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [0.8.6] - 2025-07-05
+## [0.8.7] - 2025-07-05
 ### Fixed
-- Resolved an issue where reference fields were exclusively enriched from active records; now supports enrichment from inactive records when required. Picklists continue to be populated from active records only.
+- Resolved an issue where reference fields were exclusively enriched from active records; now supports enrichment from inactive records when required. Additionally, ensured that display fields for inactive reference records are properly retrieved for accurate label generation (e.g., resource names instead of "Resource #ID") by ensuring correct ID type handling during lookup. Picklists continue to be populated from active records only.
 
 ## [0.8.5] - 2025-07-01
 ### Changed
