@@ -114,12 +114,11 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	/**
 	 * Retrieve entities for pick-list / reference purposes.
 	 *
-	 * @param activeOnly When true (default) adds an `isActive=true` filter if the
-	 *                   entity supports it.  For reference-label enrichment we
-	 *                   pass `false` so labels can still be generated for IDs
-	 *                   that point to inactive (historical) records.
+	 * @param activeOnly When true adds an `isActive=true` filter if the
+	 *                   entity supports it. Defaults to `false` for reference-label enrichment
+	 *                   so labels can still be generated for IDs that point to inactive (historical) records.
 	 */
-	public async getValues(activeOnly = true): Promise<T[]> {
+	public async getValues(activeOnly = false): Promise<T[]> {
 		try {
 			// Apply any configured filters from PICKLIST_REFERENCE_FIELD_MAPPINGS
 			const mapping = PICKLIST_REFERENCE_FIELD_MAPPINGS[this.entityType];
@@ -386,15 +385,27 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			// Set IncludeFields in query
 			if (includeFields.size > 0) {
 				query.IncludeFields = Array.from(includeFields);
-				console.debug(`[EntityValueHelper] Including ${query.IncludeFields.length} fields for ${this.entityType} query`);
+				// console.debug(`[EntityValueHelper] Including ${query.IncludeFields.length} fields for ${this.entityType} query`);
 			}
 		} else {
-			// When doing reference field lookups, return all fields
-			console.debug(`[EntityValueHelper] Reference field lookup detected for ${this.entityType} - returning all fields`);
-			// IMPORTANT: Delete IncludeFields completely instead of setting to empty array
-			// to avoid API errors with invalid field names
-			query.IncludeFields = undefined;
+			// When doing reference field lookups, we need to return all fields for proper label construction.
+			// We'll explicitly add the required display fields to ensure they are returned.
+			const requiredReferenceFields = new Set<string>();
+
+			for (const field of this.getRequiredDisplayFields()) {
+				requiredReferenceFields.add(field);
+			}
+
+			if (requiredReferenceFields.size > 0) {
+				query.IncludeFields = Array.from(requiredReferenceFields);
+				// console.debug(`[EntityValueHelper] Reference field lookup detected for ${this.entityType} - including ${query.IncludeFields.length} fields for label construction: ${query.IncludeFields.join(', ')}`);
+			} else {
+				// If no specific display fields are required, ensure no IncludeFields is sent
+				query.IncludeFields = undefined;
+			}
 		}
+
+		// console.debug(`[EntityValueHelper] Final query for ${this.entityType}:`, JSON.stringify(query));
 
 		return query;
 	}

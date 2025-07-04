@@ -965,6 +965,7 @@ export class FieldProcessor {
 							// Skip null/undefined values and ensure we only process string or number IDs
 							if (fieldValue !== undefined && fieldValue !== null &&
 								(typeof fieldValue === 'string' || typeof fieldValue === 'number')) {
+								// console.debug(`[FieldProcessor] Collecting reference ID: ${fieldValue}, Type: ${typeof fieldValue}`);
 								referenceIds.add(fieldValue);
 							}
 						}
@@ -976,7 +977,7 @@ export class FieldProcessor {
 					}
 
 					// Load referenced entities
-					console.debug(`[FieldProcessor] Loading ${referenceIds.size} references for ${referenceEntityType}`);
+					// console.debug(`[FieldProcessor] Loading ${referenceIds.size} references for ${referenceEntityType}`);
 
 					// Get the entity helper for this reference type
 					const entityHelper = this.getEntityValueHelper(referenceEntityType);
@@ -1000,40 +1001,34 @@ export class FieldProcessor {
 					for (const field of fields) {
 						const fieldName = field.name;
 
-						// Process each entity
+						// Iterate through each entity to enrich
 						for (let i = 0; i < entities.length; i++) {
 							const entity = entities[i];
 							const fieldValue = entity[fieldName];
 
-							// Skip null/undefined values and ensure we only process string or number values
-							if (fieldValue === undefined || fieldValue === null ||
-								(typeof fieldValue !== 'string' && typeof fieldValue !== 'number')) {
+							// Skip if field doesn't exist or is null/undefined
+							if (fieldValue === undefined || fieldValue === null) {
+								continue;
+							}
+
+							// Ensure fieldValue is a string or number before using as an ID
+							if (typeof fieldValue !== 'string' && typeof fieldValue !== 'number') {
+								console.warn(`[FieldProcessor] Skipping reference lookup for field ${fieldName}: Invalid ID type '${typeof fieldValue}' for value ${fieldValue}`);
 								continue;
 							}
 
 							// Get the referenced entity - try both as is and as string
-							const referenceId = fieldValue;
-							let referencedEntity = entityMap.get(referenceId);
+							const referenceId = fieldValue as string | number;
+							let referenceEntity = entityMap.get(referenceId);
 
 							// If not found directly, try string conversion
-							if (!referencedEntity && typeof referenceId === 'number') {
-								referencedEntity = entityMap.get(String(referenceId));
+							if (!referenceEntity && typeof referenceId === 'number') {
+								referenceEntity = entityMap.get(String(referenceId));
 							}
 
-							// Create the label field name with suffix "_label"
-							const labelFieldName = `${fieldName}_label`;
+							if (referenceEntity) {
+								const label = this.formatReferenceDisplayName(referenceEntity, referenceEntityType);
 
-							// If referenced entity exists, format its display name
-							let label: string | undefined;
-							if (referencedEntity) {
-								label = this.formatReferenceDisplayName(referencedEntity, referenceEntityType);
-							} else {
-								console.warn(`[FieldProcessor] Reference entity not found for ${referenceEntityType} with ID ${referenceId}`);
-								// Fallback to showing just the ID
-								label = `${referenceEntityType} #${referenceId}`;
-							}
-
-							if (label) {
 								// Create a new object with the label field inserted right after the original field
 								const newEntity: IDataObject = {};
 								let inserted = false;
@@ -1044,20 +1039,25 @@ export class FieldProcessor {
 
 									// Insert the label field right after its associated field
 									if (key === fieldName) {
-										newEntity[labelFieldName] = label;
+										newEntity[`${fieldName}_label`] = label;
 										inserted = true;
 									}
 								}
 
 								// If the field wasn't found (unlikely), add the label at the end
 								if (!inserted) {
-									newEntity[labelFieldName] = label;
+									newEntity[`${fieldName}_label`] = label;
 								}
 
 								// Replace the original entity with the new one
 								entities[i] = newEntity as T;
 							} else {
-								console.warn(`[FieldProcessor] Failed to create label for ${referenceEntityType} with ID ${referenceId}`);
+								console.warn(`[FieldProcessor] Reference entity not found for ${referenceEntityType} with ID ${fieldValue}`);
+								// Fallback to showing just the ID
+								const labelFieldName = `${fieldName}_label`;
+								const newEntity: IDataObject = { ...entity };
+								newEntity[labelFieldName] = `${referenceEntityType} #${fieldValue}`;
+								entities[i] = newEntity as T;
 							}
 						}
 					}

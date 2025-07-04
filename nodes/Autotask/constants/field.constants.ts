@@ -1,5 +1,4 @@
 import type { IPicklistReferenceFieldMapping } from '../types/base/picklists';
-import type { IDataObject } from 'n8n-workflow';
 
 /**
  * Mapping of entity types to their reference field display configuration
@@ -7,7 +6,6 @@ import type { IDataObject } from 'n8n-workflow';
 export const PICKLIST_REFERENCE_FIELD_MAPPINGS: Record<string, IPicklistReferenceFieldMapping> = {
 	'Resource': {
 		nameFields: ['firstName', 'lastName'],
-		filters: { isActive: true } as IDataObject,
 	},
 	//'Company': {
 	//	nameFields: ['companyName'],
