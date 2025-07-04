@@ -2,6 +2,10 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.8.6] - 2025-07-05
+### Fixed
+- Resolved an issue where reference fields were exclusively enriched from active records; now supports enrichment from inactive records when required. Picklists continue to be populated from active records only.
+
 ## [0.8.5] - 2025-07-01
 ### Changed
 - Performance: Continued UI-performance tuning for large workflows – the "Select Columns" dropdown now renders **only** the fields you pick (`showOnlySelected`) and includes in-dropdown search capabilities.  This further reduces DOM load and improves NDV responsiveness when hundreds of Autotask fields are available.
