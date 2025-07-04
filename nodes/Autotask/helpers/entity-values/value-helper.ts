@@ -247,7 +247,6 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	): Promise<T[]> {
 		// Add isActive=true to default filters
 		const defaultFilters = {
-			isActive: true,
 			...filters, // Allow overriding default filters if needed
 		};
 		const query = await this.prepareQuery(defaultFilters, sortField, options?.includeFields);
