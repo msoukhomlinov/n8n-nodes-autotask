@@ -31,7 +31,7 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 		this.getManyOp = new GetManyOperation<T>(
 			entityType,
 			context,
-			options,
+			{ ...options, skipEnrichment: true },
 		);
 	}
 

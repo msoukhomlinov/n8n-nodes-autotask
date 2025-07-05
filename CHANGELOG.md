@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
+## [0.8.8] - 2025-07-05
+
+### Changed
+- Performance improvement for getMany operations: reference and picklist enrichment now fetches only required entities, not all.
 
 ## [0.8.7] - 2025-07-05
 ### Fixed
