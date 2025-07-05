@@ -983,7 +983,7 @@ export class FieldProcessor {
 					const entityHelper = this.getEntityValueHelper(referenceEntityType);
 
 					// Get all entities for this type first
-					const allEntities = await entityHelper.getValues(false);
+					const allEntities = await entityHelper.getValuesByIds(Array.from(referenceIds));
 
 					// Create a map of ID -> entity for quick lookups
 					const entityMap = new Map<string | number, IDataObject>();
