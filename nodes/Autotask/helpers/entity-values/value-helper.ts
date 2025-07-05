@@ -45,6 +45,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			context as IExecuteFunctions,
 			{
 				isPicklistQuery: true,
+				skipEnrichment: true,
 			}
 		);
 		this.entityHelper = new EntityHelper(entityType, context);
@@ -163,6 +164,44 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			throw new Error(
 				ERROR_TEMPLATES.reference
 					.replace('{type}', 'GetValuesError')
+					.replace('{entity}', this.entityType)
+					.replace('{details}', error instanceof Error ? error.message : 'Unknown error')
+			);
+		}
+	}
+
+	/**
+	 * Retrieve entities by their IDs.
+	 *
+	 * @param ids An array of entity IDs to retrieve.
+	 */
+	public async getValuesByIds(ids: (string | number)[]): Promise<T[]> {
+		if (!ids || ids.length === 0) {
+			return [];
+		}
+
+		try {
+			// Create query with an 'in' filter for the IDs
+			const query: IAutotaskQueryInput<T> = {
+				filter: [
+					{
+						field: 'id',
+						op: 'in',
+						value: ids,
+					},
+				],
+			};
+
+			console.debug(`Loading ${ids.length} reference entities for ${this.entityType} by ID`);
+
+			// Get entities with the 'in' filter applied
+			const results = await this.getManyOperation.execute(query);
+
+			return results;
+		} catch (error) {
+			throw new Error(
+				ERROR_TEMPLATES.reference
+					.replace('{type}', 'GetValuesByIdsError')
 					.replace('{entity}', this.entityType)
 					.replace('{details}', error instanceof Error ? error.message : 'Unknown error')
 			);

@@ -94,7 +94,7 @@ export interface IAutotaskField extends IFieldValidationRules {
 export interface IFilterCondition {
 	field?: string;
 	op: string;
-	value?: string | number | boolean | null;
+	value?: string | number | boolean | null | (string | number)[];
 	udf?: boolean;
 	items?: IFilterCondition[];
 }
