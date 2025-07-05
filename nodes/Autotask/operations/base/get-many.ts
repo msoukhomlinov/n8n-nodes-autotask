@@ -24,12 +24,14 @@ import { flattenUdfsArray } from '../../helpers/udf/flatten';
 export class GetManyOperation<T extends IAutotaskEntity> {
 	private readonly paginationHandler: PaginationHandler;
 	private readonly parentType?: string;
+	private readonly skipEnrichment: boolean;
 	private readonly options?: {
 		pageSize?: number;
 		maxPages?: number;
 		isPicklistQuery?: boolean;
 		picklistFields?: string[];
 		parentType?: string;
+		skipEnrichment?: boolean;
 	};
 
 	constructor(
@@ -41,11 +43,13 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 			isPicklistQuery?: boolean;
 			picklistFields?: string[];
 			parentType?: string;
+			skipEnrichment?: boolean;
 		},
 	) {
 		this.paginationHandler = new PaginationHandler(entityType, context, options);
 		this.parentType = options?.parentType;
 		this.options = options;
+		this.skipEnrichment = options?.skipEnrichment ?? false;
 	}
 
 	/**
@@ -120,6 +124,10 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 						const pageResults = await this.executeQuery(filters, nextPageUrl);
 						results.push(...pageResults);
 					}
+				}
+
+				if (this.skipEnrichment) {
+					return results;
 				}
 
 				// Get field processor instance for enrichment
