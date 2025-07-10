@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.8.9-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.9.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -417,6 +417,8 @@ All dates and times in the Autotask API are in UTC. The node automatically conve
 - When creating or updating records, local times are converted to UTC
 - When retrieving records, UTC times are converted to your local timezone
 - The timezone is configured in the credentials
+- For Search Filter operations, input dates are thoroughly converted to UTC using the configured timezone, ensuring consistency with API requirements
+- Output dates from all operations are converted to the configured local timezone for easier workflow handling
 
 ## Limitations
 

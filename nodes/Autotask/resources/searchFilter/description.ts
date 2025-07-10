@@ -181,6 +181,18 @@ export const searchFilterOperations: INodeProperties[] = [
 										},
 									},
 									{
+										displayName: 'Is in UTC?',
+										name: 'isUtc',
+										type: 'boolean',
+										default: false,
+										description: 'Whether the provided date is already in UTC. If false, it will be converted from the configured local timezone to UTC.',
+										displayOptions: {
+											show: {
+												valueType: ['date'],
+											},
+										},
+									},
+									{
 										displayName: 'Boolean Value',
 										name: 'booleanValue',
 										type: 'boolean',

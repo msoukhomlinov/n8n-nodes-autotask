@@ -76,7 +76,7 @@ export async function processResponseDates<T>(
 					// Parse UTC date and convert to target timezone
 					const date = moment.utc(value).tz(timezone);
 					if (date.isValid()) {
-						const formattedDate = date.format();
+						const formattedDate = date.format('YYYY-MM-DDTHH:mm:ss.SSSZ');
 						(result as Record<string, unknown>)[key] = formattedDate;
 					}
 				} catch (error) {

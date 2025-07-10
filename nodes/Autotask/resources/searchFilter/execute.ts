@@ -14,6 +14,7 @@ interface RawFilterInput {
 				dateValue?: string;
 				booleanValue?: boolean;
 				udf?: boolean;
+				isUtc?: boolean;
 			}>;
 		};
 	}>;
@@ -77,6 +78,7 @@ export async function build(this: IExecuteFunctions): Promise<INodeExecutionData
 										value: itemValue,
 										valueType: item.valueType,
 										dateValue: item.dateValue,
+										isUtc: item.isUtc,
 										booleanValue: item.booleanValue,
 										udf: item.udf
 									}
@@ -93,7 +95,7 @@ export async function build(this: IExecuteFunctions): Promise<INodeExecutionData
 		// Validate and convert the filter
 		try {
 			validateFilterInput(input);
-			const autotaskFilter = await convertToAutotaskFilter(input);
+			const autotaskFilter = await convertToAutotaskFilter(input, this);
 
 			// Return the filter as a stringified JSON
 			return [[{ json: { advancedFilter: JSON.stringify(autotaskFilter) } }]];

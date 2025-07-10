@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.9.0] - 2025-07-10
+
+### Fixed
+- Enhanced date/time handling in Search Filter's Build and Dynamic Build operation, building on v0.8.9 fix: now thoroughly converts input and output dates consistently between timezones using credentials' configured timezone, ensuring all dates sent to Autotask API are in UTC as required.
+
 ## [0.8.9] - 2025-07-10
 
 ### Fixed
