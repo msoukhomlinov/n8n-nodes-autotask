@@ -1,5 +1,7 @@
 import type { ISearchFilterBuilderInput } from '../types/SearchFilter';
 import moment from 'moment-timezone';
+import { getConfiguredTimezone } from './date-time/utils';
+import type { IExecuteFunctions } from 'n8n-workflow';
 
 interface IAutotaskFilterCondition {
 	op: string;
@@ -17,10 +19,12 @@ interface IAutotaskFilter {
 	filter: Array<IAutotaskFilterCondition | IAutotaskFilterGroup>;
 }
 
-function convertValue(
+async function convertValue(
 	value: string | boolean,
 	valueType: string,
-): string | number | boolean {
+	isUtc = false,
+	context: IExecuteFunctions,
+): Promise<string | number | boolean> {
 	if (valueType === 'boolean') {
 		// Handle case where value is already a boolean (from the UI toggle)
 		if (typeof value === 'boolean') {
@@ -38,10 +42,24 @@ function convertValue(
 	}
 	if (valueType === 'date') {
 		try {
-			// The value is already an ISO string from the dateTime input.
-			// The API should handle the timezone offset correctly.
-			// No conversion is needed here.
-			return typeof value === 'boolean' ? value.toString() : value;
+			if (typeof value !== 'string') {
+				throw new Error('Date value must be a string');
+			}
+			const timezone = await getConfiguredTimezone.call(context);
+			let date;
+			if (isUtc) {
+				if (value.endsWith('Z') || value.match(/[-+]\d{2}:\d{2}$/)) {
+					date = moment.tz(value, timezone).utc();
+				} else {
+					date = moment.utc(value as string);
+				}
+			} else {
+				date = moment.tz(value, timezone).utc();
+			}
+			if (!date.isValid()) {
+				throw new Error(`Invalid date value: ${value}`);
+			}
+			return date.format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
 		} catch (error) {
 			throw new Error(`Invalid date value: ${value}`);
 		}
@@ -52,22 +70,23 @@ function convertValue(
 
 export async function convertToAutotaskFilter(
 	input: ISearchFilterBuilderInput,
+	context: IExecuteFunctions,
 ): Promise<IAutotaskFilter> {
 	if (!input.filter?.group?.length) {
 		return { filter: [] };
 	}
 
 	// Convert to Autotask API format
-	const filterPromises = input.filter.group.map(async (group) => {
-		const items = group.items.map((item) => {
+	const filter = await Promise.all(input.filter.group.map(async (group) => {
+		const items = await Promise.all(group.items.map(async (item) => {
 			const value = item.itemType.value || '';
 			return {
 				op: item.itemType.op,
 				field: item.itemType.field,
-				value: convertValue(value, item.itemType.valueType || 'string'),
+				value: await convertValue(value, item.itemType.valueType || 'string', item.itemType.isUtc, context),
 				...(item.itemType.udf && { udf: true }),
 			} as IAutotaskFilterCondition;
-		});
+		}));
 
 		// If there's only one item, return it directly
 		if (items.length === 1) {
@@ -79,9 +98,7 @@ export async function convertToAutotaskFilter(
 			op: group.op,
 			items,
 		} as IAutotaskFilterGroup;
-	});
-
-	const filter = await Promise.all(filterPromises);
+	}));
 
 	// If we have multiple top-level groups, wrap them in an AND group
 	if (filter.length > 1) {

@@ -21,6 +21,7 @@ export interface ISearchFilterBuilderInput {
 					op: string;
 					value?: string | boolean;
 					dateValue?: string;
+					isUtc?: boolean;
 					booleanValue?: boolean;
 					valueType?: 'string' | 'number' | 'boolean' | 'date';
 					udf?: boolean;
