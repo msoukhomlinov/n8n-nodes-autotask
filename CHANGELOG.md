@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
+
+## [0.8.9] - 2025-07-10
+
+### Fixed
+- Prevented double UTC conversion for date values in the Search Filter's Dynamic Build operation.
+
 ## [0.8.8] - 2025-07-05
 
 ### Changed
