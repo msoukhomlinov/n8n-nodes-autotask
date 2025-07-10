@@ -1,8 +1,5 @@
 import type { ISearchFilterBuilderInput } from '../types/SearchFilter';
-import type { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-workflow';
 import moment from 'moment-timezone';
-import { DATE_FORMATS } from '../constants/date.constants';
-import { getConfiguredTimezone } from './date-time/utils';
 
 interface IAutotaskFilterCondition {
 	op: string;
@@ -20,11 +17,10 @@ interface IAutotaskFilter {
 	filter: Array<IAutotaskFilterCondition | IAutotaskFilterGroup>;
 }
 
-async function convertValue(
+function convertValue(
 	value: string | boolean,
 	valueType: string,
-	context?: IExecuteFunctions | ILoadOptionsFunctions
-): Promise<string | number | boolean> {
+): string | number | boolean {
 	if (valueType === 'boolean') {
 		// Handle case where value is already a boolean (from the UI toggle)
 		if (typeof value === 'boolean') {
@@ -42,45 +38,10 @@ async function convertValue(
 	}
 	if (valueType === 'date') {
 		try {
-			// Convert value to string for date processing
-			const valueStr = typeof value === 'boolean' ? value.toString() : value;
-
-			// Get the configured timezone if context is provided
-			let timezone = 'UTC';
-			if (context) {
-				try {
-					timezone = await getConfiguredTimezone.call(context);
-				} catch (error) {
-					console.warn('Error getting timezone configuration, using UTC as default:', error);
-				}
-			}
-
-			// Check if the value is already in ISO format or contains time components
-			if (valueStr.includes('T') && valueStr.includes(':')) {
-				// Strip any trailing Z if present (indicates UTC)
-				const valueToConvert = valueStr.endsWith('Z') ? valueStr.slice(0, -1) : valueStr;
-
-				// Parse with timezone context - treats input as being in the configured timezone
-				const date = moment.tz(valueToConvert, timezone).utc();
-
-				if (!date.isValid()) {
-					throw new Error(`Invalid date format: ${valueStr}`);
-				}
-
-				// Return in the API_DATE format
-				// Return in the API_DATETIME format to preserve time components
-				return date.format(DATE_FORMATS.API_DATETIME);
-			}
-
-			// For other formats, use moment's auto-detection but with timezone context
-			const date = moment.tz(valueStr, timezone).utc();
-
-			if (!date.isValid()) {
-				throw new Error(`Invalid date format: ${valueStr}`);
-			}
-
-			// Return in the API_DATE format
-			return date.format(DATE_FORMATS.API_DATE);
+			// The value is already an ISO string from the dateTime input.
+			// The API should handle the timezone offset correctly.
+			// No conversion is needed here.
+			return typeof value === 'boolean' ? value.toString() : value;
 		} catch (error) {
 			throw new Error(`Invalid date value: ${value}`);
 		}
@@ -91,7 +52,6 @@ async function convertValue(
 
 export async function convertToAutotaskFilter(
 	input: ISearchFilterBuilderInput,
-	context?: IExecuteFunctions | ILoadOptionsFunctions
 ): Promise<IAutotaskFilter> {
 	if (!input.filter?.group?.length) {
 		return { filter: [] };
@@ -99,17 +59,15 @@ export async function convertToAutotaskFilter(
 
 	// Convert to Autotask API format
 	const filterPromises = input.filter.group.map(async (group) => {
-		const itemPromises = group.items.map(async (item) => {
+		const items = group.items.map((item) => {
 			const value = item.itemType.value || '';
 			return {
 				op: item.itemType.op,
 				field: item.itemType.field,
-				value: await convertValue(value, item.itemType.valueType || 'string', context),
-				...(item.itemType.udf && { udf: true })
+				value: convertValue(value, item.itemType.valueType || 'string'),
+				...(item.itemType.udf && { udf: true }),
 			} as IAutotaskFilterCondition;
 		});
-
-		const items = await Promise.all(itemPromises);
 
 		// If there's only one item, return it directly
 		if (items.length === 1) {
@@ -119,7 +77,7 @@ export async function convertToAutotaskFilter(
 		// Otherwise wrap items in a group with the specified operator
 		return {
 			op: group.op,
-			items
+			items,
 		} as IAutotaskFilterGroup;
 	});
 

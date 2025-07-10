@@ -93,7 +93,7 @@ export async function build(this: IExecuteFunctions): Promise<INodeExecutionData
 		// Validate and convert the filter
 		try {
 			validateFilterInput(input);
-			const autotaskFilter = await convertToAutotaskFilter(input, this);
+			const autotaskFilter = await convertToAutotaskFilter(input);
 
 			// Return the filter as a stringified JSON
 			return [[{ json: { advancedFilter: JSON.stringify(autotaskFilter) } }]];
