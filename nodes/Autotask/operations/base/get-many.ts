@@ -103,12 +103,13 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 				let results: T[] = [];
 
 				// Execute initial query
-				const initialResults = await this.executeQuery(filters, undefined);
+				const initialResponse = await this.executeQuery(filters, undefined);
+				const initialResults = await this.paginationHandler.processResponse(initialResponse);
 				results.push(...initialResults);
 
 				// Only continue with pagination if returnAll is true
 				if (returnAll) {
-					// Handle pagination
+					// Handle pagination iteratively to prevent stack overflow
 					while (this.paginationHandler.hasNextPage()) {
 						const nextPageUrl = this.paginationHandler.getNextPageUrl();
 						if (!nextPageUrl) {
@@ -121,7 +122,8 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 							);
 						}
 
-						const pageResults = await this.executeQuery(filters, nextPageUrl);
+						const pageResponse = await this.executeQuery(filters, nextPageUrl);
+						const pageResults = await this.paginationHandler.processResponse(pageResponse);
 						results.push(...pageResults);
 					}
 				}
@@ -219,7 +221,7 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 	private async executeQuery(
 		filters: IAutotaskQueryInput<T>,
 		nextPageUrl?: string | null,
-	): Promise<T[]> {
+	): Promise<IQueryResponse<T>> {
 		return await handleErrors(
 			this.context,
 			async () => {
@@ -247,7 +249,7 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 						);
 					}
 
-					return await this.paginationHandler.processResponse(response);
+					return response;
 				}
 
 				// Initial query - construct endpoint
@@ -353,7 +355,7 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 					);
 				}
 
-				return await this.paginationHandler.processResponse(response);
+				return response;
 			},
 			{
 				operation: 'query',
