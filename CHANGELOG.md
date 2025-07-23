@@ -6,7 +6,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Changed
 - Increased maximum page count from 50 to 1000
-- Refactored pagination to use iterative loops instead of recursion for large data sets; audited codebase to ensure no recursive pagination remains.
+- Refactored pagination to use iterative loops instead of recursion for large data sets.
 
 ### Fixed
 
