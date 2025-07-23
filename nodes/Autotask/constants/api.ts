@@ -41,7 +41,7 @@ export const PAGINATION = {
 	/** Default number of items per page if not specified */
 	DEFAULT_PAGE_SIZE: 10,
 	/** Maximum number of pages that can be tracked for pagination */
-	MAX_PAGES: 50,
+	MAX_PAGES: 1000,
 } as const;
 
 /** Available filter operators for Autotask API queries */
