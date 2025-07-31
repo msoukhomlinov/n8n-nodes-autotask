@@ -56,11 +56,17 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 	 * Build filters array from resource mapper fields
 	 * Multiple fields are automatically combined with AND logic
 	 */
-	public buildFiltersFromResourceMapper(
+	public async buildFiltersFromResourceMapper(
 		itemIndex: number,
 		defaultFilter?: { field: string; op: string },
-	): IAutotaskQueryInput<T>['filter'] {
-		return buildFiltersFromResourceMapper<T>(this.context, itemIndex, defaultFilter);
+	): Promise<IAutotaskQueryInput<T>['filter']> {
+		return buildFiltersFromResourceMapper<T>(
+			this.context,
+			itemIndex,
+			this.entityType,
+			OperationType.READ,
+			defaultFilter,
+		);
 	}
 
 	/**

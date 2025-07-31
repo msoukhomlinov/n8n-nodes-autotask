@@ -62,7 +62,7 @@ export async function executeQuoteItemOperation(
 					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this, { parentType: 'quote' });
 					console.log('Debug: Created GetManyOperation instance');
 
-					const filters = getManyOp.buildFiltersFromResourceMapper(i);
+					const filters = await getManyOp.buildFiltersFromResourceMapper(i);
 					console.log('Debug: Built filters:', filters);
 
 					const response = await getManyOp.execute({ filter: filters }, i);

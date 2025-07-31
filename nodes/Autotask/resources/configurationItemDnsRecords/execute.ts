@@ -37,7 +37,7 @@ export async function executeConfigurationItemDnsRecordOperation(
 					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this, { parentType: 'configurationItem' });
 					console.log('Debug: Created GetManyOperation instance');
 
-					const filters = getManyOp.buildFiltersFromResourceMapper(i);
+					const filters = await getManyOp.buildFiltersFromResourceMapper(i);
 					console.log('Debug: Built filters:', filters);
 					const response = await getManyOp.execute({ filter: filters }, i);
 					console.log('Debug: GetMany operation response:', response);

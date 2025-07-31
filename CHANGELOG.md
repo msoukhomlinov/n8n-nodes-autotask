@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.9.2] - 2025-07-31
+
+### Changed
+- Fixed a bug where UDFs selected in the resource mapper for `Get Many` and `Count` operations were not being correctly identified, causing API errors.
+
 ## [0.9.1] - 2025-07-23
 
 ### Changed

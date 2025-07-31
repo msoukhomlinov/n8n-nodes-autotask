@@ -465,7 +465,7 @@ export class FieldProcessor {
 	 * Convert UDF fields to entity fields
 	 * @private
 	 */
-	private convertUdfFields(udfFields: IUdfFieldDefinition[], operation: ResourceOperation): IEntityField[] {
+		private convertUdfFields(udfFields: IUdfFieldDefinition[], operation: ResourceOperation): IEntityField[] {
 		return udfFields.map(field => {
 			// Get field type using centralized service
 			const context: IFieldMappingContext = {
@@ -506,6 +506,7 @@ export class FieldProcessor {
 				isSupportedWebhookField: true,
 				isActive: true,
 				isSystemField: false,
+				isUdf: true,
 			};
 		});
 	}

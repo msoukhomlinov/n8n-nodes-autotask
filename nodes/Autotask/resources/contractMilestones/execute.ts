@@ -61,7 +61,7 @@ export async function executeContractMilestoneOperation(
 					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this, { parentType: 'contract' });
 					console.log('Debug: Created GetManyOperation instance');
 
-					const filters = getManyOp.buildFiltersFromResourceMapper(i);
+					const filters = await getManyOp.buildFiltersFromResourceMapper(i);
 					console.log('Debug: Built filters from resource mapper');
 
 					const response = await getManyOp.execute({ filter: filters }, i);
