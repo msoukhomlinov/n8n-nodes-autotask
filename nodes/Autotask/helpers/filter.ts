@@ -1,6 +1,54 @@
 import type { IExecuteFunctions } from 'n8n-workflow';
 import type { IAutotaskEntity, IAutotaskQueryInput } from '../types';
+import type { IEntityField } from '../types/base/entities';
+import type { IAutotaskField } from '../types/base/entity-types';
+import type { IUdfFieldDefinition } from '../types/base/udf-types';
 import { FilterOperators } from '../constants/filters';
+import { getFields } from './entity/api';
+import type { ResourceOperation } from '../types/base/common';
+
+/**
+ * Get all processed fields for an entity
+ * @param entityType
+ * @param context
+ * @returns A map of field names to field definitions
+ */
+export async function getProcessedFieldsMap(
+	entityType: string,
+	context: IExecuteFunctions,
+): Promise<Map<string, IEntityField>> {
+	// Get both standard and UDF fields
+	const [standardApiFields, udfApiFields] = await Promise.all([
+		getFields(entityType, context, { fieldType: 'standard' }),
+		getFields(entityType, context, { fieldType: 'udf', isActive: true }),
+	]);
+
+	// Combine all fields and create a map for easy lookup
+	const fieldsMap = new Map<string, IEntityField>();
+
+	// Add standard fields - convert them to IEntityField format
+	for (const field of standardApiFields as IAutotaskField[]) {
+		const entityField: IEntityField = {
+			...field,
+			isUdf: false,  // Standard fields are not UDF
+		} as IEntityField;
+		fieldsMap.set(field.name, entityField);
+	}
+
+	// Add UDF fields - convert them to IEntityField format and mark as UDF
+	for (const field of udfApiFields as IUdfFieldDefinition[]) {
+		const entityField: IEntityField = {
+			...field,
+			isUdf: true,  // UDF fields are marked as UDF
+			isReference: false,  // UDF fields are not reference fields
+			isSupportedWebhookField: field.isSupportedWebhookField || false,
+		} as IEntityField;
+		fieldsMap.set(field.name, entityField);
+	}
+
+	return fieldsMap;
+}
+
 
 /**
  * Type for field mappings from resource mapper
@@ -19,18 +67,23 @@ function getResourceMapperFields(context: IExecuteFunctions, itemIndex: number):
 /**
  * Convert field mappings to filter format
  */
-function convertFieldsToFilters<T extends IAutotaskEntity>(
+async function convertFieldsToFilters<T extends IAutotaskEntity>(
 	fields: IResourceMapperFields,
-): IAutotaskQueryInput<T>['filter'] {
+	fieldsMap: Map<string, IEntityField>,
+): Promise<IAutotaskQueryInput<T>['filter']> {
 	const filters: IAutotaskQueryInput<T>['filter'] = [];
 
 	if (fields?.value) {
 		for (const [field, value] of Object.entries(fields.value)) {
 			if (value !== undefined && value !== '') {
+				const fieldDefinition = fieldsMap.get(field);
+				const isUdf = fieldDefinition?.isUdf || false;
+
 				filters.push({
 					field,
 					value,
 					op: 'eq', // Use equals operator for field matching
+					...(isUdf && { udf: true }),
 				});
 			}
 		}
@@ -76,24 +129,35 @@ function finalizeResourceMapperFilters<T extends IAutotaskEntity>(
  * Build filters array from resource mapper fields
  * Multiple fields are automatically combined with AND logic
  */
-export function buildFiltersFromResourceMapper<T extends IAutotaskEntity>(
+export async function buildFiltersFromResourceMapper<T extends IAutotaskEntity>(
 	context: IExecuteFunctions,
 	itemIndex: number,
+	entityType: string,
+	operation: ResourceOperation,
 	defaultFilter?: { field: string; op: string },
-): IAutotaskQueryInput<T>['filter'] {
+): Promise<IAutotaskQueryInput<T>['filter']> {
 	const fields = getResourceMapperFields(context, itemIndex);
-	const filters = convertFieldsToFilters<T>(fields);
+	const fieldsMap = await getProcessedFieldsMap(entityType, context);
+	const filters = await convertFieldsToFilters<T>(fields, fieldsMap);
 	return finalizeResourceMapperFilters<T>(filters, defaultFilter);
 }
 
 /**
  * Build a filter query string from node parameters
  */
-export function buildFilterQuery<T extends IAutotaskEntity>(
+export async function buildFilterQuery<T extends IAutotaskEntity>(
 	context: IExecuteFunctions,
 	itemIndex: number,
+	entityType: string,
+	operation: ResourceOperation,
 	defaultFilter?: { field: string; op: string },
-): string {
-	const filters = buildFiltersFromResourceMapper<T>(context, itemIndex, defaultFilter);
+): Promise<string> {
+	const filters = await buildFiltersFromResourceMapper<T>(
+		context,
+		itemIndex,
+		entityType,
+		operation,
+		defaultFilter,
+	);
 	return JSON.stringify({ filter: filters });
 }

@@ -36,7 +36,12 @@ export class CountOperation<T extends IAutotaskEntity> extends BaseOperation {
 				console.debug('[CountOperation] Using endpoint:', endpoint);
 
 				// Build filters from resource mapper
-				const queryFilters = buildFiltersFromResourceMapper<T>(this.context, itemIndex);
+				const queryFilters = await buildFiltersFromResourceMapper<T>(
+					this.context,
+					itemIndex,
+					this.entityType,
+					OperationType.COUNT,
+				);
 
 				// Ensure we have at least one filter condition
 				if (queryFilters.length === 0) {

@@ -54,7 +54,7 @@ export async function executeCompanyLocationOperation(
 
 				case 'getMany': {
 					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-					const filters = getManyOp.buildFiltersFromResourceMapper(i);
+					const filters = await getManyOp.buildFiltersFromResourceMapper(i);
 					const response = await getManyOp.execute({ filter: filters }, i);
 					returnData.push(...getManyOp.processReturnData(response));
 					break;
