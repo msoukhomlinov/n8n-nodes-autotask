@@ -40,6 +40,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Autotask Company Webhooks',
 	},
 	{
+		name: 'Company Site Configuration',
+		value: 'companySiteConfiguration',
+		description: 'Manage Company Site Configurations, which store site setup information and custom field data for customer companies',
+	},
+	{
 		name: 'Configuration Item',
 		value: 'configurationItems',
 		description: 'Manage Assets (Configuration Items), which track hardware and software products associated with an organisation that are sold, installed, and managed',

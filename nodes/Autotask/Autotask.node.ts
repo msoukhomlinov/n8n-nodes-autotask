@@ -23,6 +23,7 @@ import { executeResourceOperation } from './resources/resources/execute';
 import { executeResourceRoleOperation } from './resources/resourceRoles/execute';
 import { executeRoleOperation } from './resources/roles/execute';
 import { executeCompanyNoteOperation } from './resources/companyNotes/execute';
+import { executeCompanySiteConfigurationOperation } from './resources/companySiteConfigurations/execute';
 import { executeCompanyWebhookOperation } from './resources/companyWebhooks/execute';
 import { executeConfigurationItemWebhookOperation } from './resources/configurationItemWebhooks/execute';
 import { executeTicketNoteWebhookOperation } from './resources/ticketNoteWebhooks/execute';
@@ -77,6 +78,7 @@ import { resourceFields } from './resources/resources/description';
 import { resourceRoleFields } from './resources/resourceRoles/description';
 import { roleFields } from './resources/roles/description';
 import { companyNoteFields } from './resources/companyNotes/description';
+import { companySiteConfigurationFields } from './resources/companySiteConfigurations/description';
 import { projectNoteFields } from './resources/projectNotes/description';
 import { projectPhaseFields } from './resources/projectPhases/description';
 import { projectChargeFields } from './resources/projectCharges/description';
@@ -244,6 +246,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(companyFields, { resourceName: 'company' }),
 			...addOperationsToResource(companyAlertFields, { resourceName: 'companyAlert' }),
 			...addOperationsToResource(companyNoteFields, { resourceName: 'companyNote' }),
+			...addOperationsToResource(companySiteConfigurationFields, { resourceName: 'companySiteConfiguration' }),
 			...addOperationsToResource(companyWebhookFields, { resourceName: 'companyWebhook' }),
 			...addOperationsToResource(configurationItemWebhookFields, { resourceName: 'configurationItemWebhook' }),
 			...addOperationsToResource(configurationItemFields, { resourceName: 'configurationItems' }),
@@ -343,6 +346,8 @@ export class Autotask implements INodeType {
 				return executeCompanyAlertOperation.call(this);
 			case 'companyNote':
 				return executeCompanyNoteOperation.call(this);
+			case 'companySiteConfiguration':
+				return executeCompanySiteConfigurationOperation.call(this);
 			case 'companyWebhook':
 				return executeCompanyWebhookOperation.call(this);
 			case 'configurationItemWebhook':
