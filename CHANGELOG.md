@@ -2,6 +2,18 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.9.3] - 2025-08-07
+
+### Added
+- Added support for CompanySiteConfigurations endpoint support for:
+  - **Update**: Modify site configuration settings and user-defined fields for customer companies
+  - **Get**: Retrieve individual site configuration by ID
+  - **Get Many**: Query multiple site configurations with filtering support
+  - **Count**: Count site configurations matching specific criteria
+  - **Entity Info**: Access field definitions and metadata
+  - Full User-Defined Fields (UDF) support with Protected Data Permissions (DPP) compliance
+  - Parent-child relationship support with Companies entity
+
 ## [0.9.2] - 2025-07-31
 
 ### Changed

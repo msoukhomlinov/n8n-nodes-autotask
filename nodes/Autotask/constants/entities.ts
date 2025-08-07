@@ -17,6 +17,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'CompanyWebhookExcludedResource', childOf: 'CompanyWebhook', subname: 'ExcludedResource', parentChain: ['Company', 'CompanyWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyWebhookField', childOf: 'CompanyWebhook', subname: 'Field', parentChain: ['Company', 'CompanyWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyWebhookUdfField', childOf: 'CompanyWebhook', subname: 'UdfField', parentChain: ['Company', 'CompanyWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
+	{ name: 'CompanySiteConfigurations', childOf: 'Company', subname: 'SiteConfigurations', parentIdField: 'companyID', operations: { [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
 	// ConfigurationItem entity with webhook support flag
 	{ name: 'ConfigurationItem', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true, supportsWebhookCallouts: true },
 	{ name: 'ConfigurationItemWebhook', childOf: 'ConfigurationItem', subname: 'Webhook', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.DELETE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },

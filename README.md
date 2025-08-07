@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.9.1-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.9.3-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -68,6 +68,7 @@ The node supports the following Autotask resources:
 | Company Alert | Manage alerts associated with companies |
 | Company Location | Manage locations for companies |
 | Company Note | Manage notes attached to companies |
+| Company Site Configuration | Manage company site configurations and user-defined fields for customer companies |
 | Company Webhook | Manage webhooks for company events |
 | Configuration Item | Manage configuration items (CIs) for companies |
 | Configuration Item Billing Product Association | Manage product associations for configuration items |

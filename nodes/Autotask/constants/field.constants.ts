@@ -174,6 +174,7 @@ export const REQUIRED_UPDATE_ID_FIELDS: Record<string, string[]> = {
 	'Contact': ['companyID'],
 	'CompanyLocation': ['companyID'],
 	'CompanyNote': ['companyID'],
+	'CompanySiteConfigurations': ['companyID'],
 	'ConfigurationItemNote': ['configurationItemID'],
 	'ConfigurationItemRelatedItem': ['configurationItemID'],
 	'ConfigurationItemDnsRecord': ['configurationItemID'],
