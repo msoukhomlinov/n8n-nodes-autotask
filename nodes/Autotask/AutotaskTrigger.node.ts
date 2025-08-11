@@ -850,22 +850,34 @@ export class AutotaskTrigger implements INodeType {
 		}
 
 		// Map of Autotask API entity types to our node's entity types (aliases)
-		const entityTypeAliases: Record<string, string> = {
+		// Some payloads may use legacy/alternate names (e.g. InstalledProduct for Configuration Items)
+		const entityTypeAliasesRaw: Record<string, string> = {
 			'Account': AutotaskWebhookEntityType.COMPANIES, // Autotask uses "Account" and "Companies" interchangeably
 			'Ticket': AutotaskWebhookEntityType.TICKETS, // Autotask uses "Ticket" and "Tickets" interchangeably
 			'Contact': AutotaskWebhookEntityType.CONTACTS, // Autotask uses "Contact" and "Contacts" interchangeably
 			'ConfigurationItem': AutotaskWebhookEntityType.CONFIGURATIONITEMS, // Autotask uses "ConfigurationItem" and "ConfigurationItems" interchangeably
 			'TicketNote': AutotaskWebhookEntityType.TICKETNOTES, // Autotask uses "TicketNote" and "TicketNotes" interchangeably
+			// Legacy SOAP alias for Configuration Items
+			'InstalledProduct': AutotaskWebhookEntityType.CONFIGURATIONITEMS,
+			'InstalledProducts': AutotaskWebhookEntityType.CONFIGURATIONITEMS,
 		};
+
+		// Build a case-insensitive alias map
+		const entityTypeAliases: Record<string, string> = Object.entries(entityTypeAliasesRaw)
+			.reduce((acc, [key, value]) => {
+				acc[key.toLowerCase()] = value;
+				return acc;
+			}, {} as Record<string, string>);
 
 		// Get the normalized entity type from the incoming payload
 		let normalizedEntityType = (bodyData.entityType as string)?.toLowerCase();
 
-		// Check for aliases and normalize them
+		// Check for aliases and normalize them (case-insensitive)
 		const receivedEntityType = bodyData.entityType as string;
-		if (entityTypeAliases[receivedEntityType]) {
-			console.log(`Mapping entity type alias: ${receivedEntityType} → ${entityTypeAliases[receivedEntityType]}`);
-			normalizedEntityType = entityTypeAliases[receivedEntityType].toLowerCase();
+		const aliasTarget = entityTypeAliases[receivedEntityType.toLowerCase()];
+		if (aliasTarget) {
+			console.log(`Mapping entity type alias: ${receivedEntityType} → ${aliasTarget}`);
+			normalizedEntityType = aliasTarget.toLowerCase();
 		}
 
 		// Validate entity type - allow for case-insensitive comparison with aliases
