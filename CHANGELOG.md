@@ -2,6 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.9.5] - 2025-08-11
+
+### Changed
+- Resolved merge conflicts and bumped version to 0.9.5. Preserved all changes from 0.9.3 and 0.9.4.
+
+## [0.9.4] - 2025-08-11
+
+### Fixed
+- Fixed a bug where Assets (Configurtion items) Webhook errored with "Invalid entity type. Received InstalledProduct, expected ConfigurationItems."
+
 ## [0.9.3] - 2025-08-07
 
 ### Added
@@ -16,7 +26,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [0.9.2] - 2025-07-31
 
-### Changed
+### Fixed
 - Fixed a bug where UDFs selected in the resource mapper for `Get Many` and `Count` operations were not being correctly identified, causing API errors.
 
 ## [0.9.1] - 2025-07-23
