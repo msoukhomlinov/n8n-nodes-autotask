@@ -6,6 +6,7 @@ import { addPicklistLabelOption } from '../operations/common/picklist-labels';
 import { addReferenceLabelOption } from '../operations/common/reference-labels';
 import { addSelectColumnsOption } from '../operations/common/select-columns';
 import { flattenUdfsOption } from '../operations/common/udf-flattening';
+import { addAgentFriendlyOptions } from '../operations/common/json-parameters';
 
 /**
  * Operation group types
@@ -30,6 +31,12 @@ export interface IOperationAdditionConfig {
 	resourceName: string;
 	excludeOperations?: string[];
 	dependencies?: IOperationDependency[];
+	agentFriendly?: {
+		includeBodyJson?: boolean;
+		includeSelectColumnsJson?: boolean;
+		includeOutputMode?: boolean;
+		includeDryRun?: boolean;
+	};
 }
 
 /**
@@ -143,11 +150,15 @@ export function addOperationsToResource(
 				});
 			}
 
+			// Add agent-friendly options (JSON parameters, output mode, dry run)
+			updatedProperties = addAgentFriendlyOptions(updatedProperties, config.resourceName, config.agentFriendly);
+
 			return updatedProperties;
 		}
 	}
 
-	return properties;
+	// Add agent-friendly options for resources without get operations (write-only resources)
+	return addAgentFriendlyOptions(properties, config.resourceName, config.agentFriendly);
 }
 
 /**

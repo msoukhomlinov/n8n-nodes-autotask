@@ -3,11 +3,12 @@ import type { IAutotaskEntity } from '../../types';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { OperationType } from '../../types/base/entity-types';
 import { BaseOperation } from './base-operation';
-import { FieldProcessor } from './field-processor';
 import { flattenUdfs } from '../../helpers/udf/flatten';
 import { getSelectedColumns } from '../common/select-columns';
 import { GetManyOperation } from './get-many';
 import { FilterOperators } from '../../constants/filters';
+import { processOutputMode } from '../../helpers/output-mode';
+import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 
 /**
  * Base class for getting entities
@@ -34,6 +35,22 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 					.replace('{entity}', this.entityType)
 					.replace('{details}', 'Entity ID is required for get operation')
 			);
+		}
+
+		// Check for dry-run mode
+		if (isDryRunEnabled(this.context, itemIndex)) {
+			console.debug('[GetOperation] Dry-run mode enabled, returning request preview');
+			const endpoint = await this.buildOperationUrl(itemIndex);
+			return await createDryRunResponse(
+				this.context,
+				this.entityType,
+				'get',
+				{
+					method: 'GET',
+					url: `${endpoint}/${entityId}`,
+				},
+				itemIndex
+			) as unknown as T;
 		}
 
 		// Check if columns are selected
@@ -80,40 +97,8 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 			entity = await this.getEntityById(itemIndex, entityId as string | number) as T;
 		}
 
-		// Get field processor instance for enrichment
-		const fieldProcessor = FieldProcessor.getInstance(
-			this.entityType,
-			this.operation,
-			this.context,
-		);
-
-		// Check if reference labels should be added (this must be done before picklist labels)
-		try {
-			const addReferenceLabels = this.context.getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
-
-			if (addReferenceLabels) {
-				console.debug(`[GetOperation] Adding reference labels for ${this.entityType} entity`);
-				// Enrich entity with reference labels
-				entity = await fieldProcessor.enrichWithReferenceLabels(entity) as T;
-			}
-		} catch (error) {
-			// If parameter doesn't exist or there's an error, log it but don't fail the operation
-			console.warn(`[GetOperation] Error processing reference labels: ${error.message}`);
-		}
-
-		// Check if picklist labels should be added
-		try {
-			const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
-
-			if (addPicklistLabels) {
-				console.debug(`[GetOperation] Adding picklist labels for ${this.entityType} entity`);
-				// Enrich entity with picklist labels
-				entity = await fieldProcessor.enrichWithPicklistLabels(entity) as T;
-			}
-		} catch (error) {
-			// If parameter doesn't exist or there's an error, log it but don't fail the operation
-			console.warn(`[GetOperation] Error processing picklist labels: ${error.message}`);
-		}
+		// Apply output mode processing (handles enrichment and formatting)
+		entity = await processOutputMode(entity, this.entityType, this.context, itemIndex) as T;
 
 		// Check if UDFs should be flattened
 		try {

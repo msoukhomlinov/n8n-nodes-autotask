@@ -1,5 +1,6 @@
 import type { IExecuteFunctions } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../../types';
+import { validateJsonParameter } from '../../../helpers/json-validation';
 
 /**
  * Filter an entity to only include selected columns
@@ -79,12 +80,54 @@ export function filterEntitiesBySelectedColumns<T extends IAutotaskEntity>(
 
 /**
  * Get selected columns from node parameters
+ * Checks selectColumnsJson first, then falls back to selectColumns UI parameter
  */
 export function getSelectedColumns(context: IExecuteFunctions, itemIndex: number): string[] {
 	try {
-		return context.getNodeParameter('selectColumns', itemIndex, []) as string[];
+		// Get resource name for validation context
+		let resource: string;
+		try {
+			resource = context.getNodeParameter('resource', itemIndex) as string;
+		} catch {
+			resource = 'unknown'; // Fallback for validation context
+		}
+
+		// Check for JSON parameter first (takes precedence)
+		try {
+			const rawJsonParam = context.getNodeParameter('selectColumnsJson', itemIndex, []);
+
+			// Validate JSON format and structure
+			const validation = validateJsonParameter(rawJsonParam, 'selectColumnsJson', resource);
+			if (!validation.isValid) {
+				// If validation fails, throw the error to be caught below
+				throw validation.error!;
+			}
+
+			const selectColumnsJson = validation.parsedValue as string[];
+			if (selectColumnsJson.length > 0) {
+				console.debug('[getSelectedColumns] Using validated selectColumnsJson parameter:', selectColumnsJson);
+				return selectColumnsJson;
+			}
+		} catch (jsonError) {
+			// If it's a validation error, re-throw it for proper error handling
+			if (jsonError instanceof Error && jsonError.message.includes('selectColumnsJson')) {
+				throw jsonError;
+			}
+			// JSON parameter doesn't exist or is invalid, continue to UI parameter
+			console.debug('[getSelectedColumns] selectColumnsJson not available or invalid, falling back to UI parameter');
+		}
+
+		// Fall back to UI parameter
+		const uiColumns = context.getNodeParameter('selectColumns', itemIndex, []) as string[];
+		console.debug('[getSelectedColumns] Using selectColumns UI parameter:', uiColumns);
+		return uiColumns;
 	} catch (error) {
-		// If parameter doesn't exist or there's an error, return empty array
+		// If it's a validation error, re-throw it
+		if (error instanceof Error && (error.message.includes('selectColumnsJson') || error.message.includes('bodyJson'))) {
+			throw error;
+		}
+		// If both parameters don't exist or there's another error, return empty array
+		console.debug('[getSelectedColumns] No column selection parameters available, returning empty array');
 		return [];
 	}
 }

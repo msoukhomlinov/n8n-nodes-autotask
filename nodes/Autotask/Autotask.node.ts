@@ -164,6 +164,8 @@ import { skillFields } from './resources/skills/description';
 import { contactGroupsFields } from './resources/contactGroups/description';
 import { executeContactGroupContactsOperation } from './resources/contactGroupContacts/execute';
 import { contactGroupContactsFields } from './resources/contactGroupContacts/description';
+import { aiHelperFields } from './resources/aiHelper/description';
+import { executeAiHelperOperation } from './resources/aiHelper/execute';
 import { getQueryableEntities, getEntityFields } from './helpers/options';
 import { executeQuoteOperation } from './resources/quotes/execute';
 import { quoteFields } from './resources/quotes/description';
@@ -231,6 +233,7 @@ export class Autotask implements INodeType {
 				default: '',
 				required: true,
 			},
+			...aiHelperFields,
 			...addOperationsToResource(apiThresholdDescription, {
 				resourceName: 'apiThreshold',
 				excludeOperations: [
@@ -336,6 +339,8 @@ export class Autotask implements INodeType {
 
 		// Handle resource-specific operations
 		switch (resource) {
+			case 'aiHelper':
+				return executeAiHelperOperation.call(this);
 			case 'apiThreshold':
 				return executeApiThresholdOperation.call(this);
 			case 'billingCode':

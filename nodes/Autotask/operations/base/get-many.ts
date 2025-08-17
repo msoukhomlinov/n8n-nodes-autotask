@@ -12,11 +12,13 @@ import { FilterOperators } from '../../constants/filters';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { buildEntityUrl, buildChildEntityUrl } from '../../helpers/http/request';
 import { getEntityMetadata } from '../../constants/entities';
-import { FieldProcessor } from './field-processor';
 import { OperationType } from '../../types/base/entity-types';
 import { processResponseDatesArray } from '../../helpers/date-time';
 import { getSelectedColumns, prepareIncludeFields } from '../common/select-columns';
 import { flattenUdfsArray } from '../../helpers/udf/flatten';
+import { processOutputMode } from '../../helpers/output-mode';
+import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
+import { withAgentHint } from '../../helpers/agent-error-hints';
 
 /**
  * Base class for retrieving multiple entities
@@ -85,6 +87,31 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 		return await handleErrors(
 			this.context,
 			async () => {
+				// Check for dry-run mode
+				if (isDryRunEnabled(this.context, itemIndex)) {
+					console.debug('[GetManyOperation] Dry-run mode enabled, returning request preview');
+					let endpoint: string;
+					if (this.parentType) {
+						// For child entities, we need to get the parent ID from context
+						const parentId = this.context.getNodeParameter(`${this.parentType}ID`, itemIndex, '') as string | number;
+						endpoint = buildChildEntityUrl(this.parentType, this.entityType, parentId);
+					} else {
+						endpoint = buildEntityUrl(this.entityType);
+					}
+
+					return [await createDryRunResponse(
+						this.context,
+						this.entityType,
+						'getMany',
+						{
+							method: 'POST',
+							url: endpoint,
+							body: filters as unknown as IDataObject,
+						},
+						itemIndex
+					)] as unknown as T[];
+				}
+
 				// When this GetManyOperation is being used for picklist/reference queries we
 				// must ignore the node-level pagination settings (returnAll / maxRecords) that
 				// end-users configure for their primary entity request. Those settings would
@@ -138,39 +165,9 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 					return results;
 				}
 
-				// Get field processor instance for enrichment
-				const fieldProcessor = FieldProcessor.getInstance(
-					this.entityType,
-					OperationType.READ,
-					this.context,
-				);
-
-				// Check if reference labels should be added (must be processed before picklist labels)
-				try {
-					const addReferenceLabels = this.context.getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
-
-					if (addReferenceLabels && results.length > 0) {
-						console.debug(`[GetManyOperation] Adding reference labels for ${results.length} ${this.entityType} entities`);
-						// Enrich entities with reference labels
-						results = await fieldProcessor.enrichWithReferenceLabels(results) as T[];
-					}
-				} catch (error) {
-					// If parameter doesn't exist or there's an error, log it but don't fail the operation
-					console.warn(`[GetManyOperation] Error processing reference labels: ${error.message}`);
-				}
-
-				// Check if picklist labels should be added
-				try {
-					const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
-
-					if (addPicklistLabels && results.length > 0) {
-						console.debug(`[GetManyOperation] Adding picklist labels for ${results.length} ${this.entityType} entities`);
-						// Enrich entities with picklist labels
-						results = await fieldProcessor.enrichWithPicklistLabels(results) as T[];
-					}
-				} catch (error) {
-					// If parameter doesn't exist or there's an error, log it but don't fail the operation
-					console.warn(`[GetManyOperation] Error processing picklist labels: ${error.message}`);
+				// Apply output mode processing (handles enrichment and formatting)
+				if (results.length > 0) {
+					results = await processOutputMode(results, this.entityType, this.context, itemIndex) as T[];
 				}
 
 				// Process dates in response before returning
@@ -352,13 +349,14 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 				) as IQueryResponse<T>;
 
 				if (!response) {
-					throw new Error(
+					const error = new Error(
 						ERROR_TEMPLATES.operation
 							.replace('{type}', 'ResponseError')
 							.replace('{operation}', 'query')
 							.replace('{entity}', this.entityType)
 							.replace('{details}', 'Empty response from API')
 					);
+					throw withAgentHint(error, { resource: this.entityType, operation: 'getMany' });
 				}
 
 				return response;

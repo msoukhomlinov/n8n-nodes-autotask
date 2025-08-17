@@ -5,6 +5,11 @@ import type { INodePropertyOptions, INodeProperties } from 'n8n-workflow';
  */
 export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 	{
+		name: 'AI Helper',
+		value: 'aiHelper',
+		description: 'AI/Agent helper operations for resource introspection and field discovery',
+	},
+	{
 		name: 'API Threshold',
 		value: 'apiThreshold',
 		description: 'Check Autotask API usage limits and current threshold levels',

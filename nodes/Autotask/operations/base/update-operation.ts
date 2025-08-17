@@ -5,12 +5,15 @@ import { autotaskApiRequest } from '../../helpers/http/request';
 import { handleErrors } from '../../helpers/errorHandler';
 import { getOperationFieldValues, validateFieldValues } from './field-values';
 import { processResponseDates } from '../../helpers/date-time';
+import { processOutputMode } from '../../helpers/output-mode';
 import { buildRequestBody } from '../../helpers/http/body-builder';
 import { BaseOperation } from './base-operation';
 import { FieldProcessor } from './field-processor';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { getEntityMetadata } from '../../constants/entities';
 import { convertDatesToUTC } from '../../helpers/date-time/utils';
+import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
+import { resolveLabelsToIds } from '../../helpers/label-resolution';
 
 /**
  * Base class for updating entities
@@ -59,9 +62,15 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 				);
 				console.debug('[UpdateOperation] Validated data:', validatedData);
 
+				// Resolve labels to IDs for picklist/reference fields
+				const resolution = await resolveLabelsToIds(this.context, this.entityType, validatedData);
+				if (resolution.resolutions.length > 0) {
+					console.debug('[UpdateOperation] Label-to-ID resolutions:', resolution.resolutions);
+				}
+
 				// Apply centralized date conversion (closest to API boundary)
 				const apiReadyData = await convertDatesToUTC(
-					validatedData,
+					resolution.values,
 					this.entityType,
 					this.context,
 					'UpdateOperation'
@@ -88,6 +97,26 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 
 					console.debug('Request body:', requestBody);
 
+					// Check for dry-run mode
+					if (isDryRunEnabled(this.context, itemIndex)) {
+						console.debug('[UpdateOperation] Dry-run mode enabled, returning request preview');
+						const preview = await createDryRunResponse(
+							this.context,
+							this.entityType,
+							'update',
+							{
+								method: 'PATCH',
+								url: endpoint,
+								body: requestBody,
+							},
+							itemIndex
+						);
+
+						// Attach label-to-ID resolution map to preview for agent visibility
+						(preview as unknown as IDataObject).resolutions = resolution.resolutions as unknown as IDataObject[];
+						return preview as unknown as T;
+					}
+
 					// Update entity using autotaskApiRequest's built-in pluralization
 					const response = await autotaskApiRequest.call(
 						this.context,
@@ -106,12 +135,21 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 						);
 					}
 
-					// Process any date fields in the response
-					return processResponseDates.call(
+					// Process any date fields in the response and apply output mode
+					let entity = processResponseDates.call(
 						this.context,
 						response,
 						`${this.entityType}.update`,
 					) as unknown as T;
+
+					entity = await processOutputMode(
+						entity,
+						this.entityType,
+						this.context,
+						itemIndex,
+					) as T;
+
+					return entity;
 				} catch (error) {
 					// Handle API-specific errors
 					if (error instanceof Error) {
