@@ -5,6 +5,8 @@ import { getFields } from '../../helpers/entity/api';
 import type { IAutotaskField } from '../../types/base/entity-types';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import type { IFieldValidationRules } from '../../types/base/common';
+import { withAgentHint } from '../../helpers/agent-error-hints';
+import { validateJsonParameter } from '../../helpers/json-validation';
 
 interface SchemaField {
 	id: string;
@@ -36,6 +38,30 @@ export async function getOperationFieldValues(
 			schema?: SchemaField[];
 		};
 
+		// Get and validate JSON body parameter for write operations (bodyJson override)
+		let bodyJson: IDataObject = {};
+		if (operation === 'create' || operation === 'update') {
+			try {
+				const rawBodyJson = context.getNodeParameter('bodyJson', itemIndex, {});
+
+				// Validate JSON format and structure
+				const validation = validateJsonParameter(rawBodyJson, 'bodyJson', entityType);
+				if (!validation.isValid) {
+					throw validation.error!;
+				}
+
+				bodyJson = (validation.parsedValue as IDataObject) || {};
+				console.debug('[FieldValues] Validated bodyJson:', bodyJson);
+			} catch (error) {
+				// If it's a validation error, re-throw it
+				if (error instanceof Error && error.message.includes('bodyJson')) {
+					throw error;
+				}
+				// Parameter doesn't exist, use empty object
+				bodyJson = {};
+			}
+		}
+
 		// For getMany operation, we need to get the selected fields
 		if (operation === 'getMany' || operation === 'count') {
 			const fields = fieldsToMap?.value ? Object.keys(fieldsToMap.value) : [];
@@ -56,6 +82,12 @@ export async function getOperationFieldValues(
 				key => key.toLowerCase() === field.id.toLowerCase()
 			);
 			result[field.id] = matchingKey ? fieldsToMap.value?.[matchingKey] : '';
+		}
+
+		// Merge bodyJson values (bodyJson takes precedence over resource mapper)
+		if (Object.keys(bodyJson).length > 0) {
+			console.debug('[FieldValues] Merging bodyJson values:', bodyJson);
+			Object.assign(result, bodyJson);
 		}
 
 		return result;
@@ -84,13 +116,17 @@ export async function validateFieldValues(
 		// Get entity field definitions
 		const fields = await getFields(entityType, context) as IAutotaskField[];
 		if (!fields || !fields.length) {
-			throw new Error(
+			const error = new Error(
 				ERROR_TEMPLATES.operation
 					.replace('{type}', 'FieldError')
 					.replace('{operation}', 'validateFieldValues')
 					.replace('{entity}', entityType)
 					.replace('{details}', 'Failed to get field definitions'),
 			);
+			throw withAgentHint(error, {
+				resource: entityType,
+				operation,
+			});
 		}
 
 		console.debug(`[validateFieldValues] Validating ${Object.keys(rawValues).length} field values for ${entityType}`);

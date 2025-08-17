@@ -2,6 +2,25 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [0.9.6] - 2025-08-17
+
+### Added
+- **AI Agent-Friendly Improvements**: Comprehensive enhancements for AI/tool-calling systems including:
+  - **AI Helper Resource**: New `aiHelper` resource with `describeResource`, `listPicklistValues`, and `validateParameters` operations for runtime introspection
+  - **JSON Parameter Fallbacks**: `bodyJson` and `selectColumnsJson` parameters to override UI mappings with structured JSON input
+  - **Output Modes**: `rawIds`, `idsAndLabels`, `labelsOnly` options for token-efficient responses  
+  - **Dry-Run Support**: Request preview functionality across all operations without API execution
+  - **Dynamic Dependency Discovery**: Automatic entity relationship mapping and field dependency detection
+  - **JSON Schema Validation**: Immediate feedback on malformed JSON parameters
+  - **Enhanced Error Hints**: Structured error responses with actionable suggestions for AI self-correction
+  - **Agent Playbook Documentation**: Comprehensive guide for AI agent integration and best practices
+  - **Label-to-ID Resolution on Writes**: `bodyJson` can now accept picklist/reference labels; values are pre-flight resolved to IDs using introspection and lookups
+  - **Reference Alias Tolerance**: Improved reference detection to accept common variants/typos (e.g. `resrouce`, `assignedresource`, `accountManager`, `account_manager`) and map them correctly
+
+### Changed
+- **Consistent Output Shaping**: Applied `outputMode` processing to create/update responses for consistency with read operations
+- **Agent Hints (Read Ops)**: Expanded agent-friendly hints in read paths (e.g. empty/invalid responses) to aid self-correction
+
 ## [0.9.5] - 2025-08-11
 
 ### Changed

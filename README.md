@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.9.5-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.9.6-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -217,41 +217,269 @@ The API Threshold resource provides a simple way to monitor your Autotask API us
 
 This is particularly useful for workflows that make many API calls, allowing you to implement conditional logic based on current usage levels to avoid hitting rate limits and ensure continuous operation.
 
-### AI Tool Integration
+### AI Agent Playbook
 
-This node can be used as a tool by AI agents in n8n workflows. This allows AI agents to interact with Autotask PSA, performing operations like retrieving company information, creating tickets, or updating contacts.
+This node is optimised for AI agents and tool-calling systems with specialised features designed for autonomous operation.
 
-#### Requirements
+#### Quick Start for AI Agents
 
-Currently, n8n only allows core nodes to be used as tools by default. To use this community node as a tool, you need to:
+**1. Introspect Resources**
+```javascript
+// Discover available fields and requirements
+operation: aiHelper.describeResource
+params: { resource: "ticket", mode: "write" }
+```
 
-1. Set the environment variable `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE` to `true` when running n8n.
-2. Add the Autotask node as a tool in your AI agent workflow.
+**2. Prepare Data**
+```javascript
+// Use JSON parameters for direct data input
+bodyJson: {
+  "title": "API Integration Issue", 
+  "description": "Customer reporting connection problems",
+  "priority": "Medium",
+  "status": "New"
+}
+```
 
-#### Environment Variable Configuration
+Note: You may provide labels for picklist/reference fields in `bodyJson` (e.g., `status: "New"`). They are automatically resolved to IDs pre-flight.
 
-For the node to be usable as an AI tool, you must set the following environment variable:
+**3. Preview First (Optional)**
+```javascript
+// Test your request without making API calls
+dryRun: true
+```
+
+**4. Execute with Optimal Output**
+```javascript
+// Choose output format for token efficiency
+outputMode: "rawIds"        // Most efficient
+outputMode: "idsAndLabels"  // Default (balanced)
+outputMode: "labelsOnly"    // Most readable
+```
+
+#### AI Helper Operations
+
+**Introspection Endpoint:**
+- `aiHelper.describeResource(resource, mode)` - Get field metadata, requirements, constraints, and **entity dependencies**
+- `aiHelper.listPicklistValues(resource, fieldId, query, limit, page)` - Get valid values for dropdown fields
+- `aiHelper.validateParameters(resource, mode, fieldValues)` - **NEW:** Validate field values without API calls - pre-flight validation
+
+**Dynamic Dependency Discovery:**
+- **Reference fields** show what entity they link to (e.g., `companyID → company`)
+- **Field dependencies** reveal required relationships (e.g., `contactID requires: companyID`)
+- **Workflow guidance** provides creation order tips (e.g., "Ensure company exists before creating contact")
+
+**Enhanced Validation:**
+- **JSON Schema validation** - Immediate feedback on malformed `bodyJson`/`selectColumnsJson`
+- **Parameter pre-validation** - Validate field values, types, dependencies without API calls
+- **Structured error responses** - Detailed validation results with field-by-field feedback
+
+**JSON Parameter Fallbacks:**
+- `bodyJson` - Override UI mappings for write operations (create/update)
+- `selectColumnsJson` - Specify fields for read operations as JSON array
+
+**Agent-Friendly Features:**
+- `outputMode` - Control response format (rawIds/idsAndLabels/labelsOnly)
+- `dryRun` - Get request preview without API execution
+- Smart error hints with actionable suggestions
+
+#### Tool Configuration for Maximum Effectiveness
+
+For optimal AI agent integration, configure multiple instances of this node as separate tools. This provides focused, reliable access to different resource types.
+
+**Recommended Tool Setup:**
+
+```javascript
+// Tool 1: Resource Discovery and Field Introspection
+{
+  name: "autotask_inspector",
+  description: "Discover Autotask resources, fields, and valid values",
+  resource: "aiHelper",
+  operations: ["describeResource", "listPicklistValues"]
+}
+
+// Tool 2: Contact Management 
+{
+  name: "autotask_contacts",
+  description: "Read and write Autotask contacts and people",
+  resource: "contact",
+  operations: ["get", "getMany", "create", "update"],
+  defaultParams: {
+    outputMode: "idsAndLabels",
+    selectColumnsJson: ["id", "firstName", "lastName", "emailAddress", "companyID", "title", "phone"]
+  }
+  // Accepts labels in bodyJson; labels are auto-resolved to IDs
+}
+
+// Tool 3: Company/Account Management
+{
+  name: "autotask_companies", 
+  description: "Read and write Autotask companies and accounts",
+  resource: "company",
+  operations: ["get", "getMany", "create", "update"],
+  defaultParams: {
+    outputMode: "idsAndLabels",
+    selectColumnsJson: ["id", "companyName", "companyType", "phone", "address1", "city", "state"]
+  }
+  // Accepts labels in bodyJson; labels are auto-resolved to IDs
+}
+
+// Tool 4: General Resource Access
+{
+  name: "autotask_resources",
+  description: "Access any Autotask resource with full flexibility",
+  allResources: true,
+  defaultParams: {
+    outputMode: "rawIds"  // Most token-efficient for exploratory queries
+  }
+  // Accepts labels in bodyJson; labels are auto-resolved to IDs
+}
+```
+
+**Usage Pattern:**
+1. **Start with Inspector** - Use `autotask_inspector` to understand field requirements
+2. **Use Focused Tools** - Call `autotask_contacts` or `autotask_companies` for CRM related operations  
+3. **Use Specialist Tools** - Use `autotask_resources` for lookups of Autotask MSP staff (resources)
+
+**Benefits:**
+- **Faster execution** - Pre-configured tools reduce parameter complexity
+- **Better reliability** - Focused tools have predictable schemas
+- **Token efficiency** - Default parameters optimised for each use case
+- **Easier debugging** - Clear separation of concerns
+
+#### Environment Setup
+
+For AI tool usage, set this environment variable:
 
 ```bash
 N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true
 ```
 
-This can be done by:
-- Adding it to your .env file
-- Setting it in your system environment variables
-- Including it in your Docker or container configuration
-- Adding it to your startup command (e.g., `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true n8n start`)
+Configuration options:
+- Add to your `.env` file
+- Set in system environment variables  
+- Include in Docker/container configuration
+- Add to startup command: `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true n8n start`
 
-Without this environment variable set to `true`, n8n will not allow AI agents to use this community node as a tool.
+#### Example Agent Workflow
 
-#### Example AI Tool Usage
+**Scenario: Create a contact for a new company**
 
-An AI agent might use the Autotask node to:
-- Retrieve information about a company or contact
-- Create a new ticket based on user input
-- Update the status of an existing ticket
-- Add notes to a ticket or company record
-- Search for tickets matching specific criteria
+```javascript
+// 1. Inspect contact requirements using dedicated tool
+autotask_inspector.call({
+  operation: "describeResource",
+  targetResource: "contact", 
+  mode: "write"
+})
+// Returns: { 
+//   fields: [
+//     { id: "companyID", required: true, isReference: true, referencesEntity: "company" },
+//     { id: "firstName", required: true, type: "string" },
+//     { id: "lastName", required: true, type: "string" }
+//   ],
+//   notes: [
+//     "Required fields for write: companyID, firstName, lastName",
+//     "Reference fields (must reference existing entities): companyID → company",
+//     "Workflow tip: Ensure referenced company exists before creating contact."
+//   ]
+// }
+
+// 2. Check company picklist values if needed
+autotask_inspector.call({
+  operation: "listPicklistValues",
+  targetResource: "contact",
+  fieldId: "companyID",
+  query: "Tech Solutions"  // Search for company
+})
+
+// 2.5. Validate parameters before creation (NEW!)
+autotask_inspector.call({
+  operation: "validateParameters",
+  targetResource: "contact",
+  mode: "create",
+  fieldValues: {
+    "firstName": "John",
+    "lastName": "Smith",
+    "emailAddress": "john.smith@techsolutions.com",
+    "companyID": 12345,
+    "title": "IT Manager"
+  }
+})
+// Returns: {
+//   isValid: true,
+//   errors: [],
+//   warnings: [
+//     { field: "companyID", message: "Reference field 'companyID' points to company. Ensure the referenced record exists.", code: "REFERENCE_EXISTENCE_CHECK" }
+//   ],
+//   summary: { totalFields: 15, providedFields: 5, validFields: 5, requiredFieldsMissing: 0, invalidValues: 0 }
+// }
+
+// 3. Create contact using focused tool
+autotask_contacts.call({
+  operation: "create",
+  bodyJson: {
+    "firstName": "John",
+    "lastName": "Smith", 
+    "emailAddress": "john.smith@techsolutions.com",
+    "companyID": 12345,
+    "title": "IT Manager"
+  },
+  dryRun: true  // Preview first
+})
+// Dry-run response includes a `resolutions` array when labels were resolved to IDs, e.g.:
+// resolutions: [{ field: 'status', from: 'New', to: 1, method: 'picklist' }]
+
+// 4. Execute after validation
+autotask_contacts.call({
+  operation: "create",
+  bodyJson: { /* same data */ },
+  outputMode: "idsAndLabels"
+})
+
+// 5. Retrieve company details using focused tool  
+autotask_companies.call({
+  operation: "get",
+  id: 12345
+})
+```
+
+#### Error Self-Healing
+
+Errors include structured hints to help agents self-correct:
+
+```javascript
+// Error response includes actionable guidance
+{
+  "error": "Field 'priority' has invalid value 'Urgent'",
+  "extensions": {
+    "hint": "Use aiHelper.listPicklistValues('ticket', 'priority') to get valid options, then retry with a valid value.",
+    "suggestions": [
+      "Get valid values: aiHelper.listPicklistValues('ticket', 'priority')",
+      "Use exact values from the picklist response"
+    ]
+  }
+}
+```
+
+#### Best Practices for Agents
+
+- **Configure focused tools** - Set up separate tools for inspector, contacts, companies, and general resources
+- **Start with inspection** - Always call `autotask_inspector.describeResource` first to understand field requirements
+- **Use focused tools** - Prefer `autotask_contacts` or `autotask_companies` over general tools for better reliability
+- **Validate before execution** - Use `autotask_inspector.validateParameters` for pre-flight validation to catch errors early
+- **Optimise responses** - Use `selectColumnsJson` to reduce payload size and `outputMode: "rawIds"` for token efficiency
+- **Double-check with dry-run** - Use `dryRun: true` to preview requests before execution, especially for write operations
+- **Handle errors smartly** - Follow the structured hints in error responses for self-correction
+- **Cache discoveries** - Store field metadata and picklist values to avoid repeated introspection calls
+- **JSON validation** - Invalid JSON in `bodyJson`/`selectColumnsJson` is caught immediately with helpful error messages
+
+#### Troubleshooting
+
+**Tool Not Available:** Ensure `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` is set
+**No Parameters Visible:** Call `aiHelper.describeResource` to inspect available fields
+**Large Responses:** Use `selectColumnsJson` and `outputMode: "rawIds"` for efficiency
+**Validation Errors:** Follow error hints to resolve field requirement issues
 
 ## Usage
 
