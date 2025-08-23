@@ -15,8 +15,8 @@ export const aiHelperFields: INodeProperties[] = [
             {
                 name: 'Describe Resource',
                 value: 'describeResource',
-                description: 'Get field metadata and schema information for a resource',
-                action: 'Describe resource fields and schema',
+                description: 'Get field metadata, schema information, and AI tool functions for a resource',
+                action: 'Describe resource fields schema and functions',
             },
             {
                 name: 'List Picklist Values',
