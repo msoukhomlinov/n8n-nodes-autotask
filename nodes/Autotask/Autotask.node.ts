@@ -166,6 +166,8 @@ import { executeContactGroupContactsOperation } from './resources/contactGroupCo
 import { contactGroupContactsFields } from './resources/contactGroupContacts/description';
 import { aiHelperFields } from './resources/aiHelper/description';
 import { executeAiHelperOperation } from './resources/aiHelper/execute';
+import { toolFields } from './resources/tool/description';
+import { executeToolOperation } from './resources/tool/execute';
 import { getQueryableEntities, getEntityFields } from './helpers/options';
 import { executeQuoteOperation } from './resources/quotes/execute';
 import { quoteFields } from './resources/quotes/description';
@@ -234,6 +236,7 @@ export class Autotask implements INodeType {
 				required: true,
 			},
 			...aiHelperFields,
+			...toolFields,
 			...addOperationsToResource(apiThresholdDescription, {
 				resourceName: 'apiThreshold',
 				excludeOperations: [
@@ -341,6 +344,8 @@ export class Autotask implements INodeType {
 		switch (resource) {
 			case 'aiHelper':
 				return executeAiHelperOperation.call(this);
+			case 'tool':
+				return executeToolOperation.call(this);
 			case 'apiThreshold':
 				return executeApiThresholdOperation.call(this);
 			case 'billingCode':
@@ -519,6 +524,33 @@ export class Autotask implements INodeType {
 			async getFields(this: ILoadOptionsFunctions): Promise<ResourceMapperFields> {
 				return getResourceMapperFields.call(this, this.getNodeParameter('resource', 0) as string);
 			},
+			/**
+			 * Get fields for tool resource based on target resource and operation
+			 */
+			async getToolFields(this: ILoadOptionsFunctions): Promise<ResourceMapperFields> {
+				const targetResource = this.getNodeParameter('targetResource', 0) as string;
+				const resourceOperation = this.getNodeParameter('resourceOperation', 0) as string;
+				
+				if (!targetResource) {
+					return { fields: [] };
+				}
+				
+				// Temporarily override getNodeParameter to return target resource values
+				const originalGetNodeParameter = this.getNodeParameter;
+				this.getNodeParameter = (name: string, index: number, fallbackValue?: any) => {
+					if (name === 'resource') return targetResource;
+					if (name === 'operation') return resourceOperation;
+					return originalGetNodeParameter.call(this, name, index, fallbackValue);
+				};
+				
+				try {
+					// Reuse existing field discovery for the target resource
+					return await getResourceMapperFields.call(this, targetResource);
+				} finally {
+					// Restore original method
+					this.getNodeParameter = originalGetNodeParameter;
+				}
+			},
 		},
 		loadOptions: {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -581,6 +613,107 @@ export class Autotask implements INodeType {
 			},
 			getQueryableEntities,
 			getEntityFields,
+			/**
+			 * Get available operations for a target resource (used by tool resource)
+			 */
+			async getResourceOperations(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const targetResource = this.getNodeParameter('targetResource', 0) as string;
+				
+				if (!targetResource) {
+					return [];
+				}
+				
+				// Map resource names to their supported operations based on existing patterns
+				const RESOURCE_OPERATIONS_MAP: Record<string, string[]> = {
+					// Core entities with full CRUD
+					timeEntry: ['create', 'get', 'getMany', 'update', 'delete', 'count'],
+					ticket: ['create', 'get', 'getMany', 'update', 'count'],
+					company: ['create', 'get', 'getMany', 'update', 'count'],
+					contact: ['create', 'get', 'getMany', 'update', 'count'],
+					project: ['create', 'get', 'getMany', 'update', 'count'],
+					contract: ['create', 'get', 'getMany', 'update', 'count'],
+					// Notes and related entities
+					ticketNote: ['create', 'get', 'getMany', 'update', 'count'],
+					companyNote: ['create', 'get', 'getMany', 'update', 'count'],
+					projectNote: ['create', 'get', 'getMany', 'update', 'count'],
+					contractNote: ['create', 'get', 'getMany', 'update', 'count'],
+					configurationItemNote: ['create', 'get', 'getMany', 'update', 'count'],
+					// Configuration items
+					configurationItems: ['create', 'get', 'getMany', 'update', 'count'],
+					configurationItemCategories: ['create', 'get', 'getMany', 'update', 'count'],
+					configurationItemTypes: ['create', 'get', 'getMany', 'update', 'count'],
+					// Webhooks (typically no create/update)
+					ticketWebhook: ['get', 'getMany', 'delete'],
+					ticketNoteWebhook: ['get', 'getMany', 'delete'],
+					companyWebhook: ['get', 'getMany', 'delete'],
+					configurationItemWebhook: ['get', 'getMany', 'delete'],
+					contactWebhook: ['get', 'getMany', 'delete'],
+					// Resources and roles
+					resource: ['get', 'getMany', 'update', 'count'],
+					resourceRole: ['get', 'getMany', 'count'],
+					role: ['get', 'getMany', 'update', 'count'],
+					// Products and services
+					product: ['create', 'get', 'getMany', 'update', 'count'],
+					productVendor: ['create', 'get', 'getMany', 'update', 'count'],
+					service: ['create', 'get', 'getMany', 'update', 'count'],
+					// Contract-related entities
+					contractService: ['create', 'get', 'getMany', 'update', 'count'],
+					contractCharge: ['create', 'get', 'getMany', 'update', 'count'],
+					contractRate: ['create', 'get', 'getMany', 'update', 'count'],
+					contractBlock: ['create', 'get', 'getMany', 'update', 'count'],
+					contractMilestone: ['create', 'get', 'getMany', 'update', 'count'],
+					// Billing and financial
+					billingCode: ['get', 'getMany', 'count'],
+					invoice: ['get', 'getMany', 'count'],
+					// Quotes
+					quote: ['create', 'get', 'getMany', 'update', 'count'],
+					quoteItem: ['create', 'get', 'getMany', 'update', 'delete', 'count'],
+					// Company-related
+					companyAlert: ['create', 'get', 'getMany', 'update', 'count'],
+					companyLocation: ['create', 'get', 'getMany', 'update', 'count'],
+					companySiteConfiguration: ['create', 'get', 'getMany', 'update', 'count'],
+					// Contact groups
+					contactGroups: ['create', 'get', 'getMany', 'update', 'count'],
+					contactGroupContacts: ['create', 'get', 'getMany', 'delete', 'count'],
+					// Service calls
+					serviceCall: ['create', 'get', 'getMany', 'update', 'count'],
+					serviceCallTicket: ['create', 'get', 'getMany', 'update', 'count'],
+					serviceCallTask: ['create', 'get', 'getMany', 'update', 'count'],
+					// Survey and feedback
+					survey: ['get', 'getMany', 'count'],
+					surveyResults: ['get', 'getMany', 'count'],
+					// Opportunities
+					opportunity: ['create', 'get', 'getMany', 'update', 'count'],
+					// Skills and specialties
+					skill: ['get', 'getMany', 'count'],
+					// Calendar and scheduling
+					holidaySet: ['get', 'getMany', 'count'],
+					holiday: ['get', 'getMany', 'count'],
+					// Project tasks and phases
+					task: ['create', 'get', 'getMany', 'update', 'count'],
+					phase: ['create', 'get', 'getMany', 'update', 'count'],
+					projectCharge: ['create', 'get', 'getMany', 'update', 'count'],
+					// Notification and history
+					notificationHistory: ['get', 'getMany', 'count'],
+					TicketHistory: ['get', 'getMany', 'count'],
+					// Countries and regions
+					country: ['get', 'getMany', 'count'],
+					// Domain registrar
+					DomainRegistrar: ['get', 'getMany', 'count'],
+					// AI Helper for introspection
+					aiHelper: ['describeResource', 'listPicklistValues', 'validateParameters'],
+					// API threshold monitoring
+					apiThreshold: ['get'],
+				};
+				
+				const operations = RESOURCE_OPERATIONS_MAP[targetResource] || [];
+				
+				return operations.map(op => ({
+					name: op.charAt(0).toUpperCase() + op.slice(1),
+					value: op,
+					description: `${op} operation for ${targetResource}`,
+				}));
+			},
 		},
 	};
 }
