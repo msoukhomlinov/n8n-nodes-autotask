@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+
+## [0.9.7] - 2025-08-24
+
+### Changed
+- Updated AI Helper and Tool resources to better align with AI Agent node operational requirements
+- Removed AI centric inputs from all resoruces other than AI Helper and Tool resource
+
+
 ## [0.9.6] - 2025-08-17
 
 ### Added
