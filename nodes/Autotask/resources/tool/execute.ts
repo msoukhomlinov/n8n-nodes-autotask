@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IGetNodeParameterOptions } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
 // Import all existing resource executors
@@ -97,7 +97,7 @@ string,
 	company: executeCompanyOperation,
 	companyAlert: executeCompanyAlertOperation,
 	companyNote: executeCompanyNoteOperation,
-	companySiteConfiguration: executeCompanySiteConfigurationOperation,
+        companySiteConfigurations: executeCompanySiteConfigurationOperation,
 	companyWebhook: executeCompanyWebhookOperation,
 	configurationItemWebhook: executeConfigurationItemWebhookOperation,
 	configurationItems: executeConfigurationItemOperation,
@@ -171,14 +171,24 @@ string,
 	timeEntry: executeTimeEntryOperation,
 	survey: executeSurveyOperation,
 	surveyResults: executeSurveyResultsOperation,
-	skill: executeSkillOperation,
+        skill: executeSkillOperation,
 };
+
+/**
+ * Normalized executor map for case-insensitive lookups
+ */
+const NORMALIZED_RESOURCE_EXECUTORS: Record<
+string,
+(this: IExecuteFunctions) => Promise<INodeExecutionData[][]>
+> = Object.fromEntries(
+        Object.entries(RESOURCE_EXECUTORS).map(([key, value]) => [key.toLowerCase(), value]),
+);
 
 /**
  * Execute tool operation by routing to appropriate resource executor
  */
 export async function executeToolOperation(
-	this: IExecuteFunctions,
+        this: IExecuteFunctions,
 ): Promise<INodeExecutionData[][]> {
 	const targetResource = this.getNodeParameter('targetResource', 0) as string;
 	const resourceOperation = this.getNodeParameter('resourceOperation', 0) as string;
@@ -200,14 +210,20 @@ export async function executeToolOperation(
 		);
 	}
 
-	// Check if target resource executor exists
-	const executor = RESOURCE_EXECUTORS[targetResource];
-	if (!executor) {
-		throw new NodeOperationError(
-			this.getNode(),
-			`Resource "${targetResource}" is not supported by the tool`
-		);
-	}
+        // Check if target resource executor exists (case-insensitive)
+        const normalizedResourceName = targetResource.toLowerCase();
+        const executor = NORMALIZED_RESOURCE_EXECUTORS[normalizedResourceName];
+        if (!executor) {
+                throw new NodeOperationError(
+                        this.getNode(),
+                        `Resource "${targetResource}" is not supported by the tool`
+                );
+        }
+
+        // Resolve canonical resource name for downstream parameter overrides
+        const canonicalResource = Object.keys(RESOURCE_EXECUTORS).find(
+                key => key.toLowerCase() === normalizedResourceName,
+        ) ?? targetResource;
 
 	// Store original getNodeParameter method
 	const originalGetNodeParameter = this.getNodeParameter;
@@ -217,26 +233,27 @@ this.getNodeParameter = ((
 name: string,
 index: number,
 fallbackValue?: unknown,
+options?: IGetNodeParameterOptions,
 ): unknown => {
-		switch (name) {
-			case 'resource':
-				return targetResource;
-			case 'operation':
-				return resourceOperation;
-			case 'id':
-				return entityId;
-			case 'fieldsToMap':
-				return fieldsToMap;
-			default:
-				return originalGetNodeParameter.call(this, name, index, fallbackValue);
-		}
-}) as typeof this.getNodeParameter;
+                switch (name) {
+                        case 'resource':
+                                return canonicalResource;
+                        case 'operation':
+                                return resourceOperation;
+                        case 'id':
+                                return entityId;
+                        case 'fieldsToMap':
+                                return fieldsToMap;
+                        default:
+                                return originalGetNodeParameter.call(this, name, index, fallbackValue, options);
+                }
+}) as typeof originalGetNodeParameter;
 
 	try {
 		// Route to existing executor with manipulated context
 		return await executor.call(this);
-	} finally {
-		// Always restore original method
-		this.getNodeParameter = originalGetNodeParameter;
-	}
+        } finally {
+                // Always restore original method
+                this.getNodeParameter = originalGetNodeParameter;
+        }
 }
