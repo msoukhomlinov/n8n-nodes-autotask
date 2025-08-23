@@ -1,2 +1,2 @@
-export { toolFields } from './description';
+export { toolFields, toolFieldsWithAgentOptions } from './description';
 export { executeToolOperation } from './execute';

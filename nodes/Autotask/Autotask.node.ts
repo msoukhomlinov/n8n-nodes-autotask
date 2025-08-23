@@ -168,7 +168,7 @@ import { executeContactGroupContactsOperation } from './resources/contactGroupCo
 import { contactGroupContactsFields } from './resources/contactGroupContacts/description';
 import { aiHelperFields } from './resources/aiHelper/description';
 import { executeAiHelperOperation } from './resources/aiHelper/execute';
-import { toolFields } from './resources/tool/description';
+import { toolFieldsWithAgentOptions } from './resources/tool/description';
 import { executeToolOperation } from './resources/tool/execute';
 import { getQueryableEntities, getEntityFields } from './helpers/options';
 import { getResourceOperations } from './constants/resource-operations';
@@ -239,7 +239,7 @@ export class Autotask implements INodeType {
 				required: true,
 			},
 			...aiHelperFields,
-			...toolFields,
+			...toolFieldsWithAgentOptions,
 			...addOperationsToResource(apiThresholdDescription, {
 				resourceName: 'apiThreshold',
 				excludeOperations: [
