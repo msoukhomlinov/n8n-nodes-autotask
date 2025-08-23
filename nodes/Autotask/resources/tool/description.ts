@@ -11,20 +11,20 @@ export const toolFields: INodeProperties[] = [
 				resource: ['tool'],
 			},
 		},
-			options: [
-				{
-					name: 'Execute',
-					value: 'execute',
-					description: 'Execute any Autotask operation dynamically',
-					action: 'Execute autotask operation',
-				},
-			],
+		options: [
+			{
+				name: 'Execute',
+				value: 'execute',
+				description: 'Execute any Autotask operation dynamically',
+				action: 'Execute autotask operation',
+			},
+		],
 		default: 'execute',
 	},
 	{
 		displayName: 'Target Resource Name or ID',
 		name: 'targetResource',
-		type: 'options',
+		type: 'string',
 		required: true,
 		displayOptions: {
 			show: {
@@ -36,12 +36,13 @@ export const toolFields: INodeProperties[] = [
 			loadOptionsMethod: 'getQueryableEntities',
 		},
 		default: '',
-		description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+		description:
+			'Enter the target resource name or ID. Choose from the list or specify it using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 	},
 	{
 		displayName: 'Resource Operation Name or ID',
 		name: 'resourceOperation',
-		type: 'options',
+		type: 'string',
 		required: true,
 		displayOptions: {
 			show: {
@@ -54,7 +55,8 @@ export const toolFields: INodeProperties[] = [
 			loadOptionsDependsOn: ['targetResource'],
 		},
 		default: '',
-		description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+		description:
+			'Enter the operation name or ID for the selected resource. Choose from the list or specify it using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 	},
 	{
 		displayName: 'Entity ID',
@@ -70,34 +72,64 @@ export const toolFields: INodeProperties[] = [
 		default: '',
 		description: 'The ID of the entity (required for get, update, delete operations)',
 	},
-	{
-		displayName: 'Fields',
-		name: 'fieldsToMap',
-		type: 'resourceMapper',
-		default: {
-			mappingMode: 'defineBelow',
-			value: null,
-		},
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['execute'],
-				resourceOperation: ['create', 'update', 'getMany', 'count'],
-			},
-		},
-		typeOptions: {
-			loadOptionsDependsOn: ['targetResource', 'resourceOperation'],
-			resourceMapper: {
-				resourceMapperMethod: 'getToolFields',
-				mode: 'add',
-				fieldWords: {
-					singular: 'field',
-					plural: 'fields',
-				},
-				addAllFields: false,
-				multiKeyMatch: true,
-				supportAutoMap: true,
-			},
-		},
-        },
+{
+displayName: 'Fields',
+name: 'fields',
+type: 'resourceMapper',
+default: {
+mappingMode: 'defineBelow',
+value: null,
+},
+displayOptions: {
+show: {
+resource: ['tool'],
+operation: ['execute'],
+resourceOperation: ['create', 'update'],
+},
+},
+typeOptions: {
+loadOptionsDependsOn: ['targetResource', 'resourceOperation'],
+resourceMapper: {
+resourceMapperMethod: 'getToolFields',
+mode: 'add',
+fieldWords: {
+singular: 'field',
+plural: 'fields',
+},
+addAllFields: false,
+multiKeyMatch: true,
+supportAutoMap: true,
+},
+},
+},
+{
+displayName: 'Filters',
+name: 'filters',
+type: 'resourceMapper',
+default: {
+mappingMode: 'defineBelow',
+value: null,
+},
+displayOptions: {
+show: {
+resource: ['tool'],
+operation: ['execute'],
+resourceOperation: ['getMany', 'count'],
+},
+},
+typeOptions: {
+loadOptionsDependsOn: ['targetResource', 'resourceOperation'],
+resourceMapper: {
+resourceMapperMethod: 'getToolFields',
+mode: 'add',
+fieldWords: {
+singular: 'filter',
+plural: 'filters',
+},
+addAllFields: false,
+multiKeyMatch: true,
+supportAutoMap: true,
+},
+},
+},
 ];
