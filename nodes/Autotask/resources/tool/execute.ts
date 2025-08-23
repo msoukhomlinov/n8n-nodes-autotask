@@ -87,7 +87,10 @@ import { executeSkillOperation } from '../skills/execute';
 /**
  * Resource executor mapping for dynamic execution
  */
-const RESOURCE_EXECUTORS: Record<string, Function> = {
+const RESOURCE_EXECUTORS: Record<
+string,
+(this: IExecuteFunctions) => Promise<INodeExecutionData[][]>
+> = {
 	aiHelper: executeAiHelperOperation,
 	apiThreshold: executeApiThresholdOperation,
 	billingCode: executeBillingCodeOperation,
@@ -210,7 +213,11 @@ export async function executeToolOperation(
 	const originalGetNodeParameter = this.getNodeParameter;
 
 	// Override getNodeParameter to return resource-specific values
-	this.getNodeParameter = (name: string, index: number, fallbackValue?: any): any => {
+this.getNodeParameter = ((
+name: string,
+index: number,
+fallbackValue?: unknown,
+): unknown => {
 		switch (name) {
 			case 'resource':
 				return targetResource;
@@ -223,7 +230,7 @@ export async function executeToolOperation(
 			default:
 				return originalGetNodeParameter.call(this, name, index, fallbackValue);
 		}
-	};
+}) as typeof this.getNodeParameter;
 
 	try {
 		// Route to existing executor with manipulated context
