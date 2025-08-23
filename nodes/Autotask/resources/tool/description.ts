@@ -72,34 +72,64 @@ export const toolFields: INodeProperties[] = [
 		default: '',
 		description: 'The ID of the entity (required for get, update, delete operations)',
 	},
-	{
-		displayName: 'Fields',
-		name: 'fieldsToMap',
-		type: 'resourceMapper',
-		default: {
-			mappingMode: 'defineBelow',
-			value: null,
-		},
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['execute'],
-				resourceOperation: ['create', 'update', 'getMany', 'count'],
-			},
-		},
-		typeOptions: {
-			loadOptionsDependsOn: ['targetResource', 'resourceOperation'],
-			resourceMapper: {
-				resourceMapperMethod: 'getToolFields',
-				mode: 'add',
-				fieldWords: {
-					singular: 'field',
-					plural: 'fields',
-				},
-				addAllFields: false,
-				multiKeyMatch: true,
-				supportAutoMap: true,
-			},
-		},
-	},
+{
+displayName: 'Fields',
+name: 'fields',
+type: 'resourceMapper',
+default: {
+mappingMode: 'defineBelow',
+value: null,
+},
+displayOptions: {
+show: {
+resource: ['tool'],
+operation: ['execute'],
+resourceOperation: ['create', 'update'],
+},
+},
+typeOptions: {
+loadOptionsDependsOn: ['targetResource', 'resourceOperation'],
+resourceMapper: {
+resourceMapperMethod: 'getToolFields',
+mode: 'add',
+fieldWords: {
+singular: 'field',
+plural: 'fields',
+},
+addAllFields: false,
+multiKeyMatch: true,
+supportAutoMap: true,
+},
+},
+},
+{
+displayName: 'Filters',
+name: 'filters',
+type: 'resourceMapper',
+default: {
+mappingMode: 'defineBelow',
+value: null,
+},
+displayOptions: {
+show: {
+resource: ['tool'],
+operation: ['execute'],
+resourceOperation: ['getMany', 'count'],
+},
+},
+typeOptions: {
+loadOptionsDependsOn: ['targetResource', 'resourceOperation'],
+resourceMapper: {
+resourceMapperMethod: 'getToolFields',
+mode: 'add',
+fieldWords: {
+singular: 'filter',
+plural: 'filters',
+},
+addAllFields: false,
+multiKeyMatch: true,
+supportAutoMap: true,
+},
+},
+},
 ];
