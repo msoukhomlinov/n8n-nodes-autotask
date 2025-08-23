@@ -139,7 +139,7 @@ export interface AiFunction {
     description: string;
     parameters: {
         type: 'object';
-        properties: Record<string, { type: string; description: string; enum?: string[] }>;
+        properties: Record<string, { type: string; description: string; enum?: string[]; const?: string }>;
         required: string[];
     };
 }
@@ -302,12 +302,12 @@ export async function describeResource(
                     targetResource: {
                         type: 'string',
                         description: 'Target resource name or ID',
-                        enum: [resource],
+                        const: resource,
                     },
                     resourceOperation: {
                         type: 'string',
                         description: 'Operation name or ID to execute',
-                        enum: [operation],
+                        const: operation,
                     },
                 },
                 required: ['targetResource', 'resourceOperation'],
