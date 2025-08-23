@@ -1,5 +1,6 @@
 import type { ILoadOptionsFunctions, IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import type { IAutotaskField } from '../types/base/entities';
+import { getResourceOperations } from '../constants/resource-operations';
 import { OperationType } from '../types/base/entity-types';
 import { FieldProcessor } from '../operations/base/field-processor';
 import { getFields } from './entity/api';
@@ -133,6 +134,16 @@ export interface FieldMeta {
     dependencies?: string[];    // Other fields this field depends on
 }
 
+export interface AiFunction {
+    name: string;
+    description: string;
+    parameters: {
+        type: 'object';
+        properties: Record<string, { type: string; description: string; enum?: string[] }>;
+        required: string[];
+    };
+}
+
 /**
  * Response for describeResource operation
  */
@@ -142,6 +153,7 @@ export interface DescribeResourceResponse {
     timezone: string;
     fields: FieldMeta[];
     notes?: string[];
+    functions?: AiFunction[];
 }
 
 /**
@@ -282,12 +294,62 @@ export async function describeResource(
             }
         }
 
+        const operations = getResourceOperations(resource);
+        const functions: AiFunction[] = operations.map(operation => {
+            const parameters: AiFunction['parameters'] = {
+                type: 'object',
+                properties: {
+                    targetResource: {
+                        type: 'string',
+                        description: 'Target resource name or ID',
+                        enum: [resource],
+                    },
+                    resourceOperation: {
+                        type: 'string',
+                        description: 'Operation name or ID to execute',
+                        enum: [operation],
+                    },
+                },
+                required: ['targetResource', 'resourceOperation'],
+            };
+
+            if (['get', 'update', 'delete'].includes(operation)) {
+                parameters.properties.entityId = {
+                    type: 'string',
+                    description: `ID of the ${resource}`,
+                };
+                parameters.required.push('entityId');
+            }
+
+            if (['create', 'update'].includes(operation)) {
+                parameters.properties.fields = {
+                    type: 'object',
+                    description: 'JSON object with field values for the record',
+                };
+                parameters.required.push('fields');
+            }
+
+            if (['getMany', 'count'].includes(operation)) {
+                parameters.properties.filters = {
+                    type: 'object',
+                    description: 'Optional filters for the query',
+                };
+            }
+
+            return {
+                name: `${resource}_${operation}`,
+                description: `${operation} ${resource} using Autotask tool`,
+                parameters,
+            };
+        });
+
         const result: DescribeResourceResponse = {
             resource,
             mode,
             timezone,
             fields,
-            notes: notes.length > 0 ? notes : undefined
+            notes: notes.length > 0 ? notes : undefined,
+            functions: functions.length > 0 ? functions : undefined,
         };
 
         console.debug(`[aiHelper.describeResource] Returning ${fields.length} fields for ${resource} (${mode})`);

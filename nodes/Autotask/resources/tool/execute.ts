@@ -192,8 +192,14 @@ export async function executeToolOperation(
 ): Promise<INodeExecutionData[][]> {
 	const targetResource = this.getNodeParameter('targetResource', 0) as string;
 	const resourceOperation = this.getNodeParameter('resourceOperation', 0) as string;
-	const entityId = this.getNodeParameter('entityId', 0, '') as string;
-	const fieldsToMap = this.getNodeParameter('fieldsToMap', 0, null);
+        const entityId = this.getNodeParameter('entityId', 0, '') as string;
+        const fields = this.getNodeParameter('fields', 0, null);
+        const filters = this.getNodeParameter('filters', 0, null);
+        const fieldsToMapInput = fields ?? filters ?? this.getNodeParameter('fieldsToMap', 0, null);
+        const fieldsToMap =
+                fieldsToMapInput && typeof fieldsToMapInput === 'object' && !('mappingMode' in fieldsToMapInput)
+                        ? { mappingMode: 'defineBelow', value: fieldsToMapInput }
+                        : fieldsToMapInput;
 
 	// Validate required parameters
 	if (!targetResource) {
