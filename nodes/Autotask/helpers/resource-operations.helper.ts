@@ -151,14 +151,28 @@ export function addOperationsToResource(
 			}
 
 			// Add agent-friendly options (JSON parameters, output mode, dry run)
-			updatedProperties = addAgentFriendlyOptions(updatedProperties, config.resourceName, config.agentFriendly);
+			// Only include bodyJson by default, exclude selectColumnsJson, outputMode, and dryRun
+			const agentFriendlyConfig = {
+				includeBodyJson: config.agentFriendly?.includeBodyJson ?? true,
+				includeSelectColumnsJson: config.agentFriendly?.includeSelectColumnsJson ?? false,
+				includeOutputMode: config.agentFriendly?.includeOutputMode ?? false,
+				includeDryRun: config.agentFriendly?.includeDryRun ?? false,
+			};
+			updatedProperties = addAgentFriendlyOptions(updatedProperties, config.resourceName, agentFriendlyConfig);
 
 			return updatedProperties;
 		}
 	}
 
 	// Add agent-friendly options for resources without get operations (write-only resources)
-	return addAgentFriendlyOptions(properties, config.resourceName, config.agentFriendly);
+	// Only include bodyJson by default, exclude selectColumnsJson, outputMode, and dryRun
+	const agentFriendlyConfig = {
+		includeBodyJson: config.agentFriendly?.includeBodyJson ?? true,
+		includeSelectColumnsJson: config.agentFriendly?.includeSelectColumnsJson ?? false,
+		includeOutputMode: config.agentFriendly?.includeOutputMode ?? false,
+		includeDryRun: config.agentFriendly?.includeDryRun ?? false,
+	};
+	return addAgentFriendlyOptions(properties, config.resourceName, agentFriendlyConfig);
 }
 
 /**
