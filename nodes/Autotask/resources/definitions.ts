@@ -10,6 +10,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'AI/Agent helper operations for resource introspection and field discovery',
 	},
 	{
+		name: 'Tool',
+		value: 'tool',
+		description: 'AI tool for dynamic Autotask operations execution - allows AI nodes to select any resource and operation',
+	},
+	{
 		name: 'API Threshold',
 		value: 'apiThreshold',
 		description: 'Check Autotask API usage limits and current threshold levels',
