@@ -99,5 +99,5 @@ export const toolFields: INodeProperties[] = [
 				supportAutoMap: true,
 			},
 		},
-	},
+        },
 ];
