@@ -25,6 +25,24 @@ export const operationOptions = [
 		description: 'Count invoices',
 		action: 'Count invoices',
 	},
+	{
+		name: 'Get PDF',
+		value: 'pdf',
+		description: 'Download an invoice as a PDF file',
+		action: 'Download invoice PDF',
+	},
+	{
+		name: 'Get Markup (HTML)',
+		value: 'markupHtml',
+		description: 'Retrieve the Invoice Markup HTML export',
+		action: 'Get invoice markup HTML',
+	},
+	{
+		name: 'Get Markup (XML)',
+		value: 'markupXml',
+		description: 'Retrieve the Invoice Markup XML export',
+		action: 'Get invoice markup XML',
+	},
 ];
 
 export const baseFields: INodeProperties[] = [
@@ -50,10 +68,24 @@ export const baseFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['invoice'],
-				operation: ['update', 'get'],
+				operation: ['update', 'get', 'pdf', 'markupHtml', 'markupXml'],
 			},
 		},
 		description: 'The ID of the invoice to operate on',
+	},
+	{
+		displayName: 'Binary Property',
+		name: 'binaryPropertyName',
+		type: 'string',
+		default: 'data',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['pdf', 'markupHtml', 'markupXml'],
+			},
+		},
+		description: 'Name of the binary property to store the file in the output',
 	},
 	{
 		displayName: 'Fields',

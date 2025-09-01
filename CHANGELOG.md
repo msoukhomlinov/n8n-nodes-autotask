@@ -3,6 +3,23 @@
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
 
+## [0.9.9] - 2025-09-01
+
+### Added
+- Added support for Billing items resources
+ - Invoice special endpoints:
+   - Get PDF: download invoice as a PDF (`InvoicePDF`)
+   - Get Markup (HTML): retrieve invoice markup (`InvoiceMarkupHtml`)
+   - Get Markup (XML): retrieve invoice markup (`InvoiceMarkupXML`)
+   - Exposed as new operations on the Invoice resource; responses are returned as binary data with `fileName` and `contentType` for downstream use
+
+
+## [0.9.8] - 2025-08-29
+
+### Added
+- Added support for Subscription and Subscription Periods resources
+
+
 ## [0.9.7] - 2025-08-24
 
 ### Changed

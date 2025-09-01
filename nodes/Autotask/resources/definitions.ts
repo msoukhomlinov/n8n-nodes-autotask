@@ -25,6 +25,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Query Billing Codes (Allocation Codes), which categorise billing items such as work types, materials, expenses, and services',
 	},
 	{
+		name: 'Billing Items',
+		value: 'billingItems',
+		description: 'Manage Autotask Billing Items, which represent billable items that have been approved and posted for potential invoicing',
+	},
+	{
 		name: 'Company',
 		value: 'company',
 		description: 'Manage Companies, which represent client organisations that serve as the central entity for contacts, tickets, projects, and other records',
@@ -388,6 +393,16 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		name: 'Survey Results',
 		value: 'surveyResults',
 		description: 'Query Survey Results, which store customer feedback responses and ratings collected from completed surveys',
+	},
+	{
+		name: 'Subscription',
+		value: 'subscription',
+		description: 'Manage Subscriptions, which represent recurring service agreements with customers',
+	},
+	{
+		name: 'Subscription Period',
+		value: 'subscriptionPeriod',
+		description: 'Query Subscription Periods, which track billing periods and usage for subscriptions',
 	},
 	{
 		name: 'Ticket',

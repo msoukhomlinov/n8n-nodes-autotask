@@ -70,5 +70,6 @@ credentials.json
 .cursorignore
 .cursorrules
 /.cursor-rules/
+/.cursor/
 
 /cache/

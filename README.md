@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.9.7-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-0.9.9-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -64,6 +64,7 @@ The node supports the following Autotask resources:
 |----------|-------------|
 | API Threshold | Check Autotask API usage limits and current usage levels |
 | Billing Code | Manage billing codes for time entries and charges |
+| Billing Items | Manage Autotask Billing Items, which represent billable items that have been approved and posted for potential invoicing |
 | Company | Manage organisations in Autotask |
 | Company Alert | Manage alerts associated with companies |
 | Company Location | Manage locations for companies |
@@ -136,6 +137,8 @@ The node supports the following Autotask resources:
 | Service Call Ticket Resource | Manage resources assigned to service call tickets |
 | Survey | Manage customer surveys |
 | Survey Results | Manage results from customer surveys |
+| Subscription | Manage Subscriptions, which represent recurring service agreements with customers |
+| Subscription Period | Query Subscription Periods, which track billing periods and usage for subscriptions |
 | Ticket | Manage service tickets |
 | Ticket History | View historical changes to tickets |
 | Ticket Note | Manage notes attached to tickets |
