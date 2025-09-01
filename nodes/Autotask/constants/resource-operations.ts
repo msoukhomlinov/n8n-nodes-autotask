@@ -38,7 +38,7 @@ export const RESOURCE_OPERATIONS_MAP: Record<string, string[]> = {
     contractMilestone: ['create', 'get', 'getMany', 'update', 'count'],
     // Billing and financial
     billingCode: ['get', 'getMany', 'count'],
-    invoice: ['get', 'getMany', 'count'],
+    invoice: ['update', 'get', 'getMany', 'count', 'pdf', 'markupHtml', 'markupXml'],
     // Quotes
     quote: ['create', 'get', 'getMany', 'update', 'count'],
     quoteItem: ['create', 'get', 'getMany', 'update', 'delete', 'count'],

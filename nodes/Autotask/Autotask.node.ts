@@ -38,6 +38,7 @@ import { executeTicketNoteOperation } from './resources/ticketNotes/execute';
 import { executeTicketHistoryOperation } from './resources/ticketHistories/execute';
 import { executeTimeEntryOperation } from './resources/timeEntries/execute';
 import { executeBillingCodeOperation } from './resources/billingCodes/execute';
+import { executeBillingItemsOperation } from './resources/billingItems/execute';
 import { executeHolidaySetOperation } from './resources/holidaySets/execute';
 import { executeHolidayOperation } from './resources/holidays/execute';
 import { executeInvoiceOperation } from './resources/invoices/execute';
@@ -47,6 +48,8 @@ import { executeServiceCallTicketOperation } from './resources/serviceCallTicket
 import { executeServiceCallTaskOperation } from './resources/serviceCallTasks/execute';
 import { executeServiceCallTaskResourceOperation } from './resources/serviceCallTaskResources/execute';
 import { executeServiceOperation } from './resources/services/execute';
+import { executeSubscriptionOperation } from './resources/subscriptions/execute';
+import { executeSubscriptionPeriodsOperation } from './resources/subscriptionPeriods/execute';
 import { executeContractOperation } from './resources/contracts/execute';
 import { executeContractChargeOperation } from './resources/contractCharges/execute';
 import { executeContractNoteOperation } from './resources/contractNotes/execute';
@@ -91,6 +94,7 @@ import { ticketHistoryFields } from './resources/ticketHistories/description';
 import { ticketNoteFields } from './resources/ticketNotes/description';
 import { timeEntryFields } from './resources/timeEntries/description';
 import { billingCodeFields } from './resources/billingCodes/description';
+import { billingItemsFields } from './resources/billingItems/description';
 import { holidaySetFields } from './resources/holidaySets/description';
 import { holidayFields } from './resources/holidays/description';
 import { invoiceFields } from './resources/invoices/description';
@@ -100,6 +104,8 @@ import { serviceCallTicketFields } from './resources/serviceCallTickets/descript
 import { serviceCallTaskFields } from './resources/serviceCallTasks/description';
 import { serviceCallTaskResourceFields } from './resources/serviceCallTaskResources/description';
 import { serviceFields } from './resources/services/description';
+import { subscriptionFields } from './resources/subscriptions/description';
+import { subscriptionPeriodsFields } from './resources/subscriptionPeriods/description';
 import { contractFields } from './resources/contracts/description';
 import { contractChargeFields } from './resources/contractCharges/description';
 import { contractNoteFields } from './resources/contractNotes/description';
@@ -322,6 +328,8 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(serviceCallTaskFields, { resourceName: 'serviceCallTask' }),
 			...addOperationsToResource(serviceCallTaskResourceFields, { resourceName: 'serviceCallTaskResource' }),
 			...addOperationsToResource(serviceFields, { resourceName: 'service' }),
+			...addOperationsToResource(subscriptionFields, { resourceName: 'subscription' }),
+			...addOperationsToResource(subscriptionPeriodsFields, { resourceName: 'subscriptionPeriod' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
 			...addOperationsToResource(ticketNoteFields, { resourceName: 'ticketNote' }),
 			...addOperationsToResource(ticketNoteWebhookFields, { resourceName: 'ticketNoteWebhook' }),
@@ -329,6 +337,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
+			...addOperationsToResource(billingItemsFields, { resourceName: 'billingItems' }),
 			...addOperationsToResource(surveyFields, { resourceName: 'survey' }),
 			...addOperationsToResource(surveyResultsFields, { resourceName: 'surveyResults' }),
 			...contractServiceAdjustmentFields,
@@ -353,6 +362,8 @@ export class Autotask implements INodeType {
 				return executeApiThresholdOperation.call(this);
 			case 'billingCode':
 				return executeBillingCodeOperation.call(this);
+			case 'billingItems':
+				return executeBillingItemsOperation.call(this);
 			case 'company':
 				return executeCompanyOperation.call(this);
 			case 'companyAlert':
@@ -496,6 +507,10 @@ export class Autotask implements INodeType {
 				return executeServiceCallTaskResourceOperation.call(this);
 			case 'service':
 				return executeServiceOperation.call(this);
+			case 'subscription':
+				return executeSubscriptionOperation.call(this);
+			case 'subscriptionPeriod':
+				return executeSubscriptionPeriodsOperation.call(this);
 			case 'ticket':
 				return executeTicketOperation.call(this);
 			case 'ticketNote':

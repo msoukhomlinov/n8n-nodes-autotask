@@ -382,6 +382,15 @@ export async function autotaskApiRequest<T = JsonObject>(
 			throw new Error('Empty response from API');
 		}
 
+		// Handle special invoice file/markup endpoints (return raw response as-is)
+		if (
+			endpoint.includes('InvoicePDF') ||
+			endpoint.includes('InvoiceMarkupHtml') ||
+			endpoint.includes('InvoiceMarkupXML')
+		) {
+			return response as T;
+		}
+
 		// Handle entity information responses first (most specific)
 		if (endpoint.includes('entityInformation')) {
 			// Fields response

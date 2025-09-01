@@ -8,6 +8,8 @@ import {
 } from '../../operations/base';
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
+import { autotaskApiRequest } from '../../helpers/http';
+import type { IBinaryData, IDataObject } from 'n8n-workflow';
 
 const ENTITY_TYPE = 'invoice';
 
@@ -59,6 +61,78 @@ export async function executeInvoiceOperation(
 							entityType: ENTITY_TYPE,
 						},
 					});
+					break;
+				}
+
+				case 'pdf':
+				case 'markupHtml':
+				case 'markupXml': {
+					const invoiceId = this.getNodeParameter('id', i) as string;
+					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i, 'data') as string;
+
+					// Map operation to special endpoint suffix
+					const suffix = operation === 'pdf'
+						? 'InvoicePDF'
+						: operation === 'markupHtml'
+							? 'InvoiceMarkupHtml'
+							: 'InvoiceMarkupXML';
+
+					const endpoint = `Invoices/${invoiceId}/${suffix}`;
+					const fileResponse = await autotaskApiRequest.call(this, 'GET', endpoint) as unknown;
+
+					// Flexible extraction to support both FileQueryResultModel and direct markup payloads
+					const fr = fileResponse as {
+						item?: { id: number; contentType?: string; fileName?: string; fileSize?: number; data?: string };
+						data?: string;
+						contentType?: string;
+						fileName?: string;
+						fileSize?: number;
+						invoiceMarkup?: string;
+					};
+
+					let dataBase64: string | undefined;
+					let contentType: string | undefined;
+					let fileName: string | undefined;
+					let fileSize: number | undefined;
+					let idOut: number | undefined;
+
+					if (typeof fr?.invoiceMarkup === 'string') {
+						// Markup endpoints sometimes return a top-level HTML-encoded string
+						dataBase64 = Buffer.from(fr.invoiceMarkup, 'utf8').toString('base64');
+						contentType = operation === 'markupHtml' ? 'text/html' : 'application/xml';
+						fileName = `invoice-${invoiceId}.${operation === 'markupHtml' ? 'html' : 'xml'}`;
+					} else if (fr?.item?.data) {
+						dataBase64 = fr.item.data;
+						contentType = fr.item.contentType || (operation === 'pdf' ? 'application/pdf' : operation === 'markupHtml' ? 'text/html' : 'application/xml');
+						fileName = fr.item.fileName || `invoice-${invoiceId}`;
+						fileSize = fr.item.fileSize;
+						idOut = fr.item.id;
+					} else if (fr?.data) {
+						dataBase64 = fr.data;
+						contentType = fr.contentType || (operation === 'pdf' ? 'application/pdf' : operation === 'markupHtml' ? 'text/html' : 'application/xml');
+						fileName = fr.fileName || `invoice-${invoiceId}`;
+						fileSize = fr.fileSize;
+					}
+
+					if (!dataBase64) {
+						throw new Error('Failed to retrieve invoice file data');
+					}
+
+					const binaryData: IBinaryData = {
+						data: dataBase64,
+						mimeType: contentType || (operation === 'pdf' ? 'application/pdf' : operation === 'markupHtml' ? 'text/html' : 'application/xml'),
+						fileName: fileName || `invoice-${invoiceId}`,
+					};
+
+					const json: IDataObject = {
+						id: idOut ?? (Number(invoiceId) || invoiceId),
+						fileName,
+						contentType,
+						fileSize,
+						endpoint: suffix,
+					};
+
+					returnData.push({ json, binary: { [binaryPropertyName]: binaryData } });
 					break;
 				}
 
