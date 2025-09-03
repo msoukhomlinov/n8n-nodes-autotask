@@ -325,8 +325,7 @@ export async function executeToolOperation(
 			case 'selectColumns':
 			case 'selectColumnsJson':
 				return originalGetNodeParameter.call(this, 'selectColumns', index, fallbackValue, options);
-			case 'outputMode':
-				return originalGetNodeParameter.call(this, 'outputMode', index, fallbackValue, options);
+
 			case 'dryRun':
 				return originalGetNodeParameter.call(this, 'dryRun', index, fallbackValue, options);
 			default:

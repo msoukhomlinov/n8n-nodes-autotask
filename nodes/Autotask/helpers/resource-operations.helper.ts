@@ -34,7 +34,6 @@ export interface IOperationAdditionConfig {
 	agentFriendly?: {
 		includeBodyJson?: boolean;
 		includeSelectColumnsJson?: boolean;
-		includeOutputMode?: boolean;
 		includeDryRun?: boolean;
 	};
 }
@@ -150,11 +149,10 @@ export function addOperationsToResource(
 				});
 			}
 
-			// Add agent-friendly options (JSON parameters, output mode, dry run)
+			// Add agent-friendly options (JSON parameters, dry run)
 			const agentFriendlyConfig = {
 				includeBodyJson: config.agentFriendly?.includeBodyJson ?? false,
 				includeSelectColumnsJson: config.agentFriendly?.includeSelectColumnsJson ?? false,
-				includeOutputMode: config.agentFriendly?.includeOutputMode ?? false,
 				includeDryRun: config.agentFriendly?.includeDryRun ?? false,
 			};
 			updatedProperties = addAgentFriendlyOptions(updatedProperties, config.resourceName, agentFriendlyConfig);
@@ -167,7 +165,6 @@ export function addOperationsToResource(
 	const agentFriendlyConfig = {
 		includeBodyJson: config.agentFriendly?.includeBodyJson ?? false,
 		includeSelectColumnsJson: config.agentFriendly?.includeSelectColumnsJson ?? false,
-		includeOutputMode: config.agentFriendly?.includeOutputMode ?? false,
 		includeDryRun: config.agentFriendly?.includeDryRun ?? false,
 	};
 	return addAgentFriendlyOptions(properties, config.resourceName, agentFriendlyConfig);
