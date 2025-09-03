@@ -25,3 +25,7 @@ export {
 
 // Legacy exports (only those not yet migrated)
 export * from './entities';
+export * from './resource-operations';
+
+// Tool surface for AI enumeration
+export * from './tool-surface';

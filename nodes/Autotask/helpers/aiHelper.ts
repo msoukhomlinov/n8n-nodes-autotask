@@ -6,6 +6,8 @@ import { FieldProcessor } from '../operations/base/field-processor';
 import { getFields } from './entity/api';
 import { handleErrors } from './errorHandler';
 import { getConfiguredTimezone } from './date-time/utils';
+import { AUTOTASK_ENTITIES } from '../constants/entities';
+import type { IEntityMetadata } from '../types';
 
 /**
  * Map field names to their referenced entities
@@ -161,10 +163,18 @@ export interface DescribeResourceResponse {
  */
 export interface ListPicklistValuesResponse {
     fieldId: string;
+    resource: string;
     page: number;
     limit: number;
     total?: number;
+    totalPages?: number;
+    hasMore?: boolean;
     values: Array<{ id: string | number; label: string }>;
+    fieldInfo?: {
+        dataType: string | number;
+        isRequired: boolean;
+        isUdf: boolean;
+    };
 }
 
 /**
@@ -371,6 +381,19 @@ export async function listPicklistValues(
     return await handleErrors(context as IExecuteFunctions, async () => {
         console.debug(`[aiHelper.listPicklistValues] Listing values for ${resource}.${fieldId}, query: ${query}, limit: ${limit}, page: ${page}`);
 
+        // Validate parameters
+        if (!resource || !fieldId) {
+            throw new Error('Both resource and fieldId parameters are required');
+        }
+
+        if (limit < 1 || limit > 500) {
+            throw new Error('Limit must be between 1 and 500');
+        }
+
+        if (page < 1) {
+            throw new Error('Page must be 1 or greater');
+        }
+
         // Get the field processor to access existing picklist infrastructure
         const processor = FieldProcessor.getInstance(resource, OperationType.QUERY, context as IExecuteFunctions);
 
@@ -379,28 +402,49 @@ export async function listPicklistValues(
         const udfFields = await getFields(resource, context, { fieldType: 'udf', isActive: true }) as IAutotaskField[];
         const allFields = [...standardFields, ...udfFields];
 
-        // Find the target field
+        // Find the target field with flexible matching
         const targetField = allFields.find(field =>
-            field.name === fieldId || field.name.toLowerCase() === fieldId.toLowerCase()
+            field.name === fieldId ||
+            field.name.toLowerCase() === fieldId.toLowerCase() ||
+            field.label?.toLowerCase() === fieldId.toLowerCase()
         );
 
         if (!targetField) {
-            throw new Error(`Field '${fieldId}' not found in resource '${resource}'`);
+            throw new Error(`Field '${fieldId}' not found in resource '${resource}'. Available fields: ${allFields.slice(0, 10).map(f => f.name).join(', ')}${allFields.length > 10 ? ', ...' : ''}`);
         }
+
+        // Determine field type more robustly
+        const isUdfField = targetField.name.startsWith('UDF') ||
+                          (targetField as unknown as { isUdf?: boolean }).isUdf === true ||
+                          standardFields.find(f => f.name === targetField.name) === undefined;
 
         // Process the field to get picklist values
         const { fields: processedFields } = await processor.processFields([targetField], OperationType.QUERY, {
             mode: 'read',
-            fieldType: targetField.name.startsWith('UDF') ? 'udf' : 'standard'
+            fieldType: isUdfField ? 'udf' : 'standard'
         });
 
         const processedField = processedFields[0];
         if (!processedField || !processedField.options) {
+            // Check if field exists but is not a picklist
+            if (processedField && !targetField.isPickList) {
+                throw new Error(`Field '${fieldId}' in resource '${resource}' is not a picklist field (type: ${targetField.dataType}). Only picklist fields have selectable values.`);
+            }
+
             return {
                 fieldId,
+                resource,
                 page,
                 limit,
-                values: []
+                total: 0,
+                totalPages: 0,
+                hasMore: false,
+                values: [],
+                fieldInfo: {
+                dataType: String(targetField.dataType),
+                isRequired: targetField.isRequired,
+                isUdf: isUdfField
+            }
             };
         }
 
@@ -424,12 +468,23 @@ export async function listPicklistValues(
         const endIndex = startIndex + limit;
         const paginatedValues = allValues.slice(startIndex, endIndex);
 
+        const totalPages = Math.ceil(allValues.length / limit);
+        const hasMore = page < totalPages;
+
         const result: ListPicklistValuesResponse = {
             fieldId,
+            resource,
             page,
             limit,
             total: allValues.length,
-            values: paginatedValues
+            totalPages,
+            hasMore,
+            values: paginatedValues,
+            fieldInfo: {
+                dataType: String(targetField.dataType),
+                isRequired: targetField.isRequired,
+                isUdf: isUdfField
+            }
         };
 
         console.debug(`[aiHelper.listPicklistValues] Returning ${paginatedValues.length} of ${allValues.length} values for ${fieldId}`);
@@ -617,6 +672,72 @@ export async function validateParameters(
         };
 
         console.debug(`[aiHelper.validateParameters] Validation complete for ${resource}: isValid=${isValid}, errors=${errors.length}, warnings=${warnings.length}`);
+        return result;
+    });
+}
+
+/**
+ * Response for listCapabilities operation
+ */
+export interface ListCapabilitiesResponse {
+    totalResources: number;
+    totalOperations: number;
+    resources: Array<{
+        name: string;
+        displayName: string;
+        description: string;
+        operations: string[];
+        hasUserDefinedFields?: boolean;
+        supportsWebhookCallouts?: boolean;
+    }>;
+    summary: {
+        readOnlyResources: number;
+        writableResources: number;
+        resourcesWithUDF: number;
+        resourcesWithWebhooks: number;
+    };
+}
+
+/**
+ * List all available resources and their supported operations for AI tool enumeration
+ */
+export async function listCapabilities(
+    context: ILoadOptionsFunctions | IExecuteFunctions
+): Promise<ListCapabilitiesResponse> {
+    return await handleErrors(context as IExecuteFunctions, async () => {
+        console.debug('[aiHelper.listCapabilities] Listing all resource capabilities');
+
+        const resources = AUTOTASK_ENTITIES.map((entity: IEntityMetadata) => {
+            const operations = getResourceOperations(entity.name);
+            const displayName = entity.name.replace(/([A-Z])/g, ' $1').trim(); // Add spaces before capital letters
+
+            return {
+                name: entity.name,
+                displayName: displayName.charAt(0).toUpperCase() + displayName.slice(1),
+                description: `Manage ${displayName.toLowerCase()} entities in Autotask`,
+                operations,
+                hasUserDefinedFields: entity.hasUserDefinedFields || false,
+                supportsWebhookCallouts: entity.supportsWebhookCallouts || false,
+            };
+        });
+
+        const totalOperations = resources.reduce((sum: number, resource) => sum + resource.operations.length, 0);
+
+        const summary = {
+            readOnlyResources: resources.filter((r) => !r.operations.some((op: string) => ['create', 'update', 'delete'].includes(op))).length,
+            writableResources: resources.filter((r) => r.operations.some((op: string) => ['create', 'update', 'delete'].includes(op))).length,
+            resourcesWithUDF: resources.filter((r) => r.hasUserDefinedFields).length,
+            resourcesWithWebhooks: resources.filter((r) => r.supportsWebhookCallouts).length,
+        };
+
+        const result: ListCapabilitiesResponse = {
+            totalResources: resources.length,
+            totalOperations,
+            resources,
+            summary,
+        };
+
+        console.debug(`[aiHelper.listCapabilities] Returning ${resources.length} resources with ${totalOperations} total operations`);
         return result;
     });
 }

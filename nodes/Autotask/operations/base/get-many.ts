@@ -305,7 +305,9 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 
 				// Get selected columns and picklist labels flag (for itemIndex 0 by default)
 				const itemIndex = 0; // For non-paginated requests, use itemIndex 0 as default
-				const selectedColumns = getSelectedColumns(this.context, itemIndex);
+
+				// Skip column selection for picklist queries - they need all fields
+				const selectedColumns = this.options?.isPicklistQuery ? [] : getSelectedColumns(this.context, itemIndex);
 
 				// Check if picklist labels should be added
 				let addPicklistLabels = false;
