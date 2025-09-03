@@ -163,7 +163,6 @@ export function addAgentFriendlyOptions(
     options: {
         includeBodyJson?: boolean;
         includeSelectColumnsJson?: boolean;
-        includeOutputMode?: boolean;
         includeDryRun?: boolean;
     } = {}
 ): INodeProperties[] {
@@ -172,7 +171,6 @@ export function addAgentFriendlyOptions(
     const {
         includeBodyJson = true,
         includeSelectColumnsJson = true,
-        includeOutputMode = true,
         includeDryRun = true,
     } = options;
 
@@ -182,10 +180,6 @@ export function addAgentFriendlyOptions(
 
     if (includeSelectColumnsJson) {
         result = addSelectColumnsJsonOption(result, resourceName);
-    }
-
-    if (includeOutputMode) {
-        result = addOutputModeOption(result, resourceName);
     }
 
     if (includeDryRun) {

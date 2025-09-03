@@ -91,10 +91,10 @@ export const conversionSteps: ConversionStep[] = [
 					result.defaultMatch = false;
 				}
 
-				// For parent ID fields in create operations, ensure they're not filtered out
+				// For parent ID fields in create operations, ensure they're displayed but not auto-matched
 				if (isParentIdField && context.operation === 'create') {
 					result.display = true;
-					result.defaultMatch = true;
+					result.defaultMatch = false; // Changed to false to prevent auto-matching
 				}
 
 				return result;

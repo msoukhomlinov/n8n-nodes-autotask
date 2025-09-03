@@ -29,6 +29,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - **AI Helper resource picklists**: Fixed AI Helper resource name fields to display as proper dropdown picklists instead of empty autocomplete inputs by changing field type from 'string' to 'options'
 - **AI Helper List Picklist Values**: Enhanced operation with parameter validation, improved UDF field detection, better error handling with helpful messages, and enriched response metadata including pagination info and field details
 - **Fixed AI parameter isolation**: Prevented AI-specific `selectColumnsJson` parameter from interfering with regular resource mapper picklist loading
+- **Resource Mapper Manual Mode**: Fixed auto-population of fields in "map each column manually" mode across all resources
 
 ## [0.9.9] - 2025-09-01
 
