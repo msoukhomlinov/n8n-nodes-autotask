@@ -166,7 +166,15 @@ export class BaseOperation {
 				const endpoint = buildEntityUrl(this.entityType, { entityId: String(entityId) });
 
 				// Get selected columns and prepare include fields for API
-				const selectedColumns = getSelectedColumns(this.context, itemIndex);
+				// Skip for reference loading contexts to avoid AI parameter access issues
+				let selectedColumns: string[] = [];
+				try {
+					selectedColumns = getSelectedColumns(this.context, itemIndex);
+				} catch (error) {
+					// If getSelectedColumns fails (e.g., during reference loading), use empty array
+					console.debug('[BaseOperation] getSelectedColumns failed, using empty array:', error instanceof Error ? error.message : 'Unknown error');
+					selectedColumns = [];
+				}
 
 				// Check if picklist labels should be added
 				let addPicklistLabels = false;

@@ -546,12 +546,19 @@ export class Autotask implements INodeType {
 			 * Get fields for tool resource based on target resource and operation
 			 */
 			async getToolFields(this: ILoadOptionsFunctions): Promise<ResourceMapperFields> {
-                                const targetResource = this.getNodeParameter('targetResource', 0) as string;
-                                const resourceOperation = this.getNodeParameter('resourceOperation', 0) as string;
+                                const toolOperation = this.getNodeParameter('toolOperation', 0) as string;
 
-                                if (!targetResource) {
+                                if (!toolOperation) {
                                         return { fields: [] };
                                 }
+
+                                // Parse tool operation to get resource and operation
+                                const parsed = toolOperation.split('.');
+                                if (parsed.length !== 2) {
+                                        return { fields: [] };
+                                }
+
+                                const [targetResource, resourceOperation] = parsed;
 
                                 // Resolve canonical resource name from metadata for case-insensitive matching
                                 const canonicalResource = getEntityMetadata(targetResource)?.name ?? targetResource;

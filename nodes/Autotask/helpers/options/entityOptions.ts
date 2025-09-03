@@ -76,8 +76,10 @@ export async function getQueryableEntities(this: ILoadOptionsFunctions): Promise
 	try {
 		// Filter entities that support query operations
 		const queryableEntities = AUTOTASK_ENTITIES.filter(entity =>
-			entity.operations[OperationType.QUERY] === 'self' ||
-			entity.operations[OperationType.QUERY] === 'parent'
+			entity.operations && (
+				entity.operations[OperationType.QUERY] === 'self' ||
+				entity.operations[OperationType.QUERY] === 'parent'
+			)
 		);
 
 		// Sort entities alphabetically by name

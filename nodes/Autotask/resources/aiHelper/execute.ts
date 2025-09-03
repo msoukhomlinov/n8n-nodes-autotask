@@ -1,5 +1,5 @@
 import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
-import { describeResource, listPicklistValues, validateParameters } from '../../helpers/aiHelper';
+import { describeResource, listCapabilities, listPicklistValues, validateParameters } from '../../helpers/aiHelper';
 import { validateJsonParameter } from '../../helpers/json-validation';
 
 const ENTITY_TYPE = 'aiHelper';
@@ -19,6 +19,12 @@ export async function executeAiHelperOperation(
                     const mode = this.getNodeParameter('mode', i) as 'read' | 'write';
 
                     const response = await describeResource(this, targetResource, mode);
+                    returnData.push({ json: response as unknown as IDataObject });
+                    break;
+                }
+
+                case 'listCapabilities': {
+                    const response = await listCapabilities(this);
                     returnData.push({ json: response as unknown as IDataObject });
                     break;
                 }

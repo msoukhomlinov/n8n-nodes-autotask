@@ -19,6 +19,12 @@ export const aiHelperFields: INodeProperties[] = [
                 action: 'Describe resource fields schema and functions',
             },
             {
+                name: 'List Capabilities',
+                value: 'listCapabilities',
+                description: 'Get all available resources and their supported operations for AI tool enumeration',
+                action: 'List all resource capabilities for tool enumeration',
+            },
+            {
                 name: 'List Picklist Values',
                 value: 'listPicklistValues',
                 description: 'Get picklist values for a specific field with search and pagination',
@@ -37,7 +43,7 @@ export const aiHelperFields: INodeProperties[] = [
     {
         displayName: 'Resource Name or ID',
         name: 'targetResource',
-        type: 'string',
+        type: 'options',
         required: true,
         displayOptions: {
             show: {
@@ -50,7 +56,7 @@ export const aiHelperFields: INodeProperties[] = [
         },
         default: '',
         description:
-            'Enter the resource name or ID to describe. Choose from the list or specify it using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+            'Select the resource to describe. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
     },
     {
         displayName: 'Mode',
@@ -82,7 +88,7 @@ export const aiHelperFields: INodeProperties[] = [
     {
         displayName: 'Resource Name or ID',
         name: 'targetResource',
-        type: 'string',
+        type: 'options',
         required: true,
         displayOptions: {
             show: {
@@ -95,7 +101,7 @@ export const aiHelperFields: INodeProperties[] = [
         },
         default: '',
         description:
-            'Enter the resource name or ID containing the field. Choose from the list or specify it using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+            'Select the resource containing the field. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
     },
     {
         displayName: 'Field ID',
@@ -140,7 +146,6 @@ export const aiHelperFields: INodeProperties[] = [
         description: 'Max number of results to return',
         typeOptions: {
             minValue: 1,
-
         },
     },
     {
@@ -157,13 +162,14 @@ export const aiHelperFields: INodeProperties[] = [
         description: 'Page number for pagination (1-based)',
         typeOptions: {
             minValue: 1,
+            maxValue: 1000,
         },
     },
     // validateParameters operation parameters
     {
         displayName: 'Resource Name or ID',
         name: 'targetResource',
-        type: 'string',
+        type: 'options',
         required: true,
         displayOptions: {
             show: {
@@ -176,7 +182,7 @@ export const aiHelperFields: INodeProperties[] = [
         },
         default: '',
         description:
-            'Enter the resource name or ID to validate parameters for. Choose from the list or specify it using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+            'Select the resource to validate parameters for. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
     },
     {
         displayName: 'Mode',

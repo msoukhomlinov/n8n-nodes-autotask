@@ -6,6 +6,7 @@ import { handleErrors } from '../../helpers/errorHandler';
 import { getEntityMetadata } from '../../constants/entities';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { BaseOperation } from './base-operation';
+import { isDryRunEnabled } from '../../helpers/dry-run';
 
 /**
  * Base class for deleting entities
@@ -55,6 +56,12 @@ export class DeleteOperation<T extends IAutotaskEntity> extends BaseOperation {
 					} catch {
 						// Parent ID is optional for delete operations
 					}
+				}
+
+				// Respect dry-run: skip actual DELETE when enabled
+				if (isDryRunEnabled(this.context, itemIndex)) {
+					console.debug('[DeleteOperation] Dry-run mode enabled, skipping DELETE request');
+					return;
 				}
 
 				// Delete entity using autotaskApiRequest's built-in pluralization

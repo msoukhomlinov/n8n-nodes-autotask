@@ -151,9 +151,8 @@ export function addOperationsToResource(
 			}
 
 			// Add agent-friendly options (JSON parameters, output mode, dry run)
-			// Only include bodyJson by default, exclude selectColumnsJson, outputMode, and dryRun
 			const agentFriendlyConfig = {
-				includeBodyJson: config.agentFriendly?.includeBodyJson ?? true,
+				includeBodyJson: config.agentFriendly?.includeBodyJson ?? false,
 				includeSelectColumnsJson: config.agentFriendly?.includeSelectColumnsJson ?? false,
 				includeOutputMode: config.agentFriendly?.includeOutputMode ?? false,
 				includeDryRun: config.agentFriendly?.includeDryRun ?? false,
@@ -165,9 +164,8 @@ export function addOperationsToResource(
 	}
 
 	// Add agent-friendly options for resources without get operations (write-only resources)
-	// Only include bodyJson by default, exclude selectColumnsJson, outputMode, and dryRun
 	const agentFriendlyConfig = {
-		includeBodyJson: config.agentFriendly?.includeBodyJson ?? true,
+		includeBodyJson: config.agentFriendly?.includeBodyJson ?? false,
 		includeSelectColumnsJson: config.agentFriendly?.includeSelectColumnsJson ?? false,
 		includeOutputMode: config.agentFriendly?.includeOutputMode ?? false,
 		includeDryRun: config.agentFriendly?.includeDryRun ?? false,
