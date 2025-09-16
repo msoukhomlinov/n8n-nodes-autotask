@@ -47,7 +47,7 @@ import { executeContractRetainersOperation } from '../contractRetainers/execute'
 import { executeContractTicketPurchasesOperation } from '../contractTicketPurchases/execute';
 import { executeContractExclusionBillingCodeOperation } from '../contractExclusionBillingCodes/execute';
 import { executeContractExclusionRoleOperation } from '../contractExclusionRoles/execute';
-import { executeContractExclusionSetsOperation } from '../contract-exclusion-sets/execute';
+import { executeContractExclusionSetsOperation } from '../contractExclusionSets/execute';
 import { executeContractExclusionSetExcludedRolesOperation } from '../contractExclusionSetExcludedRoles/execute';
 import { executeContractExclusionSetExcludedWorkTypesOperation } from '../contractExclusionSetExcludedWorkTypes/execute';
 import { executeCountryOperation } from '../countries/execute';

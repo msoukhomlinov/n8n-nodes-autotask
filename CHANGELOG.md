@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.2.1] - 2025-09-16
+
+### Added
+- Added support for ContractExclusionSets entity with Create, Update, Delete, Get, GetMany, GetManyAdvanced, and Count operations for managing reusable sets of roles and work types that are excluded from contracts
+- Enhanced field processing for Contract entities by whitelisting contractPeriodType and exclusionContractID fields for create operations despite being marked read-only
 
 ## [1.2.0] - 2025-09-16
 

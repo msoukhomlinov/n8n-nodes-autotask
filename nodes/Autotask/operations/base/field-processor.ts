@@ -635,14 +635,23 @@ export class FieldProcessor {
 					return false;
 				}
 
-				// If the field is required, we should include it even if it's read-only
-				if (field.isRequired) {
-					console.debug(`[FieldProcessor] Including required read-only field ${field.name} for create`);
+			// If the field is required, we should include it even if it's read-only
+			if (field.isRequired) {
+				console.debug(`[FieldProcessor] Including required read-only field ${field.name} for create`);
+				return true;
+			}
+
+			// Special case for Contract entity - allow specific read-only fields that are needed
+			if (this.entityType.toLowerCase() === 'contract') {
+				const contractSpecialFields = ['contractPeriodType', 'exclusionContractID'];
+				if (contractSpecialFields.includes(field.name)) {
+					console.debug(`[FieldProcessor] Including whitelisted Contract read-only field ${field.name} for create`);
 					return true;
 				}
+			}
 
-				console.debug(`[FieldProcessor] Excluding read-only field ${field.name} for create`);
-				return false;
+			console.debug(`[FieldProcessor] Excluding read-only field ${field.name} for create`);
+			return false;
 			}
 
 			// Include all non-read-only fields
