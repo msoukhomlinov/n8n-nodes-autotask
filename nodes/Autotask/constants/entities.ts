@@ -9,6 +9,9 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	// BillingCode entity (read-only)
 	{ name: 'BillingCode', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'BillingItems', operations: { [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'ChecklistLibrary', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'ChecklistLibraryChecklistItem', childOf: 'ChecklistLibrary', subname: 'ChecklistItems', parentIdField: 'checklistLibraryID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	{ name: 'ClassificationIcon', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Company', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' }, supportsWebhookCallouts: true },
 	{ name: 'CompanyAlert', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'CompanyAttachment', childOf: 'Company', subname: 'Attachment', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
@@ -97,6 +100,9 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'TaskNote', childOf: 'Task', subname: 'Note', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	// Tickets entity
 	{ name: 'Ticket', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' }, hasUserDefinedFields: true, supportsWebhookCallouts: true },
+	{ name: 'TicketCharge', childOf: 'Ticket', subname: 'Charges', parentIdField: 'ticketID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	{ name: 'TicketChecklistItem', childOf: 'Ticket', subname: 'ChecklistItems', parentIdField: 'ticketID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	{ name: 'TicketChecklistLibrary', childOf: 'Ticket', subname: 'ChecklistLibraries', parentIdField: 'ticketID', operations: { [OperationType.CREATE]: 'parent' } },
 	{ name: 'TicketWebhook', childOf: 'Ticket', subname: 'Webhook', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.DELETE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'TicketWebhookExcludedResource', childOf: 'TicketWebhook', subname: 'ExcludedResource', parentChain: ['Ticket', 'TicketWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'TicketWebhookField', childOf: 'TicketWebhook', subname: 'Field', parentChain: ['Ticket', 'TicketWebhook'], operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
@@ -110,6 +116,9 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'TicketHistory', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' }, noPluralize: true },
 	{ name: 'Subscription', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'SubscriptionPeriod', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'Tag', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'TagAlias', childOf: 'Tag', subname: 'Aliases', parentIdField: 'tagID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	{ name: 'TagGroup', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	// TimeEntry entity and its attachment
 	{ name: 'TimeEntry', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
 	{ name: 'TimeEntryAttachment', childOf: 'TimeEntry', subname: 'Attachment', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },

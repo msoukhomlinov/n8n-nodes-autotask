@@ -30,6 +30,21 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Autotask Billing Items, which represent billable items that have been approved and posted for potential invoicing',
 	},
 	{
+		name: 'Checklist Library',
+		value: 'checklistLibrary',
+		description: 'Manage Checklist Libraries, which define modular checklist components that can be applied to tickets or tasks',
+	},
+	{
+		name: 'Checklist Library Item',
+		value: 'checklistLibraryChecklistItem',
+		description: 'Manage Checklist Library Items, which are individual checklist items within a checklist library template',
+	},
+	{
+		name: 'Classification Icon',
+		value: 'classificationIcon',
+		description: 'Query Classification Icons used in Autotask for categorizing and visually identifying different types of items',
+	},
+	{
 		name: 'Company',
 		value: 'company',
 		description: 'Manage Companies, which represent client organisations that serve as the central entity for contacts, tickets, projects, and other records',
@@ -405,9 +420,39 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Query Subscription Periods, which track billing periods and usage for subscriptions',
 	},
 	{
+		name: 'Tag',
+		value: 'tag',
+		description: 'Manage Tags, which represent ticket and article tags for categorization and organization',
+	},
+	{
+		name: 'Tag Alias',
+		value: 'tagAlias',
+		description: 'Manage Tag Aliases, which provide alternative names for tags to improve searchability and organization',
+	},
+	{
+		name: 'Tag Group',
+		value: 'tagGroup',
+		description: 'Manage Tag Groups, which organize tags into categories with unique labels and display colors',
+	},
+	{
 		name: 'Ticket',
 		value: 'ticket',
 		description: 'Manage Tickets, which define service requests that track client issues, support needs, and work to be performed across different modules',
+	},
+	{
+		name: 'Ticket Charge',
+		value: 'ticketCharge',
+		description: 'Manage Ticket Charges, which track billable or non-billable costs for products and materials associated with tickets',
+	},
+	{
+		name: 'Ticket Checklist Item',
+		value: 'ticketChecklistItem',
+		description: 'Manage Ticket Checklist Items, which represent items in a checklist on an Autotask ticket for tracking work completion',
+	},
+	{
+		name: 'Ticket Checklist Library',
+		value: 'ticketChecklistLibrary',
+		description: 'Add all items from a checklist library to a ticket. Library items are appended to any existing checklist items.',
 	},
 	{
 		name: 'Ticket History',
