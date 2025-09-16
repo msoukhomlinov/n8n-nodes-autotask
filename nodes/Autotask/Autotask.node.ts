@@ -74,7 +74,7 @@ import { executeContractBlockHourFactorOperation } from './resources/contractBlo
 import { executeContractRateOperation } from './resources/contractRates/execute';
 import { executeContractExclusionBillingCodeOperation } from './resources/contractExclusionBillingCodes/execute';
 import { executeContractExclusionRoleOperation } from './resources/contractExclusionRoles/execute';
-import { executeContractExclusionSetsOperation } from './resources/contract-exclusion-sets/execute';
+import { executeContractExclusionSetsOperation } from './resources/contractExclusionSets/execute';
 import { executeContractExclusionSetExcludedRolesOperation } from './resources/contractExclusionSetExcludedRoles/execute';
 import { executeContractExclusionSetExcludedWorkTypesOperation } from './resources/contractExclusionSetExcludedWorkTypes/execute';
 import { executeOpportunityOperation } from './resources/opportunities/execute';
@@ -140,7 +140,7 @@ import { contractRateFields } from './resources/contractRates/description';
 import { contractRoleCostsFields } from './resources/contractRoleCosts/description';
 import { contractExclusionBillingCodeFields } from './resources/contractExclusionBillingCodes/description';
 import { contractExclusionRoleFields } from './resources/contractExclusionRoles/description';
-import { contractExclusionSetsFields } from './resources/contract-exclusion-sets/description';
+import { contractExclusionSetsFields } from './resources/contractExclusionSets/description';
 import { contractExclusionSetExcludedRolesFields } from './resources/contractExclusionSetExcludedRoles/description';
 import { contractExclusionSetExcludedWorkTypesFields } from './resources/contractExclusionSetExcludedWorkTypes/description';
 import { opportunityFields } from './resources/opportunities/description';
