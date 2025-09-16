@@ -3,6 +3,19 @@
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
 
+## [1.2.0] - 2025-09-16
+
+### Added
+- Added support for TicketCharges entity as a child resource of Tickets with Create, Update, Delete, Get, GetMany, GetManyAdvanced, and Count operations, where Update and Delete operations are only allowed when isBilled = false
+- Added support for TicketChecklistItems entity as a child resource of Tickets with Create, Update, Delete, Get, GetMany, GetManyAdvanced, and Count operations for managing checklist items on Autotask tickets
+- Added support for TicketChecklistLibraries entity as a child resource of Tickets with Create operation only, allowing all items from a checklist library to be added to a ticket (appends to existing checklist items)
+- Added support for ChecklistLibraries entity as a standalone resource with Create, Update, Delete, Get, GetMany, GetManyAdvanced, and Count operations for managing modular checklist components that can be applied to tickets or tasks
+- Added support for ChecklistLibraryChecklistItems entity as a child resource of ChecklistLibraries with Create, Update, Delete, Get, GetMany, GetManyAdvanced, and Count operations for managing individual checklist items within checklist library templates
+- Added support for ClassificationIcons entity as a read-only standalone resource with Get, GetMany, GetManyAdvanced, and Count operations for querying classification icons used in Autotask for categorizing and visually identifying different types of items
+- Added support for Tags entity as a standalone resource with Create, Update, Delete, Get, GetMany, GetManyAdvanced, and Count operations for managing ticket and article tags with unique label requirements and system tag protections
+- Added support for TagGroups entity as a standalone resource with Create, Update, Delete, Get, GetMany, GetManyAdvanced, and Count operations for organizing tags into categories with unique labels, display colors, and system group protections
+- Added support for TagAliases entity as a child resource of Tags with Create, Delete, Get, GetMany, GetManyAdvanced, and Count operations for managing alternative names for tags to improve searchability with unique Tag ID/Alias combinations
+
 ## [1.1.0] - 2025-09-03
 
 ### Added

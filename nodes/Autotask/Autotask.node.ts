@@ -34,11 +34,17 @@ import { executeProjectChargeOperation } from './resources/projectCharges/execut
 import { executeProductOperation } from './resources/products/execute';
 import { executeProductVendorOperation } from './resources/productVendors/execute';
 import { executeTicketOperation } from './resources/tickets/execute';
+import { executeTicketChargeOperation } from './resources/ticketCharges/execute';
+import { executeTicketChecklistItemOperation } from './resources/ticketChecklistItems/execute';
+import { executeTicketChecklistLibraryOperation } from './resources/ticketChecklistLibraries/execute';
 import { executeTicketNoteOperation } from './resources/ticketNotes/execute';
 import { executeTicketHistoryOperation } from './resources/ticketHistories/execute';
 import { executeTimeEntryOperation } from './resources/timeEntries/execute';
 import { executeBillingCodeOperation } from './resources/billingCodes/execute';
 import { executeBillingItemsOperation } from './resources/billingItems/execute';
+import { executeChecklistLibraryOperation } from './resources/checklistLibraries/execute';
+import { executeChecklistLibraryChecklistItemOperation } from './resources/checklistLibraryChecklistItems/execute';
+import { executeClassificationIconOperation } from './resources/classificationIcons/execute';
 import { executeHolidaySetOperation } from './resources/holidaySets/execute';
 import { executeHolidayOperation } from './resources/holidays/execute';
 import { executeInvoiceOperation } from './resources/invoices/execute';
@@ -50,6 +56,9 @@ import { executeServiceCallTaskResourceOperation } from './resources/serviceCall
 import { executeServiceOperation } from './resources/services/execute';
 import { executeSubscriptionOperation } from './resources/subscriptions/execute';
 import { executeSubscriptionPeriodsOperation } from './resources/subscriptionPeriods/execute';
+import { executeTagOperation } from './resources/tags/execute';
+import { executeTagAliasOperation } from './resources/tagAliases/execute';
+import { executeTagGroupOperation } from './resources/tagGroups/execute';
 import { executeContractOperation } from './resources/contracts/execute';
 import { executeContractChargeOperation } from './resources/contractCharges/execute';
 import { executeContractNoteOperation } from './resources/contractNotes/execute';
@@ -90,11 +99,17 @@ import { projectChargeFields } from './resources/projectCharges/description';
 import { productFields } from './resources/products/description';
 import { productVendorFields } from './resources/productVendors/description';
 import { ticketFields } from './resources/tickets/description';
+import { ticketChargeFields } from './resources/ticketCharges/description';
+import { ticketChecklistItemFields } from './resources/ticketChecklistItems/description';
+import { ticketChecklistLibraryFields } from './resources/ticketChecklistLibraries/description';
 import { ticketHistoryFields } from './resources/ticketHistories/description';
 import { ticketNoteFields } from './resources/ticketNotes/description';
 import { timeEntryFields } from './resources/timeEntries/description';
 import { billingCodeFields } from './resources/billingCodes/description';
 import { billingItemsFields } from './resources/billingItems/description';
+import { checklistLibraryFields } from './resources/checklistLibraries/description';
+import { checklistLibraryChecklistItemFields } from './resources/checklistLibraryChecklistItems/description';
+import { classificationIconFields } from './resources/classificationIcons/description';
 import { holidaySetFields } from './resources/holidaySets/description';
 import { holidayFields } from './resources/holidays/description';
 import { invoiceFields } from './resources/invoices/description';
@@ -106,6 +121,9 @@ import { serviceCallTaskResourceFields } from './resources/serviceCallTaskResour
 import { serviceFields } from './resources/services/description';
 import { subscriptionFields } from './resources/subscriptions/description';
 import { subscriptionPeriodsFields } from './resources/subscriptionPeriods/description';
+import { tagFields } from './resources/tags/description';
+import { tagAliasFields } from './resources/tagAliases/description';
+import { tagGroupFields } from './resources/tagGroups/description';
 import { contractFields } from './resources/contracts/description';
 import { contractChargeFields } from './resources/contractCharges/description';
 import { contractNoteFields } from './resources/contractNotes/description';
@@ -330,7 +348,13 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(serviceFields, { resourceName: 'service' }),
 			...addOperationsToResource(subscriptionFields, { resourceName: 'subscription' }),
 			...addOperationsToResource(subscriptionPeriodsFields, { resourceName: 'subscriptionPeriod' }),
+			...addOperationsToResource(tagFields, { resourceName: 'tag' }),
+			...addOperationsToResource(tagAliasFields, { resourceName: 'tagAlias' }),
+			...addOperationsToResource(tagGroupFields, { resourceName: 'tagGroup' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
+			...addOperationsToResource(ticketChargeFields, { resourceName: 'ticketCharge' }),
+			...addOperationsToResource(ticketChecklistItemFields, { resourceName: 'ticketChecklistItem' }),
+			...addOperationsToResource(ticketChecklistLibraryFields, { resourceName: 'ticketChecklistLibrary' }),
 			...addOperationsToResource(ticketNoteFields, { resourceName: 'ticketNote' }),
 			...addOperationsToResource(ticketNoteWebhookFields, { resourceName: 'ticketNoteWebhook' }),
 			...addOperationsToResource(ticketWebhookFields, { resourceName: 'ticketWebhook' }),
@@ -338,6 +362,9 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
 			...addOperationsToResource(billingItemsFields, { resourceName: 'billingItems' }),
+			...addOperationsToResource(checklistLibraryFields, { resourceName: 'checklistLibrary' }),
+			...addOperationsToResource(checklistLibraryChecklistItemFields, { resourceName: 'checklistLibraryChecklistItem' }),
+			...addOperationsToResource(classificationIconFields, { resourceName: 'classificationIcon' }),
 			...addOperationsToResource(surveyFields, { resourceName: 'survey' }),
 			...addOperationsToResource(surveyResultsFields, { resourceName: 'surveyResults' }),
 			...contractServiceAdjustmentFields,
@@ -364,6 +391,12 @@ export class Autotask implements INodeType {
 				return executeBillingCodeOperation.call(this);
 			case 'billingItems':
 				return executeBillingItemsOperation.call(this);
+			case 'checklistLibrary':
+				return executeChecklistLibraryOperation.call(this);
+			case 'checklistLibraryChecklistItem':
+				return executeChecklistLibraryChecklistItemOperation.call(this);
+			case 'classificationIcon':
+				return executeClassificationIconOperation.call(this);
 			case 'company':
 				return executeCompanyOperation.call(this);
 			case 'companyAlert':
@@ -511,8 +544,20 @@ export class Autotask implements INodeType {
 				return executeSubscriptionOperation.call(this);
 			case 'subscriptionPeriod':
 				return executeSubscriptionPeriodsOperation.call(this);
+			case 'tag':
+				return executeTagOperation.call(this);
+			case 'tagAlias':
+				return executeTagAliasOperation.call(this);
+			case 'tagGroup':
+				return executeTagGroupOperation.call(this);
 			case 'ticket':
 				return executeTicketOperation.call(this);
+			case 'ticketCharge':
+				return executeTicketChargeOperation.call(this);
+			case 'ticketChecklistItem':
+				return executeTicketChecklistItemOperation.call(this);
+			case 'ticketChecklistLibrary':
+				return executeTicketChecklistLibraryOperation.call(this);
 			case 'ticketNote':
 				return executeTicketNoteOperation.call(this);
 			case 'ticketNoteWebhook':
