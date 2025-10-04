@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.2.2] - 2025-10-04
+
+### Fixed
+
+- **Field mapping expression errors now properly fail the node**: Previously, expression errors (e.g., referencing unexecuted nodes) were silently caught and only logged to console, causing the node to show success in UI while sending empty API requests. Expression errors now correctly propagate to the UI with helpful error messages.
+
 ## [1.2.1] - 2025-09-16
 
 ### Added
