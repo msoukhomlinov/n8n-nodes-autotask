@@ -93,7 +93,22 @@ export async function getOperationFieldValues(
 		return result;
 	} catch (error) {
 		console.error('Error in getOperationFieldValues:', error);
+
+		// Check if this is an n8n ExpressionError (e.g., referencing unexecuted nodes)
+		if (error instanceof Error &&
+				(error.name === 'ExpressionError' ||
+				error.message.includes('hasn\'t been executed') ||
+				error.message.includes('Referenced node is unexecuted'))) {
+			// Re-throw expression errors so the user knows about the problem
+			throw new Error(
+				`Expression error in field mapping: ${error.message}\n\n` +
+				`Hint: Check that all referenced nodes have executed. ` +
+				`Use $if($("NodeName").isExecuted, value, fallback) to handle conditional execution.`
+			);
+		}
+
 		// During resource mapper initialization, the parameter might not exist yet
+		// Only return empty object for non-expression errors
 		return operation === 'getMany' ? { fields: [] } : {};
 	}
 }
