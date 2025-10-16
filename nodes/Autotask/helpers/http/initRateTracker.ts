@@ -32,7 +32,9 @@ export async function initializeRateTracker(
 
                 return result;
             } catch (error) {
-                console.error('[RateTracker] Error in threshold fetcher:', error);
+                // Import sanitization function to mask credentials in error logs
+                const { sanitizeErrorForLogging } = await import('../security/credential-masking');
+                console.error('[RateTracker] Error in threshold fetcher:', sanitizeErrorForLogging(error));
                 return null;
             }
         });
