@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.2.3] - 2025-10-16
+
+### Fixed
+
+- Improved error logging to sanitise sensitive information in debug output
+
+
+
 ## [1.2.2] - 2025-10-04
 
 ### Fixed

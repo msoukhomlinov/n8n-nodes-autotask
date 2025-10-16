@@ -195,7 +195,9 @@ class RequestRateTracker {
             }
         } catch (error) {
             this.debugLog('Threshold sync error:', error);
-            console.error('Failed to sync with Autotask API threshold information:', error);
+            // Import sanitization function to mask credentials in error logs
+            const { sanitizeErrorForLogging } = await import('../security/credential-masking');
+            console.error('Failed to sync with Autotask API threshold information:', sanitizeErrorForLogging(error));
             // Fall back to local tracking on error
         }
     }

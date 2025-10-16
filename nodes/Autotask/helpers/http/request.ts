@@ -307,7 +307,9 @@ export async function fetchThresholdInformation(
 
 		return null;
 	} catch (error) {
-		console.error('Failed to fetch threshold information:', error);
+		// Import sanitization function to mask credentials in error logs
+		const { sanitizeErrorForLogging } = await import('../security/credential-masking');
+		console.error('Failed to fetch threshold information:', sanitizeErrorForLogging(error));
 		return null;
 	}
 }
@@ -464,7 +466,9 @@ export async function autotaskApiRequest<T = JsonObject>(
 		// If we get here, response format is unexpected
 		throw new Error(`Invalid API response format for ${method} ${endpoint}: ${JSON.stringify(response)}`);
 	} catch (error) {
-		console.error('API Error:', error);
+		// Import sanitization function to mask credentials in error logs
+		const { sanitizeErrorForLogging } = await import('../security/credential-masking');
+		console.error('API Error:', sanitizeErrorForLogging(error));
 
 		const status = error.response?.status;
 		const url = options.url;

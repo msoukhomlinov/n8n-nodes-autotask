@@ -2,6 +2,9 @@
 export * from './errorHandler';
 export * from './http';
 
+// Security utilities
+export * from './security';
+
 // Options handling
 export * from './options';
 
