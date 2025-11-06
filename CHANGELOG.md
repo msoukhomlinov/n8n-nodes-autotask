@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.2.5] - 2025-11-06
+
+### Fixed
+
+- Prevent parent ID lookups failing in auto-map mode by passing parent ID directly from validated payload to URL builder for child entity create/update operations (affects Contact and other child resources). Also enforces strict typing on the override value.
+
 ## [1.2.4] - 2025-11-06
 
 ### Fixed
