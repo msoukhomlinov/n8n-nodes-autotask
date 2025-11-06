@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-1.2.3-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-1.2.4-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -199,7 +199,7 @@ The node includes an Autotask Trigger node that can receive webhook events from 
 
 ### Advanced Features
 
-- **Resource Mapping**: Dynamically map fields based on entity definitions
+- **Resource Mapping**: Dynamically map fields based on entity definitions. When Mapping Column Mode is set to "Map automatically" (`autoMapInputData`), the node uses incoming item data directly and passes all fields whose keys match the selected entity's schema IDs, regardless of whether those columns are toggled off in the UI. Node parameter mappings are ignored in this mode (matching n8n's standard resource mapper behaviour). `bodyJson` still takes final precedence as an override.
 - **Advanced Filtering**: Build complex queries with multiple conditions
 - **Column Selection**: Choose specific fields to return in get operations
 - **Picklist Label Enrichment**: Automatically add human-readable labels for picklist fields

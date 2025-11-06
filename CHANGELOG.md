@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.2.4] - 2025-11-06
+
+### Fixed
+
+- Auto-map mode now uses incoming item data and ignores node mappings
+- Includes all schema-matching fields (even if marked removed in UI)
+- `bodyJson` still overrides auto-mapped values
+
 ## [1.2.3] - 2025-10-16
 
 ### Fixed
