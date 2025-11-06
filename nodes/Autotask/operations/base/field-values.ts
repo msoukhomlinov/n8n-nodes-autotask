@@ -21,8 +21,13 @@ interface SchemaField {
 
 /**
  * Gets field values from n8n node parameters for an operation
- * For create/update operations, includes all fields added to the UI (where removed=false in schema),
- * even if they have no value.
+ *
+ * For create/update operations:
+ * - In 'autoMapInputData' mode: uses incoming item data directly (ignores node parameter mappings).
+ *   Includes ALL incoming fields whose keys match any schema ID, regardless of the 'removed' flag.
+ *   This matches n8n's standard resource mapper behaviour (e.g., DataTable node).
+ *   bodyJson still takes final precedence as override.
+ * - In other modes: uses node parameter mappings and includes only fields where removed=false in schema.
  */
 export async function getOperationFieldValues(
 	context: IExecuteFunctions,
@@ -68,29 +73,53 @@ export async function getOperationFieldValues(
 			return { fields };
 		}
 
-		// For create/update operations
-		const result: IDataObject = {};
+        // For create/update operations
+        const result: IDataObject = {};
 
-		// Get all non-removed fields from the schema
-		const activeFields = fieldsToMap.schema?.filter(field => !field.removed) || [];
-		console.debug('[FieldValues] Active fields:', activeFields.map(f => f.id).join(', '));
+        // Build a case-insensitive lookup of schema field ids
+        const schema: SchemaField[] = Array.isArray(fieldsToMap.schema) ? fieldsToMap.schema : [];
+        const schemaIdByLower = new Map<string, string>(
+            schema.map(f => [f.id.toLowerCase(), f.id]),
+        );
 
-		// Include all active fields in the result, handling case-insensitive matching
-		for (const field of activeFields) {
-			// Case-insensitive field lookup
-			const matchingKey = Object.keys(fieldsToMap.value || {}).find(
-				key => key.toLowerCase() === field.id.toLowerCase()
-			);
-			result[field.id] = matchingKey ? fieldsToMap.value?.[matchingKey] : '';
-		}
+        const mappingMode = fieldsToMap.mappingMode;
 
-		// Merge bodyJson values (bodyJson takes precedence over resource mapper)
-		if (Object.keys(bodyJson).length > 0) {
-			console.debug('[FieldValues] Merging bodyJson values:', bodyJson);
-			Object.assign(result, bodyJson);
-		}
+        if (mappingMode === 'autoMapInputData') {
+            // Auto-map: use incoming item data directly, ignore node parameter mappings
+            // This matches n8n's standard resource mapper behaviour (see DataTable node)
+            const items = context.getInputData();
+            const incomingJson = (items[itemIndex] && items[itemIndex].json) ? (items[itemIndex].json as IDataObject) : {};
 
-		return result;
+            const autoMappedFields: string[] = [];
+            for (const [key, value] of Object.entries(incomingJson)) {
+                const canonicalId = schemaIdByLower.get(key.toLowerCase());
+                if (canonicalId) {
+                    result[canonicalId] = value as GenericValue;
+                    autoMappedFields.push(canonicalId);
+                }
+            }
+            console.debug(`[FieldValues] Auto-mapped ${autoMappedFields.length} fields from incoming data:`, autoMappedFields.join(', '));
+        } else {
+            // Existing behaviour: include only fields that are not removed in the schema
+            const activeFields = schema.filter(field => !field.removed);
+            console.debug('[FieldValues] Active fields:', activeFields.map(f => f.id).join(', '));
+
+            // Include all active fields in the result, handling case-insensitive matching
+            for (const field of activeFields) {
+                const matchingKey = Object.keys(fieldsToMap.value || {}).find(
+                    key => key.toLowerCase() === field.id.toLowerCase(),
+                );
+                result[field.id] = matchingKey ? fieldsToMap.value?.[matchingKey] : '';
+            }
+        }
+
+        // Merge bodyJson values (bodyJson takes precedence over resource mapper and incoming)
+        if (Object.keys(bodyJson).length > 0) {
+            console.debug('[FieldValues] Merging bodyJson values:', bodyJson);
+            Object.assign(result, bodyJson);
+        }
+
+        return result;
 	} catch (error) {
 		console.error('Error in getOperationFieldValues:', error);
 
