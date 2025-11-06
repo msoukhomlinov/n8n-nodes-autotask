@@ -343,7 +343,7 @@ export class BaseOperation {
 	/**
 	 * Build the URL for this operation
 	 */
-	protected async buildOperationUrl(itemIndex: number, options: IUrlOptions = {}): Promise<string> {
+	protected async buildOperationUrl(itemIndex: number, options: IUrlOptions & { parentIdOverride?: string | number } = {}): Promise<string> {
 		const metadata = getEntityMetadata(this.entityType);
 
 		// Handle attachment entities
@@ -359,7 +359,7 @@ export class BaseOperation {
 
 		// Handle direct child resources
 		if (this.parentType) {
-			const parentId = await this.getParameter(`${this.parentType}ID`, itemIndex);
+			const parentId = options.parentIdOverride ?? await this.getParameter(`${this.parentType}ID`, itemIndex);
 			if (typeof parentId !== 'string' && typeof parentId !== 'number') {
 				throw new Error(
 					ERROR_TEMPLATES.validation

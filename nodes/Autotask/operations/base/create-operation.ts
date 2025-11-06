@@ -69,18 +69,23 @@ export class CreateOperation<T extends IAutotaskEntity> extends BaseOperation {
 					console.debug('[CreateOperation] Label-to-ID resolutions:', resolution.resolutions);
 				}
 
-				// Apply centralized date conversion (closest to API boundary)
-				const apiReadyData = await convertDatesToUTC(
-					resolution.values,
-					this.entityType,
-					this.context,
-					'CreateOperation'
-				);
-				console.debug('[CreateOperation] API-ready data with date conversion:', apiReadyData);
+			// Apply centralized date conversion (closest to API boundary)
+			const apiReadyData = await convertDatesToUTC(
+				resolution.values,
+				this.entityType,
+				this.context,
+				'CreateOperation'
+			);
+			console.debug('[CreateOperation] API-ready data with date conversion:', apiReadyData);
 
-				// Build operation URL
-				const endpoint = await this.buildOperationUrl(itemIndex);
-				console.debug('[CreateOperation] Using endpoint:', endpoint);
+			// Build operation URL - pass parent ID from validated data to avoid lookup issues in autoMapInputData mode
+			const metadata = getEntityMetadata(this.entityType);
+			const parentIdField = metadata?.parentIdField || (metadata?.childOf ? `${metadata.childOf}ID` : undefined);
+			const parentIdValue = parentIdField ? (apiReadyData as IDataObject)[parentIdField] : undefined;
+			const parentIdOverride = (typeof parentIdValue === 'string' || typeof parentIdValue === 'number') ? parentIdValue : undefined;
+
+			const endpoint = await this.buildOperationUrl(itemIndex, parentIdOverride !== undefined ? { parentIdOverride } : {});
+			console.debug('[CreateOperation] Using endpoint:', endpoint);
 
 				try {
 					// Build request body
