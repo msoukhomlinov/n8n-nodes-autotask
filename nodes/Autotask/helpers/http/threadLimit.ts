@@ -1,10 +1,17 @@
 /**
  * Tracks and limits concurrent API requests per endpoint to prevent API thread limit errors
+ *
+ * Autotask enforces thread limits on simultaneous API execution to prevent resource exhaustion.
+ * This tracker ensures we don't exceed the concurrent request limit per endpoint.
+ *
+ * The limit of 3 threads per endpoint is based on Autotask's post-2023.1 integration guidelines.
+ * For more information, see:
+ * https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/General_Topics/REST_Thresholds_Limits.htm
  */
 class EndpointThreadTracker {
     private static instance: EndpointThreadTracker;
     private activeThreadsPerEndpoint: Record<string, number> = {};
-    private readonly threadLimit = 3; // Default limit for post-2023.1 integrations
+    private readonly threadLimit = 3; // Limit for post-2023.1 integrations per Autotask API docs
     private readonly enableDebugLogs = false; // Set to false to disable startup logs
 
     private constructor() {
