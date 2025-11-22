@@ -2,6 +2,24 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.2.6] - 2025-11-23
+
+### Fixed
+
+- Fixed double throttling bug in rate limiter that was applying delays twice
+- Fixed counter decrement logic in threshold sync to correctly track API usage
+- Consolidated counter reset logic to prevent race conditions
+- Improved rate limit handling: now waits for rolling 60-minute window to reset instead of just 5 seconds
+- Added maximum wait timeout (10 minutes) to prevent infinite blocking when at rate limit
+- Added specific error handling for 429 Too Many Requests responses with clear error messages
+
+### Improved
+
+- Enhanced rate limiting with proper wait-until-reset logic when limit is reached
+- Added automatic API threshold syncing every 30 seconds during rate limit waits
+- Improved documentation for rate limiting, thread limiting, and threshold information bypass
+
+
 ## [1.2.5] - 2025-11-06
 
 ### Fixed

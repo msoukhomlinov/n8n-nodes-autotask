@@ -41,15 +41,7 @@ class RequestRateTracker {
      * Records a new API request and returns current usage percentage
      */
     public trackRequest(): number {
-        const now = Date.now();
-
-        // Reset counter if hour has passed
-        if (now >= this.counterResetTime) {
-            const oldCount = this.requestCount;
-            this.requestCount = 0;
-            this.counterResetTime = now + this.hourInMs;
-            this.debugLog(`Counter reset: ${oldCount} → 0, next reset at ${new Date(this.counterResetTime).toISOString()}`);
-        }
+        this.resetCounterIfNeeded();
 
         // Increment request counter
         this.requestCount++;
@@ -73,18 +65,24 @@ class RequestRateTracker {
     }
 
     /**
-     * Gets the current request count for the last hour
+     * Resets the counter if the hour window has passed
+     * Consolidates reset logic to prevent duplication
      */
-    public getCurrentCount(): number {
+    private resetCounterIfNeeded(): void {
         const now = Date.now();
-
-        // Reset counter if hour has passed
         if (now >= this.counterResetTime) {
             const oldCount = this.requestCount;
             this.requestCount = 0;
             this.counterResetTime = now + this.hourInMs;
-            this.debugLog(`Counter reset during getCurrentCount: ${oldCount} → 0`);
+            this.debugLog(`Counter reset: ${oldCount} → 0, next reset at ${new Date(this.counterResetTime).toISOString()}`);
         }
+    }
+
+    /**
+     * Gets the current request count for the last hour
+     */
+    public getCurrentCount(): number {
+        this.resetCounterIfNeeded();
 
         // Use actual API count when available
         if (this.actualUsageCount > 0) {
@@ -112,6 +110,13 @@ class RequestRateTracker {
             this.debugLog(`Throttling activated: local counter (${this.requestCount}) >= max (${this.maxRequestsPerHour})`);
         }
         return shouldThrottle;
+    }
+
+    /**
+     * Gets the current rate limit threshold
+     */
+    public getThresholdLimit(): number {
+        return this.actualUsageCount > 0 ? this.thresholdLimit : this.maxRequestsPerHour;
     }
 
     /**
@@ -154,16 +159,16 @@ class RequestRateTracker {
 
     /**
      * Sync with the Autotask API to get actual usage statistics
+     *
+     * Note: The ThresholdInformation API call itself IS counted by Autotask in their total.
+     * We sync the actual count from the API response to keep our local tracking accurate.
      */
     public async syncWithApi(): Promise<void> {
         this.debugLog('Starting API threshold sync');
         try {
-            // Don't count this API call in our tracking
-            this.requestCount--;
-            if (this.requestCount < 0) this.requestCount = 0;
-            this.debugLog(`Adjusted counter to ${this.requestCount} before API call`);
-
-            // This will be implemented by the API caller
+            // Fetch threshold information from Autotask
+            // Note: This call bypasses our rate limiter to avoid circular dependency,
+            // but Autotask still counts it in their total
             const result = await this.fetchThresholdInfo();
 
             if (result) {
@@ -172,8 +177,8 @@ class RequestRateTracker {
                 const oldActualCount = this.actualUsageCount;
                 const oldThreshold = this.thresholdLimit;
 
-                // When we get the actual count, adjust our local counter to match it
-                // This helps keep the counter more accurate between syncs
+                // Sync our local counter with the actual API count
+                // This includes the ThresholdInformation call we just made
                 this.actualUsageCount = result.currentTimeframeRequestCount;
                 this.thresholdLimit = result.externalRequestThreshold;
                 this.requestCount = result.currentTimeframeRequestCount;
@@ -246,22 +251,64 @@ export function calculateThrottleDuration(usagePercent: number): number {
 
 /**
  * Handles rate limiting for API requests
+ *
+ * Implements progressive throttling based on usage:
+ * - 50-75%: 1 second delay
+ * - 75-90%: 2 second delay
+ * - 90%+: 5 second delay
+ * - At/over limit: Wait until rolling 60-minute window allows new requests
+ *
+ * Note: Autotask also adds server-side latency:
+ * - 50-75% usage: +0.5s per request
+ * - 75%+ usage: +1s per request
+ * See: https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/General_Topics/REST_Thresholds_Limits.htm
+ *
+ * @param maxWaitMs Maximum time to wait before giving up (default: 10 minutes)
+ * @throws Error if rate limit cannot be satisfied within maxWaitMs
  */
-export async function handleRateLimit(): Promise<void> {
+export async function handleRateLimit(maxWaitMs = 600000): Promise<void> {
     const rateTracker = RequestRateTracker.getInstance();
     const usagePercent = rateTracker.trackRequest();
 
-    // If we're over the rate limit, wait before proceeding
+    // If we're at or over the rate limit, wait until the rolling window allows new requests
     if (rateTracker.shouldThrottle()) {
-        const baseDelay = rateTracker.getThrottleDuration();
-        console.debug(`[RateLimit] Adding throttle delay of ${baseDelay}ms (at limit)`);
-        await new Promise(resolve => setTimeout(resolve, baseDelay));
+        const currentCount = rateTracker.getCurrentCount();
+        const limit = rateTracker.getThresholdLimit();
+
+        console.warn(`[RateLimit] Rate limit reached: ${currentCount}/${limit} requests. Waiting for rolling window to reset...`);
+
+        // Calculate how long to wait based on the rolling 60-minute window
+        // We need to wait until enough time has passed for the oldest requests to fall out of the window
+        const waitInterval = 5000; // Check every 5 seconds
+        let totalWaitTime = 0;
+
+        while (rateTracker.shouldThrottle() && totalWaitTime < maxWaitMs) {
+            await new Promise(resolve => setTimeout(resolve, waitInterval));
+            totalWaitTime += waitInterval;
+
+            // Try to sync with API to get updated count every 30 seconds
+            if (totalWaitTime >= 30000 && totalWaitTime % 30000 < waitInterval) {
+                console.debug(`[RateLimit] Still waiting... (${(totalWaitTime / 1000).toFixed(0)}s elapsed)`);
+                await rateTracker.syncWithApi();
+            }
+        }
+
+        if (rateTracker.shouldThrottle()) {
+            throw new Error(
+                `Rate limit exceeded: Unable to proceed after waiting ${(maxWaitMs / 1000).toFixed(0)} seconds. ` +
+                `Current usage: ${currentCount}/${limit} requests in the last 60 minutes. ` +
+                `Please reduce API call frequency or wait for the rolling window to reset.`
+            );
+        }
+
+        console.log(`[RateLimit] Rate limit cleared after ${(totalWaitTime / 1000).toFixed(0)}s wait`);
+        return;
     }
 
-    // Add small delay based on current usage
+    // Apply progressive throttling based on current usage
     const throttleDelay = rateTracker.getThrottleDuration();
     if (throttleDelay > 0) {
-        console.debug(`[RateLimit] Adding throttle delay of ${throttleDelay}ms (usage: ${usagePercent.toFixed(1)}%)`);
+        console.debug(`[RateLimit] Applying throttle delay of ${throttleDelay}ms (usage: ${usagePercent.toFixed(1)}%)`);
         await new Promise(resolve => setTimeout(resolve, throttleDelay));
     }
 }

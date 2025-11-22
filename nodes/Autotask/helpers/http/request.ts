@@ -274,6 +274,20 @@ export type { IUrlOptions };
 
 /**
  * Fetches the current API usage threshold information from Autotask
+ *
+ * This function intentionally bypasses the rate limiter to avoid a circular dependency:
+ * - The rate limiter needs threshold info to know if it should throttle
+ * - Getting threshold info requires making an API call
+ * - Making an API call would trigger the rate limiter
+ * - This creates an infinite loop
+ *
+ * However, per Autotask API documentation, this call IS counted in the total request count:
+ * https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/General_Topics/REST_Thresholds_Limits.htm
+ *
+ * The response includes the current count which already reflects this call, so our
+ * rate tracker syncs with the actual count from the API.
+ *
+ * @returns Threshold information including current usage, or null if the request fails
  */
 export async function fetchThresholdInformation(
 	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
@@ -294,7 +308,7 @@ export async function fetchThresholdInformation(
 			json: true,
 		};
 
-		// This special request should not go through normal rate limiting
+		// Bypass rate limiter to avoid circular dependency (see function documentation above)
 		const response = await this.helpers.request(options);
 
 		if (response && typeof response === 'object') {
@@ -473,6 +487,24 @@ export async function autotaskApiRequest<T = JsonObject>(
 		const status = error.response?.status;
 		const url = options.url;
 		console.warn(`API ${method} ${url} failed (${status}): ${getErrorMessage(error)}`);
+
+		// Handle 429 Too Many Requests with specific error message
+		if (status === 429) {
+			const rateLimitError: JsonObject = {
+				message: 'Autotask API rate limit exceeded (429 Too Many Requests). ' +
+					'The API allows 10,000 requests per 60-minute rolling window. ' +
+					'This request was blocked because the limit has been reached. ' +
+					'The rate limiter will automatically wait for the window to reset before retrying. ' +
+					'To avoid this, reduce the frequency of API calls or spread them over a longer time period.',
+				statusCode: 429,
+				description: 'Autotask API rate limit exceeded (429 Too Many Requests). ' +
+					'The API allows 10,000 requests per 60-minute rolling window. ' +
+					'This request was blocked because the limit has been reached. ' +
+					'The rate limiter will automatically wait for the window to reset before retrying. ' +
+					'To avoid this, reduce the frequency of API calls or spread them over a longer time period.',
+			};
+			throw new NodeApiError(this.getNode(), rateLimitError);
+		}
 
 		// Import the createStandardErrorObject function
 		const { createStandardErrorObject } = await import('../../helpers/errorHandler');
