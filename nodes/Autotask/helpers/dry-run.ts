@@ -63,6 +63,9 @@ export async function createDryRunResponse(
         }
     };
 
+    // Add clear dry run indicator message
+    notes.unshift('DRY RUN: No changes were made. This is a preview of the request that would be sent.');
+
     // Add query parameters if present
     if (requestDetails.query && Object.keys(requestDetails.query).length > 0) {
         response.request.query = requestDetails.query;

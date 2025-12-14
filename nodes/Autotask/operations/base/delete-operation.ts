@@ -6,7 +6,7 @@ import { handleErrors } from '../../helpers/errorHandler';
 import { getEntityMetadata } from '../../constants/entities';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { BaseOperation } from './base-operation';
-import { isDryRunEnabled } from '../../helpers/dry-run';
+import { isDryRunEnabled, createDryRunResponse, type DryRunResponse } from '../../helpers/dry-run';
 
 /**
  * Base class for deleting entities
@@ -23,7 +23,7 @@ export class DeleteOperation<T extends IAutotaskEntity> extends BaseOperation {
 	/**
 	 * Execute delete operation
 	 */
-	async execute(itemIndex: number): Promise<void> {
+	async execute(itemIndex: number): Promise<void | DryRunResponse> {
 		return await handleErrors(
 			this.context,
 			async () => {
@@ -58,23 +58,34 @@ export class DeleteOperation<T extends IAutotaskEntity> extends BaseOperation {
 					}
 				}
 
-				// Respect dry-run: skip actual DELETE when enabled
-				if (isDryRunEnabled(this.context, itemIndex)) {
-					console.debug('[DeleteOperation] Dry-run mode enabled, skipping DELETE request');
-					return;
-				}
-
-				// Delete entity using autotaskApiRequest's built-in pluralization
-				await autotaskApiRequest.call(
+			// Check for dry-run mode
+			if (isDryRunEnabled(this.context, itemIndex)) {
+				console.debug('[DeleteOperation] Dry-run mode enabled, returning request preview');
+				const preview = await createDryRunResponse(
 					this.context,
-					'DELETE',
-					endpoint,
+					this.entityType,
+					'delete',
+					{
+						method: 'DELETE',
+						url: endpoint,
+					},
+					itemIndex
 				);
-			},
-			{
-				operation: 'delete',
-				entityType: this.entityType,
-			},
-		);
-	}
+				return preview;
+			}
+
+			// Delete entity using autotaskApiRequest's built-in pluralization
+			await autotaskApiRequest.call(
+				this.context,
+				'DELETE',
+				endpoint,
+			);
+			return;
+		},
+		{
+			operation: 'delete',
+			entityType: this.entityType,
+		},
+	);
+}
 }

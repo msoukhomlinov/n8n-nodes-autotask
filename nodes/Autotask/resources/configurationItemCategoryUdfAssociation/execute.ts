@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
   CreateOperation,
@@ -80,9 +80,9 @@ export async function executeConfigurationItemCategoryUdfAssociationOperation(
           const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
           console.log('Debug: Created DeleteOperation instance');
 
-          await deleteOp.execute(i);
+          const response = await deleteOp.execute(i);
           console.log('Debug: Delete operation completed');
-          returnData.push({ json: { success: true } });
+          returnData.push({ json: (response || { success: true }) as IDataObject });
           break;
         }
 

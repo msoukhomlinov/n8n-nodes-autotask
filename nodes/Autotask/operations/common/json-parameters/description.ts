@@ -65,7 +65,7 @@ export const outputModeOption: INodeProperties = {
 };
 
 /**
- * Dry run option for all operations
+ * Dry run option for write operations (create, update, delete)
  */
 export const dryRunOption: INodeProperties = {
     displayName: 'Dry Run',
@@ -73,7 +73,12 @@ export const dryRunOption: INodeProperties = {
     type: 'boolean',
     default: false,
     description: 'Whether to return a request preview instead of executing the operation. Useful for testing and validation.',
-    hint: 'When enabled, no API call is made. Instead, returns the request details that would be sent.',
+    hint: 'When enabled, no API call is made. Instead, returns the request details that would be sent. No changes are made to Autotask.',
+    displayOptions: {
+        show: {
+            operation: ['create', 'update', 'delete'],
+        },
+    },
 };
 
 /**

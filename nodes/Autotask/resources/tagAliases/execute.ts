@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
@@ -41,7 +41,7 @@ export async function executeTagAliasOperation(
 
 					const response = await deleteOp.execute(i);
 					console.log('Debug: Delete operation response:', response);
-					returnData.push({ json: { success: true } });
+					returnData.push({ json: (response || { success: true }) as IDataObject });
 					break;
 				}
 
