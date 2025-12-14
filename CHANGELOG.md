@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.3.0] - 2025-01-XX
+
+### Added
+
+- Added dry run option for all write operations (create, update, delete). When enabled, returns a preview of the request that would be sent without making any changes to Autotask. Useful for testing and validation.
+
 ## [1.2.6] - 2025-11-23
 
 ### Fixed

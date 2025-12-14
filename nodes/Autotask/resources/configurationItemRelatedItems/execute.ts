@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	CreateOperation,
@@ -29,7 +29,7 @@ export async function executeConfigurationItemRelatedItemOperation(
 
 					const response = await createOp.execute(i);
 					console.log('Debug: Operation response:', response);
-					returnData.push({ json: response });
+					returnData.push({ json: response as unknown as IDataObject });
 					break;
 				}
 
@@ -40,7 +40,7 @@ export async function executeConfigurationItemRelatedItemOperation(
 
 					const response = await getOp.execute(i);
 					console.log('Debug: Get operation response:', response);
-					returnData.push({ json: response });
+					returnData.push({ json: response as unknown as IDataObject });
 					break;
 				}
 
@@ -88,16 +88,19 @@ export async function executeConfigurationItemRelatedItemOperation(
 
 					const id = this.getNodeParameter('id', i) as string;
 
-					await deleteOp.execute(i);
+					const response = await deleteOp.execute(i);
 					console.log('Debug: Delete operation completed');
-
-					returnData.push({
-						json: {
-							success: true,
+					if (response && typeof response === 'object' && 'dryRun' in response) {
+						returnData.push({ json: response as unknown as IDataObject });
+					} else {
+						returnData.push({
+							json: {
+								success: true,
 							id,
 							entityType: ENTITY_TYPE,
-						}
-					});
+							}
+						});
+					}
 					break;
 				}
 

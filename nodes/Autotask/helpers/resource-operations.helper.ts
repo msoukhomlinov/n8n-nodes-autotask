@@ -6,7 +6,7 @@ import { addPicklistLabelOption } from '../operations/common/picklist-labels';
 import { addReferenceLabelOption } from '../operations/common/reference-labels';
 import { addSelectColumnsOption } from '../operations/common/select-columns';
 import { flattenUdfsOption } from '../operations/common/udf-flattening';
-import { addAgentFriendlyOptions } from '../operations/common/json-parameters';
+import { addAgentFriendlyOptions, addDryRunOption } from '../operations/common/json-parameters';
 
 /**
  * Operation group types
@@ -52,7 +52,7 @@ export function addOperationsToResource(
 	baseFields: INodeProperties[],
 	config: IOperationAdditionConfig,
 ): INodeProperties[] {
-	const properties = [...baseFields];
+	let properties = [...baseFields];
 	const operationProperty = properties.find(p => p.name === 'operation' && p.type === 'options') as INodeProperties & { options: INodePropertyOptions[] };
 
 	if (operationProperty) {
@@ -104,6 +104,19 @@ export function addOperationsToResource(
 				},
 			}));
 			properties.push(...advancedOptions);
+		}
+
+		// Check for write operations (create, update, delete)
+		const hasWriteOperations = operationProperty.options.some((op: INodePropertyOptions) =>
+			['create', 'update', 'delete'].includes(op.value as string)
+		);
+
+		// Add dry run option for write operations if not already present
+		if (hasWriteOperations) {
+			const hasDryRunOption = properties.some(prop => prop.name === 'dryRun');
+			if (!hasDryRunOption && !config.excludeOperations?.includes('dryRun')) {
+				properties = addDryRunOption(properties, config.resourceName);
+			}
 		}
 
 		// Add picklist label option if get operations exist, not excluded, and not already present
@@ -158,6 +171,24 @@ export function addOperationsToResource(
 			updatedProperties = addAgentFriendlyOptions(updatedProperties, config.resourceName, agentFriendlyConfig);
 
 			return updatedProperties;
+		}
+	}
+
+	// Check for write operations in resources without get operations (write-only resources)
+	if (!operationProperty) {
+		const writeOnlyOperationProperty = properties.find(p => p.name === 'operation' && p.type === 'options') as INodeProperties & { options: INodePropertyOptions[] };
+		if (writeOnlyOperationProperty) {
+			const hasWriteOperations = writeOnlyOperationProperty.options.some((op: INodePropertyOptions) =>
+				['create', 'update', 'delete'].includes(op.value as string)
+			);
+
+		// Add dry run option for write operations if not already present
+		if (hasWriteOperations) {
+			const hasDryRunOption = properties.some(prop => prop.name === 'dryRun');
+			if (!hasDryRunOption && !config.excludeOperations?.includes('dryRun')) {
+				properties = addDryRunOption(properties, config.resourceName);
+			}
+		}
 		}
 	}
 

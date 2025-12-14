@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-1.2.5-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-1.3.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -208,6 +208,7 @@ The node includes an Autotask Trigger node that can receive webhook events from 
 - **File-based Caching**: Improved performance with persistent caching that can be shared between workflows and runs
 - **Timezone Handling**: Automatic conversion between local time and UTC
 - **API Usage Monitoring**: Check current API usage thresholds and limits using the API Threshold resource to help prevent hitting rate limits and ensure smooth operations
+- **Dry Run Mode**: Preview write operations (create, update, delete) without making actual changes. When enabled, returns a preview of the request that would be sent, useful for testing and validation
 
 ### API Threshold Resource
 

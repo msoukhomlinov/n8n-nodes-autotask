@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	CreateOperation,
@@ -30,7 +30,7 @@ export async function executeContractBillingRuleOperation(
 
 					const response = await createOp.execute(i);
 					console.log('Debug: Operation response:', response);
-					returnData.push({ json: response });
+					returnData.push({ json: response as unknown as IDataObject });
 					break;
 				}
 
@@ -42,7 +42,7 @@ export async function executeContractBillingRuleOperation(
 
 					const response = await updateOp.execute(i, entityId);
 					console.log('Debug: Update operation response:', response);
-					returnData.push({ json: response });
+					returnData.push({ json: response as unknown as IDataObject });
 					break;
 				}
 
@@ -53,7 +53,7 @@ export async function executeContractBillingRuleOperation(
 
 					const response = await getOp.execute(i);
 					console.log('Debug: Get operation response:', response);
-					returnData.push({ json: response });
+					returnData.push({ json: response as unknown as IDataObject });
 					break;
 				}
 
@@ -100,14 +100,18 @@ export async function executeContractBillingRuleOperation(
 					const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					console.log('Debug: Created DeleteOperation instance');
 
-					await deleteOp.execute(i);
+					const response = await deleteOp.execute(i);
 					console.log('Debug: Delete operation completed');
-					returnData.push({
-						json: {
-							success: true,
-							message: `Contract Billing Rule with ID ${this.getNodeParameter('id', i)} was deleted successfully`,
-						}
-					});
+					if (response && typeof response === 'object' && 'dryRun' in response) {
+						returnData.push({ json: response as unknown as IDataObject });
+					} else {
+						returnData.push({
+							json: {
+								success: true,
+								message: `Contract Billing Rule with ID ${this.getNodeParameter('id', i)} was deleted successfully`,
+							}
+						});
+					}
 					break;
 				}
 

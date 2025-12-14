@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	UpdateOperation,
@@ -9,7 +9,7 @@ import {
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 import { autotaskApiRequest } from '../../helpers/http';
-import type { IBinaryData, IDataObject } from 'n8n-workflow';
+import type { IBinaryData } from 'n8n-workflow';
 
 const ENTITY_TYPE = 'invoice';
 

@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	CreateOperation,
@@ -30,7 +30,7 @@ export async function executeHolidayOperation(
 
 					const response = await createOp.execute(i);
 					console.log('Debug: Operation response:', response);
-					returnData.push({ json: response });
+					returnData.push({ json: response as unknown as IDataObject });
 					break;
 				}
 
@@ -38,14 +38,14 @@ export async function executeHolidayOperation(
 					const entityId = this.getNodeParameter('id', i) as string;
 					const updateOp = new UpdateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const response = await updateOp.execute(i, entityId);
-					returnData.push({ json: response });
+					returnData.push({ json: response as unknown as IDataObject });
 					break;
 				}
 
 				case 'get': {
 					const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this, 'holidaySet');
 					const response = await getOp.execute(i);
-					returnData.push({ json: response });
+					returnData.push({ json: response as unknown as IDataObject });
 					break;
 				}
 
@@ -80,14 +80,18 @@ export async function executeHolidayOperation(
 					const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					console.log('Debug: Created DeleteOperation instance');
 
-					await deleteOp.execute(i);
+					const response = await deleteOp.execute(i);
 					console.log('Debug: Delete operation completed');
-					returnData.push({
-						json: {
-							success: true,
-							message: `Holiday with ID ${this.getNodeParameter('id', i)} was deleted successfully`,
-						}
-					});
+					if (response && typeof response === 'object' && 'dryRun' in response) {
+						returnData.push({ json: response as unknown as IDataObject });
+					} else {
+						returnData.push({
+							json: {
+								success: true,
+								message: `Holiday with ID ${this.getNodeParameter('id', i)} was deleted successfully`,
+							}
+						});
+					}
 					break;
 				}
 

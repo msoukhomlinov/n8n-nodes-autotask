@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	CreateOperation,
@@ -46,8 +46,8 @@ export async function executeServiceCallTicketResourceOperation(
 
 				case 'delete': {
 					const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-					await deleteOp.execute(i);
-					returnData.push({ json: { success: true } });
+					const response = await deleteOp.execute(i);
+					returnData.push({ json: (response || { success: true }) as IDataObject });
 					break;
 				}
 

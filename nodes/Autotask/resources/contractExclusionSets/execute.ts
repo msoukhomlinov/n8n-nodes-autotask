@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
   CreateOperation,
@@ -26,7 +26,7 @@ export async function executeContractExclusionSetsOperation(
         case 'create': {
           const createOp = new CreateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
           const response = await createOp.execute(i);
-          returnData.push({ json: response });
+          returnData.push({ json: response as unknown as IDataObject });
           break;
         }
 
@@ -34,14 +34,14 @@ export async function executeContractExclusionSetsOperation(
           const entityId = this.getNodeParameter('id', i) as string;
           const updateOp = new UpdateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
           const response = await updateOp.execute(i, entityId);
-          returnData.push({ json: response });
+          returnData.push({ json: response as unknown as IDataObject });
           break;
         }
 
         case 'get': {
           const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this);
           const response = await getOp.execute(i);
-          returnData.push({ json: response });
+          returnData.push({ json: response as unknown as IDataObject });
           break;
         }
 
@@ -56,14 +56,18 @@ export async function executeContractExclusionSetsOperation(
         case 'delete': {
           const entityId = this.getNodeParameter('id', i) as string;
           const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-          await deleteOp.execute(i);
-          returnData.push({
-            json: {
-              success: true,
-              id: entityId,
-              message: `Contract Exclusion Set with ID ${entityId} was successfully deleted`,
-            },
-          });
+          const response = await deleteOp.execute(i);
+          if (response && typeof response === 'object' && 'dryRun' in response) {
+            returnData.push({ json: response as unknown as IDataObject });
+          } else {
+            returnData.push({
+              json: {
+                success: true,
+                id: entityId,
+                message: `Contract Exclusion Set with ID ${entityId} was successfully deleted`,
+              },
+            });
+          }
           break;
         }
 
