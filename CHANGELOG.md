@@ -2,7 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [1.3.0] - 2025-01-XX
+## [1.3.1] - 2025-12-14
+
+### Fixed
+
+- Fixed dry run option appearing for read operations (get, getMany, getManyAdvanced). Dry run now only appears for write operations (create, update, delete) as intended. Removed dry run handling from read operation classes since the option is not available for these operations.
+
+## [1.3.0] - 2025-12-14
 
 ### Added
 
