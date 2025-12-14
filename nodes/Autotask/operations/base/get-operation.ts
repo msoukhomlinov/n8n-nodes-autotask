@@ -8,7 +8,6 @@ import { getSelectedColumns } from '../common/select-columns';
 import { GetManyOperation } from './get-many';
 import { FilterOperators } from '../../constants/filters';
 import { processOutputMode } from '../../helpers/output-mode';
-import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 
 /**
  * Base class for getting entities
@@ -35,22 +34,6 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 					.replace('{entity}', this.entityType)
 					.replace('{details}', 'Entity ID is required for get operation')
 			);
-		}
-
-		// Check for dry-run mode
-		if (isDryRunEnabled(this.context, itemIndex)) {
-			console.debug('[GetOperation] Dry-run mode enabled, returning request preview');
-			const endpoint = await this.buildOperationUrl(itemIndex);
-			return await createDryRunResponse(
-				this.context,
-				this.entityType,
-				'get',
-				{
-					method: 'GET',
-					url: `${endpoint}/${entityId}`,
-				},
-				itemIndex
-			) as unknown as T;
 		}
 
 		// Check if columns are selected

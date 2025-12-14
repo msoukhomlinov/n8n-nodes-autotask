@@ -151,6 +151,7 @@ export function addDryRunOption(
         ...dryRunOption,
         displayOptions: {
             show: {
+                ...dryRunOption.displayOptions?.show,  // Preserve operation restriction
                 resource: [resourceName],
             },
         },

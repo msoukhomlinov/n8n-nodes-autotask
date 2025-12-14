@@ -17,7 +17,6 @@ import { processResponseDatesArray } from '../../helpers/date-time';
 import { getSelectedColumns, prepareIncludeFields } from '../common/select-columns';
 import { flattenUdfsArray } from '../../helpers/udf/flatten';
 import { processOutputMode } from '../../helpers/output-mode';
-import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 import { withAgentHint } from '../../helpers/agent-error-hints';
 
 /**
@@ -87,31 +86,6 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 		return await handleErrors(
 			this.context,
 			async () => {
-				// Check for dry-run mode
-				if (isDryRunEnabled(this.context, itemIndex)) {
-					console.debug('[GetManyOperation] Dry-run mode enabled, returning request preview');
-					let endpoint: string;
-					if (this.parentType) {
-						// For child entities, we need to get the parent ID from context
-						const parentId = this.context.getNodeParameter(`${this.parentType}ID`, itemIndex, '') as string | number;
-						endpoint = buildChildEntityUrl(this.parentType, this.entityType, parentId);
-					} else {
-						endpoint = buildEntityUrl(this.entityType);
-					}
-
-					return [await createDryRunResponse(
-						this.context,
-						this.entityType,
-						'getMany',
-						{
-							method: 'POST',
-							url: endpoint,
-							body: filters as unknown as IDataObject,
-						},
-						itemIndex
-					)] as unknown as T[];
-				}
-
 				// When this GetManyOperation is being used for picklist/reference queries we
 				// must ignore the node-level pagination settings (returnAll / maxRecords) that
 				// end-users configure for their primary entity request. Those settings would
