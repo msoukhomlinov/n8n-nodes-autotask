@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.4.1] - 2026-01-10
+
+### Added
+
+- Added Time Entry Attachment resource for managing files attached to time entries.
+- Time Entry Attachment resource supports: create, get many, count, download, and delete operations.
+
+
 ## [1.4.0] - 2026-01-10
 
 ### Added

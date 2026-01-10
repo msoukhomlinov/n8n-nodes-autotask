@@ -123,7 +123,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'TagGroup', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	// TimeEntry entity and its attachment
 	{ name: 'TimeEntry', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
-	{ name: 'TimeEntryAttachment', childOf: 'TimeEntry', subname: 'Attachment', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
+	{ name: 'TimeEntryAttachment', childOf: 'TimeEntry', subname: 'Attachments', parentIdField: 'timeEntryID', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.DELETE]: 'parent' } },
 ];
 
 /**
