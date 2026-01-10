@@ -58,9 +58,13 @@ export async function buildRequestBody(options: IRequestBodyOptions): Promise<IR
 	let hasUdfs = false;
 	let udfFieldNames: string[] = [];
 
-	// Always fetch UDF field definitions for entities that support UDFs
-	// This ensures UDF fields are detected regardless of naming convention
-	const udfFields = await getFields(entityType, entityHelper.context, { fieldType: 'udf' }) as IUdfFieldDefinition[];
+	// Check if entity supports UDFs before fetching
+	const supportsUdfs = metadata?.hasUserDefinedFields === true;
+
+	// Fetch UDF field definitions only for entities that support UDFs
+	const udfFields = supportsUdfs
+		? await getFields(entityType, entityHelper.context, { fieldType: 'udf' }) as IUdfFieldDefinition[]
+		: [];
 
 	// Get UDF field names from the validated data that match our UDF definitions
 	if (udfFields.length > 0) {

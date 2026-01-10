@@ -5,6 +5,7 @@ import type { OperationType } from '../types/base/entity-types';
 import { FieldProcessor } from '../operations/base/field-processor';
 import { handleErrors } from './errorHandler';
 import { getFields } from './entity/api';
+import { getEntityMetadata } from '../constants/entities';
 
 /**
  * Get resource mapper fields for an entity type
@@ -20,10 +21,14 @@ export async function getResourceMapperFields(
 
 		console.debug(`[getResourceMapperFields] Starting to fetch fields for ${entityType} (mode: ${mode})`);
 
-		// Get both standard and UDF fields using the unified API
+		// Check if entity supports UDFs
+		const metadata = getEntityMetadata(entityType);
+		const hasUdfs = metadata?.hasUserDefinedFields === true;
+
+		// Get standard fields, and UDF fields only if supported
 		const [standardApiFields, udfApiFields] = await Promise.all([
 			getFields(entityType, this, { fieldType: 'standard', }),
-			getFields(entityType, this, { fieldType: 'udf', isActive: true }),
+			hasUdfs ? getFields(entityType, this, { fieldType: 'udf', isActive: true }) : Promise.resolve([]),
 		]);
 
 		// Summarise fetched field stats

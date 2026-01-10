@@ -465,7 +465,14 @@ export async function autotaskApiRequest<T = JsonObject>(
 
 		// Handle single entity GET responses
 		if (method === 'GET' && !isQueryEndpoint(endpoint)) {
+			// Standard single entity response format
 			if (response?.item) {
+				return response as T;
+			}
+
+			// Some endpoints (like child entity GETs) return items array format
+			const arrayResponse = response as IQueryResponse<T>;
+			if (arrayResponse?.items && Array.isArray(arrayResponse.items)) {
 				return response as T;
 			}
 

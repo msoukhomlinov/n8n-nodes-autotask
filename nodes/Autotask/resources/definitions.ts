@@ -465,6 +465,16 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Ticket Notes, which store information, updates, and communications associated with service desk tickets',
 	},
 	{
+		name: 'Ticket Note Attachment',
+		value: 'ticketNoteAttachment',
+		description: 'Manage Ticket Note Attachments, which are files attached to ticket notes for documentation and reference',
+	},
+	{
+		name: 'Ticket Attachment',
+		value: 'ticketAttachment',
+		description: 'Manage Ticket Attachments, which are files attached to service desk tickets for documentation and reference',
+	},
+	{
 		name: 'Ticket Note Webhook',
 		value: 'ticketNoteWebhook',
 		description: 'Manage Autotask Ticket Note Webhooks',
