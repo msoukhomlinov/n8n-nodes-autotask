@@ -42,6 +42,7 @@ import { executeTicketNoteAttachmentOperation } from './resources/ticketNoteAtta
 import { executeTicketAttachmentOperation } from './resources/ticketAttachments/execute';
 import { executeTicketHistoryOperation } from './resources/ticketHistories/execute';
 import { executeTimeEntryOperation } from './resources/timeEntries/execute';
+import { executeTimeEntryAttachmentOperation } from './resources/timeEntryAttachments/execute';
 import { executeBillingCodeOperation } from './resources/billingCodes/execute';
 import { executeBillingItemsOperation } from './resources/billingItems/execute';
 import { executeChecklistLibraryOperation } from './resources/checklistLibraries/execute';
@@ -109,6 +110,7 @@ import { ticketNoteFields } from './resources/ticketNotes/description';
 import { ticketNoteAttachmentFields } from './resources/ticketNoteAttachments/description';
 import { ticketAttachmentFields } from './resources/ticketAttachments/description';
 import { timeEntryFields } from './resources/timeEntries/description';
+import { timeEntryAttachmentFields } from './resources/timeEntryAttachments/description';
 import { billingCodeFields } from './resources/billingCodes/description';
 import { billingItemsFields } from './resources/billingItems/description';
 import { checklistLibraryFields } from './resources/checklistLibraries/description';
@@ -366,6 +368,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(ticketWebhookFields, { resourceName: 'ticketWebhook' }),
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
+			...addOperationsToResource(timeEntryAttachmentFields, { resourceName: 'timeEntryAttachment' }),
 			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
 			...addOperationsToResource(billingItemsFields, { resourceName: 'billingItems' }),
 			...addOperationsToResource(checklistLibraryFields, { resourceName: 'checklistLibrary' }),
@@ -578,6 +581,8 @@ export class Autotask implements INodeType {
 				return executeTicketHistoryOperation.call(this);
 			case 'timeEntry':
 				return executeTimeEntryOperation.call(this);
+			case 'timeEntryAttachment':
+				return executeTimeEntryAttachmentOperation.call(this);
 			case 'survey':
 				return executeSurveyOperation.call(this);
 			case 'surveyResults':

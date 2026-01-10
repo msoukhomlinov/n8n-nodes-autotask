@@ -489,6 +489,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		value: 'timeEntry',
 		description: 'Manage Time Entries, which record resource work hours against tickets, tasks, or general activities such as meetings, travel, or training',
 	},
+	{
+		name: 'Time Entry Attachment',
+		value: 'timeEntryAttachment',
+		description: 'Manage Time Entry Attachments, which are files attached to time entries for documentation and reference',
+	},
 ];
 
 export const RESOURCE_FIELD: INodeProperties = {
