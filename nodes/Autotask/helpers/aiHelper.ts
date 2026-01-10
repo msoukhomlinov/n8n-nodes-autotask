@@ -6,7 +6,7 @@ import { FieldProcessor } from '../operations/base/field-processor';
 import { getFields } from './entity/api';
 import { handleErrors } from './errorHandler';
 import { getConfiguredTimezone } from './date-time/utils';
-import { AUTOTASK_ENTITIES } from '../constants/entities';
+import { AUTOTASK_ENTITIES, getEntityMetadata } from '../constants/entities';
 import type { IEntityMetadata } from '../types';
 
 /**
@@ -204,10 +204,14 @@ export async function describeResource(
         // Get timezone for this context
         const timezone = await getConfiguredTimezone.call(context);
 
-        // Get both standard and UDF fields using the existing field API
+        // Check if entity supports UDFs
+        const metadata = getEntityMetadata(resource);
+        const hasUdfs = metadata?.hasUserDefinedFields === true;
+
+        // Get standard fields, and UDF fields only if supported
         const [standardFields, udfFields] = await Promise.all([
             getFields(resource, context, { fieldType: 'standard' }) as Promise<IAutotaskField[]>,
-            getFields(resource, context, { fieldType: 'udf', isActive: true }) as Promise<IAutotaskField[]>
+            hasUdfs ? getFields(resource, context, { fieldType: 'udf', isActive: true }) as Promise<IAutotaskField[]> : Promise.resolve([])
         ]);
 
         console.debug(`[aiHelper.describeResource] Retrieved ${standardFields.length} standard, ${udfFields.length} UDF fields`);
@@ -397,9 +401,13 @@ export async function listPicklistValues(
         // Get the field processor to access existing picklist infrastructure
         const processor = FieldProcessor.getInstance(resource, OperationType.QUERY, context as IExecuteFunctions);
 
+        // Check if entity supports UDFs
+        const metadata = getEntityMetadata(resource);
+        const hasUdfs = metadata?.hasUserDefinedFields === true;
+
         // Get all fields to find the specific field
         const standardFields = await getFields(resource, context, { fieldType: 'standard' }) as IAutotaskField[];
-        const udfFields = await getFields(resource, context, { fieldType: 'udf', isActive: true }) as IAutotaskField[];
+        const udfFields = hasUdfs ? await getFields(resource, context, { fieldType: 'udf', isActive: true }) as IAutotaskField[] : [];
         const allFields = [...standardFields, ...udfFields];
 
         // Find the target field with flexible matching

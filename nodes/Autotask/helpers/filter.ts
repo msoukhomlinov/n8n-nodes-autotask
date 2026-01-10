@@ -5,6 +5,7 @@ import type { IAutotaskField } from '../types/base/entity-types';
 import type { IUdfFieldDefinition } from '../types/base/udf-types';
 import { FilterOperators } from '../constants/filters';
 import { getFields } from './entity/api';
+import { getEntityMetadata } from '../constants/entities';
 import type { ResourceOperation } from '../types/base/common';
 
 /**
@@ -17,10 +18,14 @@ export async function getProcessedFieldsMap(
 	entityType: string,
 	context: IExecuteFunctions,
 ): Promise<Map<string, IEntityField>> {
-	// Get both standard and UDF fields
+	// Check if entity supports UDFs
+	const metadata = getEntityMetadata(entityType);
+	const hasUdfs = metadata?.hasUserDefinedFields === true;
+
+	// Get standard fields, and UDF fields only if supported
 	const [standardApiFields, udfApiFields] = await Promise.all([
 		getFields(entityType, context, { fieldType: 'standard' }),
-		getFields(entityType, context, { fieldType: 'udf', isActive: true }),
+		hasUdfs ? getFields(entityType, context, { fieldType: 'udf', isActive: true }) : Promise.resolve([]),
 	]);
 
 	// Combine all fields and create a map for easy lookup

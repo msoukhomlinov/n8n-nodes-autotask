@@ -772,10 +772,14 @@ export class FieldProcessor {
 		return await handleErrors(
 			this.context as IExecuteFunctions,
 			async () => {
-				// Get both standard and UDF fields for this entity type
+				// Check if entity supports UDFs
+				const metadata = getEntityMetadata(this.entityType);
+				const hasUdfs = metadata?.hasUserDefinedFields === true;
+
+				// Get standard fields, and UDF fields only if supported
 				const [standardFields, udfFields] = await Promise.all([
 					this.getFieldsForEntity(this.entityType, 'standard'),
-					this.getFieldsForEntity(this.entityType, 'udf')
+					hasUdfs ? this.getFieldsForEntity(this.entityType, 'udf') : Promise.resolve([])
 				]);
 
 				// Combine standard and UDF fields

@@ -2,6 +2,20 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.4.0] - 2026-01-10
+
+### Added
+
+- Added Ticket Attachment resource for managing files attached directly to tickets.
+- Added Ticket Note Attachment resource for managing files attached to ticket notes.
+- Both attachment resources support: create, get many, count, download, and delete operations.
+- Shared attachment helper utilities (`helpers/attachment.ts`) for future attachment types.
+- File size validation (6MB limit) for attachment uploads.
+
+### Fixed
+
+- Fixed multiple helpers attempting to fetch User Defined Fields (UDFs) for entities that don't support them (e.g. TicketAttachment), causing 404 errors. Affected: resource mapper, filter builder, AI helper, field processor, and body builder. All now check entity metadata before fetching UDF fields.
+
 ## [1.3.1] - 2025-12-14
 
 ### Fixed

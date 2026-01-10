@@ -38,6 +38,8 @@ import { executeTicketChargeOperation } from './resources/ticketCharges/execute'
 import { executeTicketChecklistItemOperation } from './resources/ticketChecklistItems/execute';
 import { executeTicketChecklistLibraryOperation } from './resources/ticketChecklistLibraries/execute';
 import { executeTicketNoteOperation } from './resources/ticketNotes/execute';
+import { executeTicketNoteAttachmentOperation } from './resources/ticketNoteAttachments/execute';
+import { executeTicketAttachmentOperation } from './resources/ticketAttachments/execute';
 import { executeTicketHistoryOperation } from './resources/ticketHistories/execute';
 import { executeTimeEntryOperation } from './resources/timeEntries/execute';
 import { executeBillingCodeOperation } from './resources/billingCodes/execute';
@@ -104,6 +106,8 @@ import { ticketChecklistItemFields } from './resources/ticketChecklistItems/desc
 import { ticketChecklistLibraryFields } from './resources/ticketChecklistLibraries/description';
 import { ticketHistoryFields } from './resources/ticketHistories/description';
 import { ticketNoteFields } from './resources/ticketNotes/description';
+import { ticketNoteAttachmentFields } from './resources/ticketNoteAttachments/description';
+import { ticketAttachmentFields } from './resources/ticketAttachments/description';
 import { timeEntryFields } from './resources/timeEntries/description';
 import { billingCodeFields } from './resources/billingCodes/description';
 import { billingItemsFields } from './resources/billingItems/description';
@@ -356,6 +360,8 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(ticketChecklistItemFields, { resourceName: 'ticketChecklistItem' }),
 			...addOperationsToResource(ticketChecklistLibraryFields, { resourceName: 'ticketChecklistLibrary' }),
 			...addOperationsToResource(ticketNoteFields, { resourceName: 'ticketNote' }),
+			...addOperationsToResource(ticketNoteAttachmentFields, { resourceName: 'ticketNoteAttachment' }),
+			...addOperationsToResource(ticketAttachmentFields, { resourceName: 'ticketAttachment' }),
 			...addOperationsToResource(ticketNoteWebhookFields, { resourceName: 'ticketNoteWebhook' }),
 			...addOperationsToResource(ticketWebhookFields, { resourceName: 'ticketWebhook' }),
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
@@ -560,6 +566,10 @@ export class Autotask implements INodeType {
 				return executeTicketChecklistLibraryOperation.call(this);
 			case 'ticketNote':
 				return executeTicketNoteOperation.call(this);
+			case 'ticketNoteAttachment':
+				return executeTicketNoteAttachmentOperation.call(this);
+			case 'ticketAttachment':
+				return executeTicketAttachmentOperation.call(this);
 			case 'ticketNoteWebhook':
 				return executeTicketNoteWebhookOperation.call(this);
 			case 'ticketWebhook':
