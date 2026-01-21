@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.4.2] - 2026-01-21
+
+### Fixed
+- Restored User Defined Field (UDF) support in resource mapper and \"Select Columns Names or IDs\" for all UDF-capable entities (including Companies, Contacts, Contracts, Opportunities, Projects, Services, Subscriptions and Tasks) by correctly flagging them with `hasUserDefinedFields` in entity metadata, while keeping UDF loading disabled for entities that do not support it (e.g. attachment resources).
+
+
+
 ## [1.4.1] - 2026-01-10
 
 ### Added
