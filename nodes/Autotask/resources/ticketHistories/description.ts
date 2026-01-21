@@ -61,34 +61,4 @@ export const ticketHistoryFields: INodeProperties[] = [
 		},
 		description: 'The ID of the ticket to get history for. This is the only allowed filter.',
 	},
-	{
-		displayName: 'Fields',
-		name: 'fieldsToMap',
-		type: 'resourceMapper',
-		default: {
-			mappingMode: 'defineBelow',
-			value: null,
-		},
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['TicketHistory'],
-				operation: ['getMany'],
-			},
-		},
-		typeOptions: {
-			loadOptionsDependsOn: ['resource', 'operation'],
-			resourceMapper: {
-				resourceMapperMethod: 'getFields',
-				mode: 'add',
-				fieldWords: {
-					singular: 'field',
-					plural: 'fields',
-				},
-				addAllFields: false,
-				multiKeyMatch: true,
-				supportAutoMap: true,
-			},
-		},
-	},
 ];

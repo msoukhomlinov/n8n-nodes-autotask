@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.4.3] - 2026-01-21
+
+### Fixed
+- Removed the `Values to Send` resource mapper UI from the Ticket History `getMany` operation, as TicketHistory queries are restricted by the Autotask API to a single `ticketID equals` filter and do not support selecting fields to send.
+
 ## [1.4.2] - 2026-01-21
 
 ### Fixed
