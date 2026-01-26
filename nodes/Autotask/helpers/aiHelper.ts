@@ -236,11 +236,15 @@ export async function describeResource(
         // Convert processed fields to FieldMeta format
         const allProcessedFields = [...processedStandardFields, ...processedUdfFields];
         const fields: FieldMeta[] = allProcessedFields.map(field => {
-            // Check if field has picklist values and if they're too large to include
-            const hasLargePicklist = field.options && Array.isArray(field.options) && field.options.length > 50;
-
-            // Get original field to access picklistParentValueField
+            // Get original field to access picklistParentValueField and raw picklistValues
             const originalField = originalFieldsMap.get(field.id);
+
+            // Check if field has a parent dependency (like subIssueType -> issueType)
+            const hasDependentPicklist = Boolean(originalField?.picklistParentValueField);
+
+            // For dependent picklists, always include values; for others, limit to 50
+            const hasLargePicklist = !hasDependentPicklist &&
+                field.options && Array.isArray(field.options) && field.options.length > 50;
 
             const fieldMeta: FieldMeta = {
                 id: field.id,
@@ -271,29 +275,21 @@ export async function describeResource(
                 fieldMeta.dependencies = dependencies;
             }
 
-            // Include allowed values for small picklists, exclude for large ones
-            // For fields with parent dependencies, try to include parentValue from raw picklistValues
-            if (fieldMeta.isPickList && field.options && !hasLargePicklist) {
-                // If field has picklistParentValueField, try to get parentValue from original field's picklistValues
+            // Include allowed values for picklists
+            // Always include for dependent picklists (with parentValue), exclude large independent picklists
+            if (fieldMeta.isPickList && !hasLargePicklist) {
+                // For dependent picklists or when original has picklistValues, use raw data to get parentValue
                 if (originalField?.picklistValues && originalField.picklistValues.length > 0) {
-                    // Create a map of value -> parentValue for quick lookup
-                    const parentValueMap = new Map<string, string>();
-                    originalField.picklistValues.forEach(pv => {
-                        if (pv.parentValue) {
-                            parentValueMap.set(pv.value, pv.parentValue);
-                        }
-                    });
-
-                    fieldMeta.allowedValues = (field.options as Array<{ value: string | number; name?: string; label?: string }>).map(option => {
-                        const valueStr = String(option.value);
-                        return {
-                            id: option.value,
-                            label: option.name || option.label || valueStr,
-                            parentValue: parentValueMap.get(valueStr)
-                        };
-                    });
-                } else {
-                    // Fallback to simple mapping without parentValue
+                    // Use raw picklistValues directly to preserve parentValue
+                    fieldMeta.allowedValues = originalField.picklistValues
+                        .filter(pv => pv.isActive)
+                        .map(pv => ({
+                            id: pv.value,
+                            label: pv.label,
+                            parentValue: pv.parentValue || undefined
+                        }));
+                } else if (field.options) {
+                    // Fallback to processed options without parentValue
                     fieldMeta.allowedValues = (field.options as Array<{ value: string | number; name?: string; label?: string }>).map(option => ({
                         id: option.value,
                         label: option.name || option.label || String(option.value)
@@ -318,7 +314,7 @@ export async function describeResource(
             const dependentInfo = dependentPicklistFields.map(f =>
                 `${f.id} depends on ${f.picklistParentField}`
             ).join(', ');
-            notes.push(`Fields with parent-dependent picklists (values depend on parent field): ${dependentInfo}. Use listPicklistValues to get values with parentValue mappings.`);
+            notes.push(`Dependent picklists: ${dependentInfo}. Filter allowedValues by matching parentValue to the parent field's selected value.`);
         }
 
         const requiredFields = fields.filter(f => f.required);
