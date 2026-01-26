@@ -131,7 +131,8 @@ export interface FieldMeta {
     udf: boolean;
     isPickList: boolean;
     isReference: boolean;
-    allowedValues?: Array<{ id: string | number; label: string }>;
+    allowedValues?: Array<{ id: string | number; label: string; parentValue?: string }>;
+    picklistParentField?: string;  // e.g., "issueType" for subIssueType field
     referencesEntity?: string;  // What entity this field references (e.g., 'company', 'contact')
     dependencies?: string[];    // Other fields this field depends on
 }
@@ -169,7 +170,7 @@ export interface ListPicklistValuesResponse {
     total?: number;
     totalPages?: number;
     hasMore?: boolean;
-    values: Array<{ id: string | number; label: string }>;
+    values: Array<{ id: string | number; label: string; parentValue?: string }>;
     fieldInfo?: {
         dataType: string | number;
         isRequired: boolean;
@@ -226,11 +227,20 @@ export async function describeResource(
             processor.processFields(udfFields, operation, { mode, fieldType: 'udf' })
         ]);
 
+        // Create a map of field names to original fields for accessing picklistParentValueField
+        const originalFieldsMap = new Map<string, IAutotaskField>();
+        [...standardFields, ...udfFields].forEach(f => {
+            originalFieldsMap.set(f.name, f);
+        });
+
         // Convert processed fields to FieldMeta format
         const allProcessedFields = [...processedStandardFields, ...processedUdfFields];
         const fields: FieldMeta[] = allProcessedFields.map(field => {
             // Check if field has picklist values and if they're too large to include
             const hasLargePicklist = field.options && Array.isArray(field.options) && field.options.length > 50;
+
+            // Get original field to access picklistParentValueField
+            const originalField = originalFieldsMap.get(field.id);
 
             const fieldMeta: FieldMeta = {
                 id: field.id,
@@ -241,6 +251,11 @@ export async function describeResource(
                 isPickList: Boolean(field.options && Array.isArray(field.options) && field.options.length > 0),
                 isReference: Boolean((field as unknown as { isReference?: boolean }).isReference)
             };
+
+            // Add picklistParentField if the field has a parent picklist dependency
+            if (originalField?.picklistParentValueField) {
+                fieldMeta.picklistParentField = originalField.picklistParentValueField;
+            }
 
             // Add entity reference information for reference fields
             if (fieldMeta.isReference) {
@@ -257,11 +272,33 @@ export async function describeResource(
             }
 
             // Include allowed values for small picklists, exclude for large ones
+            // For fields with parent dependencies, try to include parentValue from raw picklistValues
             if (fieldMeta.isPickList && field.options && !hasLargePicklist) {
-                fieldMeta.allowedValues = (field.options as Array<{ value: string | number; name?: string; label?: string }>).map(option => ({
-                    id: option.value,
-                    label: option.name || option.label || String(option.value)
-                }));
+                // If field has picklistParentValueField, try to get parentValue from original field's picklistValues
+                if (originalField?.picklistValues && originalField.picklistValues.length > 0) {
+                    // Create a map of value -> parentValue for quick lookup
+                    const parentValueMap = new Map<string, string>();
+                    originalField.picklistValues.forEach(pv => {
+                        if (pv.parentValue) {
+                            parentValueMap.set(pv.value, pv.parentValue);
+                        }
+                    });
+
+                    fieldMeta.allowedValues = (field.options as Array<{ value: string | number; name?: string; label?: string }>).map(option => {
+                        const valueStr = String(option.value);
+                        return {
+                            id: option.value,
+                            label: option.name || option.label || valueStr,
+                            parentValue: parentValueMap.get(valueStr)
+                        };
+                    });
+                } else {
+                    // Fallback to simple mapping without parentValue
+                    fieldMeta.allowedValues = (field.options as Array<{ value: string | number; name?: string; label?: string }>).map(option => ({
+                        id: option.value,
+                        label: option.name || option.label || String(option.value)
+                    }));
+                }
             }
 
             return fieldMeta;
@@ -273,6 +310,15 @@ export async function describeResource(
 
         if (largePicklistFields.length > 0) {
             notes.push(`Fields with large picklists (use listPicklistValues): ${largePicklistFields.map(f => f.id).join(', ')}`);
+        }
+
+        // Add note about fields with dependent picklists
+        const dependentPicklistFields = fields.filter(f => f.picklistParentField);
+        if (dependentPicklistFields.length > 0) {
+            const dependentInfo = dependentPicklistFields.map(f =>
+                `${f.id} depends on ${f.picklistParentField}`
+            ).join(', ');
+            notes.push(`Fields with parent-dependent picklists (values depend on parent field): ${dependentInfo}. Use listPicklistValues to get values with parentValue mappings.`);
         }
 
         const requiredFields = fields.filter(f => f.required);
@@ -398,9 +444,6 @@ export async function listPicklistValues(
             throw new Error('Page must be 1 or greater');
         }
 
-        // Get the field processor to access existing picklist infrastructure
-        const processor = FieldProcessor.getInstance(resource, OperationType.QUERY, context as IExecuteFunctions);
-
         // Check if entity supports UDFs
         const metadata = getEntityMetadata(resource);
         const hasUdfs = metadata?.hasUserDefinedFields === true;
@@ -426,19 +469,14 @@ export async function listPicklistValues(
                           (targetField as unknown as { isUdf?: boolean }).isUdf === true ||
                           standardFields.find(f => f.name === targetField.name) === undefined;
 
-        // Process the field to get picklist values
-        const { fields: processedFields } = await processor.processFields([targetField], OperationType.QUERY, {
-            mode: 'read',
-            fieldType: isUdfField ? 'udf' : 'standard'
-        });
+        // Check if field is a picklist
+        if (!targetField.isPickList) {
+            throw new Error(`Field '${fieldId}' in resource '${resource}' is not a picklist field (type: ${targetField.dataType}). Only picklist fields have selectable values.`);
+        }
 
-        const processedField = processedFields[0];
-        if (!processedField || !processedField.options) {
-            // Check if field exists but is not a picklist
-            if (processedField && !targetField.isPickList) {
-                throw new Error(`Field '${fieldId}' in resource '${resource}' is not a picklist field (type: ${targetField.dataType}). Only picklist fields have selectable values.`);
-            }
-
+        // Access raw picklistValues directly to preserve parentValue
+        // This bypasses the processing pipeline which doesn't preserve parentValue
+        if (!targetField.picklistValues || targetField.picklistValues.length === 0) {
             return {
                 fieldId,
                 resource,
@@ -449,18 +487,21 @@ export async function listPicklistValues(
                 hasMore: false,
                 values: [],
                 fieldInfo: {
-                dataType: String(targetField.dataType),
-                isRequired: targetField.isRequired,
-                isUdf: isUdfField
-            }
+                    dataType: String(targetField.dataType),
+                    isRequired: targetField.isRequired,
+                    isUdf: isUdfField
+                }
             };
         }
 
-        // Extract values from the processed field options
-        let allValues = (processedField.options as Array<{ value: string | number; name?: string; label?: string }>).map(option => ({
-            id: option.value,
-            label: option.name || option.label || String(option.value)
-        }));
+        // Extract values from raw picklistValues to preserve parentValue
+        let allValues = targetField.picklistValues
+            .filter(value => value.isActive)
+            .map(value => ({
+                id: value.value,
+                label: value.label,
+                parentValue: value.parentValue
+            }));
 
         // Apply search filter if provided
         if (query && query.trim()) {
