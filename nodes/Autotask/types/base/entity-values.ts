@@ -16,4 +16,6 @@ export interface IEntityValuePair {
 	isActive?: boolean;
 	/** Referenced entity type for reference fields */
 	referenceEntityType?: string;
+	/** Parent value for dependent picklists (e.g., subIssueType -> issueType) */
+	parentValue?: string;
 }

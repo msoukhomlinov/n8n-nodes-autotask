@@ -127,6 +127,7 @@ function mapUdfField(field: IDataObject): IUdfFieldDefinition {
 				sortOrder: value.sortOrder as number || 0,
 				isActive: value.isActive as boolean || true,
 				isSystem: value.isSystem as boolean || false,
+				parentValue: value.parentValue as string | undefined,
 			}))
 		: undefined;
 

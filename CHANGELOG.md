@@ -6,7 +6,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Fixed
 
-- Fixed AI Helper `describeResource` operation for Ticket resource to include Sub Issue Types with their parent Issue Type mappings. Updated `listPicklistValues` to preserve `parentValue` property, enabling proper mapping between Issue Types and Sub Issue Types.
+- Fixed AI Helper `describeResource` to include all dependent picklist values (e.g., `subIssueType`) with their `parentValue` mappings, regardless of picklist size. Previously, picklists with >50 values were excluded. Also updated `listPicklistValues` and internal picklist helpers to preserve `parentValue` throughout the codebase, enabling proper parent-child relationships like Issue Type to Sub Issue Type.
 - Fixed circular dependency causing node loading to hang by using dynamic imports for `FieldProcessor` in `output-mode.ts` and lazy initialisation of `GetManyOperation` in `value-helper.ts`, breaking the dependency cycle between output-mode → field-processor → entity-values → value-helper → get-many → output-mode.
 
 

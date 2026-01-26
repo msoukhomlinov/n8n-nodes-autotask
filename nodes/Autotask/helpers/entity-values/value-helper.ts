@@ -84,6 +84,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		isDefaultValue: boolean;
 		sortOrder: number;
 		isActive: boolean;
+		parentValue?: string;
 	}>> {
 		// Try to get values from cache first
 		let values: Array<{
@@ -92,6 +93,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			isDefaultValue: boolean;
 			sortOrder: number;
 			isActive: boolean;
+			parentValue?: string;
 		}> | undefined;
 
 		// Only use cache if the service exists and is enabled
@@ -105,6 +107,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 				isDefaultValue: boolean;
 				sortOrder: number;
 				isActive: boolean;
+				parentValue?: string;
 			}>>(cacheKey);
 		}
 

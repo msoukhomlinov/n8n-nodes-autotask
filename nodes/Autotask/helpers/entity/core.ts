@@ -51,7 +51,7 @@ export class EntityHelper {
 	 */
 	async getPicklistValues(
 		fieldName: string,
-	): Promise<Array<{ value: string; label: string; isDefaultValue: boolean; sortOrder: number; isActive: boolean }>> {
+	): Promise<Array<{ value: string; label: string; isDefaultValue: boolean; sortOrder: number; isActive: boolean; parentValue?: string }>> {
 		const values = await getPicklistValues(this.entityType, fieldName, this);
 		return values;
 	}
