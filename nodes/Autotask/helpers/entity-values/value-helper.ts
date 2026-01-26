@@ -1,7 +1,7 @@
 import type { ILoadOptionsFunctions, IExecuteFunctions, IDataObject, IHookFunctions } from 'n8n-workflow';
 import type { IAutotaskEntity, IAutotaskQueryInput } from '../../types';
 import type { GetManyOperation } from '../../operations/base/get-many';
-import { GetManyOperation as GetManyOperationClass } from '../../operations/base/get-many';
+// REMOVED to break circular dependency: import { GetManyOperation as GetManyOperationClass } from '../../operations/base/get-many';
 import { PICKLIST_REFERENCE_FIELD_MAPPINGS, DEFAULT_PICKLIST_FIELDS } from '../../constants/field.constants';
 import type { IPicklistReferenceFieldMapping } from '../../types/base/picklists';
 import { ERROR_TEMPLATES, WARNING_TEMPLATES } from '../../constants/error.constants';
@@ -24,7 +24,8 @@ interface IDisplayNameOptions {
  * Helper class for retrieving entity values
  */
 export class EntityValueHelper<T extends IAutotaskEntity> {
-	private readonly getManyOperation: GetManyOperation<T>;
+	// LAZY INITIALIZATION: To break circular dependency, GetManyOperation is loaded on first use
+	private _getManyOperation: GetManyOperation<T> | null = null;
 	private readonly entityHelper: EntityHelper;
 	private readonly maxReferenceDepth = 3;
 	private currentDepth = 0;
@@ -39,15 +40,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			cacheService?: CacheService;
 		}
 	) {
-		// Initialize operations
-		this.getManyOperation = new GetManyOperationClass(
-			entityType,
-			context as IExecuteFunctions,
-			{
-				isPicklistQuery: true,
-				skipEnrichment: true,
-			}
-		);
+		// NOTE: GetManyOperation is now lazily initialized to break circular dependency
 		this.entityHelper = new EntityHelper(entityType, context);
 
 		// Set fallback configuration
@@ -59,6 +52,27 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 
 		// Set cache service from options
 		this.cacheService = options?.cacheService;
+	}
+
+	/**
+	 * Lazily get or create the GetManyOperation instance
+	 * This breaks the circular dependency by deferring the import until first use
+	 * @private
+	 */
+	private async getGetManyOperation(): Promise<GetManyOperation<T>> {
+		if (!this._getManyOperation) {
+			// LAZY IMPORT: Import GetManyOperation only when needed to break circular dependency
+			const { GetManyOperation: GetManyOperationClass } = await import('../../operations/base/get-many');
+			this._getManyOperation = new GetManyOperationClass(
+				this.entityType,
+				this.context as IExecuteFunctions,
+				{
+					isPicklistQuery: true,
+					skipEnrichment: true,
+				}
+			);
+		}
+		return this._getManyOperation;
 	}
 
 	/**
@@ -148,7 +162,8 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			console.debug(`Loading reference values for ${this.entityType} with filters:`, filters);
 
 			// Get entities with filters applied
-			const results = await this.getManyOperation.execute(query);
+			const getManyOp = await this.getGetManyOperation();
+			const results = await getManyOp.execute(query);
 
 			// Extra debug for Country reference resolution
 			if (this.entityType.toLowerCase() === 'country') {
@@ -195,7 +210,8 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			console.debug(`Loading ${ids.length} reference entities for ${this.entityType} by ID`);
 
 			// Get entities with the 'in' filter applied
-			const results = await this.getManyOperation.execute(query);
+			const getManyOp = await this.getGetManyOperation();
+			const results = await getManyOp.execute(query);
 
 			return results;
 		} catch (error) {
@@ -288,7 +304,8 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			...filters, // Allow overriding default filters if needed
 		};
 		const query = await this.prepareQuery(defaultFilters, sortField, options?.includeFields);
-		return await this.getManyOperation.execute(query, maxResults);
+		const getManyOp = await this.getGetManyOperation();
+		return await getManyOp.execute(query, maxResults);
 	}
 
 	/**

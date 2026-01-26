@@ -1,6 +1,5 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../types/base/entity-types';
-import { FieldProcessor } from '../operations/base/field-processor';
 import { OperationType } from '../types/base/entity-types';
 
 /**
@@ -96,6 +95,9 @@ export async function processOutputMode<T extends IAutotaskEntity>(
         console.debug('[processOutputMode] Raw IDs mode with no label enrichment, returning entities as-is');
         return entities;
     }
+
+    // LAZY IMPORT: Import FieldProcessor only when needed to break circular dependency
+    const { FieldProcessor } = await import('../operations/base/field-processor');
 
     // Get field processor for enrichment
     const fieldProcessor = FieldProcessor.getInstance(
