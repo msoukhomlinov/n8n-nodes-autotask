@@ -78,6 +78,7 @@ export async function getPicklistValues(
 				isDefaultValue: v.isDefaultValue,
 				sortOrder: v.sortOrder,
 				isActive: v.isActive,
+				parentValue: v.parentValue,
 			}));
 		})
 	);
@@ -92,6 +93,7 @@ export async function getPicklistValues(
 			isDefaultValue: v.isDefaultValue,
 			sortOrder: v.sortOrder,
 			isActive: v.isActive,
+			parentValue: v.parentValue,
 		}))
 		: [];
 

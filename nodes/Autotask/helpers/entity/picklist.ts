@@ -18,6 +18,8 @@ interface IPicklistValue {
 	sortOrder: number;
 	/** Whether this option can be selected */
 	isActive: boolean;
+	/** Parent value for dependent picklists (e.g., subIssueType -> issueType) */
+	parentValue?: string;
 }
 
 /**
@@ -96,6 +98,7 @@ export async function getPicklistValues(
 				isDefaultValue: item.isDefaultValue,
 				sortOrder: item.sortOrder,
 				isActive: item.isActive,
+				parentValue: item.parentValue,
 			}));
 		}
 
