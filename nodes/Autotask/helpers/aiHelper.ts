@@ -252,7 +252,9 @@ export async function describeResource(
                 type: field.type || 'string',
                 required: field.required || false,
                 udf: field.id.startsWith('UDF') || Boolean((field as unknown as { isUdf?: boolean }).isUdf),
-                isPickList: Boolean(field.options && Array.isArray(field.options) && field.options.length > 0),
+                // Use the original Autotask field metadata to determine if this is a real picklist.
+                // This avoids treating boolean fields (which get Yes/No UI options) as picklists.
+                isPickList: Boolean(originalField?.isPickList),
                 isReference: Boolean((field as unknown as { isReference?: boolean }).isReference)
             };
 
