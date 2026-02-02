@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.4.5] - 2026-02-02
+
+### Fixed
+
+- Corrected AI Helper `describeResource` to use Autotask field metadata for `isPickList`, so boolean fields like `isBillableToCompany` are no longer treated as picklists, preventing spurious \"Only picklist fields have selectable values\" errors during create/update operations.
+
+
 ## [1.4.4] - 2026-01-26
 
 ### Fixed
