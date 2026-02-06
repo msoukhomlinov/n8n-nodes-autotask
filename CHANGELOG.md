@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.6.2] - 2026-02-06
+
+### Fixed
+
+- **Company Notes (inactive contact)** — Temporary contact activation PATCH now sends `isActive` as integer `1`/`0` instead of boolean `true`/`false`, matching the Autotask Contacts entity field type and fixing 500 "Unexpected character encountered while parsing value: t" errors.
 
 ## [1.6.1] - 2026-02-06
 
