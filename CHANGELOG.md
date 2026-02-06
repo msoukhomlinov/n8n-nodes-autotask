@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+
+## [1.6.1] - 2026-02-06
+
+### Fixed
+
+- **Company Notes (inactive contact)** — Temporary contact activation/deactivation now PATCHes the Contact collection endpoint `Companies/{companyID}/Contacts/` with the contact id in the body. The Autotask API does not support PATCH on the individual contact URL (`Companies/{id}/Contacts/{contactId}/`), which was causing 405 Method Not Allowed.
+
+
 ## [1.6.0] - 2026-02-06
 
 ### Added
