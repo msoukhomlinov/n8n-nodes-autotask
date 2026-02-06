@@ -12,7 +12,7 @@ export const getManyOptions: INodeProperties[] = [
 		description: 'Whether to return all results or only up to a given limit',
 		displayOptions: {
 			show: {
-				operation: ['getMany'],
+				operation: ['getMany', 'getUnposted', 'getPosted'],
 			},
 		},
 		typeOptions: {
@@ -32,7 +32,7 @@ export const getManyOptions: INodeProperties[] = [
 		},
 		displayOptions: {
 			show: {
-				operation: ['getMany'],
+				operation: ['getMany', 'getUnposted', 'getPosted'],
 				returnAll: [false],
 			},
 		},

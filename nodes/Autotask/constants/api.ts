@@ -87,6 +87,52 @@ export const OPERATION_TYPES = {
 	QUERY: 'query',
 } as const;
 
+/**
+ * Commonly referenced entity names for cross-entity queries.
+ *
+ * Every value is extracted from the master AUTOTASK_ENTITIES array in
+ * entities.ts so there is a single source of truth.  If an entity name
+ * changes in the master list, the lookup helper will throw at startup
+ * rather than silently producing the wrong URL at runtime.
+ *
+ * The Autotask REST API expects plural forms in URLs, but that
+ * pluralisation is handled by the HTTP helpers — callers should always
+ * use the metadata name returned here.
+ */
+import { AUTOTASK_ENTITIES } from './entities';
+
+/** Look up an entity name from the master metadata list (case-insensitive). */
+function entityName(search: string): string {
+	const match = AUTOTASK_ENTITIES.find(
+		(e) => e.name.toLowerCase() === search.toLowerCase(),
+	);
+	if (!match) {
+		throw new Error(
+			`ENTITY_NAMES: "${search}" not found in AUTOTASK_ENTITIES. ` +
+			'Check constants/entities.ts for the correct metadata name.',
+		);
+	}
+	return match.name;
+}
+
+export const ENTITY_NAMES = {
+	TIME_ENTRIES: entityName('TimeEntry'),
+	BILLING_ITEMS: entityName('BillingItems'),
+	CONTRACTS: entityName('Contract'),
+	TICKETS: entityName('Ticket'),
+	TASKS: entityName('Task'),
+	PROJECTS: entityName('Project'),
+	COMPANIES: entityName('Company'),
+} as const;
+
+/** BillingItems entity constants */
+export const BILLING_ITEMS = {
+	/** @deprecated Use ENTITY_NAMES.BILLING_ITEMS instead */
+	ENTITY_NAME: ENTITY_NAMES.BILLING_ITEMS,
+	/** billingItemType picklist value for Labour (time entry) items */
+	TYPE_LABOUR: 1,
+} as const;
+
 /** API endpoint types */
 export const ENDPOINT_TYPES = {
 	ENTITY_INFORMATION: 'entityInformation',

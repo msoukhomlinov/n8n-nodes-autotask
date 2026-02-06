@@ -109,6 +109,10 @@ export class AutotaskApi implements ICredentialType {
 					value: 'https://webservices6.autotask.net/atservicesrest',
 				},
 				{
+					name: 'Australia / New Zealand (Sydney — from 11 Mar 2026)',
+					value: 'https://webservices29.autotask.net/atservicesrest',
+				},
+				{
 					name: 'Australia 2',
 					value: 'https://webservices26.autotask.net/atservicesrest',
 				},

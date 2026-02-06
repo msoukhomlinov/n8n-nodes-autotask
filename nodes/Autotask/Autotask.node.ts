@@ -200,8 +200,8 @@ import { aiHelperFields } from './resources/aiHelper/description';
 import { executeAiHelperOperation } from './resources/aiHelper/execute';
 import { toolFieldsWithAgentOptions } from './resources/tool/description';
 import { executeToolOperation } from './resources/tool/execute';
-import { getQueryableEntities, getEntityFields } from './helpers/options';
-import { getResourceOperations } from './constants/resource-operations';
+import { getQueryableEntities, getEntityFields, getTicketStatuses, getTaskStatuses, getQueueOptions, getResourceOptions, getResourceOperations } from './helpers/options';
+import { EntityHelper } from './helpers/entity';
 import { executeQuoteOperation } from './resources/quotes/execute';
 import { quoteFields } from './resources/quotes/description';
 import { executeQuoteItemOperation } from './resources/quoteItems/execute';
@@ -712,23 +712,31 @@ export class Autotask implements INodeType {
 			getQueryableEntities,
 			getEntityFields,
 			/**
-			 * Get available operations for a target resource (used by tool resource)
+			 * Get picklist values for Contracts.contractType
 			 */
-                       async getResourceOperations(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-                               const targetResource = this.getNodeParameter('targetResource', 0) as string;
+			async getContractTypes(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				try {
+					const helper = new EntityHelper('Contracts', this);
+					const values = await helper.getPicklistValues('contractType');
+					const sorted = values
+						.filter((v) => v.isActive)
+						.map((v) => ({
+							name: v.label || `Type ${v.value}`,
+							value: v.value,
+						}))
+						.sort((a, b) => a.name.localeCompare(b.name));
+					return [{ name: 'All Contract Types', value: '' }, ...sorted];
+				} catch (error) {
+					console.error('Error loading contract types:', (error as Error).message);
+					return [{ name: 'All Contract Types', value: '' }];
+				}
+			},
 
-                               if (!targetResource) {
-                                       return [];
-                               }
-
-                               const operations = getResourceOperations(targetResource);
-
-                               return operations.map(op => ({
-                                       name: op.charAt(0).toUpperCase() + op.slice(1),
-                                       value: op,
-                                       description: `${op} operation for ${targetResource}`,
-                               }));
-                       },
+			getTicketStatuses,
+			getTaskStatuses,
+			getQueueOptions,
+			getResourceOptions,
+			getResourceOperations,
 		},
 	};
 }

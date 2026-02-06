@@ -12,7 +12,7 @@ export const flattenUdfsOption: INodeProperties = {
 	hint: 'When enabled, UDFs will be accessible as top-level properties instead of being nested in the userDefinedFields array',
 	displayOptions: {
 		show: {
-			operation: ['get', 'getMany', 'getManyAdvanced'],
+			operation: ['get', 'getMany', 'getManyAdvanced', 'getUnposted', 'getPosted'],
 		},
 	},
 	typeOptions: {

@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-1.3.0-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-1.5.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -54,6 +54,8 @@ To use this node, you need to have API access to your Autotask instance. Follow 
 7. Select your timezone (affects how dates and times are displayed and entered)
 8. Configure caching options as needed (this will cache dynamically fetched field picklists)
 
+**Australia/New Zealand (Sydney) datacentre:** If you are on the AUS/NZ Sydney datacentre, from 11 March 2026 select the zone **Australia / New Zealand (Sydney — from 11 Mar 2026)** (API: webservices29.autotask.net). For that zone, the URLs are: User interface ww29.autotask.net; API webservices29.autotask.net; Data Warehouse reports29.autotask.net; Performance Analytics workbooks workbooks29.autotask.net.
+
 ## Features
 
 ### Supported Resources
@@ -65,6 +67,9 @@ The node supports the following Autotask resources:
 | API Threshold | Check Autotask API usage limits and current usage levels |
 | Billing Code | Manage billing codes for time entries and charges |
 | Billing Items | Manage Autotask Billing Items, which represent billable items that have been approved and posted for potential invoicing |
+| Checklist Library | Manage modular checklist components that can be applied to tickets or tasks |
+| Checklist Library Checklist Item | Manage individual checklist items within checklist library templates |
+| Classification Icon | Query classification icons used for categorising and visually identifying items |
 | Company | Manage organisations in Autotask |
 | Company Alert | Manage alerts associated with companies |
 | Company Location | Manage locations for companies |
@@ -94,7 +99,7 @@ The node supports the following Autotask resources:
 | Contract Exclusion Roles | Manage excluded roles for contracts |
 | Contract Exclusion Set Excluded Roles | Manage excluded roles within exclusion sets |
 | Contract Exclusion Set Excluded Work Types | Manage excluded work types within exclusion sets |
-| Contract Exclusion Sets | Manage exclusion sets for contracts |
+| Contract Exclusion Sets | Manage reusable sets of excluded roles and work types for contracts |
 | Contract Milestone | Manage milestones for contracts |
 | Contract Note | Manage notes attached to contracts |
 | Contract Rate | Manage rates for contract services |
@@ -121,8 +126,8 @@ The node supports the following Autotask resources:
 | Project Note | Manage notes attached to projects |
 | Project Phase | Manage phases within projects |
 | Project Task | Manage tasks within projects |
-| Quote | Manage quotes for opportunities with pricing for products, services, and labor |
-| Quote Item | Manage line items for quotes including products, services, and labor |
+| Quote | Manage quotes for opportunities with pricing for products, services, and labour |
+| Quote Item | Manage line items for quotes including products, services, and labour |
 | Quote Location | Manage shipping and billing address information for quotes |
 | Quote Template | Query quote templates that define content and appearance of quotes |
 | Resource | Manage staff resources |
@@ -135,16 +140,26 @@ The node supports the following Autotask resources:
 | Service Call Task Resource | Manage resources assigned to service call tasks |
 | Service Call Ticket | Manage tickets linked to service calls |
 | Service Call Ticket Resource | Manage resources assigned to service call tickets |
+| Skill | Query skills used for resource competency tracking |
 | Survey | Manage customer surveys |
 | Survey Results | Manage results from customer surveys |
 | Subscription | Manage Subscriptions, which represent recurring service agreements with customers |
 | Subscription Period | Query Subscription Periods, which track billing periods and usage for subscriptions |
+| Tag | Manage ticket and article tags with unique label requirements |
+| Tag Alias | Manage alternative names for tags to improve searchability |
+| Tag Group | Organise tags into categories with display colours and system group protections |
 | Ticket | Manage service tickets |
+| Ticket Attachment | Manage files attached directly to tickets |
+| Ticket Charge | Manage charges associated with tickets |
+| Ticket Checklist Item | Manage checklist items on tickets |
+| Ticket Checklist Library | Add all items from a checklist library to a ticket |
 | Ticket History | View historical changes to tickets |
 | Ticket Note | Manage notes attached to tickets |
+| Ticket Note Attachment | Manage files attached to ticket notes |
 | Ticket Note Webhook | Manage webhooks for ticket note events |
 | Ticket Webhook | Manage webhooks for ticket events |
-| Time Entry | Manage time entries for billing |
+| Time Entry | Manage time entries for billing. Includes Get Posted and Get Unposted operations for listing labour entries by posting status with cross-entity filters |
+| Time Entry Attachment | Manage files attached to time entries |
 
 ### Operations
 
@@ -178,6 +193,13 @@ For most resources, the following operations are available:
 - **Count**: Get the number of matching records
 - **Get Entity Info**: Retrieve metadata about the entity
 - **Get Field Info**: Retrieve field definitions for the selected entity
+
+For the **Time Entry** resource, additional posting-status operations are available:
+
+- **Get Posted**: List time entries that have been approved and posted as billing items
+- **Get Unposted**: List time entries that have not yet been posted
+
+Both operations cross-reference TimeEntries with BillingItems (Autotask has no posted-status field on TimeEntry itself). They support collapsible filters including Date Range (13 presets), Time Entry Type, Billable Status, Hours Worked range, Resource, Contract Type, Ticket Status, Task Status, Queue, and Account Manager. Date range resolution respects the configured credential timezone and converts to UTC for the API.
 
 For webhook resources (Company Webhook, Contact Webhook, Configuration Item Webhook, Ticket Webhook, Ticket Note Webhook), the following operations are available:
 - **Get**: Retrieve a single webhook by ID
