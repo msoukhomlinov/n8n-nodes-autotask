@@ -70,13 +70,13 @@ async function withTemporaryContactActivation<T>(
 		', then deactivating again.',
 	);
 
-	await autotaskApiRequest.call(context, 'PATCH', patchEndpoint, { id: contactIdNum, isActive: true });
+	await autotaskApiRequest.call(context, 'PATCH', patchEndpoint, { id: contactIdNum, isActive: 1 });
 
 	try {
 		return await runOperation();
 	} finally {
 		try {
-			await autotaskApiRequest.call(context, 'PATCH', patchEndpoint, { id: contactIdNum, isActive: false });
+			await autotaskApiRequest.call(context, 'PATCH', patchEndpoint, { id: contactIdNum, isActive: 0 });
 			console.warn('[CompanyNote] Contact', contactIdNum, 'deactivated again after', operationLabel, '.');
 		} catch (deactivateError) {
 			console.warn(
