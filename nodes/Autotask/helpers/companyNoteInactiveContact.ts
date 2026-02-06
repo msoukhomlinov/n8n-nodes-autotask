@@ -58,7 +58,9 @@ async function withTemporaryContactActivation<T>(
 		originalError,
 	);
 
-	const patchEndpoint = buildChildEntityUrl('Company', 'Contact', companyIdNum, { entityId: contactIdNum });
+	// PATCH goes to collection endpoint (no entityId in path) — the Autotask API
+	// only allows GET and DELETE on the individual contact URL.
+	const patchEndpoint = buildChildEntityUrl('Company', 'Contact', companyIdNum);
 
 	console.warn(
 		'[CompanyNote] contactID references an inactive contact; temporarily activating contact',
