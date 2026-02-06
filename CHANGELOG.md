@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.6.0] - 2026-02-06
+
+### Added
+
+- **Company Notes: Automatic inactive contact handling** — When creating or updating a Company Note with a `contactID` that references an inactive contact, the node now automatically activates the contact, performs the operation, then deactivates the contact again. Previously the Autotask API would reject the request with "Reference value on field: contactID of type: Contact does not exist or is invalid". If the contact is already active and the error still occurs, the original error is re-thrown unchanged.
+
+
 ## [1.5.1] - 2026-02-06
 
 ### Fixed
