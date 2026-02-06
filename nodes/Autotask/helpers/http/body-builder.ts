@@ -113,7 +113,7 @@ export async function buildRequestBody(options: IRequestBodyOptions): Promise<IR
 
 	// For creates, ensure we have an ID field set to 0 if using 'id'
 	if (operation === 'create' && useId) {
-		body.id = '0';
+		body.id = 0;
 	}
 
 	// Add parent ID if this is a child entity and parent info is provided

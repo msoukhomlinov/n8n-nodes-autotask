@@ -127,8 +127,8 @@ function processEndpointPath(endpoint: string, options: IUrlOptions = {}): strin
 		return endpoint;
 	}
 
-	// 1. Split and clean the path
-	const parts = endpoint.replace(/^\/+/, '').split('/');
+	// 1. Split and clean the path (strip leading and trailing slashes to be idempotent)
+	const parts = endpoint.replace(/^\/+/, '').replace(/\/+$/, '').split('/');
 
 	// 2. Process each part
 	const processedParts = parts.map((part) => {

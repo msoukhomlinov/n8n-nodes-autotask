@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.5.1] - 2026-02-06
+
+### Fixed
+
+- Fixed double trailing slash in child entity API URLs (e.g. `Companies/{id}/Notes//`) caused by `processEndpointPath` being called twice — once in URL builders and again in `autotaskApiRequest`. Made the function idempotent by stripping trailing slashes before processing.
+- Fixed `body.id` sent as string `'0'` instead of number `0` for child entity create operations, matching the Autotask API's `long` datatype expectation.
+
+
 ## [1.5.0] - 2026-02-06
 
 ### Added
