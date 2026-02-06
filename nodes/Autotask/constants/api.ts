@@ -131,6 +131,8 @@ export const BILLING_ITEMS = {
 	ENTITY_NAME: ENTITY_NAMES.BILLING_ITEMS,
 	/** billingItemType picklist value for Labour (time entry) items */
 	TYPE_LABOUR: 1,
+	/** billingItemType picklist value for Labour Adjustment items */
+	TYPE_LABOUR_ADJUSTMENT: 2,
 } as const;
 
 /** API endpoint types */
