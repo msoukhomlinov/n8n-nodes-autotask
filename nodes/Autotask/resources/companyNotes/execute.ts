@@ -9,6 +9,11 @@ import {
 } from '../../operations/base';
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
+import {
+	isInactiveContactError,
+	createWithTemporaryContactActivation,
+	updateWithTemporaryContactActivation,
+} from '../../helpers/companyNoteInactiveContact';
 
 const ENTITY_TYPE = 'companyNote';
 
@@ -23,17 +28,35 @@ export async function executeCompanyNoteOperation(
 		try {
 			switch (operation) {
 				case 'create': {
-					const createOp = new CreateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-					const response = await createOp.execute(i);
-					returnData.push({ json: response });
+					try {
+						const createOp = new CreateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+						const response = await createOp.execute(i);
+						returnData.push({ json: response });
+					} catch (createError) {
+						if (isInactiveContactError(createError)) {
+							const response = await createWithTemporaryContactActivation(this, i, createError as Error);
+							returnData.push({ json: response });
+						} else {
+							throw createError;
+						}
+					}
 					break;
 				}
 
 				case 'update': {
 					const entityId = this.getNodeParameter('id', i) as string;
-					const updateOp = new UpdateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-					const response = await updateOp.execute(i, entityId);
-					returnData.push({ json: response });
+					try {
+						const updateOp = new UpdateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+						const response = await updateOp.execute(i, entityId);
+						returnData.push({ json: response });
+					} catch (updateError) {
+						if (isInactiveContactError(updateError)) {
+							const response = await updateWithTemporaryContactActivation(this, i, entityId, updateError as Error);
+							returnData.push({ json: response });
+						} else {
+							throw updateError;
+						}
+					}
 					break;
 				}
 
