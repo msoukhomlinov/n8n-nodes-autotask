@@ -51,7 +51,11 @@ async function getPostedTimeEntryIds(
 		const queryBody = {
 			filter: [
 				{ field: 'timeEntryID', op: FilterOperators.in, value: batch },
-				{ field: 'billingItemType', op: FilterOperators.eq, value: BILLING_ITEMS.TYPE_LABOUR },
+				{
+					field: 'billingItemType',
+					op: FilterOperators.in,
+					value: [BILLING_ITEMS.TYPE_LABOUR, BILLING_ITEMS.TYPE_LABOUR_ADJUSTMENT],
+				},
 			],
 			IncludeFields: ['timeEntryID'],
 		};

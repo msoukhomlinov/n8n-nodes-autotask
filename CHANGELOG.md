@@ -6,7 +6,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Added
 
-- **Time Entry: Get Posted / Get Unposted** — New operations on the Time Entry resource to list labour entries by posting status. Cross-references TimeEntries with BillingItems (Autotask has no posted-status field on TimeEntry). Reuses Get All, Max Records, picklist labels, select columns, and flatten UDFs options.
+- **Time Entry: Get Posted / Get Unposted** — New operations on the Time Entry resource to list labour entries by posting status. Cross-references TimeEntries with BillingItems (type Labour and Labour Adjustment; Autotask has no posted-status field on TimeEntry). Reuses Get All, Max Records, picklist labels, reference labels, select columns, and flatten UDFs options.
 - **Zone: Australia / New Zealand (Sydney — from 11 Mar 2026)** — New zone option (API: webservices29.autotask.net) for the Autotask AUS/NZ datacentre migration (11 March 2026). For this zone: User interface ww29.autotask.net; Data Warehouse reports29.autotask.net; Performance Analytics workbooks workbooks29.autotask.net.
 
 
