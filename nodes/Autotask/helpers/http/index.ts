@@ -1,5 +1,6 @@
 export * from './request';
 export * from './headers';
+export * from './retryHandler';
 
 // Import and export rate tracker initialization functions
 export * from './initRateTracker';

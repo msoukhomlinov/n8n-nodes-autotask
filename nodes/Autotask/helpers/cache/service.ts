@@ -387,6 +387,14 @@ export class CacheService {
 	}
 
 	/**
+	 * Get the API response cache key (versioned)
+	 */
+	public getResponseKey(resource: string, operation: string, keySuffix?: string): string {
+		const baseKey = `response:${resource}:${operation}${keySuffix ? `:${keySuffix}` : ''}`;
+		return this.createVersionedKey(baseKey);
+	}
+
+	/**
 	 * Check if entity information caching is enabled
 	 */
 	public isEntityInfoEnabled(): boolean {

@@ -1,16 +1,16 @@
 import {
-        NodeConnectionType,
-        type ResourceMapperFields,
-        NodeOperationError,
+	NodeConnectionType,
+	type ResourceMapperFields,
+	NodeOperationError,
 } from 'n8n-workflow';
 import type {
-        IExecuteFunctions,
-        ILoadOptionsFunctions,
-        INodeExecutionData,
-        INodeType,
-        INodeTypeDescription,
-        INodePropertyOptions,
-        IGetNodeParameterOptions,
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+	INodePropertyOptions,
+	IGetNodeParameterOptions,
 } from 'n8n-workflow';
 import { executeProjectTaskOperation } from './resources/projectTasks/execute';
 import { executeProjectOperation } from './resources/projects/execute';
@@ -85,6 +85,7 @@ import { searchFilterDescription, searchFilterOperations, build as executeSearch
 import { getResourceMapperFields } from './helpers/resourceMapper';
 import { getEntityMetadata } from './constants/entities';
 import { RESOURCE_DEFINITIONS } from './resources/definitions';
+import { initializeRateTracker } from './helpers/http/initRateTracker';
 import { projectTaskFields } from './resources/projectTasks/description';
 import { projectFields } from './resources/projects/description';
 import { companyFields } from './resources/companies/description';
@@ -385,6 +386,11 @@ export class Autotask implements INodeType {
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+		// Initialise rate tracker with actual Autotask usage.
+		// This uses a cooldown guard, so multiple concurrent executions
+		// will not all trigger a threshold information request.
+		await initializeRateTracker(this);
+
 		const resource = this.getNodeParameter('resource', 0) as string;
 		const operation = this.getNodeParameter('operation', 0) as string;
 

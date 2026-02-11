@@ -2,6 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.7.0] - 2026-02-11
+
+### Added
+- Per-operation API response caching for Autotask `resource` get/whoAmI/getMany operations with configurable TTL, using versioned keys and centralised helper/registry for easy extension.
+- Automatic retry handling for Autotask 429 (Too Many Requests) responses using exponential backoff with jitter and a 5 minute total wait cap, with clear error messaging when the limit is still exceeded after retries.
+
+### Improved
+- Rate limit tracking initialisation is now available from the main Autotask node via `initializeRateTracker`, with a cooldown guard to avoid excessive calls to the Autotask `ThresholdInformation` endpoint when many workflows execute concurrently.
+
+
 ## [1.6.2] - 2026-02-06
 
 ### Fixed

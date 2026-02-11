@@ -2,7 +2,7 @@ import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import type {
 	IAutotaskEntity,
 	IAutotaskCredentials,
-	IAutotaskQueryInput
+	IAutotaskQueryInput,
 } from '../../types';
 import {
 	UpdateOperation,
@@ -13,6 +13,7 @@ import {
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 import { getSelectedColumns, prepareIncludeFields } from '../../operations/common/select-columns';
+import { getCachedOrFetch, createFilterCacheKeySuffix } from '../../helpers/cache/response-cache';
 
 const ENTITY_TYPE = 'resource';
 
@@ -34,63 +35,99 @@ export async function executeResourceOperation(
 					break;
 				}
 
-				case 'get': {
-					const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-					const response = await getOp.execute(i);
-					returnData.push({ json: response });
-					break;
-				}
+			case 'get': {
+				const resourceId = this.getNodeParameter('id', i) as string;
+				const result = await getCachedOrFetch<IAutotaskEntity>(
+					this,
+					ENTITY_TYPE,
+					'get',
+					i,
+					resourceId, // Use entity ID as cache key suffix
+					async () => {
+						const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+						return await getOp.execute(i);
+					},
+				);
+				returnData.push({ json: result });
+				break;
+			}
 
-				case 'getMany': {
-					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-					const filters = await getManyOp.buildFiltersFromResourceMapper(i);
-					const response = await getManyOp.execute({ filter: filters }, i);
-					returnData.push(...getManyOp.processReturnData(response));
-					break;
-				}
+			case 'getMany': {
+				const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+				const filters = await getManyOp.buildFiltersFromResourceMapper(i);
+
+				// Create cache key suffix from filter hash
+				const cacheKeySuffix = createFilterCacheKeySuffix({ filter: filters });
+
+				const results = await getCachedOrFetch<INodeExecutionData[]>(
+					this,
+					ENTITY_TYPE,
+					'getMany',
+					i,
+					cacheKeySuffix, // Use hashed filters as cache key suffix
+					async () => {
+						const response = await getManyOp.execute({ filter: filters }, i);
+						return getManyOp.processReturnData(response);
+					},
+				);
+
+				returnData.push(...results);
+				break;
+			}
 
 				case 'whoAmI': {
 					try {
-						// Get credentials
-						const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-						const email = credentials.Username as string;
+						const results = await getCachedOrFetch<INodeExecutionData[]>(
+							this,
+							ENTITY_TYPE,
+							'whoAmI',
+							i,
+							undefined,
+							async () => {
+								// Get credentials
+								const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+								const email = credentials.Username as string;
 
-						if (!email) {
-							throw new Error('Username not found in credentials');
-						}
+								if (!email) {
+									throw new Error('Username not found in credentials');
+								}
 
-						// Extract username (part before @)
-						const username = email.includes('@') ? email.split('@')[0] : email;
+								// Extract username (part before @)
+								const username = email.includes('@') ? email.split('@')[0] : email;
 
-						// Create filter for username
-						const filter = [
-							{
-								op: 'eq',
-								field: 'userName',
-								value: username,
+								// Create filter for username
+								const filter = [
+									{
+										op: 'eq',
+										field: 'userName',
+										value: username,
+									},
+								];
+
+								// Execute query
+								const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+
+								// Handle include fields for server-side filtering if needed
+								const selectedColumns = getSelectedColumns(this, i);
+								const includeFields = prepareIncludeFields(selectedColumns);
+
+								// Add includeFields to the query if columns are selected
+								const queryParams: IAutotaskQueryInput<IAutotaskEntity> = {
+									filter,
+									...(includeFields ? { includeFields } : {}),
+								};
+
+								const response = await getManyOp.execute(queryParams, i);
+
+								// Process and return results
+								return getManyOp.processReturnData(response);
 							},
-						];
+						);
 
-						// Execute query
-						const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-
-						// Handle include fields for server-side filtering if needed
-						const selectedColumns = getSelectedColumns(this, i);
-						const includeFields = prepareIncludeFields(selectedColumns);
-
-						// Add includeFields to the query if columns are selected
-						const queryParams: IAutotaskQueryInput<IAutotaskEntity> = {
-							filter,
-							...(includeFields ? { includeFields } : {})
-						};
-
-						const response = await getManyOp.execute(queryParams, i);
-
-						// Process and return results
-						returnData.push(...getManyOp.processReturnData(response));
+						returnData.push(...results);
 					} catch (error) {
 						if (this.continueOnFail()) {
-							returnData.push({ json: { error: error.message } });
+							returnData.push({ json: { error: (error as Error).message } });
 						} else {
 							throw error;
 						}

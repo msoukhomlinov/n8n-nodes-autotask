@@ -7,6 +7,7 @@ import { addReferenceLabelOption } from '../operations/common/reference-labels';
 import { addSelectColumnsOption } from '../operations/common/select-columns';
 import { flattenUdfsOption } from '../operations/common/udf-flattening';
 import { addAgentFriendlyOptions, addDryRunOption } from '../operations/common/json-parameters';
+import { CACHEABLE_API_RESPONSE_OPERATIONS } from './cache/response-cache';
 
 /**
  * Operation group types
@@ -169,6 +170,55 @@ export function addOperationsToResource(
 				includeDryRun: config.agentFriendly?.includeDryRun ?? false,
 			};
 			updatedProperties = addAgentFriendlyOptions(updatedProperties, config.resourceName, agentFriendlyConfig);
+
+			// Add response cache configuration fields for cacheable operations (per-node)
+			const cacheableOperationsForResource = CACHEABLE_API_RESPONSE_OPERATIONS
+				.filter(entry => entry.resource.toLowerCase() === config.resourceName.toLowerCase())
+				.map(entry => entry.operation);
+
+			if (cacheableOperationsForResource.length > 0) {
+				const hasCacheResponseOption = updatedProperties.some(prop => prop.name === 'cacheResponse');
+				const hasCacheTtlOption = updatedProperties.some(prop => prop.name === 'cacheTtl');
+
+				if (!hasCacheResponseOption) {
+					updatedProperties.push({
+						displayName: 'Cache Response',
+						name: 'cacheResponse',
+						type: 'boolean',
+						default: false,
+						description: 'Whether to cache the API response for this operation to reduce repeated Autotask calls',
+						displayOptions: {
+							show: {
+								resource: [config.resourceName],
+								operation: cacheableOperationsForResource,
+							},
+						},
+					});
+				}
+
+				if (!hasCacheTtlOption) {
+					updatedProperties.push({
+						displayName: 'Cache TTL (seconds)',
+						name: 'cacheTtl',
+						type: 'number',
+						default: 30,
+						typeOptions: {
+							maxValue: 14_400, // 4 hours
+							minValue: 1,
+						},
+						description:
+							'Maximum time to keep a cached API response for this operation (in seconds). ' +
+							'If a valid cached response exists for the same parameters, it will be returned immediately and no new API request will be sent until the TTL expires.',
+						displayOptions: {
+							show: {
+								resource: [config.resourceName],
+								operation: cacheableOperationsForResource,
+								cacheResponse: [true],
+							},
+						},
+					});
+				}
+			}
 
 			return updatedProperties;
 		}

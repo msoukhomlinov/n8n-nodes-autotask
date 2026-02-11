@@ -8,18 +8,16 @@ import type {
 } from 'n8n-workflow';
 import { API_VERSION } from '../../constants/operations';
 import { getAutotaskHeaders } from './headers';
-import type {
-	IRequestConfig,
-	IAutotaskCredentials,
-} from '../../types';
+import type { IRequestConfig, IAutotaskCredentials } from '../../types';
 import { NodeApiError } from 'n8n-workflow';
 import { plural, singular } from 'pluralize';
 import { getEntityMetadata } from '../../constants/entities';
 import type { IQueryResponse } from '../../types/base/entity-types';
-import type { IApiError, IApiErrorDetail } from '../../types/base/api';
+import type { IApiError, IApiErrorDetail, IApiErrorWithResponse } from '../../types/base/api';
 import type { OperationType } from '../../types/base/entity-types';
 import { handleRateLimit } from './rateLimit';
 import { endpointThreadTracker } from './threadLimit';
+import { executeWithRetry } from './retryHandler';
 
 interface IAutotaskSuccessResponse {
 	id?: number;
@@ -391,7 +389,9 @@ export async function autotaskApiRequest<T = JsonObject>(
 		// Handle rate limiting before making the request (single attempt)
 		await handleRateLimit();
 
-		const response = await this.helpers.request(options);
+		const response = await executeWithRetry(this, async () => {
+			return this.helpers.request(options);
+		});
 
 		// Handle empty responses
 		if (!response) {
@@ -485,70 +485,85 @@ export async function autotaskApiRequest<T = JsonObject>(
 		}
 
 		// If we get here, response format is unexpected
-		throw new Error(`Invalid API response format for ${method} ${endpoint}: ${JSON.stringify(response)}`);
-	} catch (error) {
+		throw new Error(
+			`Invalid API response format for ${method} ${endpoint}: ${JSON.stringify(response)}`,
+		);
+	} catch (error: unknown) {
+		// If this is already a NodeApiError (e.g. from retry handler), re-throw as-is
+		// to avoid double-wrapping the error
+		if (error instanceof NodeApiError) {
+			throw error;
+		}
+
+		const apiError = error as Error & {
+			response?: {
+				status?: number;
+				data?: { errors?: unknown[]; [key: string]: unknown };
+			};
+			error?: { errors?: unknown[] };
+			statusCode?: number;
+			description?: string;
+		};
+
 		// Import sanitization function to mask credentials in error logs
 		const { sanitizeErrorForLogging } = await import('../security/credential-masking');
-		console.error('API Error:', sanitizeErrorForLogging(error));
+		console.error('API Error:', sanitizeErrorForLogging(apiError));
 
-		const status = error.response?.status;
+		const status = apiError.response?.status;
 		const url = options.url;
-		console.warn(`API ${method} ${url} failed (${status}): ${getErrorMessage(error)}`);
-
-		// Handle 429 Too Many Requests with specific error message
-		if (status === 429) {
-			const rateLimitError: JsonObject = {
-				message: 'Autotask API rate limit exceeded (429 Too Many Requests). ' +
-					'The API allows 10,000 requests per 60-minute rolling window. ' +
-					'This request was blocked because the limit has been reached. ' +
-					'The rate limiter will automatically wait for the window to reset before retrying. ' +
-					'To avoid this, reduce the frequency of API calls or spread them over a longer time period.',
-				statusCode: 429,
-				description: 'Autotask API rate limit exceeded (429 Too Many Requests). ' +
-					'The API allows 10,000 requests per 60-minute rolling window. ' +
-					'This request was blocked because the limit has been reached. ' +
-					'The rate limiter will automatically wait for the window to reset before retrying. ' +
-					'To avoid this, reduce the frequency of API calls or spread them over a longer time period.',
-			};
-			throw new NodeApiError(this.getNode(), rateLimitError);
-		}
+		console.warn(`API ${method} ${url} failed (${status}): ${getErrorMessage(apiError as unknown as IAutotaskErrorResponse)}`);
 
 		// Import the createStandardErrorObject function
 		const { createStandardErrorObject } = await import('../../helpers/errorHandler');
 
 		// Create standardized error object with all context
-		const standardError = createStandardErrorObject(error, {
-			url,
-			method,
-			status,
-			// Add operation and entity context if available
-			operation: endpoint.split('/')[0],
-			entityType: endpoint.split('/')[0]
-		});
+		const standardError = createStandardErrorObject(
+			apiError as Error | IApiErrorWithResponse,
+			{
+				url,
+				method,
+				status,
+				// Add operation and entity context if available
+				operation: endpoint.split('/')[0],
+				entityType: endpoint.split('/')[0],
+			},
+		);
 
 		// Extract API error messages from response
-		const responseErrors = error.response?.data?.errors;
-		const directErrors = error.error?.errors;
-		const errorsArray = responseErrors || directErrors || [];
+		const responseErrors = apiError.response?.data?.errors as Array<{ message?: string }> | undefined;
+		const directErrors = apiError.error?.errors as Array<{ message?: string }> | undefined;
+		const errorsArray = (responseErrors || directErrors || []) as Array<{ message?: string } | string>;
 
 		// Format the error message for display with API specifics
-		const apiErrorMessages = Array.isArray(errorsArray) && errorsArray.length > 0
-			? errorsArray.map(e => typeof e === 'string' ? e : e.message).filter(Boolean).join(' | ')
-			: '';
+		const apiErrorMessages =
+			Array.isArray(errorsArray) && errorsArray.length > 0
+				? errorsArray
+						.map((e) => (typeof e === 'string' ? e : e.message))
+						.filter(Boolean)
+						.join(' | ')
+				: '';
 
 		// Use API specific error message if available
-		const detailedMessage = apiErrorMessages || standardError.message || error.message || 'An unknown error occurred';
+		const detailedMessage =
+			apiErrorMessages || standardError.message || apiError.message || 'An unknown error occurred';
 
 		// Set consistent properties on the error object to ensure n8n displays the right message
-		error.message = detailedMessage;
-		error.description = detailedMessage;
+		apiError.message = detailedMessage;
+		(apiError as { description?: string }).description = detailedMessage;
 
 		// These properties are used by n8n to display error messages in the UI
-		error.statusCode = standardError.statusCode;
-		error.error = {
+		const statusCode = standardError.statusCode ?? apiError.statusCode ?? status ?? 0;
+		(apiError as { statusCode?: number }).statusCode = statusCode;
+		(apiError as {
+			error?: {
+				message: string;
+				status: number;
+				context: unknown;
+			};
+		}).error = {
 			message: detailedMessage,
-			status: standardError.statusCode,
-			context: standardError.context
+			status: statusCode,
+			context: standardError.context,
 		};
 
 		// Log error details (useful for debugging)
@@ -559,12 +574,12 @@ export async function autotaskApiRequest<T = JsonObject>(
 			hasSpecificErrors,
 			errorCount: errorsArray.length || 0,
 			errorMessages: apiErrorMessages,
-			responseDataErrors: error.response?.data?.errors,
-			errorObjectErrors: error.error?.errors
+			responseDataErrors: responseErrors,
+			errorObjectErrors: directErrors,
 		});
 
 		// Throw standardized error with the detailed message
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), apiError as unknown as JsonObject);
 	} finally {
 		// Release the thread when done (whether successful or failed)
 		endpointThreadTracker.releaseThread(baseEndpoint);
