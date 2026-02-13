@@ -197,6 +197,7 @@ export async function executeAiTool(
     } catch (error) {
         // Return error as structured JSON so the LLM can interpret and recover
         const message = error instanceof Error ? error.message : String(error);
+        const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined;
         const errorResponse: Record<string, unknown> = {
             error: true,
             message,
@@ -205,7 +206,10 @@ export async function executeAiTool(
 
         // Add actionable suggestions based on error content
         const lowerMsg = message.toLowerCase();
-        if (lowerMsg.includes('required') || lowerMsg.includes('missing')) {
+        if (code === 'ERR_INVALID_URL' || lowerMsg.includes('invalid_url') || lowerMsg.includes('invalid url')) {
+            errorResponse.suggestion =
+                'ERR_INVALID_URL in AI Agent context can occur with queue/scaling execution mode. Try running the workflow in main mode, or ensure the Autotask AI Tools node has valid credentials. Same credentials work in the regular Autotask node.';
+        } else if (lowerMsg.includes('required') || lowerMsg.includes('missing')) {
             errorResponse.suggestion = `Check that all required fields are provided. Use describeResource to see field requirements.`;
         } else if (lowerMsg.includes('picklist') || lowerMsg.includes('invalid value')) {
             errorResponse.suggestion = `Use listPicklistValues to get valid options for the field in question.`;

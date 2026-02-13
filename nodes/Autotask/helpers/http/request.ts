@@ -336,8 +336,18 @@ export async function autotaskApiRequest<T = JsonObject>(
 	body: IRequestConfig['body'] = {},
 	query: IRequestConfig['query'] = {},
 ): Promise<T> {
-	const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+	const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials | undefined;
+	if (!credentials) {
+		throw new Error(
+			'Autotask API credentials not found. Ensure the node has valid Autotask API credentials configured.',
+		);
+	}
 	const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
+	if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) {
+		throw new Error(
+			'Autotask API zone URL is missing. Check credentials: select a zone, or if using "Other (Custom URL)", provide the custom zone URL.',
+		);
+	}
 
 	const options: IRequestOptions = {
 		method,
@@ -381,6 +391,19 @@ export async function autotaskApiRequest<T = JsonObject>(
 	// Extract the base endpoint name for thread tracking
 	// This gets the root entity type (e.g., "Tickets" from "Tickets/123" or "Tickets/query")
 	const baseEndpoint = endpoint.split('/')[0];
+
+	// Validate URL before request (helps diagnose ERR_INVALID_URL in AI Agent context)
+	try {
+		new URL(options.url as string);
+	} catch (urlError) {
+		const msg = urlError instanceof Error ? urlError.message : String(urlError);
+		throw new Error(
+			`Invalid Autotask API URL: ${msg}. ` +
+				`Constructed URL: "${options.url}", endpoint: "${endpoint}", ` +
+				`zone: "${credentials.zone}", baseUrl length: ${baseUrl.length}. ` +
+				`If using AI Agent, ensure credentials are correctly configured.`,
+		);
+	}
 
 	try {
 		// Acquire a thread for this endpoint before proceeding

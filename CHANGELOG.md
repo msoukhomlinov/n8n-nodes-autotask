@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.8.2] - 2026-02-13
+
+### Fixed
+
+- **Autotask AI Tools** — Added URL validation and clearer `ERR_INVALID_URL` diagnostics when used as an AI Agent tool.
+
 ## [1.8.1] - 2026-02-13
 
 ### Fixed
