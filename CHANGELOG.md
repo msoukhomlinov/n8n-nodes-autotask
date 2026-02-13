@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.8.1] - 2026-02-13
+
+### Fixed
+
+- **Autotask AI Tools** — Fixed AI Agent crash (`Cannot set properties of undefined (setting 'strict')`) by returning tools via n8n-core's `StructuredToolkit` instead of a custom toolkit class, aligning with n8n's MCP Client Tool pattern.
+
 ## [1.8.0] - 2026-02-13
 
 ### Added

@@ -11,7 +11,7 @@ import type {
     ISupplyDataFunctions,
     SupplyData,
 } from 'n8n-workflow';
-import { DynamicStructuredTool, type StructuredToolInterface } from '@langchain/core/tools';
+import { DynamicStructuredTool } from '@langchain/core/tools';
 import type { z } from 'zod';
 import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/resource-operations';
 import { describeResource, type FieldMeta, type DescribeResourceResponse } from './helpers/aiHelper';
@@ -23,8 +23,20 @@ import {
     getCreateSchema,
     getUpdateSchema,
 } from './ai-tools/schema-generator';
-import { AutotaskStructuredToolkit } from './ai-tools/structured-toolkit';
 import { executeAiTool, type ToolExecutorParams } from './ai-tools/tool-executor';
+
+// ---------------------------------------------------------------------------
+// Resolve n8n-core's StructuredToolkit at runtime.
+// n8n-core is always present in the n8n host but is not a declared dependency
+// for community node packages. Using the host's class ensures instanceof checks
+// in n8n's agent tool-consumption flow (getConnectedTools / extendResponseMetadata)
+// recognise our toolkit correctly — matching exactly what n8n's own MCP Client
+// Tool node does: `import { StructuredToolkit } from 'n8n-core'`.
+// ---------------------------------------------------------------------------
+// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+const { StructuredToolkit } = require('n8n-core') as {
+    StructuredToolkit: new (tools: DynamicStructuredTool[]) => { tools: DynamicStructuredTool[] };
+};
 
 const WRITE_OPERATIONS = ['create', 'update', 'delete'];
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
@@ -170,7 +182,7 @@ export class AutotaskAiTools implements INodeType {
         }
 
         const resourceLabel = formatResourceName(resource);
-        const tools: StructuredToolInterface[] = [];
+        const tools: DynamicStructuredTool[] = [];
         // eslint-disable-next-line @typescript-eslint/no-this-alias -- needed for async closure in tool func
         const supplyDataContext = this;
 
@@ -258,7 +270,9 @@ export class AutotaskAiTools implements INodeType {
             );
         }
 
-        const toolkit = new AutotaskStructuredToolkit(tools);
+        // Wrap in n8n-core's StructuredToolkit so the AI Agent's getConnectedTools
+        // correctly recognises and flattens the tools (instanceof StructuredToolkit).
+        const toolkit = new StructuredToolkit(tools);
         return { response: toolkit };
     }
 }
