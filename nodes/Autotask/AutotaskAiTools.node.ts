@@ -8,6 +8,7 @@ import type {
     INodeType,
     INodeTypeDescription,
     INodePropertyOptions,
+    INodeExecutionData,
     ISupplyDataFunctions,
     SupplyData,
 } from 'n8n-workflow';
@@ -274,6 +275,74 @@ export class AutotaskAiTools implements INodeType {
         // correctly recognises and flattens the tools (instanceof StructuredToolkit).
         const toolkit = new StructuredToolkit(tools);
         return { response: toolkit };
+    }
+
+    /**
+     * execute() is required so that n8n 2.8+ does not fall through to the
+     * declarative RoutingNode test path (which causes ERR_INVALID_URL because
+     * there is no requestDefaults / routing config on this node).
+     *
+     * When the AI Agent invokes a tool at runtime the call goes through
+     * supplyData → DynamicStructuredTool.func — it never hits execute().
+     * This method only runs when the node is executed directly (e.g. "Test
+     * step" in the editor) or via the internal executeDeclarativeNodeInTest
+     * code path.
+     */
+    async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+        const items = this.getInputData();
+        const resource = this.getNodeParameter('resource', 0) as string;
+        const operations = this.getNodeParameter('operations', 0) as string[];
+        const allowWriteOperations = this.getNodeParameter('allowWriteOperations', 0, false) as boolean;
+
+        if (!resource || !operations?.length) {
+            throw new NodeOperationError(
+                this.getNode(),
+                'Resource and at least one operation must be configured.',
+            );
+        }
+
+        // Pick the first permitted operation as the default for test execution
+        const effectiveOps = operations.filter(
+            (op) => !WRITE_OPERATIONS.includes(op) || allowWriteOperations,
+        );
+        if (effectiveOps.length === 0) {
+            throw new NodeOperationError(
+                this.getNode(),
+                'No permitted operations. Enable "Allow Write Operations" if needed.',
+            );
+        }
+
+        const response: INodeExecutionData[] = [];
+
+        for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+            const item = items[itemIndex];
+            if (!item) continue;
+
+            // Input JSON may specify which operation to run; fall back to first available
+            const requestedOp = (item.json.operation as string) || effectiveOps[0];
+            const operation = effectiveOps.includes(requestedOp) ? requestedOp : effectiveOps[0];
+
+            try {
+                const params: ToolExecutorParams = {
+                    ...(item.json as Record<string, unknown>),
+                    resource,
+                    operation,
+                } as unknown as ToolExecutorParams;
+
+                const resultJson = await executeAiTool(this, resource, operation, params);
+                const parsed = typeof resultJson === 'string' ? JSON.parse(resultJson) : resultJson;
+
+                response.push({
+                    json: parsed,
+                    pairedItem: { item: itemIndex },
+                });
+            } catch (error) {
+                const msg = error instanceof Error ? error.message : String(error);
+                throw new NodeOperationError(this.getNode(), msg, { itemIndex });
+            }
+        }
+
+        return [response];
     }
 }
 

@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.9.0] - 2026-02-14
+
+### Fixed
+
+- **Autotask AI Tools** — Fixed `ERR_INVALID_URL` crash by adding an `execute()` method so n8n 2.8+ no longer falls through to the declarative RoutingNode test path (which has no URL config).
+
 ## [1.8.2] - 2026-02-13
 
 ### Fixed
