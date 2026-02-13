@@ -321,6 +321,27 @@ export async function executeToolOperation(
 					};
 				}
 				return fallbackValue;
+			// Pre-built filters from AI tools (getMany/count)
+			case 'filtersFromTool':
+				if (Array.isArray(requestData.filter) && requestData.filter.length > 0) {
+					return requestData.filter;
+				}
+				return fallbackValue;
+			// Resource mapper format for create/update and getMany filter fields
+			case 'fieldsToMap':
+				if (Object.keys(requestData).length > 0) {
+					if (['getMany', 'count'].includes(resourceOperation) && Array.isArray(requestData.filter)) {
+						const value: Record<string, string | number> = {};
+						for (const f of requestData.filter) {
+							if (typeof f === 'object' && f !== null && 'field' in f && 'value' in f) {
+								value[(f as { field: string }).field] = (f as { value: string | number }).value;
+							}
+						}
+						return { value };
+					}
+					return { mappingMode: 'defineBelow', value: requestData };
+				}
+				return fallbackValue ?? { value: {} };
 			// Forward other parameters as-is
 			case 'selectColumns':
 			case 'selectColumnsJson':
@@ -328,6 +349,10 @@ export async function executeToolOperation(
 
 			case 'dryRun':
 				return originalGetNodeParameter.call(this, 'dryRun', index, fallbackValue, options);
+			case 'returnAll':
+				return requestData.limit === undefined;
+			case 'maxRecords':
+				return requestData.limit ?? 10;
 			default:
 				return originalGetNodeParameter.call(this, name, index, fallbackValue, options);
 		}

@@ -133,6 +133,7 @@ function finalizeResourceMapperFilters<T extends IAutotaskEntity>(
 /**
  * Build filters array from resource mapper fields
  * Multiple fields are automatically combined with AND logic
+ * Supports pre-built filters from AI tools via 'filtersFromTool' parameter
  */
 export async function buildFiltersFromResourceMapper<T extends IAutotaskEntity>(
 	context: IExecuteFunctions,
@@ -141,6 +142,12 @@ export async function buildFiltersFromResourceMapper<T extends IAutotaskEntity>(
 	operation: ResourceOperation,
 	defaultFilter?: { field: string; op: string },
 ): Promise<IAutotaskQueryInput<T>['filter']> {
+	const preBuilt = context.getNodeParameter('filtersFromTool', itemIndex, undefined) as
+		| IAutotaskQueryInput<T>['filter']
+		| undefined;
+	if (Array.isArray(preBuilt) && preBuilt.length > 0) {
+		return finalizeResourceMapperFilters<T>(preBuilt, defaultFilter);
+	}
 	const fields = getResourceMapperFields(context, itemIndex);
 	const fieldsMap = await getProcessedFieldsMap(entityType, context);
 	const filters = await convertFieldsToFilters<T>(fields, fieldsMap);

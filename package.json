@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-autotask",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "n8n node for Autotask PSA integration",
   "keywords": [
     "n8n-community-node-package",
@@ -45,7 +45,8 @@
     ],
     "nodes": [
       "dist/nodes/Autotask/Autotask.node.js",
-      "dist/nodes/Autotask/AutotaskTrigger.node.js"
+      "dist/nodes/Autotask/AutotaskTrigger.node.js",
+      "dist/nodes/Autotask/AutotaskAiTools.node.js"
     ]
   },
   "devDependencies": {
@@ -65,6 +66,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@langchain/core": "^0.3.43",
     "chalk": "^4.1.2",
     "change-case": "^4.1.2",
     "keyv": "5.2.3",
@@ -73,7 +75,8 @@
     "moment-timezone": "^0.5.47",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
-    "pluralize": "^8.0.0"
+    "pluralize": "^8.0.0",
+    "zod": "^3.23.0"
   },
   "peerDependencies": {
     "n8n-workflow": ">=1.0.0"

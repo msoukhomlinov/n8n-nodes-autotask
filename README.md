@@ -41,6 +41,8 @@ pnpm install n8n-nodes-autotask
 - Node.js version 18.10 or later
 - pnpm version 9.1 or later (if using pnpm)
 
+**Autotask AI Tools node:** To use the Autotask AI Tools node with the AI Agent, set `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` in your n8n environment.
+
 ## Authentication
 
 To use this node, you need to have API access to your Autotask instance. Follow these steps to set up authentication:
@@ -57,6 +59,10 @@ To use this node, you need to have API access to your Autotask instance. Follow 
 **Australia/New Zealand (Sydney) datacentre:** If you are on the AUS/NZ Sydney datacentre, from 11 March 2026 select the zone **Australia / New Zealand (Sydney — from 11 Mar 2026)** (API: webservices29.autotask.net). For that zone, the URLs are: User interface ww29.autotask.net; API webservices29.autotask.net; Data Warehouse reports29.autotask.net; Performance Analytics workbooks workbooks29.autotask.net.
 
 ## Features
+
+### Autotask AI Tools
+
+The **Autotask AI Tools** node exposes Autotask operations as individual tools for the AI Agent. Add one node per resource (e.g. ticket, company, contact), select the operations to expose (get, getMany, create, update, delete, count), and connect to an AI Agent. Each operation becomes a separate tool with a flat, typed schema that LLMs handle reliably. Requires `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` in your n8n environment.
 
 ### Supported Resources
 

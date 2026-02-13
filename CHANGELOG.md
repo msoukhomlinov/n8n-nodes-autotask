@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [1.8.0] - 2026-02-13
+
+### Added
+- **Autotask AI Tools node** — New `AutotaskAiTools` node that exposes Autotask operations as individual AI tools for n8n's AI Agent, following MCP-style patterns with one tool per operation. Each resource can expose multiple focused tools (get, getMany, create, update, delete, count) with resource-specific schemas.
+
 ## [1.7.0] - 2026-02-11
 
 ### Added

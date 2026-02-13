@@ -1,0 +1,308 @@
+import {
+    NodeConnectionType,
+    NodeOperationError,
+} from 'n8n-workflow';
+import type {
+    IExecuteFunctions,
+    ILoadOptionsFunctions,
+    INodeType,
+    INodeTypeDescription,
+    INodePropertyOptions,
+    ISupplyDataFunctions,
+    SupplyData,
+} from 'n8n-workflow';
+import { DynamicStructuredTool, type StructuredToolInterface } from '@langchain/core/tools';
+import type { z } from 'zod';
+import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/resource-operations';
+import { describeResource, type FieldMeta, type DescribeResourceResponse } from './helpers/aiHelper';
+import {
+    getGetSchema,
+    getGetManySchema,
+    getCountSchema,
+    getDeleteSchema,
+    getCreateSchema,
+    getUpdateSchema,
+} from './ai-tools/schema-generator';
+import { AutotaskStructuredToolkit } from './ai-tools/structured-toolkit';
+import { executeAiTool, type ToolExecutorParams } from './ai-tools/tool-executor';
+
+const WRITE_OPERATIONS = ['create', 'update', 'delete'];
+const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
+
+function formatResourceName(value: string): string {
+    return value.charAt(0).toUpperCase() + value.slice(1).replace(/([A-Z])/g, ' $1').trim();
+}
+
+// ---------------------------------------------------------------------------
+// Rich tool description builders
+// ---------------------------------------------------------------------------
+
+function buildGetDescription(resourceLabel: string): string {
+    return (
+        `Retrieve a single ${resourceLabel} record by its numeric ID. ` +
+        `Returns the full entity with all fields (or only selected fields if 'fields' is specified). ` +
+        `Response includes ID and label fields for picklist and reference values.`
+    );
+}
+
+function buildGetManyDescription(resourceLabel: string, readFields: FieldMeta[]): string {
+    const filterableNames = readFields
+        .filter((f) => !f.udf)
+        .slice(0, 12)
+        .map((f) => f.id);
+    const fieldList = filterableNames.join(', ');
+
+    return (
+        `Search for ${resourceLabel} records with optional filters. ` +
+        `Supports up to two filters combined with AND logic. ` +
+        `Filterable fields include: ${fieldList}. ` +
+        `Use filter_op 'eq' for exact match, 'contains' for partial text, 'gt'/'lt' for comparisons. ` +
+        `Returns JSON with 'results' array and 'count'. Default limit is 10 records.`
+    );
+}
+
+function buildCountDescription(resourceLabel: string): string {
+    return (
+        `Count ${resourceLabel} records matching optional filters. ` +
+        `Supports up to two filters combined with AND logic. ` +
+        `Returns JSON with 'count' number.`
+    );
+}
+
+function buildCreateDescription(resourceLabel: string, writeFields: FieldMeta[]): string {
+    const required = writeFields.filter((f) => f.required).map((f) => f.id);
+    const requiredList = required.length > 0 ? required.join(', ') : 'none';
+    const picklistFields = writeFields
+        .filter((f) => f.isPickList)
+        .slice(0, 5)
+        .map((f) => f.id);
+    const picklistNote = picklistFields.length > 0
+        ? ` Picklist fields (use numeric IDs): ${picklistFields.join(', ')}.`
+        : '';
+
+    return (
+        `Create a new ${resourceLabel} record. ` +
+        `Required fields: ${requiredList}.${picklistNote} ` +
+        `Returns the created entity with its assigned ID.`
+    );
+}
+
+function buildUpdateDescription(resourceLabel: string): string {
+    return (
+        `Update an existing ${resourceLabel} record by ID. ` +
+        `Only include fields you want to change -- omitted fields remain unchanged. ` +
+        `Returns the updated entity.`
+    );
+}
+
+function buildDeleteDescription(resourceLabel: string): string {
+    return `Delete a ${resourceLabel} record by its numeric ID. Returns confirmation of deletion.`;
+}
+
+// ---------------------------------------------------------------------------
+// Node class
+// ---------------------------------------------------------------------------
+
+export class AutotaskAiTools implements INodeType {
+    description: INodeTypeDescription = {
+        displayName: 'Autotask AI Tools',
+        name: 'autotaskAiTools',
+        icon: 'file:autotask.svg',
+        group: ['output'],
+        version: 1,
+        description: 'Expose Autotask operations as individual AI tools for the AI Agent',
+        defaults: {
+            name: 'Autotask AI Tools',
+        },
+        inputs: [],
+        outputs: [{ type: NodeConnectionType.AiTool, displayName: 'Tools' }],
+        credentials: [{ name: 'autotaskApi', required: true }],
+        properties: [
+            {
+                displayName: 'Resource Name or ID',
+                name: 'resource',
+                type: 'options',
+                required: true,
+                noDataExpression: true,
+                typeOptions: { loadOptionsMethod: 'getToolResources' },
+                default: '',
+                description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+            },
+            {
+                displayName: 'Operations Names or IDs',
+                name: 'operations',
+                type: 'multiOptions',
+                required: true,
+                typeOptions: {
+                    loadOptionsMethod: 'getToolResourceOperations',
+                    loadOptionsDependsOn: ['resource', 'allowWriteOperations'],
+                },
+                default: [],
+                description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+            },
+            {
+                displayName: 'Allow Write Operations',
+                name: 'allowWriteOperations',
+                type: 'boolean',
+                default: false,
+                description: 'Whether to enable create, update, delete tools. Disabled = read-only.',
+            },
+        ],
+    };
+
+    methods = {
+        loadOptions: {
+            getToolResources,
+            getToolResourceOperations,
+        },
+    };
+
+    async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
+        const resource = this.getNodeParameter('resource', itemIndex) as string;
+        const operations = this.getNodeParameter('operations', itemIndex) as string[];
+        const allowWriteOperations = this.getNodeParameter('allowWriteOperations', itemIndex, false) as boolean;
+
+        if (!resource) {
+            throw new NodeOperationError(this.getNode(), 'Resource is required');
+        }
+        if (!operations?.length) {
+            throw new NodeOperationError(this.getNode(), 'At least one operation must be selected');
+        }
+
+        const resourceLabel = formatResourceName(resource);
+        const tools: StructuredToolInterface[] = [];
+        // eslint-disable-next-line @typescript-eslint/no-this-alias -- needed for async closure in tool func
+        const supplyDataContext = this;
+
+        // Fetch field metadata once for the resource -- used by multiple operations
+        const needsReadFields = operations.some((op) => ['get', 'getMany', 'count'].includes(op));
+        const needsWriteFields = operations.some((op) => ['create', 'update'].includes(op));
+
+        let readDescribe: DescribeResourceResponse | undefined;
+        let writeDescribe: DescribeResourceResponse | undefined;
+
+        if (needsReadFields) {
+            readDescribe = await describeResource(
+                supplyDataContext as unknown as ILoadOptionsFunctions,
+                resource,
+                'read',
+            );
+        }
+        if (needsWriteFields) {
+            writeDescribe = await describeResource(
+                supplyDataContext as unknown as ILoadOptionsFunctions,
+                resource,
+                'write',
+            );
+        }
+
+        for (const operation of operations) {
+            if (WRITE_OPERATIONS.includes(operation) && !allowWriteOperations) {
+                continue;
+            }
+
+            const toolName = `autotask_${resource}_${operation}`;
+            let schema: z.ZodObject<z.ZodRawShape>;
+            let description: string;
+
+            switch (operation) {
+                case 'get':
+                    schema = getGetSchema();
+                    description = buildGetDescription(resourceLabel);
+                    break;
+                case 'getMany':
+                    schema = getGetManySchema(readDescribe?.fields ?? []);
+                    description = buildGetManyDescription(resourceLabel, readDescribe?.fields ?? []);
+                    break;
+                case 'count':
+                    schema = getCountSchema(readDescribe?.fields ?? []);
+                    description = buildCountDescription(resourceLabel);
+                    break;
+                case 'delete':
+                    schema = getDeleteSchema();
+                    description = buildDeleteDescription(resourceLabel);
+                    break;
+                case 'create': {
+                    const fields = writeDescribe?.fields ?? [];
+                    schema = getCreateSchema(fields);
+                    description = buildCreateDescription(resourceLabel, fields);
+                    break;
+                }
+                case 'update': {
+                    const fields = writeDescribe?.fields ?? [];
+                    schema = getUpdateSchema(fields);
+                    description = buildUpdateDescription(resourceLabel);
+                    break;
+                }
+                default:
+                    continue;
+            }
+
+            const tool = new DynamicStructuredTool({
+                name: toolName,
+                description,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                schema: schema as any,
+                func: async (params: Record<string, unknown>) => {
+                    const typedParams = params as unknown as ToolExecutorParams;
+                    return executeAiTool(supplyDataContext as unknown as IExecuteFunctions, resource, operation, typedParams);
+                },
+            });
+            tools.push(tool);
+        }
+
+        if (tools.length === 0) {
+            throw new NodeOperationError(
+                this.getNode(),
+                'No tools to expose. Select operations and enable "Allow Write Operations" if you need create/update/delete.',
+            );
+        }
+
+        const toolkit = new AutotaskStructuredToolkit(tools);
+        return { response: toolkit };
+    }
+}
+
+async function getToolResources(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+    const options: INodePropertyOptions[] = [];
+    for (const [value, ops] of Object.entries(RESOURCE_OPERATIONS_MAP)) {
+        if (EXCLUDED_RESOURCES.includes(value)) continue;
+        const hasReadOps = ops.some((o) => ['get', 'getMany', 'count'].includes(o));
+        if (!hasReadOps) continue;
+        options.push({
+            name: formatResourceName(value),
+            value,
+            description: `${formatResourceName(value)} entity`,
+        });
+    }
+    return options.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function getToolResourceOperations(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+    const resource = this.getCurrentNodeParameter('resource') as string;
+    const allowWriteOperations = (this.getCurrentNodeParameter('allowWriteOperations') ?? false) as boolean;
+
+    if (!resource) return [];
+
+    const ops = getResourceOperations(resource);
+    const options: INodePropertyOptions[] = [];
+
+    const opLabels: Record<string, string> = {
+        get: 'Get by ID',
+        getMany: 'Get many (with filters)',
+        count: 'Count',
+        create: 'Create',
+        update: 'Update',
+        delete: 'Delete',
+    };
+
+    for (const op of ops) {
+        if (WRITE_OPERATIONS.includes(op) && !allowWriteOperations) continue;
+        options.push({
+            name: opLabels[op] ?? op,
+            value: op,
+            description: `${op} operation`,
+        });
+    }
+    return options;
+}
