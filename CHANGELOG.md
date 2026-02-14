@@ -11,6 +11,8 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - **Ticket Category** — New resource supporting Get, Get Many, Update, and Count operations for managing ticket categories, which define groupings for service desk tickets with display colors and default field values. Automatically available in the AI Tools node.
 - **Ticket Category Field Default** — New read-only child resource of Ticket Category supporting Get, Get Many, and Count operations for querying default field values associated with ticket categories. Automatically available in the AI Tools node.
 - **Ticket Change Request Approval** — New resource supporting root and ticket-child endpoint scopes for Get, Get Many, Count, and child-scope Create/Delete operations on ticket change request approvals. Automatically available in the AI Tools node.
+- **Ticket Secondary Resource** — New child resource of Ticket supporting Get, Get Many, Count, Create, and Delete operations for managing secondary resource assignments. Automatically available in the AI Tools node.
+- **Service Level Agreement Result** — New read-only resource supporting root and Service Level Agreement child endpoint scopes for Get, Get Many, and Count operations on SLA results. Automatically available in the AI Tools node.
 - **Contact: Move to Company** — New operation on the Contact resource that clones a contact to a different company (all writable fields + UDFs), optionally copies CompanyNotes (with attachments) and ContactGroup memberships, leaves customizable audit trail notes on both companies, and deactivates the source contact.
 
 

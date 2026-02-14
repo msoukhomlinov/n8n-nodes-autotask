@@ -395,6 +395,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Service Call Task Resources, which associate resources with service call tasks for scheduling and assignment',
 	},
 	{
+		name: 'Service Level Agreement Result',
+		value: 'serviceLevelAgreementResult',
+		description: 'Query SLA Results, which track time and completion data for service level events associated with tickets',
+	},
+	{
 		name: 'Skill',
 		value: 'skill',
 		description: 'Query Skills, which can be associated with Resources through the ResourceSkill entity to match resources to tickets based on their skill level',
@@ -493,6 +498,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		name: 'Ticket Note Webhook',
 		value: 'ticketNoteWebhook',
 		description: 'Manage Autotask Ticket Note Webhooks',
+	},
+	{
+		name: 'Ticket Secondary Resource',
+		value: 'ticketSecondaryResource',
+		description: 'Manage Ticket Secondary Resources, which assign additional resources to tickets alongside or instead of a primary resource',
 	},
 	{
 		name: 'Ticket Webhook',

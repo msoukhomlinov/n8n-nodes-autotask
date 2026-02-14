@@ -8,11 +8,16 @@ import { buildEntityUrl } from '../../helpers/http/request';
 import { executeAiHelperOperation } from '../aiHelper/execute';
 import { executeApiThresholdOperation } from '../apiThreshold/execute';
 import { executeBillingCodeOperation } from '../billingCodes/execute';
+import { executeBillingItemsOperation } from '../billingItems/execute';
+import { executeChecklistLibraryOperation } from '../checklistLibraries/execute';
+import { executeChecklistLibraryChecklistItemOperation } from '../checklistLibraryChecklistItems/execute';
+import { executeClassificationIconOperation } from '../classificationIcons/execute';
 import { executeCompanyOperation } from '../companies/execute';
 import { executeCompanyAlertOperation } from '../companyAlerts/execute';
 import { executeCompanyNoteOperation } from '../companyNotes/execute';
 import { executeCompanySiteConfigurationOperation } from '../companySiteConfigurations/execute';
 import { executeCompanyWebhookOperation } from '../companyWebhooks/execute';
+import { executeCompanyLocationOperation } from '../companyLocations/execute';
 import { executeConfigurationItemWebhookOperation } from '../configurationItemWebhooks/execute';
 import { executeConfigurationItemOperation } from '../configurationItems/execute';
 import { executeConfigurationItemCategoryOperation } from '../configurationItemCategories/execute';
@@ -27,7 +32,6 @@ import { executeContactOperation } from '../contacts/execute';
 import { executeContactWebhookOperation } from '../contactWebhooks/execute';
 import { executeContactGroupsOperation } from '../contactGroups/execute';
 import { executeContactGroupContactsOperation } from '../contactGroupContacts/execute';
-import { executeCompanyLocationOperation } from '../companyLocations/execute';
 import { executeContractOperation } from '../contracts/execute';
 import { executeContractBillingRuleOperation } from '../contractBillingRules/execute';
 import { executeContractChargeOperation } from '../contractCharges/execute';
@@ -76,14 +80,29 @@ import { executeServiceCallTicketOperation } from '../serviceCallTickets/execute
 import { executeServiceCallTicketResourceOperation } from '../serviceCallTicketResources/execute';
 import { executeServiceCallTaskOperation } from '../serviceCallTasks/execute';
 import { executeServiceCallTaskResourceOperation } from '../serviceCallTaskResources/execute';
+import { executeServiceLevelAgreementResultOperation } from '../serviceLevelAgreementResults/execute';
 import { executeServiceOperation } from '../services/execute';
+import { executeSubscriptionOperation } from '../subscriptions/execute';
+import { executeSubscriptionPeriodsOperation } from '../subscriptionPeriods/execute';
+import { executeTagOperation } from '../tags/execute';
+import { executeTagAliasOperation } from '../tagAliases/execute';
+import { executeTagGroupOperation } from '../tagGroups/execute';
 import { executeTicketOperation } from '../tickets/execute';
+import { executeTicketAttachmentOperation } from '../ticketAttachments/execute';
+import { executeTicketCategoryOperation } from '../ticketCategories/execute';
+import { executeTicketCategoryFieldDefaultOperation } from '../ticketCategoryFieldDefaults/execute';
 import { executeTicketChangeRequestApprovalOperation } from '../ticketChangeRequestApprovals/execute';
+import { executeTicketChargeOperation } from '../ticketCharges/execute';
+import { executeTicketChecklistItemOperation } from '../ticketChecklistItems/execute';
+import { executeTicketChecklistLibraryOperation } from '../ticketChecklistLibraries/execute';
+import { executeTicketSecondaryResourceOperation } from '../ticketSecondaryResources/execute';
 import { executeTicketNoteOperation } from '../ticketNotes/execute';
+import { executeTicketNoteAttachmentOperation } from '../ticketNoteAttachments/execute';
 import { executeTicketNoteWebhookOperation } from '../ticketNoteWebhooks/execute';
 import { executeTicketWebhookOperation } from '../ticketWebhooks/execute';
 import { executeTicketHistoryOperation } from '../ticketHistories/execute';
 import { executeTimeEntryOperation } from '../timeEntries/execute';
+import { executeTimeEntryAttachmentOperation } from '../timeEntryAttachments/execute';
 import { executeSurveyOperation } from '../surveys/execute';
 import { executeSurveyResultsOperation } from '../surveyResults/execute';
 import { executeSkillOperation } from '../skills/execute';
@@ -98,11 +117,16 @@ const RESOURCE_EXECUTORS: Record<
 	aiHelper: executeAiHelperOperation,
 	apiThreshold: executeApiThresholdOperation,
 	billingCode: executeBillingCodeOperation,
+	billingItems: executeBillingItemsOperation,
+	checklistLibrary: executeChecklistLibraryOperation,
+	checklistLibraryChecklistItem: executeChecklistLibraryChecklistItemOperation,
+	classificationIcon: executeClassificationIconOperation,
 	company: executeCompanyOperation,
 	companyAlert: executeCompanyAlertOperation,
 	companyNote: executeCompanyNoteOperation,
-	companySiteConfigurations: executeCompanySiteConfigurationOperation,
+	companySiteConfiguration: executeCompanySiteConfigurationOperation,
 	companyWebhook: executeCompanyWebhookOperation,
+	companyLocation: executeCompanyLocationOperation,
 	configurationItemWebhook: executeConfigurationItemWebhookOperation,
 	configurationItems: executeConfigurationItemOperation,
 	configurationItemCategories: executeConfigurationItemCategoryOperation,
@@ -119,7 +143,6 @@ const RESOURCE_EXECUTORS: Record<
 	contactWebhook: executeContactWebhookOperation,
 	contactGroups: executeContactGroupsOperation,
 	contactGroupContacts: executeContactGroupContactsOperation,
-	companyLocation: executeCompanyLocationOperation,
 	contract: executeContractOperation,
 	contractBillingRule: executeContractBillingRuleOperation,
 	contractCharge: executeContractChargeOperation,
@@ -168,17 +191,32 @@ const RESOURCE_EXECUTORS: Record<
 	serviceCallTicketResource: executeServiceCallTicketResourceOperation,
 	serviceCallTask: executeServiceCallTaskOperation,
 	serviceCallTaskResource: executeServiceCallTaskResourceOperation,
+	serviceLevelAgreementResult: executeServiceLevelAgreementResultOperation,
 	service: executeServiceOperation,
+	subscription: executeSubscriptionOperation,
+	subscriptionPeriod: executeSubscriptionPeriodsOperation,
+	survey: executeSurveyOperation,
+	surveyResults: executeSurveyResultsOperation,
+	skill: executeSkillOperation,
+	tag: executeTagOperation,
+	tagAlias: executeTagAliasOperation,
+	tagGroup: executeTagGroupOperation,
 	ticket: executeTicketOperation,
+	ticketAttachment: executeTicketAttachmentOperation,
+	ticketCategory: executeTicketCategoryOperation,
+	ticketCategoryFieldDefault: executeTicketCategoryFieldDefaultOperation,
 	ticketChangeRequestApproval: executeTicketChangeRequestApprovalOperation,
+	ticketCharge: executeTicketChargeOperation,
+	ticketChecklistItem: executeTicketChecklistItemOperation,
+	ticketChecklistLibrary: executeTicketChecklistLibraryOperation,
+	ticketSecondaryResource: executeTicketSecondaryResourceOperation,
 	ticketNote: executeTicketNoteOperation,
+	ticketNoteAttachment: executeTicketNoteAttachmentOperation,
 	ticketNoteWebhook: executeTicketNoteWebhookOperation,
 	ticketWebhook: executeTicketWebhookOperation,
 	TicketHistory: executeTicketHistoryOperation,
 	timeEntry: executeTimeEntryOperation,
-	survey: executeSurveyOperation,
-	surveyResults: executeSurveyResultsOperation,
-	skill: executeSkillOperation,
+	timeEntryAttachment: executeTimeEntryAttachmentOperation,
 };
 
 /**

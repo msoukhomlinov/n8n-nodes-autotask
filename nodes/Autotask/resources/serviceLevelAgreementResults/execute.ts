@@ -2,8 +2,6 @@ import type { IDataObject, IExecuteFunctions, INodeExecutionData } from 'n8n-wor
 import type { IAutotaskEntity, IAutotaskQueryInput, IQueryResponse } from '../../types';
 import {
     CountOperation,
-    CreateOperation,
-    DeleteOperation,
     GetManyOperation,
     GetOperation,
 } from '../../operations/base';
@@ -20,55 +18,18 @@ import { flattenUdfsArray } from '../../helpers/udf/flatten';
 import { getEntityMetadata } from '../../constants/entities';
 import type { IEntityField } from '../../types/base/entities';
 
-const ENTITY_TYPE = 'ticketChangeRequestApproval';
+const ENTITY_TYPE = 'serviceLevelAgreementResults';
 
 type QueryInput = IAutotaskQueryInput<IAutotaskEntity>;
 
-function getTicketId(context: IExecuteFunctions, itemIndex: number): string | number | undefined {
-    const ticketID = context.getNodeParameter('ticketID', itemIndex, '') as string;
-    const normalizedId = String(ticketID).trim();
+function getServiceLevelAgreementId(context: IExecuteFunctions, itemIndex: number): string | number | undefined {
+    const serviceLevelAgreementID = context.getNodeParameter('serviceLevelAgreementID', itemIndex, '') as string;
+    const normalizedId = String(serviceLevelAgreementID).trim();
     return normalizedId.length > 0 ? normalizedId : undefined;
 }
 
-function buildChildBasePath(ticketID: string | number): string {
-    return `Tickets/${ticketID}/ChangeRequestApprovals`;
-}
-
-async function executeCreateWithChildTicket(
-    context: IExecuteFunctions,
-    itemIndex: number,
-    ticketID: string | number,
-): Promise<IAutotaskEntity> {
-    const originalGetNodeParameter = context.getNodeParameter;
-
-    context.getNodeParameter = ((name, index, fallbackValue, options) => {
-        if (name !== 'fieldsToMap') {
-            return originalGetNodeParameter.call(context, name, index, fallbackValue, options);
-        }
-
-        const existing = originalGetNodeParameter.call(
-            context,
-            'fieldsToMap',
-            index,
-            { mappingMode: 'defineBelow', value: {} },
-            options,
-        ) as { mappingMode?: string; value?: Record<string, unknown> };
-
-        return {
-            mappingMode: existing?.mappingMode ?? 'defineBelow',
-            value: {
-                ...(existing?.value ?? {}),
-                ticketID,
-            },
-        };
-    }) as typeof context.getNodeParameter;
-
-    try {
-        const createOp = new CreateOperation<IAutotaskEntity>(ENTITY_TYPE, context);
-        return await createOp.execute(itemIndex);
-    } finally {
-        context.getNodeParameter = originalGetNodeParameter;
-    }
+function buildChildBasePath(serviceLevelAgreementID: string | number): string {
+    return `ServiceLevelAgreements/${serviceLevelAgreementID}/Results`;
 }
 
 function getIncludeFields(context: IExecuteFunctions, itemIndex: number): string[] {
@@ -125,7 +86,12 @@ async function executeScopedQuery(
         }
     }
 
-    const withOutputMode = await processOutputMode(results, ENTITY_TYPE, context, itemIndex) as IAutotaskEntity[];
+    const withOutputMode = await processOutputMode(
+        results,
+        ENTITY_TYPE,
+        context,
+        itemIndex,
+    ) as IAutotaskEntity[];
     const withDates = await processResponseDatesArray.call(
         context,
         withOutputMode,
@@ -176,17 +142,19 @@ function processUdfFields(fields: IEntityField[]): IEntityField[] {
 
 async function executeChildEntityInfoOperation(
     context: IExecuteFunctions,
-    ticketID: string | number,
+    itemIndex: number,
+    serviceLevelAgreementID: string | number,
 ): Promise<INodeExecutionData> {
     const metadata = getEntityMetadata(ENTITY_TYPE);
     if (!metadata) {
         throw new Error(`Entity metadata not found for ${ENTITY_TYPE}`);
     }
 
+    const endpoint = `${buildChildBasePath(serviceLevelAgreementID)}/entityInformation`;
     const response = await autotaskApiRequest.call(
         context,
         'GET',
-        `${buildChildBasePath(ticketID)}/entityInformation`,
+        endpoint,
     ) as { info: IDataObject };
 
     if (!response?.info || typeof response.info !== 'object') {
@@ -206,7 +174,8 @@ async function executeChildEntityInfoOperation(
 
 async function executeChildFieldInfoOperation(
     context: IExecuteFunctions,
-    ticketID: string | number,
+    itemIndex: number,
+    serviceLevelAgreementID: string | number,
 ): Promise<INodeExecutionData> {
     const metadata = getEntityMetadata(ENTITY_TYPE);
     if (!metadata) {
@@ -216,13 +185,13 @@ async function executeChildFieldInfoOperation(
     const entityInfoResponse = await autotaskApiRequest.call(
         context,
         'GET',
-        `${buildChildBasePath(ticketID)}/entityInformation`,
+        `${buildChildBasePath(serviceLevelAgreementID)}/entityInformation`,
     ) as { info: { hasUserDefinedFields?: boolean; supportsWebhookCallouts?: boolean } };
 
     const standardFieldsResponse = await autotaskApiRequest.call(
         context,
         'GET',
-        `${buildChildBasePath(ticketID)}/entityInformation/fields`,
+        `${buildChildBasePath(serviceLevelAgreementID)}/entityInformation/fields`,
     ) as { fields: IEntityField[] };
 
     if (!Array.isArray(standardFieldsResponse?.fields)) {
@@ -234,7 +203,7 @@ async function executeChildFieldInfoOperation(
         const udfFieldsResponse = await autotaskApiRequest.call(
             context,
             'GET',
-            `${buildChildBasePath(ticketID)}/entityInformation/userDefinedFields`,
+            `${buildChildBasePath(serviceLevelAgreementID)}/entityInformation/userDefinedFields`,
         ) as { fields: IEntityField[] };
 
         udfFields = Array.isArray(udfFieldsResponse?.fields) ? udfFieldsResponse.fields : [];
@@ -259,7 +228,7 @@ async function executeChildFieldInfoOperation(
     };
 }
 
-export async function executeTicketChangeRequestApprovalOperation(
+export async function executeServiceLevelAgreementResultOperation(
     this: IExecuteFunctions,
 ): Promise<INodeExecutionData[][]> {
     const items = this.getInputData();
@@ -268,29 +237,10 @@ export async function executeTicketChangeRequestApprovalOperation(
 
     for (let i = 0; i < items.length; i++) {
         try {
-            const ticketID = getTicketId(this, i);
-            const isChildScope = ticketID !== undefined;
+            const serviceLevelAgreementID = getServiceLevelAgreementId(this, i);
+            const isChildScope = serviceLevelAgreementID !== undefined;
 
             switch (operation) {
-                case 'create': {
-                    if (!isChildScope) {
-                        throw new Error('Create requires Ticket ID and uses the ticket child endpoint when provided');
-                    }
-                    const response = await executeCreateWithChildTicket(this, i, ticketID);
-                    returnData.push({ json: response });
-                    break;
-                }
-
-                case 'delete': {
-                    if (!isChildScope) {
-                        throw new Error('Delete requires Ticket ID and uses the ticket child endpoint when provided');
-                    }
-                    const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-                    const response = await deleteOp.execute(i);
-                    returnData.push({ json: (response ?? { success: true }) as IDataObject });
-                    break;
-                }
-
                 case 'get': {
                     if (!isChildScope) {
                         const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this);
@@ -312,14 +262,19 @@ export async function executeTicketChangeRequestApprovalOperation(
                     const results = await executeScopedQuery(
                         this,
                         i,
-                        `${buildChildBasePath(ticketID)}/query`,
+                        `${buildChildBasePath(serviceLevelAgreementID)}/query`,
                         queryBody,
                     );
+
                     if (results.length === 0) {
-                        throw new Error(`Ticket change request approval with ID ${entityId} was not found`);
+                        throw new Error(`Service level agreement result with ID ${entityId} was not found`);
                     }
 
-                    const withDates = await processResponseDates.call(this, results[0], `${ENTITY_TYPE}.get`);
+                    const withDates = await processResponseDates.call(
+                        this,
+                        results[0],
+                        `${ENTITY_TYPE}.get`,
+                    );
                     returnData.push({ json: withDates as IDataObject });
                     break;
                 }
@@ -348,7 +303,7 @@ export async function executeTicketChangeRequestApprovalOperation(
                     const results = await executeScopedQuery(
                         this,
                         i,
-                        `${buildChildBasePath(ticketID)}/query`,
+                        `${buildChildBasePath(serviceLevelAgreementID)}/query`,
                         queryBody,
                     );
                     returnData.push(...results.map(item => ({ json: item })));
@@ -366,7 +321,7 @@ export async function executeTicketChangeRequestApprovalOperation(
                     const results = await executeScopedQuery(
                         this,
                         i,
-                        `${buildChildBasePath(ticketID)}/query`,
+                        `${buildChildBasePath(serviceLevelAgreementID)}/query`,
                         queryBody,
                     );
                     returnData.push(...results.map(item => ({ json: item })));
@@ -396,7 +351,7 @@ export async function executeTicketChangeRequestApprovalOperation(
                     const response = await autotaskApiRequest.call(
                         this,
                         'POST',
-                        `${buildChildBasePath(ticketID)}/query/count`,
+                        `${buildChildBasePath(serviceLevelAgreementID)}/query/count`,
                         { filter: filters } as IDataObject,
                     ) as { queryCount: number };
 
@@ -409,7 +364,18 @@ export async function executeTicketChangeRequestApprovalOperation(
                     break;
                 }
 
-                case 'getEntityInfo':
+                case 'getEntityInfo': {
+                    if (!isChildScope) {
+                        const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
+                        returnData.push(response);
+                        break;
+                    }
+
+                    const response = await executeChildEntityInfoOperation(this, i, serviceLevelAgreementID);
+                    returnData.push(response);
+                    break;
+                }
+
                 case 'getFieldInfo': {
                     if (!isChildScope) {
                         const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
@@ -417,9 +383,7 @@ export async function executeTicketChangeRequestApprovalOperation(
                         break;
                     }
 
-                    const response = operation === 'getEntityInfo'
-                        ? await executeChildEntityInfoOperation(this, ticketID)
-                        : await executeChildFieldInfoOperation(this, ticketID);
+                    const response = await executeChildFieldInfoOperation(this, i, serviceLevelAgreementID);
                     returnData.push(response);
                     break;
                 }

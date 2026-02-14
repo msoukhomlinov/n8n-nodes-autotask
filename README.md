@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-1.8.4-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-2.0.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -146,6 +146,7 @@ The node supports the following Autotask resources:
 | Service Call Task Resource | Manage resources assigned to service call tasks |
 | Service Call Ticket | Manage tickets linked to service calls |
 | Service Call Ticket Resource | Manage resources assigned to service call tickets |
+| Service Level Agreement Result | Query SLA results tracking time and completion data for service level events |
 | Skill | Query skills used for resource competency tracking |
 | Survey | Manage customer surveys |
 | Survey Results | Manage results from customer surveys |
@@ -166,6 +167,7 @@ The node supports the following Autotask resources:
 | Ticket Note | Manage notes attached to tickets |
 | Ticket Note Attachment | Manage files attached to ticket notes |
 | Ticket Note Webhook | Manage webhooks for ticket note events |
+| Ticket Secondary Resource | Manage secondary resource assignments on tickets |
 | Ticket Webhook | Manage webhooks for ticket events |
 | Time Entry | Manage time entries for billing. Includes Get Posted and Get Unposted operations for listing labour entries by posting status with cross-entity filters |
 | Time Entry Attachment | Manage files attached to time entries |
@@ -255,6 +257,8 @@ The API Threshold resource provides a simple way to monitor your Autotask API us
 This is particularly useful for workflows that make many API calls, allowing you to implement conditional logic based on current usage levels to avoid hitting rate limits and ensure continuous operation.
 
 ### AI Agent Playbook
+
+> **Deprecation notice:** The *Tool* resource and *AI Helper* resource within the main Autotask node are deprecated and will be removed in a future release. Use the dedicated **Autotask AI Tools** node (see [Autotask AI Tools](#autotask-ai-tools) above) for all new AI agent integrations. The helper tools (`describeFields`, `listPicklistValues`) are built into the AI Tools node and do not require a separate aiHelper resource.
 
 This node is optimised for AI agents and tool-calling systems with specialised features designed for autonomous operation.
 

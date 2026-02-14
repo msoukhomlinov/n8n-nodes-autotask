@@ -96,6 +96,7 @@ const RESOURCE_ALIASES = AUTOTASK_ENTITIES.reduce<Record<string, string>>((alias
 }, {
     // Backward-compatible aliases not derivable from entity metadata.
     companysiteconfiguration: 'companySiteConfigurations',
+    serviceLevelAgreementResult: 'serviceLevelAgreementResults',
     servicecallticketresources: 'serviceCallTicketResource',
     servicecalltaskresources: 'serviceCallTaskResource',
 });

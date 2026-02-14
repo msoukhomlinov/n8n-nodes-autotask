@@ -4,32 +4,32 @@ export const operationOptions = [
     {
         name: 'Create',
         value: 'create',
-        description: 'Create a ticket change request approval',
-        action: 'Create a ticket change request approval',
+        description: 'Create a ticket secondary resource',
+        action: 'Create a ticket secondary resource',
     },
     {
         name: 'Delete',
         value: 'delete',
-        description: 'Delete a ticket change request approval',
-        action: 'Delete a ticket change request approval',
+        description: 'Delete a ticket secondary resource',
+        action: 'Delete a ticket secondary resource',
     },
     {
         name: 'Get',
         value: 'get',
-        description: 'Get a ticket change request approval',
-        action: 'Get a ticket change request approval',
+        description: 'Get a ticket secondary resource',
+        action: 'Get a ticket secondary resource',
     },
     {
         name: 'Get Many',
         value: 'getMany',
-        description: 'Get many ticket change request approvals',
-        action: 'Get many ticket change request approvals',
+        description: 'Get many ticket secondary resources',
+        action: 'Get many ticket secondary resources',
     },
     {
         name: 'Count',
         value: 'count',
-        description: 'Count ticket change request approvals',
-        action: 'Count ticket change request approvals',
+        description: 'Count ticket secondary resources',
+        action: 'Count ticket secondary resources',
     },
 ];
 
@@ -41,38 +41,25 @@ export const baseFields: INodeProperties[] = [
         noDataExpression: true,
         displayOptions: {
             show: {
-                resource: ['ticketChangeRequestApproval'],
+                resource: ['ticketSecondaryResource'],
             },
         },
         options: operationOptions,
         default: 'get',
     },
     {
-        displayName: 'Ticket Change Request Approval ID',
+        displayName: 'Ticket Secondary Resource ID',
         name: 'id',
         type: 'string',
         required: true,
         default: '',
         displayOptions: {
             show: {
-                resource: ['ticketChangeRequestApproval'],
+                resource: ['ticketSecondaryResource'],
                 operation: ['get', 'delete'],
             },
         },
-        description: 'The ID of the ticket change request approval record',
-    },
-    {
-        displayName: 'Ticket ID',
-        name: 'ticketID',
-        type: 'string',
-        default: '',
-        displayOptions: {
-            show: {
-                resource: ['ticketChangeRequestApproval'],
-                operation: ['create', 'get', 'getMany', 'getManyAdvanced', 'count', 'delete', 'getEntityInfo', 'getFieldInfo'],
-            },
-        },
-        description: 'Optional for read operations. When provided, child endpoints are used (/Tickets/{ticketID}/ChangeRequestApprovals*). Required for create and delete.',
+        description: 'The ID of the ticket secondary resource record',
     },
     {
         displayName: 'Fields',
@@ -85,7 +72,7 @@ export const baseFields: INodeProperties[] = [
         required: true,
         displayOptions: {
             show: {
-                resource: ['ticketChangeRequestApproval'],
+                resource: ['ticketSecondaryResource'],
                 operation: ['create', 'getMany', 'count'],
             },
         },
@@ -107,4 +94,4 @@ export const baseFields: INodeProperties[] = [
 ];
 
 // Export baseFields directly - addOperationsToResource will be applied in Autotask.node.ts
-export const ticketChangeRequestApprovalFields = baseFields;
+export const ticketSecondaryResourceFields = baseFields;

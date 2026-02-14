@@ -2,34 +2,22 @@ import type { INodeProperties } from 'n8n-workflow';
 
 export const operationOptions = [
     {
-        name: 'Create',
-        value: 'create',
-        description: 'Create a ticket change request approval',
-        action: 'Create a ticket change request approval',
-    },
-    {
-        name: 'Delete',
-        value: 'delete',
-        description: 'Delete a ticket change request approval',
-        action: 'Delete a ticket change request approval',
-    },
-    {
         name: 'Get',
         value: 'get',
-        description: 'Get a ticket change request approval',
-        action: 'Get a ticket change request approval',
+        description: 'Get a service level agreement result',
+        action: 'Get a service level agreement result',
     },
     {
         name: 'Get Many',
         value: 'getMany',
-        description: 'Get many ticket change request approvals',
-        action: 'Get many ticket change request approvals',
+        description: 'Get many service level agreement results',
+        action: 'Get many service level agreement results',
     },
     {
         name: 'Count',
         value: 'count',
-        description: 'Count ticket change request approvals',
-        action: 'Count ticket change request approvals',
+        description: 'Count service level agreement results',
+        action: 'Count service level agreement results',
     },
 ];
 
@@ -41,38 +29,38 @@ export const baseFields: INodeProperties[] = [
         noDataExpression: true,
         displayOptions: {
             show: {
-                resource: ['ticketChangeRequestApproval'],
+                resource: ['serviceLevelAgreementResult'],
             },
         },
         options: operationOptions,
         default: 'get',
     },
     {
-        displayName: 'Ticket Change Request Approval ID',
+        displayName: 'Service Level Agreement ID',
+        name: 'serviceLevelAgreementID',
+        type: 'string',
+        default: '',
+        displayOptions: {
+            show: {
+                resource: ['serviceLevelAgreementResult'],
+                operation: ['get', 'getMany', 'getManyAdvanced', 'count', 'getEntityInfo', 'getFieldInfo'],
+            },
+        },
+        description: 'Optional. When provided, child endpoints are used (/ServiceLevelAgreements/{serviceLevelAgreementID}/Results*). When empty, root endpoints are used (/ServiceLevelAgreementResults*)',
+    },
+    {
+        displayName: 'Service Level Agreement Result ID',
         name: 'id',
         type: 'string',
         required: true,
         default: '',
         displayOptions: {
             show: {
-                resource: ['ticketChangeRequestApproval'],
-                operation: ['get', 'delete'],
+                resource: ['serviceLevelAgreementResult'],
+                operation: ['get'],
             },
         },
-        description: 'The ID of the ticket change request approval record',
-    },
-    {
-        displayName: 'Ticket ID',
-        name: 'ticketID',
-        type: 'string',
-        default: '',
-        displayOptions: {
-            show: {
-                resource: ['ticketChangeRequestApproval'],
-                operation: ['create', 'get', 'getMany', 'getManyAdvanced', 'count', 'delete', 'getEntityInfo', 'getFieldInfo'],
-            },
-        },
-        description: 'Optional for read operations. When provided, child endpoints are used (/Tickets/{ticketID}/ChangeRequestApprovals*). Required for create and delete.',
+        description: 'The ID of the service level agreement result record',
     },
     {
         displayName: 'Fields',
@@ -85,8 +73,8 @@ export const baseFields: INodeProperties[] = [
         required: true,
         displayOptions: {
             show: {
-                resource: ['ticketChangeRequestApproval'],
-                operation: ['create', 'getMany', 'count'],
+                resource: ['serviceLevelAgreementResult'],
+                operation: ['getMany', 'count'],
             },
         },
         typeOptions: {
@@ -107,4 +95,4 @@ export const baseFields: INodeProperties[] = [
 ];
 
 // Export baseFields directly - addOperationsToResource will be applied in Autotask.node.ts
-export const ticketChangeRequestApprovalFields = baseFields;
+export const serviceLevelAgreementResultFields = baseFields;

@@ -43,6 +43,7 @@ import { executeTicketNoteAttachmentOperation } from './resources/ticketNoteAtta
 import { executeTicketAttachmentOperation } from './resources/ticketAttachments/execute';
 import { executeTicketCategoryOperation } from './resources/ticketCategories/execute';
 import { executeTicketCategoryFieldDefaultOperation } from './resources/ticketCategoryFieldDefaults/execute';
+import { executeTicketSecondaryResourceOperation } from './resources/ticketSecondaryResources/execute';
 import { executeTicketHistoryOperation } from './resources/ticketHistories/execute';
 import { executeTimeEntryOperation } from './resources/timeEntries/execute';
 import { executeTimeEntryAttachmentOperation } from './resources/timeEntryAttachments/execute';
@@ -59,6 +60,7 @@ import { executeServiceCallOperation } from './resources/serviceCalls/execute';
 import { executeServiceCallTicketOperation } from './resources/serviceCallTickets/execute';
 import { executeServiceCallTaskOperation } from './resources/serviceCallTasks/execute';
 import { executeServiceCallTaskResourceOperation } from './resources/serviceCallTaskResources/execute';
+import { executeServiceLevelAgreementResultOperation } from './resources/serviceLevelAgreementResults/execute';
 import { executeServiceOperation } from './resources/services/execute';
 import { executeSubscriptionOperation } from './resources/subscriptions/execute';
 import { executeSubscriptionPeriodsOperation } from './resources/subscriptionPeriods/execute';
@@ -112,6 +114,7 @@ import { ticketChecklistItemFields } from './resources/ticketChecklistItems/desc
 import { ticketChecklistLibraryFields } from './resources/ticketChecklistLibraries/description';
 import { ticketCategoryFields } from './resources/ticketCategories/description';
 import { ticketCategoryFieldDefaultFields } from './resources/ticketCategoryFieldDefaults/description';
+import { ticketSecondaryResourceFields } from './resources/ticketSecondaryResources/description';
 import { ticketHistoryFields } from './resources/ticketHistories/description';
 import { ticketNoteFields } from './resources/ticketNotes/description';
 import { ticketNoteAttachmentFields } from './resources/ticketNoteAttachments/description';
@@ -131,6 +134,7 @@ import { serviceCallFields } from './resources/serviceCalls/description';
 import { serviceCallTicketFields } from './resources/serviceCallTickets/description';
 import { serviceCallTaskFields } from './resources/serviceCallTasks/description';
 import { serviceCallTaskResourceFields } from './resources/serviceCallTaskResources/description';
+import { serviceLevelAgreementResultFields } from './resources/serviceLevelAgreementResults/description';
 import { serviceFields } from './resources/services/description';
 import { subscriptionFields } from './resources/subscriptions/description';
 import { subscriptionPeriodsFields } from './resources/subscriptionPeriods/description';
@@ -358,6 +362,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(serviceCallTicketResourceFields, { resourceName: 'serviceCallTicketResource' }),
 			...addOperationsToResource(serviceCallTaskFields, { resourceName: 'serviceCallTask' }),
 			...addOperationsToResource(serviceCallTaskResourceFields, { resourceName: 'serviceCallTaskResource' }),
+			...addOperationsToResource(serviceLevelAgreementResultFields, { resourceName: 'serviceLevelAgreementResult' }),
 			...addOperationsToResource(serviceFields, { resourceName: 'service' }),
 			...addOperationsToResource(subscriptionFields, { resourceName: 'subscription' }),
 			...addOperationsToResource(subscriptionPeriodsFields, { resourceName: 'subscriptionPeriod' }),
@@ -376,6 +381,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(ticketWebhookFields, { resourceName: 'ticketWebhook' }),
 			...addOperationsToResource(ticketCategoryFields, { resourceName: 'ticketCategory' }),
 			...addOperationsToResource(ticketCategoryFieldDefaultFields, { resourceName: 'ticketCategoryFieldDefault' }),
+			...addOperationsToResource(ticketSecondaryResourceFields, { resourceName: 'ticketSecondaryResource' }),
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(timeEntryAttachmentFields, { resourceName: 'timeEntryAttachment' }),
@@ -562,6 +568,8 @@ export class Autotask implements INodeType {
 				return executeServiceCallTaskOperation.call(this);
 			case 'serviceCallTaskResource':
 				return executeServiceCallTaskResourceOperation.call(this);
+			case 'serviceLevelAgreementResult':
+				return executeServiceLevelAgreementResultOperation.call(this);
 			case 'service':
 				return executeServiceOperation.call(this);
 			case 'subscription':
@@ -588,6 +596,8 @@ export class Autotask implements INodeType {
 				return executeTicketCategoryOperation.call(this);
 			case 'ticketCategoryFieldDefault':
 				return executeTicketCategoryFieldDefaultOperation.call(this);
+			case 'ticketSecondaryResource':
+				return executeTicketSecondaryResourceOperation.call(this);
 			case 'ticketNote':
 				return executeTicketNoteOperation.call(this);
 			case 'ticketNoteAttachment':

@@ -142,11 +142,20 @@ export async function buildFiltersFromResourceMapper<T extends IAutotaskEntity>(
 	operation: ResourceOperation,
 	defaultFilter?: { field: string; op: string },
 ): Promise<IAutotaskQueryInput<T>['filter']> {
-	const preBuilt = context.getNodeParameter('filtersFromTool', itemIndex, undefined) as
-		| IAutotaskQueryInput<T>['filter']
-		| undefined;
-	if (Array.isArray(preBuilt) && preBuilt.length > 0) {
-		return finalizeResourceMapperFilters<T>(preBuilt, defaultFilter);
+	// 'filtersFromTool' is injected by the AI tool executor at runtime and does
+	// not exist in the node's property definitions. Newer n8n versions throw
+	// from getNodeParameter even when a fallback is supplied if the parameter
+	// name is absent from the schema, so we must guard with try/catch.
+	try {
+		const preBuilt = context.getNodeParameter('filtersFromTool', itemIndex, undefined) as
+			| IAutotaskQueryInput<T>['filter']
+			| undefined;
+		if (Array.isArray(preBuilt) && preBuilt.length > 0) {
+			return finalizeResourceMapperFilters<T>(preBuilt, defaultFilter);
+		}
+	} catch {
+		// Parameter does not exist in the current execution context — expected
+		// when running from the standard node UI rather than the AI tool path.
 	}
 	const fields = getResourceMapperFields(context, itemIndex);
 	const fieldsMap = await getProcessedFieldsMap(entityType, context);

@@ -92,6 +92,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'ServiceCallTicketResource', childOf: 'ServiceCallTicket', subname: 'Resources', parentIdField: 'serviceCallTicketID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'ServiceCallTask', childOf: 'ServiceCall', subname: 'Tasks', parentIdField: 'serviceCallID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'ServiceCallTaskResource', childOf: 'ServiceCallTask', subname: 'Resources', parentIdField: 'serviceCallTaskID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
+	{ name: 'ServiceLevelAgreementResults', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	// Skills entity (read-only)
 	{ name: 'Skill', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Survey', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
@@ -119,6 +120,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'TicketHistory', resourceKey: 'TicketHistory', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' }, noPluralize: true },
 	{ name: 'TicketCategory', resourceKey: 'ticketCategories', operations: { [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' } },
 	{ name: 'TicketCategoryFieldDefault', resourceKey: 'ticketCategoryFieldDefaults', childOf: 'TicketCategory', subname: 'FieldDefaults', parentIdField: 'ticketCategoryID', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'TicketSecondaryResource', resourceKey: 'ticketSecondaryResources', childOf: 'Ticket', subname: 'SecondaryResources', parentIdField: 'ticketID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'Subscription', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
 	{ name: 'SubscriptionPeriod', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Tag', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },

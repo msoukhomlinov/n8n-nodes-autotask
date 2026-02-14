@@ -425,7 +425,8 @@ function resolveTemplate(
 ): string {
 	let result = template;
 	for (const [key, value] of Object.entries(vars)) {
-		result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(value));
+		// Single-brace placeholders {key} — avoids collision with n8n's {{ }} expression syntax
+		result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), String(value));
 	}
 	return result;
 }
@@ -459,7 +460,7 @@ async function createAuditNotes(
 			const response = await autotaskApiRequest.call(ctx, 'POST', endpoint, {
 				companyID: sourceCompanyId,
 				contactID: options.sourceContactId,
-				title: 'Contact Moved',
+				title: 'Contact Copied',
 				description: noteText,
 				actionType: 1, // General note
 				publish: 1,
@@ -478,7 +479,7 @@ async function createAuditNotes(
 			const response = await autotaskApiRequest.call(ctx, 'POST', endpoint, {
 				companyID: options.destinationCompanyId,
 				contactID: newContactId,
-				title: 'Contact Moved',
+				title: 'Contact Copied',
 				description: noteText,
 				actionType: 1,
 				publish: 1,
