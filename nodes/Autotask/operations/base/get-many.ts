@@ -234,7 +234,7 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 				if (this.entityType === 'UserDefinedFieldListItem') {
 					// Special handling for UDF list items - use parent context
 					const udfFieldId = filters.filter.find(f => f.field === 'udfFieldId')?.value;
-					if (!udfFieldId) {
+					if (udfFieldId === undefined || udfFieldId === null || udfFieldId === '') {
 						throw new Error(
 							ERROR_TEMPLATES.validation
 								.replace('{type}', 'ValidationError')
@@ -251,7 +251,7 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 					if (requiresParentForQuery) {
 						// Handle child entity queries that require parent context
 						const parentId = filters.filter.find(f => f.field === `${(this.parentType as string).toLowerCase()}Id`)?.value;
-						if (!parentId) {
+						if (parentId === undefined || parentId === null || parentId === '') {
 							throw new Error(
 								ERROR_TEMPLATES.validation
 									.replace('{type}', 'ValidationError')

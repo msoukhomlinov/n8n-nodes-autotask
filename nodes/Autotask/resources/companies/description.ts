@@ -31,6 +31,12 @@ const operationOptions = [
 		description: 'Count number of companies',
 		action: 'Count companies',
 	},
+	{
+		name: 'Search by Domain',
+		value: 'searchByDomain',
+		description: 'Search companies by website domain with optional contact-email fallback',
+		action: 'Search companies by domain',
+	},
 ];
 
 const baseFields: INodeProperties[] = [
@@ -92,6 +98,85 @@ const baseFields: INodeProperties[] = [
 				supportAutoMap: true,
 			},
 		},
+	},
+	{
+		displayName: 'Domain',
+		name: 'domain',
+		type: 'string',
+		required: true,
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['company'],
+				operation: ['searchByDomain'],
+			},
+		},
+		description: 'Domain to search for, for example autotask.net',
+	},
+	{
+		displayName: 'Domain Operator',
+		name: 'domainOperator',
+		type: 'options',
+		default: 'contains',
+		displayOptions: {
+			show: {
+				resource: ['company'],
+				operation: ['searchByDomain'],
+			},
+		},
+		options: [
+			{
+				name: 'Contains',
+				value: 'contains',
+			},
+			{
+				name: 'Equals',
+				value: 'eq',
+			},
+			{
+				name: 'Begins With',
+				value: 'beginsWith',
+			},
+			{
+				name: 'Ends With',
+				value: 'endsWith',
+			},
+			{
+				name: 'Like (Alias of Contains)',
+				value: 'like',
+			},
+		],
+		description: 'Operator to apply to the domain search value',
+	},
+	{
+		displayName: 'Search Contact Emails',
+		name: 'searchContactEmails',
+		type: 'boolean',
+		default: true,
+		displayOptions: {
+			show: {
+				resource: ['company'],
+				operation: ['searchByDomain'],
+			},
+		},
+		description: 'Whether to search contacts by email domain when no company website matches are found',
+	},
+	{
+		displayName: 'Limit',
+		name: 'limit',
+		type: 'number',
+		typeOptions: {
+			minValue: 1,
+			numberPrecision: 0,
+		},
+		default: 50,
+		displayOptions: {
+			show: {
+				resource: ['company'],
+				operation: ['searchByDomain'],
+			},
+		},
+		description: 'Max number of results to return',
 	},
 ];
 

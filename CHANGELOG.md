@@ -2,11 +2,24 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.0.0] - 2026-02-15
+
+### Added
+
+- **Autotask AI Tools** — Helper tools `autotask_<resource>_describeFields` and `autotask_<resource>_listPicklistValues` are now exposed in the same toolkit so the AI Agent can discover valid field names and picklist values without switching to the main Autotask node's AI Helper resource.
+- **Company: Search by Domain** — New operation on the Company resource (main node and AI tools) to find companies by website/domain. Accepts a domain (or full URL; normalised automatically), operator (eq, contains, beginsWith, endsWith), optional limit, and a toggle to search contact email addresses when no company website matches are found (default on), returning the most common company from matched contacts.
+- **Ticket Category** — New resource supporting Get, Get Many, Update, and Count operations for managing ticket categories, which define groupings for service desk tickets with display colors and default field values. Automatically available in the AI Tools node.
+- **Ticket Category Field Default** — New read-only child resource of Ticket Category supporting Get, Get Many, and Count operations for querying default field values associated with ticket categories. Automatically available in the AI Tools node.
+- **Ticket Change Request Approval** — New resource supporting root and ticket-child endpoint scopes for Get, Get Many, Count, and child-scope Create/Delete operations on ticket change request approvals. Automatically available in the AI Tools node.
+- **Contact: Move to Company** — New operation on the Contact resource that clones a contact to a different company (all writable fields + UDFs), optionally copies CompanyNotes (with attachments) and ContactGroup memberships, leaves customizable audit trail notes on both companies, and deactivates the source contact.
+
+
 ## [1.8.3] - 2026-02-14
 
 ### Fixed
 
 - **Autotask AI Tools** — Fixed `ERR_INVALID_URL` crash by adding an `execute()` method so n8n 2.8+ no longer falls through to the declarative RoutingNode test path (which has no URL config).
+
 
 ## [1.8.2] - 2026-02-13
 
@@ -14,16 +27,19 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 - **Autotask AI Tools** — Added URL validation and clearer `ERR_INVALID_URL` diagnostics when used as an AI Agent tool.
 
+
 ## [1.8.1] - 2026-02-13
 
 ### Fixed
 
 - **Autotask AI Tools** — Fixed AI Agent crash (`Cannot set properties of undefined (setting 'strict')`) by returning tools via n8n-core's `StructuredToolkit` instead of a custom toolkit class, aligning with n8n's MCP Client Tool pattern.
 
+
 ## [1.8.0] - 2026-02-13
 
 ### Added
 - **Autotask AI Tools node** — New `AutotaskAiTools` node that exposes Autotask operations as individual AI tools for n8n's AI Agent, following MCP-style patterns with one tool per operation. Each resource can expose multiple focused tools (get, getMany, create, update, delete, count) with resource-specific schemas.
+
 
 ## [1.7.0] - 2026-02-11
 

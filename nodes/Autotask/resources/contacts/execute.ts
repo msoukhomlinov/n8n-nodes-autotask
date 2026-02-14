@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	CreateOperation,
@@ -67,6 +67,36 @@ export async function executeContactOperation(
 							entityType: ENTITY_TYPE,
 						},
 					});
+					break;
+				}
+
+				case 'moveToCompany': {
+					const { moveContactToCompany } = await import('../../helpers/contact-mover');
+					const sourceContactId = parseInt(this.getNodeParameter('sourceContactId', i) as string, 10);
+					const destinationCompanyId = parseInt(this.getNodeParameter('destinationCompanyId', i) as string, 10);
+					const locationRaw = this.getNodeParameter('destinationCompanyLocationId', i, '') as string;
+					const copyContactGroups = this.getNodeParameter('copyContactGroups', i, true) as boolean;
+					const copyCompanyNotes = this.getNodeParameter('copyCompanyNotes', i, true) as boolean;
+					const copyNoteAttachments = this.getNodeParameter('copyNoteAttachments', i, true) as boolean;
+					const sourceAuditNote = this.getNodeParameter('sourceAuditNote', i, '') as string;
+					const destinationAuditNote = this.getNodeParameter('destinationAuditNote', i, '') as string;
+
+					let destinationCompanyLocationId: number | null | undefined;
+					if (locationRaw === '') {
+						destinationCompanyLocationId = null;
+					} else {
+						destinationCompanyLocationId = parseInt(locationRaw, 10);
+						if (Number.isNaN(destinationCompanyLocationId)) {
+							throw new Error('Destination Location ID must be a number or left blank for auto-mapping');
+						}
+					}
+
+					const result = await moveContactToCompany(this, i, {
+						sourceContactId, destinationCompanyId, destinationCompanyLocationId,
+						copyContactGroups, copyCompanyNotes, copyNoteAttachments,
+						sourceAuditNote, destinationAuditNote,
+					});
+					returnData.push({ json: result as unknown as IDataObject });
 					break;
 				}
 

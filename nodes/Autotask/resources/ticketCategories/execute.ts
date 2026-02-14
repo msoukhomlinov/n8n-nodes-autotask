@@ -1,7 +1,6 @@
 import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
-	CreateOperation,
 	UpdateOperation,
 	GetOperation,
 	GetManyOperation,
@@ -9,11 +8,10 @@ import {
 } from '../../operations/base';
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
-import { searchCompaniesByDomain } from '../../helpers/company-domain-search';
 
-const ENTITY_TYPE = 'company';
+const ENTITY_TYPE = 'ticketCategory';
 
-export async function executeCompanyOperation(
+export async function executeTicketCategoryOperation(
 	this: IExecuteFunctions,
 ): Promise<INodeExecutionData[][]> {
 	const items = this.getInputData();
@@ -23,17 +21,10 @@ export async function executeCompanyOperation(
 	for (let i = 0; i < items.length; i++) {
 		try {
 			switch (operation) {
-				case 'create': {
-					const createOp = new CreateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-					const response = await createOp.execute(i);
-					returnData.push({ json: response });
-					break;
-				}
-
 				case 'update': {
-					const companyId = this.getNodeParameter('id', i) as string;
+					const ticketCategoryId = this.getNodeParameter('id', i) as string;
 					const updateOp = new UpdateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-					const response = await updateOp.execute(i, companyId);
+					const response = await updateOp.execute(i, ticketCategoryId);
 					returnData.push({ json: response });
 					break;
 				}
@@ -54,8 +45,8 @@ export async function executeCompanyOperation(
 				}
 
 				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-					returnData.push(...results);
+					const response = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
+					returnData.push(...response);
 					break;
 				}
 
@@ -68,22 +59,6 @@ export async function executeCompanyOperation(
 							entityType: ENTITY_TYPE,
 						},
 					});
-					break;
-				}
-
-				case 'searchByDomain': {
-					const domain = this.getNodeParameter('domain', i) as string;
-					const domainOperator = this.getNodeParameter('domainOperator', i, 'contains') as string;
-					const searchContactEmails = this.getNodeParameter('searchContactEmails', i, true) as boolean;
-					const limit = this.getNodeParameter('limit', i, 25) as number;
-					const response = await searchCompaniesByDomain(this, {
-						domain,
-						domainOperator,
-						searchContactEmails,
-						limit,
-						itemIndex: i,
-					});
-					returnData.push({ json: response });
 					break;
 				}
 
@@ -105,6 +80,5 @@ export async function executeCompanyOperation(
 			throw error;
 		}
 	}
-
 	return [returnData];
 }

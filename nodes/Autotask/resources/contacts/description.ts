@@ -44,6 +44,12 @@ export const contactFields: INodeProperties[] = [
 				description: 'Count contacts',
 				action: 'Count contacts',
 			},
+			{
+				name: 'Move to Company',
+				value: 'moveToCompany',
+				description: 'Copy a contact to a different company, optionally copy notes and group memberships, then deactivate the source',
+				action: 'Move a contact to another company',
+			},
 		],
 		default: 'get',
 	},
@@ -90,5 +96,115 @@ export const contactFields: INodeProperties[] = [
 				supportAutoMap: true,
 			},
 		},
+	},
+	// ─── Move to Company fields ─────────────────────────────────────────────
+	{
+		displayName: 'Source Contact ID',
+		name: 'sourceContactId',
+		type: 'string',
+		required: true,
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'The ID of the contact to move',
+	},
+	{
+		displayName: 'Destination Company ID',
+		name: 'destinationCompanyId',
+		type: 'string',
+		required: true,
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'The ID of the company to move the contact to',
+	},
+	{
+		displayName: 'Destination Location ID',
+		name: 'destinationCompanyLocationId',
+		type: 'string',
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'Location ID at the destination company. Leave blank to auto-map by location name, or enter a specific ID.',
+	},
+	{
+		displayName: 'Copy Contact Groups',
+		name: 'copyContactGroups',
+		type: 'boolean',
+		default: true,
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'Whether to copy the contact\'s group memberships to the new contact',
+	},
+	{
+		displayName: 'Copy Company Notes',
+		name: 'copyCompanyNotes',
+		type: 'boolean',
+		default: true,
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'Whether to copy CompanyNotes linked to this contact (via contactID)',
+	},
+	{
+		displayName: 'Copy Note Attachments',
+		name: 'copyNoteAttachments',
+		type: 'boolean',
+		default: true,
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+				copyCompanyNotes: [true],
+			},
+		},
+		description: 'Whether to also copy attachments on those CompanyNotes (max 6MB per file)',
+	},
+	{
+		displayName: 'Source Audit Note',
+		name: 'sourceAuditNote',
+		type: 'string',
+		typeOptions: { rows: 3 },
+		default: 'Contact {{contactName}} (ID: {{sourceContactId}}) was moved to Company ID: {{destinationCompanyId}} as new Contact ID: {{newContactId}} on {{date}}.',
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'Note left on the source company. Placeholders: {{contactName}}, {{sourceContactId}}, {{destinationCompanyId}}, {{newContactId}}, {{date}}.',
+	},
+	{
+		displayName: 'Destination Audit Note',
+		name: 'destinationAuditNote',
+		type: 'string',
+		typeOptions: { rows: 3 },
+		default: 'Contact {{contactName}} (ID: {{newContactId}}) was copied from Company ID: {{sourceCompanyId}} (original Contact ID: {{sourceContactId}}) on {{date}}.',
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'Note left on the destination company. Placeholders: {{contactName}}, {{sourceContactId}}, {{sourceCompanyId}}, {{newContactId}}, {{date}}.',
 	},
 ];

@@ -34,12 +34,15 @@ import { executeProjectChargeOperation } from './resources/projectCharges/execut
 import { executeProductOperation } from './resources/products/execute';
 import { executeProductVendorOperation } from './resources/productVendors/execute';
 import { executeTicketOperation } from './resources/tickets/execute';
+import { executeTicketChangeRequestApprovalOperation } from './resources/ticketChangeRequestApprovals/execute';
 import { executeTicketChargeOperation } from './resources/ticketCharges/execute';
 import { executeTicketChecklistItemOperation } from './resources/ticketChecklistItems/execute';
 import { executeTicketChecklistLibraryOperation } from './resources/ticketChecklistLibraries/execute';
 import { executeTicketNoteOperation } from './resources/ticketNotes/execute';
 import { executeTicketNoteAttachmentOperation } from './resources/ticketNoteAttachments/execute';
 import { executeTicketAttachmentOperation } from './resources/ticketAttachments/execute';
+import { executeTicketCategoryOperation } from './resources/ticketCategories/execute';
+import { executeTicketCategoryFieldDefaultOperation } from './resources/ticketCategoryFieldDefaults/execute';
 import { executeTicketHistoryOperation } from './resources/ticketHistories/execute';
 import { executeTimeEntryOperation } from './resources/timeEntries/execute';
 import { executeTimeEntryAttachmentOperation } from './resources/timeEntryAttachments/execute';
@@ -103,9 +106,12 @@ import { projectChargeFields } from './resources/projectCharges/description';
 import { productFields } from './resources/products/description';
 import { productVendorFields } from './resources/productVendors/description';
 import { ticketFields } from './resources/tickets/description';
+import { ticketChangeRequestApprovalFields } from './resources/ticketChangeRequestApprovals/description';
 import { ticketChargeFields } from './resources/ticketCharges/description';
 import { ticketChecklistItemFields } from './resources/ticketChecklistItems/description';
 import { ticketChecklistLibraryFields } from './resources/ticketChecklistLibraries/description';
+import { ticketCategoryFields } from './resources/ticketCategories/description';
+import { ticketCategoryFieldDefaultFields } from './resources/ticketCategoryFieldDefaults/description';
 import { ticketHistoryFields } from './resources/ticketHistories/description';
 import { ticketNoteFields } from './resources/ticketNotes/description';
 import { ticketNoteAttachmentFields } from './resources/ticketNoteAttachments/description';
@@ -359,6 +365,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(tagAliasFields, { resourceName: 'tagAlias' }),
 			...addOperationsToResource(tagGroupFields, { resourceName: 'tagGroup' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
+			...addOperationsToResource(ticketChangeRequestApprovalFields, { resourceName: 'ticketChangeRequestApproval' }),
 			...addOperationsToResource(ticketChargeFields, { resourceName: 'ticketCharge' }),
 			...addOperationsToResource(ticketChecklistItemFields, { resourceName: 'ticketChecklistItem' }),
 			...addOperationsToResource(ticketChecklistLibraryFields, { resourceName: 'ticketChecklistLibrary' }),
@@ -367,6 +374,8 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(ticketAttachmentFields, { resourceName: 'ticketAttachment' }),
 			...addOperationsToResource(ticketNoteWebhookFields, { resourceName: 'ticketNoteWebhook' }),
 			...addOperationsToResource(ticketWebhookFields, { resourceName: 'ticketWebhook' }),
+			...addOperationsToResource(ticketCategoryFields, { resourceName: 'ticketCategory' }),
+			...addOperationsToResource(ticketCategoryFieldDefaultFields, { resourceName: 'ticketCategoryFieldDefault' }),
 			...addOperationsToResource(ticketHistoryFields, { resourceName: 'TicketHistory' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(timeEntryAttachmentFields, { resourceName: 'timeEntryAttachment' }),
@@ -567,12 +576,18 @@ export class Autotask implements INodeType {
 				return executeTagGroupOperation.call(this);
 			case 'ticket':
 				return executeTicketOperation.call(this);
+			case 'ticketChangeRequestApproval':
+				return executeTicketChangeRequestApprovalOperation.call(this);
 			case 'ticketCharge':
 				return executeTicketChargeOperation.call(this);
 			case 'ticketChecklistItem':
 				return executeTicketChecklistItemOperation.call(this);
 			case 'ticketChecklistLibrary':
 				return executeTicketChecklistLibraryOperation.call(this);
+			case 'ticketCategory':
+				return executeTicketCategoryOperation.call(this);
+			case 'ticketCategoryFieldDefault':
+				return executeTicketCategoryFieldDefaultOperation.call(this);
 			case 'ticketNote':
 				return executeTicketNoteOperation.call(this);
 			case 'ticketNoteAttachment':

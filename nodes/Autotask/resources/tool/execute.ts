@@ -78,6 +78,7 @@ import { executeServiceCallTaskOperation } from '../serviceCallTasks/execute';
 import { executeServiceCallTaskResourceOperation } from '../serviceCallTaskResources/execute';
 import { executeServiceOperation } from '../services/execute';
 import { executeTicketOperation } from '../tickets/execute';
+import { executeTicketChangeRequestApprovalOperation } from '../ticketChangeRequestApprovals/execute';
 import { executeTicketNoteOperation } from '../ticketNotes/execute';
 import { executeTicketNoteWebhookOperation } from '../ticketNoteWebhooks/execute';
 import { executeTicketWebhookOperation } from '../ticketWebhooks/execute';
@@ -169,6 +170,7 @@ const RESOURCE_EXECUTORS: Record<
 	serviceCallTaskResource: executeServiceCallTaskResourceOperation,
 	service: executeServiceOperation,
 	ticket: executeTicketOperation,
+	ticketChangeRequestApproval: executeTicketChangeRequestApprovalOperation,
 	ticketNote: executeTicketNoteOperation,
 	ticketNoteWebhook: executeTicketNoteWebhookOperation,
 	ticketWebhook: executeTicketWebhookOperation,
@@ -262,7 +264,7 @@ export async function executeToolOperation(
 	// If this is a delete dry-run, return a preview without invoking resource executors
 	const isDryRun = this.getNodeParameter('dryRun', 0, false) as boolean;
 	if (resourceOperation === 'delete' && isDryRun) {
-		if (!entityId) {
+		if (entityId === undefined || entityId === null || entityId === '') {
 			throw new NodeOperationError(
 				this.getNode(),
 				'Entity ID is required for delete operations (even in dry-run).',
@@ -285,7 +287,10 @@ export async function executeToolOperation(
 	}
 
 	// Validate entity ID for operations that require it
-	if (['get', 'update', 'delete'].includes(resourceOperation) && !entityId) {
+	if (
+		['get', 'update', 'delete'].includes(resourceOperation) &&
+		(entityId === undefined || entityId === null || entityId === '')
+	) {
 		throw new NodeOperationError(
 			this.getNode(),
 			`Entity ID is required for ${resourceOperation} operations.\n\n` +
@@ -354,6 +359,9 @@ export async function executeToolOperation(
 			case 'maxRecords':
 				return requestData.limit ?? 10;
 			default:
+				if (Object.prototype.hasOwnProperty.call(requestData, name)) {
+					return requestData[name as keyof typeof requestData];
+				}
 				return originalGetNodeParameter.call(this, name, index, fallbackValue, options);
 		}
 	}) as typeof originalGetNodeParameter;

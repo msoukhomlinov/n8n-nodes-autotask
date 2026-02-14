@@ -5,7 +5,30 @@ import { FilterOperators } from '../constants/filters';
 const FILTER_OP_ENUM = z.enum([
     'eq', 'noteq', 'gt', 'gte', 'lt', 'lte',
     'contains', 'beginsWith', 'endsWith',
+    'exist', 'notExist', 'in', 'notIn',
 ]);
+const DOMAIN_SEARCH_OP_ENUM = z.enum(['eq', 'beginsWith', 'endsWith', 'contains', 'like']);
+const RECENCY_ENUM = z.enum([
+    'last_15m',
+    'last_1h',
+    'last_4h',
+    'last_12h',
+    'last_24h',
+    'last_3d',
+    'last_7d',
+    'last_14d',
+    'last_30d',
+    'last_90d',
+]);
+
+const FILTER_VALUE_SCHEMA = z
+    .union([
+        z.string(),
+        z.number(),
+        z.boolean(),
+        z.array(z.union([z.string(), z.number(), z.boolean()])),
+    ])
+    .describe('Filter value. Use number for numeric fields, true/false for booleans, and arrays (or comma-separated values) for in/notIn.');
 
 /** Maximum number of picklist values to inline in a field description */
 const MAX_INLINE_PICKLIST_VALUES = 8;
@@ -66,7 +89,20 @@ export function getGetSchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
         fields: z
             .string()
             .optional()
-            .describe('Comma-separated field names to return. Omit for all fields.'),
+            .describe(
+                "Comma-separated field names to return. Omit for all fields. Only use verified field names; call autotask_<resource>_describeFields with mode 'read' if unsure.",
+            ),
+    });
+}
+
+export function getWhoAmISchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
+    return z.object({
+        fields: z
+            .string()
+            .optional()
+            .describe(
+                "Comma-separated field names to return. Omit for all fields. Only use verified field names; call autotask_<resource>_describeFields with mode 'read' if unsure.",
+            ),
     });
 }
 
@@ -75,24 +111,55 @@ export function getGetManySchema(readFields: FieldMeta[]): z.ZodObject<Record<st
 
     const filterFieldSchema = fieldNames
         ? z.enum(fieldNames).optional().describe('Field to filter on')
-        : z.string().optional().describe('Field name to filter on');
+        : z
+            .string()
+            .optional()
+            .describe("Field name to filter on. If unsure, call autotask_<resource>_describeFields with mode 'read' first.");
 
     const filterField2Schema = fieldNames
         ? z.enum(fieldNames).optional().describe('Second field to filter on (optional, for compound queries)')
-        : z.string().optional().describe('Second field to filter on (optional)');
+        : z
+            .string()
+            .optional()
+            .describe("Second field to filter on (optional). If unsure, call autotask_<resource>_describeFields with mode 'read'.");
 
     return z.object({
         filter_field: filterFieldSchema,
         filter_op: FILTER_OP_ENUM.optional().describe('Filter operator (default: eq)'),
-        filter_value: z.string().optional().describe('Filter value'),
+        filter_value: FILTER_VALUE_SCHEMA.optional(),
         filter_field_2: filterField2Schema,
         filter_op_2: FILTER_OP_ENUM.optional().describe('Second filter operator'),
-        filter_value_2: z.string().optional().describe('Second filter value'),
-        limit: z.number().optional().describe('Max results to return (default 10)'),
+        filter_value_2: FILTER_VALUE_SCHEMA.optional().describe('Second filter value'),
+        limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(100)
+            .optional()
+            .describe('Max results to return (1-100, default 10)'),
         fields: z
             .string()
             .optional()
-            .describe('Comma-separated field names to return. Omit for all fields.'),
+            .describe(
+                "Comma-separated field names to return. Omit for all fields. Only use verified field names; call autotask_<resource>_describeFields with mode 'read' if unsure.",
+            ),
+        recency: RECENCY_ENUM
+            .optional()
+            .describe(
+                "Time window shortcut for recent records. Auto-adds a date filter and returns newest first. Use for latest-style queries.",
+            ),
+        since: z
+            .string()
+            .optional()
+            .describe(
+                'Custom range start in ISO-8601 UTC format (for example 2026-01-01T00:00:00Z). Overrides recency when both are set.',
+            ),
+        until: z
+            .string()
+            .optional()
+            .describe(
+                'Custom range end in ISO-8601 UTC format (for example 2026-01-31T23:59:59Z).',
+            ),
     });
 }
 
@@ -101,19 +168,48 @@ export function getCountSchema(readFields: FieldMeta[]): z.ZodObject<Record<stri
 
     const filterFieldSchema = fieldNames
         ? z.enum(fieldNames).optional().describe('Field to filter on')
-        : z.string().optional().describe('Field name to filter on');
+        : z
+            .string()
+            .optional()
+            .describe("Field name to filter on. If unsure, call autotask_<resource>_describeFields with mode 'read' first.");
 
     const filterField2Schema = fieldNames
         ? z.enum(fieldNames).optional().describe('Second field to filter on (optional)')
-        : z.string().optional().describe('Second field to filter on (optional)');
+        : z
+            .string()
+            .optional()
+            .describe("Second field to filter on (optional). If unsure, call autotask_<resource>_describeFields with mode 'read'.");
 
     return z.object({
         filter_field: filterFieldSchema,
         filter_op: FILTER_OP_ENUM.optional().describe('Filter operator (default: eq)'),
-        filter_value: z.string().optional().describe('Filter value'),
+        filter_value: FILTER_VALUE_SCHEMA.optional(),
         filter_field_2: filterField2Schema,
         filter_op_2: FILTER_OP_ENUM.optional().describe('Second filter operator'),
-        filter_value_2: z.string().optional().describe('Second filter value'),
+        filter_value_2: FILTER_VALUE_SCHEMA.optional().describe('Second filter value'),
+    });
+}
+
+export function getCompanySearchByDomainSchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
+    return z.object({
+        domain: z
+            .string()
+            .min(1)
+            .describe('Domain to search, for example autotask.net or https://www.autotask.net/'),
+        domainOperator: DOMAIN_SEARCH_OP_ENUM
+            .optional()
+            .describe("Domain comparison operator. Use 'contains' by default; 'like' is accepted as an alias for contains."),
+        searchContactEmails: z
+            .boolean()
+            .optional()
+            .describe('When true (default), if no company website matches are found, search contacts by email domain fallback.'),
+        limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(100)
+            .optional()
+            .describe('Maximum company matches to return (1-100, default 25).'),
     });
 }
 
@@ -168,11 +264,84 @@ export function getUpdateSchema(fields: FieldMeta[]): z.ZodObject<Record<string,
     return z.object(shape);
 }
 
+export function getDescribeFieldsSchema(): z.ZodObject<{ mode: z.ZodOptional<z.ZodEnum<['read', 'write']>> }> {
+    return z.object({
+        mode: z
+            .enum(['read', 'write'])
+            .optional()
+            .describe("Field mode to describe. Use 'read' for get/getMany/count fields and 'write' for create/update fields."),
+    });
+}
+
+export function getListPicklistValuesSchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
+    return z.object({
+        fieldId: z
+            .string()
+            .describe('Field ID to list picklist values for. Use describeFields first to confirm the field ID.'),
+        query: z.string().optional().describe('Optional search term to filter picklist values.'),
+        limit: z.number().optional().describe('Maximum values to return (default 50).'),
+        page: z.number().optional().describe('Page number for pagination (default 1).'),
+    });
+}
+
+/**
+ * JSON Schema for describeFields helper tool. Explicit type: "object" is required
+ * so n8n/API validation (tools.N.custom.input_schema.type) does not fail.
+ */
+export function getDescribeFieldsJsonSchema(): Record<string, unknown> {
+    return {
+        type: 'object',
+        properties: {
+            mode: {
+                type: 'string',
+                enum: ['read', 'write'],
+                description:
+                    "Field mode to describe. Use 'read' for get/getMany/count fields and 'write' for create/update fields.",
+            },
+        },
+        additionalProperties: false,
+    };
+}
+
+/**
+ * JSON Schema for listPicklistValues helper tool. Explicit type: "object" is required
+ * so n8n/API validation (tools.N.custom.input_schema.type) does not fail.
+ */
+export function getListPicklistValuesJsonSchema(): Record<string, unknown> {
+    return {
+        type: 'object',
+        properties: {
+            fieldId: {
+                type: 'string',
+                description:
+                    'Field ID to list picklist values for. Use describeFields first to confirm the field ID.',
+            },
+            query: {
+                type: 'string',
+                description: 'Optional search term to filter picklist values.',
+            },
+            limit: {
+                type: 'number',
+                description: 'Maximum values to return (default 50).',
+            },
+            page: {
+                type: 'number',
+                description: 'Page number for pagination (default 1).',
+            },
+        },
+        required: ['fieldId'],
+        additionalProperties: false,
+    };
+}
+
 /**
  * Map schema filter_op string to Autotask FilterOperators.
  */
 export function mapFilterOp(op: string): string {
-    const valid = Object.keys(FilterOperators) as string[];
     const lower = op?.toLowerCase();
+    if (lower === 'like') {
+        return FilterOperators.contains;
+    }
+    const valid = Object.keys(FilterOperators) as string[];
     return valid.includes(lower) ? (FilterOperators as Record<string, string>)[lower] : FilterOperators.eq;
 }

@@ -1,89 +1,111 @@
-export const RESOURCE_OPERATIONS_MAP: Record<string, string[]> = {
-    // Core entities with full CRUD
-    timeEntry: ['create', 'get', 'getMany', 'update', 'delete', 'count'],
-    ticket: ['create', 'get', 'getMany', 'update', 'count'],
-    company: ['create', 'get', 'getMany', 'update', 'count'],
-    contact: ['create', 'get', 'getMany', 'update', 'count'],
-    project: ['create', 'get', 'getMany', 'update', 'count'],
-    contract: ['create', 'get', 'getMany', 'update', 'count'],
-    // Notes and related entities
-    ticketNote: ['create', 'get', 'getMany', 'update', 'count'],
-    companyNote: ['create', 'get', 'getMany', 'update', 'count'],
-    projectNote: ['create', 'get', 'getMany', 'update', 'count'],
-    contractNote: ['create', 'get', 'getMany', 'update', 'count'],
-    configurationItemNote: ['create', 'get', 'getMany', 'update', 'count'],
-    // Configuration items
-    configurationItems: ['create', 'get', 'getMany', 'update', 'count'],
-    configurationItemCategories: ['create', 'get', 'getMany', 'update', 'count'],
-    configurationItemTypes: ['create', 'get', 'getMany', 'update', 'count'],
-    // Webhooks (typically no create/update)
-    ticketWebhook: ['get', 'getMany', 'delete'],
-    ticketNoteWebhook: ['get', 'getMany', 'delete'],
-    companyWebhook: ['get', 'getMany', 'delete'],
-    configurationItemWebhook: ['get', 'getMany', 'delete'],
-    contactWebhook: ['get', 'getMany', 'delete'],
-    // Resources and roles
-    resource: ['get', 'getMany', 'update', 'count'],
-    resourceRole: ['get', 'getMany', 'count'],
-    role: ['get', 'getMany', 'update', 'count'],
-    // Products and services
-    product: ['create', 'get', 'getMany', 'update', 'count'],
-    productVendor: ['create', 'get', 'getMany', 'update', 'count'],
-    service: ['create', 'get', 'getMany', 'update', 'count'],
-    // Contract-related entities
-    contractService: ['create', 'get', 'getMany', 'update', 'count'],
-    contractCharge: ['create', 'get', 'getMany', 'update', 'count'],
-    contractRate: ['create', 'get', 'getMany', 'update', 'count'],
-    contractBlock: ['create', 'get', 'getMany', 'update', 'count'],
-    contractMilestone: ['create', 'get', 'getMany', 'update', 'count'],
-    // Billing and financial
-    billingCode: ['get', 'getMany', 'count'],
-    invoice: ['update', 'get', 'getMany', 'count', 'pdf', 'markupHtml', 'markupXml'],
-    // Quotes
-    quote: ['create', 'get', 'getMany', 'update', 'count'],
-    quoteItem: ['create', 'get', 'getMany', 'update', 'delete', 'count'],
-    // Company-related
-    companyAlert: ['create', 'get', 'getMany', 'update', 'count'],
-    companyLocation: ['create', 'get', 'getMany', 'update', 'count'],
-    companySiteConfigurations: ['create', 'get', 'getMany', 'update', 'count'],
-    // Contact groups
-    contactGroups: ['create', 'get', 'getMany', 'update', 'count'],
-    contactGroupContacts: ['create', 'get', 'getMany', 'delete', 'count'],
-    // Service calls
-    serviceCall: ['create', 'get', 'getMany', 'update', 'count'],
-    serviceCallTicket: ['create', 'get', 'getMany', 'update', 'count'],
-    serviceCallTask: ['create', 'get', 'getMany', 'update', 'count'],
-    // Survey and feedback
-    survey: ['get', 'getMany', 'count'],
-    surveyResults: ['get', 'getMany', 'count'],
-    // Opportunities
-    opportunity: ['create', 'get', 'getMany', 'update', 'count'],
-    // Skills and specialties
-    skill: ['get', 'getMany', 'count'],
-    // Calendar and scheduling
-    holidaySet: ['get', 'getMany', 'count'],
-    holiday: ['get', 'getMany', 'count'],
-    // Project tasks and phases
-    task: ['create', 'get', 'getMany', 'update', 'count'],
-    phase: ['create', 'get', 'getMany', 'update', 'count'],
-    projectCharge: ['create', 'get', 'getMany', 'update', 'count'],
-    // Notification and history
-    notificationHistory: ['get', 'getMany', 'count'],
-    TicketHistory: ['get', 'getMany', 'count'],
-    // Countries and regions
-    country: ['get', 'getMany', 'count'],
-    // Domain registrar
-    DomainRegistrar: ['get', 'getMany', 'count'],
-    // AI Helper for introspection
+import { AUTOTASK_ENTITIES } from './entities';
+import { OperationType } from '../types/base/entity-types';
+
+const AI_OPERATION_ORDER = ['get', 'whoAmI', 'getMany', 'searchByDomain', 'getPosted', 'getUnposted', 'count', 'create', 'update', 'delete'] as const;
+const EXCLUDED_TOP_LEVEL_RESOURCES = new Set(['tool', 'searchFilter']);
+
+const OP_TYPE_TO_AI_OPS: Record<OperationType, string[]> = {
+    [OperationType.CREATE]: ['create'],
+    [OperationType.READ]: ['get'],
+    [OperationType.UPDATE]: ['update'],
+    [OperationType.DELETE]: ['delete'],
+    [OperationType.QUERY]: ['get', 'getMany'],
+    [OperationType.COUNT]: ['count'],
+    [OperationType.GET_ENTITY_INFO]: [],
+    [OperationType.GET_FIELD_INFO]: [],
+};
+
+const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
+    resource: ['whoAmI'],
+    company: ['searchByDomain'],
+    timeEntry: ['getPosted', 'getUnposted'],
     aiHelper: ['describeResource', 'listPicklistValues', 'validateParameters'],
-    // API threshold monitoring
     apiThreshold: ['get'],
 };
+
+function lowerCamelCase(value: string): string {
+    if (!value) return value;
+    return value.charAt(0).toLowerCase() + value.slice(1);
+}
+
+function isAiExcludedEntity(name: string, isAttachment?: boolean, parentChain?: string[]): boolean {
+    if (isAttachment) return true;
+    if (EXCLUDED_TOP_LEVEL_RESOURCES.has(lowerCamelCase(name))) return true;
+    if (!parentChain?.length) return false;
+    return /(?:ExcludedResource|Field|UdfField)$/.test(name);
+}
+
+function toOrderedOperationList(ops: Set<string>): string[] {
+    const ordered = AI_OPERATION_ORDER.filter((op) => ops.has(op));
+    const remainder = [...ops].filter((op) => !AI_OPERATION_ORDER.includes(op as typeof AI_OPERATION_ORDER[number]));
+    return [...ordered, ...remainder];
+}
+
+function buildResourceOperationsMap(): Record<string, string[]> {
+    const map: Record<string, string[]> = {};
+
+    for (const entity of AUTOTASK_ENTITIES) {
+        if (isAiExcludedEntity(entity.name, entity.isAttachment, entity.parentChain)) {
+            continue;
+        }
+
+        const resourceKey = entity.resourceKey ?? lowerCamelCase(entity.name);
+        const ops = new Set<string>();
+
+        for (const opType of Object.keys(entity.operations) as OperationType[]) {
+            const mappedOperations = OP_TYPE_TO_AI_OPS[opType] ?? [];
+            for (const mappedOperation of mappedOperations) {
+                ops.add(mappedOperation);
+            }
+        }
+
+        if (!ops.size) {
+            continue;
+        }
+
+        const specialOps = SPECIAL_AI_OPERATIONS[resourceKey] ?? [];
+        for (const specialOp of specialOps) {
+            ops.add(specialOp);
+        }
+
+        map[resourceKey] = toOrderedOperationList(ops);
+    }
+
+    for (const [resourceKey, specialOps] of Object.entries(SPECIAL_AI_OPERATIONS)) {
+        if (!map[resourceKey]) {
+            map[resourceKey] = [...specialOps];
+        }
+    }
+
+    return map;
+}
+
+export const RESOURCE_OPERATIONS_MAP: Record<string, string[]> = buildResourceOperationsMap();
 
 const NORMALIZED_RESOURCE_OPERATIONS_MAP = Object.fromEntries(
     Object.entries(RESOURCE_OPERATIONS_MAP).map(([key, value]) => [key.toLowerCase(), value]),
 );
 
+const RESOURCE_ALIASES = AUTOTASK_ENTITIES.reduce<Record<string, string>>((aliases, entity) => {
+    const defaultResourceKey = lowerCamelCase(entity.name);
+    const resourceKey = entity.resourceKey ?? defaultResourceKey;
+    if (defaultResourceKey.toLowerCase() !== resourceKey.toLowerCase()) {
+        aliases[defaultResourceKey.toLowerCase()] = resourceKey;
+    }
+    return aliases;
+}, {
+    // Backward-compatible aliases not derivable from entity metadata.
+    companysiteconfiguration: 'companySiteConfigurations',
+    servicecallticketresources: 'serviceCallTicketResource',
+    servicecalltaskresources: 'serviceCallTaskResource',
+});
+
+export function normaliseResourceName(resource: string): string {
+    const trimmed = resource.trim();
+    if (!trimmed) return resource;
+    return RESOURCE_ALIASES[trimmed.toLowerCase()] ?? trimmed;
+}
+
 export function getResourceOperations(resource: string): string[] {
-    return NORMALIZED_RESOURCE_OPERATIONS_MAP[resource.toLowerCase()] || [];
+    return NORMALIZED_RESOURCE_OPERATIONS_MAP[normaliseResourceName(resource).toLowerCase()] || [];
 }

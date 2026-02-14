@@ -440,6 +440,26 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Tickets, which define service requests that track client issues, support needs, and work to be performed across different modules',
 	},
 	{
+		name: 'Ticket Attachment',
+		value: 'ticketAttachment',
+		description: 'Manage Ticket Attachments, which are files attached to service desk tickets for documentation and reference',
+	},
+	{
+		name: 'Ticket Category',
+		value: 'ticketCategory',
+		description: 'Manage Ticket Categories, which define groupings for service desk tickets with display colors and default field values',
+	},
+	{
+		name: 'Ticket Category Field Default',
+		value: 'ticketCategoryFieldDefault',
+		description: 'Query default field values for ticket categories, which define default settings for ticket fields based on category',
+	},
+	{
+		name: 'Ticket Change Request Approval',
+		value: 'ticketChangeRequestApproval',
+		description: 'Manage Ticket Change Request Approvals via root and ticket child endpoints, including create, get, get many, count, and delete operations',
+	},
+	{
 		name: 'Ticket Charge',
 		value: 'ticketCharge',
 		description: 'Manage Ticket Charges, which track billable or non-billable costs for products and materials associated with tickets',
@@ -468,11 +488,6 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		name: 'Ticket Note Attachment',
 		value: 'ticketNoteAttachment',
 		description: 'Manage Ticket Note Attachments, which are files attached to ticket notes for documentation and reference',
-	},
-	{
-		name: 'Ticket Attachment',
-		value: 'ticketAttachment',
-		description: 'Manage Ticket Attachments, which are files attached to service desk tickets for documentation and reference',
 	},
 	{
 		name: 'Ticket Note Webhook',

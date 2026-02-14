@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-1.6.0-blue)
+![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-1.8.4-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -62,7 +62,7 @@ To use this node, you need to have API access to your Autotask instance. Follow 
 
 ### Autotask AI Tools
 
-The **Autotask AI Tools** node exposes Autotask operations as individual tools for the AI Agent. Add one node per resource (e.g. ticket, company, contact), select the operations to expose (get, getMany, create, update, delete, count), and connect to an AI Agent. Each operation becomes a separate tool with a flat, typed schema that LLMs handle reliably. Requires `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` in your n8n environment.
+The **Autotask AI Tools** node exposes Autotask operations as individual tools for the AI Agent. Add one node per resource (e.g. ticket, company, contact), select the operations to expose (get, getMany, count, create, update, delete; plus whoAmI for Resource, getPosted/getUnposted for Time Entry, searchByDomain for Company), and connect to an AI Agent. Each operation becomes a separate tool with a flat, typed schema that LLMs handle reliably. Available resources and operations are derived from the same entity metadata as the main Autotask node. Requires `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` in your n8n environment.
 
 ### Supported Resources
 
@@ -76,7 +76,7 @@ The node supports the following Autotask resources:
 | Checklist Library | Manage modular checklist components that can be applied to tickets or tasks |
 | Checklist Library Checklist Item | Manage individual checklist items within checklist library templates |
 | Classification Icon | Query classification icons used for categorising and visually identifying items |
-| Company | Manage organisations in Autotask |
+| Company | Manage organisations in Autotask. Includes Search by Domain (website/domain with optional contact-email fallback). |
 | Company Alert | Manage alerts associated with companies |
 | Company Location | Manage locations for companies |
 | Company Note | Manage notes attached to companies |
@@ -92,7 +92,7 @@ The node supports the following Autotask resources:
 | Configuration Item SSL Subject Alternative Name | Manage SSL alternative names for configuration items |
 | Configuration Item Type | Manage types for configuration items |
 | Configuration Item Webhook | Manage webhooks for configuration item events |
-| Contact | Manage contacts associated with companies |
+| Contact | Manage contacts associated with companies. Includes Move to Company operation for migrating contacts between companies. |
 | Contact Groups | Manage contact groups |
 | Contact Group Contacts | Manage contacts within contact groups |
 | Contact Webhook | Manage webhooks for contact events |
@@ -156,6 +156,9 @@ The node supports the following Autotask resources:
 | Tag Group | Organise tags into categories with display colours and system group protections |
 | Ticket | Manage service tickets |
 | Ticket Attachment | Manage files attached directly to tickets |
+| Ticket Category | Manage ticket categories with display colors and default field values |
+| Ticket Category Field Default | Query default field values for ticket categories |
+| Ticket Change Request Approval | Manage ticket change request approvals using root and ticket child endpoint scopes |
 | Ticket Charge | Manage charges associated with tickets |
 | Ticket Checklist Item | Manage checklist items on tickets |
 | Ticket Checklist Library | Add all items from a checklist library to a ticket |
@@ -206,6 +209,8 @@ For the **Time Entry** resource, additional posting-status operations are availa
 - **Get Unposted**: List time entries that have not yet been posted
 
 Both operations cross-reference TimeEntries with BillingItems (Autotask has no posted-status field on TimeEntry itself). They support collapsible filters including Date Range (13 presets), Time Entry Type, Billable Status, Hours Worked range, Resource, Contract Type, Ticket Status, Task Status, Queue, and Account Manager. Date range resolution respects the configured credential timezone and converts to UTC for the API.
+
+For the **Company** resource, **Search by Domain** finds companies by website/domain (domain or full URL; operator: eq, contains, beginsWith, endsWith). If no company website matches and the option is enabled (default), it falls back to contact email domain and returns the most common company. Available on both the main Autotask node and the Autotask AI Tools node.
 
 For webhook resources (Company Webhook, Contact Webhook, Configuration Item Webhook, Ticket Webhook, Ticket Note Webhook), the following operations are available:
 - **Get**: Retrieve a single webhook by ID
@@ -294,7 +299,11 @@ outputMode: "labelsOnly"    // Most readable
 **Introspection Endpoint:**
 - `aiHelper.describeResource(resource, mode)` - Get field metadata, requirements, constraints, and **entity dependencies**
 - `aiHelper.listPicklistValues(resource, fieldId, query, limit, page)` - Get valid values for dropdown fields
-- `aiHelper.validateParameters(resource, mode, fieldValues)` - **NEW:** Validate field values without API calls - pre-flight validation
+- `aiHelper.validateParameters(resource, mode, fieldValues)` - Validate field values without API calls (pre-flight validation)
+
+**Resource and Time Entry:**
+- `resource.whoAmI` - Resolve the current authenticated API user (use before user-scoped actions)
+- `timeEntry.getPosted` / `timeEntry.getUnposted` - List time entries by posting status (with optional filters)
 
 **Dynamic Dependency Discovery:**
 - **Reference fields** show what entity they link to (e.g., `companyID → company`)
@@ -327,7 +336,7 @@ For optimal AI agent integration, configure multiple instances of this node as s
   name: "autotask_inspector",
   description: "Discover Autotask resources, fields, and valid values",
   resource: "aiHelper",
-  operations: ["describeResource", "listPicklistValues"]
+  operations: ["describeResource", "listPicklistValues", "validateParameters"]
 }
 
 // Tool 2: Contact Management 

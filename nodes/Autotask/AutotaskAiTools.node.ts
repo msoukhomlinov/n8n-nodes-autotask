@@ -15,16 +15,32 @@ import type {
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import type { z } from 'zod';
 import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/resource-operations';
-import { describeResource, type FieldMeta, type DescribeResourceResponse } from './helpers/aiHelper';
+import { describeResource, type DescribeResourceResponse } from './helpers/aiHelper';
 import {
     getGetSchema,
+    getWhoAmISchema,
     getGetManySchema,
+    getCompanySearchByDomainSchema,
     getCountSchema,
     getDeleteSchema,
     getCreateSchema,
     getUpdateSchema,
 } from './ai-tools/schema-generator';
 import { executeAiTool, type ToolExecutorParams } from './ai-tools/tool-executor';
+import {
+    buildCountDescription,
+    buildCreateDescription,
+    buildDeleteDescription,
+    buildGetDescription,
+    buildGetManyDescription,
+    buildCompanySearchByDomainDescription,
+    buildPostedTimeEntriesDescription,
+    buildUnpostedTimeEntriesDescription,
+    buildUpdateDescription,
+    buildWhoAmIDescription,
+} from './ai-tools/description-builders';
+import { buildHelperTools } from './ai-tools/helper-tools';
+import { normaliseToolInputSchema } from './ai-tools/schema-normalizer';
 
 // ---------------------------------------------------------------------------
 // Resolve n8n-core's StructuredToolkit at runtime.
@@ -40,76 +56,32 @@ const { StructuredToolkit } = require('n8n-core') as {
 };
 
 const WRITE_OPERATIONS = ['create', 'update', 'delete'];
+const SUPPORTED_TOOL_OPERATIONS = ['get', 'getMany', 'searchByDomain', 'getPosted', 'getUnposted', 'count', 'create', 'update', 'delete', 'whoAmI'];
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
 
 function formatResourceName(value: string): string {
     return value.charAt(0).toUpperCase() + value.slice(1).replace(/([A-Z])/g, ' $1').trim();
 }
 
-// ---------------------------------------------------------------------------
-// Rich tool description builders
-// ---------------------------------------------------------------------------
-
-function buildGetDescription(resourceLabel: string): string {
-    return (
-        `Retrieve a single ${resourceLabel} record by its numeric ID. ` +
-        `Returns the full entity with all fields (or only selected fields if 'fields' is specified). ` +
-        `Response includes ID and label fields for picklist and reference values.`
-    );
+function parseOperationFromToolName(toolName: unknown, resource: string): string | undefined {
+    if (typeof toolName !== 'string' || !toolName.trim()) {
+        return undefined;
+    }
+    const trimmedToolName = toolName.trim();
+    const prefix = `autotask_${resource.toLowerCase()}_`;
+    const lowerToolName = trimmedToolName.toLowerCase();
+    if (!lowerToolName.startsWith(prefix)) {
+        return undefined;
+    }
+    return lowerToolName.slice(prefix.length);
 }
 
-function buildGetManyDescription(resourceLabel: string, readFields: FieldMeta[]): string {
-    const filterableNames = readFields
-        .filter((f) => !f.udf)
-        .slice(0, 12)
-        .map((f) => f.id);
-    const fieldList = filterableNames.join(', ');
-
-    return (
-        `Search for ${resourceLabel} records with optional filters. ` +
-        `Supports up to two filters combined with AND logic. ` +
-        `Filterable fields include: ${fieldList}. ` +
-        `Use filter_op 'eq' for exact match, 'contains' for partial text, 'gt'/'lt' for comparisons. ` +
-        `Returns JSON with 'results' array and 'count'. Default limit is 10 records.`
-    );
-}
-
-function buildCountDescription(resourceLabel: string): string {
-    return (
-        `Count ${resourceLabel} records matching optional filters. ` +
-        `Supports up to two filters combined with AND logic. ` +
-        `Returns JSON with 'count' number.`
-    );
-}
-
-function buildCreateDescription(resourceLabel: string, writeFields: FieldMeta[]): string {
-    const required = writeFields.filter((f) => f.required).map((f) => f.id);
-    const requiredList = required.length > 0 ? required.join(', ') : 'none';
-    const picklistFields = writeFields
-        .filter((f) => f.isPickList)
-        .slice(0, 5)
-        .map((f) => f.id);
-    const picklistNote = picklistFields.length > 0
-        ? ` Picklist fields (use numeric IDs): ${picklistFields.join(', ')}.`
-        : '';
-
-    return (
-        `Create a new ${resourceLabel} record. ` +
-        `Required fields: ${requiredList}.${picklistNote} ` +
-        `Returns the created entity with its assigned ID.`
-    );
-}
-
-function buildUpdateDescription(resourceLabel: string): string {
-    return (
-        `Update an existing ${resourceLabel} record by ID. ` +
-        `Only include fields you want to change -- omitted fields remain unchanged. ` +
-        `Returns the updated entity.`
-    );
-}
-
-function buildDeleteDescription(resourceLabel: string): string {
-    return `Delete a ${resourceLabel} record by its numeric ID. Returns confirmation of deletion.`;
+function resolveOperationCaseInsensitive(
+    requestedOperation: string,
+    allowedOperations: string[],
+): string | undefined {
+    const normalisedRequested = requestedOperation.trim().toLowerCase();
+    return allowedOperations.find((op) => op.toLowerCase() === normalisedRequested);
 }
 
 // ---------------------------------------------------------------------------
@@ -182,13 +154,24 @@ export class AutotaskAiTools implements INodeType {
             throw new NodeOperationError(this.getNode(), 'At least one operation must be selected');
         }
 
+        const unsupportedOperations = operations.filter(
+            (operation) => !SUPPORTED_TOOL_OPERATIONS.includes(operation),
+        );
+        if (unsupportedOperations.length > 0) {
+            throw new NodeOperationError(
+                this.getNode(),
+                `Unsupported operation(s) for AI tools: ${unsupportedOperations.join(', ')}. ` +
+                    `Supported operations are: ${SUPPORTED_TOOL_OPERATIONS.join(', ')}.`,
+            );
+        }
+
         const resourceLabel = formatResourceName(resource);
         const tools: DynamicStructuredTool[] = [];
         // eslint-disable-next-line @typescript-eslint/no-this-alias -- needed for async closure in tool func
         const supplyDataContext = this;
 
         // Fetch field metadata once for the resource -- used by multiple operations
-        const needsReadFields = operations.some((op) => ['get', 'getMany', 'count'].includes(op));
+        const needsReadFields = operations.some((op) => ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI'].includes(op));
         const needsWriteFields = operations.some((op) => ['create', 'update'].includes(op));
 
         let readDescribe: DescribeResourceResponse | undefined;
@@ -221,11 +204,27 @@ export class AutotaskAiTools implements INodeType {
             switch (operation) {
                 case 'get':
                     schema = getGetSchema();
-                    description = buildGetDescription(resourceLabel);
+                    description = buildGetDescription(resourceLabel, resource);
+                    break;
+                case 'whoAmI':
+                    schema = getWhoAmISchema();
+                    description = buildWhoAmIDescription(resourceLabel);
                     break;
                 case 'getMany':
                     schema = getGetManySchema(readDescribe?.fields ?? []);
-                    description = buildGetManyDescription(resourceLabel, readDescribe?.fields ?? []);
+                    description = buildGetManyDescription(resourceLabel, resource, readDescribe?.fields ?? []);
+                    break;
+                case 'searchByDomain':
+                    schema = getCompanySearchByDomainSchema();
+                    description = buildCompanySearchByDomainDescription(resource);
+                    break;
+                case 'getPosted':
+                    schema = getGetManySchema(readDescribe?.fields ?? []);
+                    description = buildPostedTimeEntriesDescription(resource);
+                    break;
+                case 'getUnposted':
+                    schema = getGetManySchema(readDescribe?.fields ?? []);
+                    description = buildUnpostedTimeEntriesDescription(resource);
                     break;
                 case 'count':
                     schema = getCountSchema(readDescribe?.fields ?? []);
@@ -238,13 +237,13 @@ export class AutotaskAiTools implements INodeType {
                 case 'create': {
                     const fields = writeDescribe?.fields ?? [];
                     schema = getCreateSchema(fields);
-                    description = buildCreateDescription(resourceLabel, fields);
+                    description = buildCreateDescription(resourceLabel, resource, fields);
                     break;
                 }
                 case 'update': {
                     const fields = writeDescribe?.fields ?? [];
                     schema = getUpdateSchema(fields);
-                    description = buildUpdateDescription(resourceLabel);
+                    description = buildUpdateDescription(resourceLabel, resource);
                     break;
                 }
                 default:
@@ -254,15 +253,30 @@ export class AutotaskAiTools implements INodeType {
             const tool = new DynamicStructuredTool({
                 name: toolName,
                 description,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                schema: schema as any,
+                schema: normaliseToolInputSchema(schema),
                 func: async (params: Record<string, unknown>) => {
                     const typedParams = params as unknown as ToolExecutorParams;
-                    return executeAiTool(supplyDataContext as unknown as IExecuteFunctions, resource, operation, typedParams);
+                    return executeAiTool(
+                        supplyDataContext as unknown as IExecuteFunctions,
+                        resource,
+                        operation,
+                        typedParams,
+                        {
+                            readFields: readDescribe?.fields ?? [],
+                            writeFields: writeDescribe?.fields ?? [],
+                        },
+                    );
                 },
             });
             tools.push(tool);
         }
+
+        const helperTools = buildHelperTools(
+            resource,
+            resourceLabel,
+            supplyDataContext as unknown as IExecuteFunctions,
+        );
+        tools.push(...helperTools);
 
         if (tools.length === 0) {
             throw new NodeOperationError(
@@ -318,9 +332,13 @@ export class AutotaskAiTools implements INodeType {
             const item = items[itemIndex];
             if (!item) continue;
 
-            // Input JSON may specify which operation to run; fall back to first available
-            const requestedOp = (item.json.operation as string) || effectiveOps[0];
-            const operation = effectiveOps.includes(requestedOp) ? requestedOp : effectiveOps[0];
+            // Execution payload may provide operation directly, or provide a tool name.
+            // In AI mode the payload often includes `tool: autotask_<resource>_<operation>`.
+            const requestedOpFromName =
+                parseOperationFromToolName(item.json.tool, resource) ??
+                parseOperationFromToolName(item.json.toolName, resource);
+            const requestedOp = (item.json.operation as string) || requestedOpFromName || effectiveOps[0];
+            const operation = resolveOperationCaseInsensitive(requestedOp, effectiveOps) ?? effectiveOps[0];
 
             try {
                 const params: ToolExecutorParams = {
@@ -350,8 +368,8 @@ async function getToolResources(this: ILoadOptionsFunctions): Promise<INodePrope
     const options: INodePropertyOptions[] = [];
     for (const [value, ops] of Object.entries(RESOURCE_OPERATIONS_MAP)) {
         if (EXCLUDED_RESOURCES.includes(value)) continue;
-        const hasReadOps = ops.some((o) => ['get', 'getMany', 'count'].includes(o));
-        if (!hasReadOps) continue;
+        const hasSupportedToolOps = ops.some((o) => SUPPORTED_TOOL_OPERATIONS.includes(o));
+        if (!hasSupportedToolOps) continue;
         options.push({
             name: formatResourceName(value),
             value,
@@ -372,7 +390,10 @@ async function getToolResourceOperations(this: ILoadOptionsFunctions): Promise<I
 
     const opLabels: Record<string, string> = {
         get: 'Get by ID',
+        whoAmI: 'Who am I',
         getMany: 'Get many (with filters)',
+        getPosted: 'Get posted time entries',
+        getUnposted: 'Get unposted time entries',
         count: 'Count',
         create: 'Create',
         update: 'Update',
@@ -380,6 +401,7 @@ async function getToolResourceOperations(this: ILoadOptionsFunctions): Promise<I
     };
 
     for (const op of ops) {
+        if (!SUPPORTED_TOOL_OPERATIONS.includes(op)) continue;
         if (WRITE_OPERATIONS.includes(op) && !allowWriteOperations) continue;
         options.push({
             name: opLabels[op] ?? op,

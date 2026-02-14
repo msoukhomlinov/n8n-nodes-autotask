@@ -79,7 +79,7 @@ export async function convertToAutotaskFilter(
 	// Convert to Autotask API format
 	const filter = await Promise.all(input.filter.group.map(async (group) => {
 		const items = await Promise.all(group.items.map(async (item) => {
-			const value = item.itemType.value || '';
+			const value = item.itemType.value ?? '';
 			return {
 				op: item.itemType.op,
 				field: item.itemType.field,
@@ -155,7 +155,7 @@ export function validateFilterInput(input: ISearchFilterBuilderInput): void {
 
 				// Basic validation for date values
 				if (item.itemType.valueType === 'date') {
-					const value = item.itemType.value || '';
+					const value = item.itemType.value ?? '';
 					if (value !== '') {
 						// Convert value to string before passing to moment
 						const valueStr = typeof value === 'boolean' ? value.toString() : value;

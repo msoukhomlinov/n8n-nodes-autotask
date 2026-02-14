@@ -1,6 +1,6 @@
 import type { ILoadOptionsFunctions, IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import type { IAutotaskField } from '../types/base/entities';
-import { getResourceOperations } from '../constants/resource-operations';
+import { getResourceOperations, normaliseResourceName } from '../constants/resource-operations';
 import { OperationType } from '../types/base/entity-types';
 import { FieldProcessor } from '../operations/base/field-processor';
 import { getFields } from './entity/api';
@@ -8,6 +8,33 @@ import { handleErrors } from './errorHandler';
 import { getConfiguredTimezone } from './date-time/utils';
 import { AUTOTASK_ENTITIES, getEntityMetadata } from '../constants/entities';
 import type { IEntityMetadata } from '../types';
+
+function resolveEntityMetadata(resource: string): IEntityMetadata | undefined {
+    const canonicalResource = normaliseResourceName(resource);
+    const lowerCanonical = canonicalResource.toLowerCase();
+    const singularCandidate = lowerCanonical.endsWith('s')
+        ? canonicalResource.slice(0, -1)
+        : canonicalResource;
+    const pluralCandidate = canonicalResource.endsWith('s')
+        ? canonicalResource
+        : `${canonicalResource}s`;
+
+    const candidates = [
+        resource,
+        canonicalResource,
+        singularCandidate,
+        pluralCandidate,
+    ];
+
+    for (const candidate of candidates) {
+        const metadata = getEntityMetadata(candidate);
+        if (metadata) {
+            return metadata;
+        }
+    }
+
+    return undefined;
+}
 
 /**
  * Map field names to their referenced entities
@@ -22,7 +49,7 @@ const REFERENCE_FIELD_MAPPINGS: Record<string, string> = {
     'projectID': 'project',
     'ticketID': 'ticket',
     'contractID': 'contract',
-    'opportunityID': 'salesOrder',
+    'opportunityID': 'opportunity',
     'quoteID': 'quote',
     'invoiceID': 'invoice',
     'taskID': 'task',
@@ -36,7 +63,6 @@ const REFERENCE_FIELD_MAPPINGS: Record<string, string> = {
     'billingCodeID': 'billingCode',
     'departmentID': 'department',
     'roleID': 'role',
-    'queueID': 'ticketCategory',
     'subIssueTypeID': 'ticketSubIssueType',
     'sourceID': 'ticketSource',
     'priorityID': 'priority',
@@ -53,7 +79,8 @@ const REFERENCE_FIELD_MAPPINGS: Record<string, string> = {
 function getReferencedEntity(fieldId: string, resource: string): string | undefined {
     // Direct mapping lookup
     if (REFERENCE_FIELD_MAPPINGS[fieldId]) {
-        return REFERENCE_FIELD_MAPPINGS[fieldId];
+        const mappedEntity = REFERENCE_FIELD_MAPPINGS[fieldId];
+        return resolveEntityMetadata(mappedEntity) ? mappedEntity : undefined;
     }
 
     // Pattern-based detection for ID fields
@@ -85,7 +112,8 @@ function getReferencedEntity(fieldId: string, resource: string): string | undefi
             'parent': resource, // References same entity type for hierarchical relations
         };
 
-        return entityMappings[corrected] || corrected;
+        const inferredEntity = entityMappings[corrected] || corrected;
+        return resolveEntityMetadata(inferredEntity) ? inferredEntity : undefined;
     }
 
     return undefined;
@@ -206,7 +234,7 @@ export async function describeResource(
         const timezone = await getConfiguredTimezone.call(context);
 
         // Check if entity supports UDFs
-        const metadata = getEntityMetadata(resource);
+        const metadata = resolveEntityMetadata(resource);
         const hasUdfs = metadata?.hasUserDefinedFields === true;
 
         // Get standard fields, and UDF fields only if supported
@@ -443,7 +471,7 @@ export async function listPicklistValues(
         }
 
         // Check if entity supports UDFs
-        const metadata = getEntityMetadata(resource);
+        const metadata = resolveEntityMetadata(resource);
         const hasUdfs = metadata?.hasUserDefinedFields === true;
 
         // Get all fields to find the specific field
