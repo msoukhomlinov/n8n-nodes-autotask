@@ -1,4 +1,5 @@
 import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	CreateOperation,
@@ -11,6 +12,14 @@ import { executeEntityInfoOperations } from '../../operations/common/entityInfo.
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
 const ENTITY_TYPE = 'contact';
+
+function parseRequiredPositiveInt(value: string, fieldLabel: string): number {
+	const parsed = Number.parseInt(value, 10);
+	if (!Number.isInteger(parsed) || parsed <= 0) {
+		throw new Error(`${fieldLabel} must be a positive integer`);
+	}
+	return parsed;
+}
 
 export async function executeContactOperation(
 	this: IExecuteFunctions,
@@ -72,9 +81,16 @@ export async function executeContactOperation(
 
 				case 'moveToCompany': {
 					const { moveContactToCompany } = await import('../../helpers/contact-mover');
-					const sourceContactId = parseInt(this.getNodeParameter('sourceContactId', i) as string, 10);
-					const destinationCompanyId = parseInt(this.getNodeParameter('destinationCompanyId', i) as string, 10);
+					const sourceContactId = parseRequiredPositiveInt(
+						this.getNodeParameter('sourceContactId', i) as string,
+						'Source Contact ID',
+					);
+					const destinationCompanyId = parseRequiredPositiveInt(
+						this.getNodeParameter('destinationCompanyId', i) as string,
+						'Destination Company ID',
+					);
 					const locationRaw = this.getNodeParameter('destinationCompanyLocationId', i, '') as string;
+					const skipIfDuplicateEmailFound = this.getNodeParameter('skipIfDuplicateEmailFound', i, true) as boolean;
 					const copyContactGroups = this.getNodeParameter('copyContactGroups', i, true) as boolean;
 					const copyCompanyNotes = this.getNodeParameter('copyCompanyNotes', i, true) as boolean;
 					const copyNoteAttachments = this.getNodeParameter('copyNoteAttachments', i, true) as boolean;
@@ -85,14 +101,15 @@ export async function executeContactOperation(
 					if (locationRaw === '') {
 						destinationCompanyLocationId = null;
 					} else {
-						destinationCompanyLocationId = parseInt(locationRaw, 10);
-						if (Number.isNaN(destinationCompanyLocationId)) {
-							throw new Error('Destination Location ID must be a number or left blank for auto-mapping');
+						destinationCompanyLocationId = Number.parseInt(locationRaw, 10);
+						if (!Number.isInteger(destinationCompanyLocationId) || destinationCompanyLocationId <= 0) {
+							throw new Error('Destination Location ID must be a positive integer or left blank for auto-mapping');
 						}
 					}
 
 					const result = await moveContactToCompany(this, i, {
 						sourceContactId, destinationCompanyId, destinationCompanyLocationId,
+						skipIfDuplicateEmailFound,
 						copyContactGroups, copyCompanyNotes, copyNoteAttachments,
 						sourceAuditNote, destinationAuditNote,
 					});
@@ -111,11 +128,15 @@ export async function executeContactOperation(
 					throw new Error(`Operation ${operation} is not supported`);
 			}
 		} catch (error) {
+			const err = error as Error;
 			if (this.continueOnFail()) {
-				returnData.push({ json: { error: error.message } });
+				returnData.push({
+					json: { error: err.message },
+					pairedItem: { item: i },
+				});
 				continue;
 			}
-			throw error;
+			throw new NodeOperationError(this.getNode(), err, { itemIndex: i });
 		}
 	}
 

@@ -140,6 +140,19 @@ export const contactFields: INodeProperties[] = [
 		description: 'Location ID at the destination company. Leave blank to auto-map by location name, or enter a specific ID.',
 	},
 	{
+		displayName: 'Skip If Duplicate Email Found',
+		name: 'skipIfDuplicateEmailFound',
+		type: 'boolean',
+		default: true,
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'Whether to skip the move without error when a destination contact already exists with the same email address',
+	},
+	{
 		displayName: 'Copy Contact Groups',
 		name: 'copyContactGroups',
 		type: 'boolean',

@@ -8,6 +8,7 @@ export interface IMoveToCompanyOptions {
 	sourceContactId: number;
 	destinationCompanyId: number;
 	destinationCompanyLocationId?: number | null; // null = auto-map by name, number = explicit, undefined = omit
+	skipIfDuplicateEmailFound: boolean;
 	copyContactGroups: boolean;
 	copyCompanyNotes: boolean;
 	copyNoteAttachments: boolean;
@@ -17,6 +18,7 @@ export interface IMoveToCompanyOptions {
 
 export interface IMoveToCompanyResult {
 	success: boolean;
+	skipped: boolean;
 	newContactId: number;
 	sourceContactId: number;
 	sourceCompanyId: number;
@@ -35,6 +37,10 @@ const EXCLUDED_FIELDS = new Set([
 	'lastActivityDate',
 	'lastModifiedDate',
 ]);
+
+function isPositiveInteger(value: unknown): value is number {
+	return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
 
 // ─── Step 1: Fetch source contact ───────────────────────────────────────────
 
@@ -73,8 +79,8 @@ async function checkDuplicateEmail(
 	ctx: IExecuteFunctions,
 	emailAddress: string | undefined,
 	destinationCompanyId: number,
-): Promise<void> {
-	if (!emailAddress) return;
+): Promise<number | null> {
+	if (!emailAddress) return null;
 
 	const queryEndpoint = 'Contacts/query/';
 	const body = {
@@ -87,11 +93,17 @@ async function checkDuplicateEmail(
 	const response = await autotaskApiRequest.call(ctx, 'POST', queryEndpoint, body) as { items?: IDataObject[] };
 
 	if (response?.items?.length) {
-		const existingId = response.items[0].id;
-		throw new Error(
-			`A contact with email "${emailAddress}" already exists at destination company ${destinationCompanyId} (Contact ID: ${existingId}). Aborting to prevent duplicates.`,
-		);
+		const existingIdRaw = response.items[0].id;
+		const existingId = typeof existingIdRaw === 'number'
+			? existingIdRaw
+			: Number.parseInt(String(existingIdRaw), 10);
+		if (Number.isInteger(existingId) && existingId > 0) {
+			return existingId;
+		}
+		return -1;
 	}
+
+	return null;
 }
 
 // ─── Step 4: Build new contact payload ──────────────────────────────────────
@@ -100,7 +112,7 @@ function buildNewContactPayload(
 	sourceContact: IDataObject,
 	writableFields: IAutotaskField[],
 	destinationCompanyId: number,
-	destinationCompanyLocationId: number | null | undefined,
+	resolvedDestinationCompanyLocationId: number | undefined,
 ): IDataObject {
 	const payload: IDataObject = { id: 0 };
 
@@ -116,18 +128,11 @@ function buildNewContactPayload(
 	// Override company ID
 	payload.companyID = destinationCompanyId;
 
-	// Handle location
-	if (destinationCompanyLocationId !== undefined) {
-		if (destinationCompanyLocationId === null) {
-			// Auto-map: keep source location name-based mapping (pass through, API will validate)
-			// If source has no location, omit it
-			if (!sourceContact.companyLocationID) {
-				delete payload.companyLocationID;
-			}
-			// Otherwise keep the source value — caller can override with explicit ID
-		} else {
-			payload.companyLocationID = destinationCompanyLocationId;
-		}
+	// Set a destination location only when it is explicitly resolved.
+	if (resolvedDestinationCompanyLocationId !== undefined) {
+		payload.companyLocationID = resolvedDestinationCompanyLocationId;
+	} else {
+		delete payload.companyLocationID;
 	}
 
 	// Copy UDFs as-is
@@ -136,6 +141,93 @@ function buildNewContactPayload(
 	}
 
 	return payload;
+}
+
+async function getCompanyLocationNameById(
+	ctx: IExecuteFunctions,
+	companyId: number,
+	companyLocationId: number,
+): Promise<string | undefined> {
+	const endpoint = buildChildEntityUrl('Company', 'CompanyLocation', companyId, { entityId: companyLocationId });
+	const response = await autotaskApiRequest.call(ctx, 'GET', endpoint) as { item?: IDataObject };
+	const locationName = response?.item?.name;
+	if (typeof locationName === 'string' && locationName.trim() !== '') {
+		return locationName.trim();
+	}
+	return undefined;
+}
+
+async function resolveDestinationCompanyLocationId(
+	ctx: IExecuteFunctions,
+	sourceContact: IDataObject,
+	sourceCompanyId: number,
+	destinationCompanyId: number,
+	destinationCompanyLocationId: number | null | undefined,
+	warnings: string[],
+): Promise<number | undefined> {
+	// Omitted in UI: do not set location.
+	if (destinationCompanyLocationId === undefined) {
+		return undefined;
+	}
+
+	// Explicit location ID in UI: use as-is.
+	if (destinationCompanyLocationId !== null) {
+		return destinationCompanyLocationId;
+	}
+
+	// Auto-map by name.
+	const sourceLocationIdRaw = sourceContact.companyLocationID;
+	if (!isPositiveInteger(sourceLocationIdRaw)) {
+		return undefined;
+	}
+
+	let sourceLocationName: string | undefined;
+	try {
+		sourceLocationName = await getCompanyLocationNameById(ctx, sourceCompanyId, sourceLocationIdRaw);
+	} catch (err) {
+		warnings.push(`Failed to resolve source location ${sourceLocationIdRaw} for auto-mapping: ${(err as Error).message}`);
+		return undefined;
+	}
+
+	if (!sourceLocationName) {
+		warnings.push(`Source location ${sourceLocationIdRaw} has no name; destination location was not set.`);
+		return undefined;
+	}
+
+	let destinationMatches: IDataObject[] = [];
+	try {
+		const response = await autotaskApiRequest.call(ctx, 'POST', 'CompanyLocations/query/', {
+			filter: [
+				{ field: 'companyID', op: 'eq', value: destinationCompanyId },
+				{ field: 'name', op: 'eq', value: sourceLocationName },
+			],
+		}) as { items?: IDataObject[] };
+		destinationMatches = response?.items ?? [];
+	} catch (err) {
+		warnings.push(`Failed to query destination locations for auto-mapping: ${(err as Error).message}`);
+		return undefined;
+	}
+
+	if (!destinationMatches.length) {
+		warnings.push(`No destination location named "${sourceLocationName}" was found on company ${destinationCompanyId}; destination location was not set.`);
+		return undefined;
+	}
+
+	const mappedLocationIdRaw = destinationMatches[0].id;
+	const mappedLocationId = typeof mappedLocationIdRaw === 'number'
+		? mappedLocationIdRaw
+		: Number.parseInt(String(mappedLocationIdRaw), 10);
+
+	if (!isPositiveInteger(mappedLocationId)) {
+		warnings.push(`Destination location match "${sourceLocationName}" returned an invalid ID; destination location was not set.`);
+		return undefined;
+	}
+
+	if (destinationMatches.length > 1) {
+		warnings.push(`Multiple destination locations matched "${sourceLocationName}". Using location ID ${mappedLocationId}.`);
+	}
+
+	return mappedLocationId;
 }
 
 // ─── Step 5: Create destination contact ─────────────────────────────────────
@@ -446,24 +538,64 @@ export async function moveContactToCompany(
 	const writableFields = await fetchWritableFieldDefs(ctx);
 
 	// Step 3: Check for duplicate email (critical)
-	await checkDuplicateEmail(ctx, sourceContact.emailAddress as string | undefined, options.destinationCompanyId);
+	const duplicateDestinationContactId = await checkDuplicateEmail(
+		ctx,
+		sourceContact.emailAddress as string | undefined,
+		options.destinationCompanyId,
+	);
+	if (duplicateDestinationContactId !== null) {
+		const duplicateMessage = duplicateDestinationContactId > 0
+			? `A contact with email "${String(sourceContact.emailAddress)}" already exists at destination company ${options.destinationCompanyId} (Contact ID: ${duplicateDestinationContactId}).`
+			: `A contact with email "${String(sourceContact.emailAddress)}" already exists at destination company ${options.destinationCompanyId}.`;
 
-	// Step 4: Build new contact payload (critical)
-	const payload = buildNewContactPayload(
-		sourceContact, writableFields,
-		options.destinationCompanyId, options.destinationCompanyLocationId,
+		if (!options.skipIfDuplicateEmailFound) {
+			throw new Error(`${duplicateMessage} Aborting to prevent duplicates.`);
+		}
+
+		warnings.push(`${duplicateMessage} Skipped move because "Skip If Duplicate Email Found" is enabled. No changes were made.`);
+		return {
+			success: true,
+			skipped: true,
+			newContactId: duplicateDestinationContactId > 0 ? duplicateDestinationContactId : 0,
+			sourceContactId: options.sourceContactId,
+			sourceCompanyId,
+			destinationCompanyId: options.destinationCompanyId,
+			contactIdMapping: duplicateDestinationContactId > 0
+				? { [options.sourceContactId]: duplicateDestinationContactId }
+				: {},
+			companyNoteIdMapping: {},
+			contactGroupsCopied: [],
+			auditNotes: { sourceCompanyNoteId: 0, destinationCompanyNoteId: 0 },
+			warnings,
+		};
+	}
+
+	// Step 4: Resolve destination company location (critical)
+	const resolvedDestinationCompanyLocationId = await resolveDestinationCompanyLocationId(
+		ctx,
+		sourceContact,
+		sourceCompanyId,
+		options.destinationCompanyId,
+		options.destinationCompanyLocationId,
+		warnings,
 	);
 
-	// Step 5: Create destination contact (critical)
+	// Step 5: Build new contact payload (critical)
+	const payload = buildNewContactPayload(
+		sourceContact, writableFields,
+		options.destinationCompanyId, resolvedDestinationCompanyLocationId,
+	);
+
+	// Step 6: Create destination contact (critical)
 	const newContactId = await createDestinationContact(ctx, options.destinationCompanyId, payload);
 
-	// Step 6: Copy contact group memberships (optional)
+	// Step 7: Copy contact group memberships (optional)
 	let contactGroupsCopied: number[] = [];
 	if (options.copyContactGroups) {
 		contactGroupsCopied = await copyContactGroupMemberships(ctx, options.sourceContactId, newContactId, warnings);
 	}
 
-	// Step 7: Copy company notes and attachments (optional)
+	// Step 8: Copy company notes and attachments (optional)
 	let companyNoteIdMapping: Record<number, number> = {};
 	if (options.copyCompanyNotes) {
 		companyNoteIdMapping = await copyCompanyNotesAndAttachments(
@@ -473,14 +605,15 @@ export async function moveContactToCompany(
 		);
 	}
 
-	// Step 8: Create audit notes (optional)
+	// Step 9: Create audit notes (optional)
 	const auditNotes = await createAuditNotes(ctx, options, sourceContact, sourceCompanyId, newContactId, warnings);
 
-	// Step 9: Deactivate source contact (optional)
+	// Step 10: Deactivate source contact (optional)
 	await deactivateSourceContact(ctx, options.sourceContactId, sourceCompanyId, sourceContact, warnings);
 
 	return {
 		success: true,
+		skipped: false,
 		newContactId,
 		sourceContactId: options.sourceContactId,
 		sourceCompanyId,
