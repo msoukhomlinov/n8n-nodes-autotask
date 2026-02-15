@@ -13,6 +13,7 @@ import type {
 	IGetNodeParameterOptions,
 } from 'n8n-workflow';
 import { executeProjectTaskOperation } from './resources/projectTasks/execute';
+import { executeTaskSecondaryResourceOperation } from './resources/taskSecondaryResources/execute';
 import { executeProjectOperation } from './resources/projects/execute';
 import { executeCompanyOperation } from './resources/companies/execute';
 import { executeCompanyAlertOperation } from './resources/companyAlerts/execute';
@@ -92,6 +93,7 @@ import { getEntityMetadata } from './constants/entities';
 import { RESOURCE_DEFINITIONS } from './resources/definitions';
 import { initializeRateTracker } from './helpers/http/initRateTracker';
 import { projectTaskFields } from './resources/projectTasks/description';
+import { taskSecondaryResourceFields } from './resources/taskSecondaryResources/description';
 import { projectFields } from './resources/projects/description';
 import { companyFields } from './resources/companies/description';
 import { companyAlertFields } from './resources/companyAlerts/description';
@@ -162,6 +164,7 @@ import { contractExclusionSetExcludedRolesFields } from './resources/contractExc
 import { contractExclusionSetExcludedWorkTypesFields } from './resources/contractExclusionSetExcludedWorkTypes/description';
 import { opportunityFields } from './resources/opportunities/description';
 import { addOperationsToResource } from './helpers/resource-operations.helper';
+import { consolidateProperties } from './helpers/consolidate-properties';
 import { executeSurveyOperation } from './resources/surveys/execute';
 import { surveyFields } from './resources/surveys/description';
 import { executeSurveyResultsOperation } from './resources/surveyResults/execute';
@@ -207,6 +210,8 @@ import { skillFields } from './resources/skills/description';
 import { contactGroupsFields } from './resources/contactGroups/description';
 import { executeContactGroupContactsOperation } from './resources/contactGroupContacts/execute';
 import { contactGroupContactsFields } from './resources/contactGroupContacts/description';
+import { executeAppointmentOperation } from './resources/appointments/execute';
+import { appointmentFields } from './resources/appointments/description';
 import { aiHelperFields } from './resources/aiHelper/description';
 import { executeAiHelperOperation } from './resources/aiHelper/execute';
 import { toolFieldsWithAgentOptions } from './resources/tool/description';
@@ -269,7 +274,7 @@ export class Autotask implements INodeType {
 				required: true,
 			},
 		],
-		properties: [
+		properties: consolidateProperties([
 			{
 				displayName: 'Resource',
 				name: 'resource',
@@ -345,6 +350,7 @@ export class Autotask implements INodeType {
 				excludeOperations: ['getManyAdvanced']
 			}),
 			...addOperationsToResource(domainRegistrarFields, { resourceName: 'DomainRegistrar' }),
+			...addOperationsToResource(appointmentFields, { resourceName: 'appointment' }),
 			...addOperationsToResource(holidayFields, { resourceName: 'holiday' }),
 			...addOperationsToResource(holidaySetFields, { resourceName: 'holidaySet' }),
 			...addOperationsToResource(invoiceFields, { resourceName: 'invoice' }),
@@ -379,6 +385,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(tagAliasFields, { resourceName: 'tagAlias' }),
 			...addOperationsToResource(tagGroupFields, { resourceName: 'tagGroup' }),
 			...addOperationsToResource(projectTaskFields, { resourceName: 'task' }),
+			...addOperationsToResource(taskSecondaryResourceFields, { resourceName: 'taskSecondaryResource' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
 			...addOperationsToResource(ticketAttachmentFields, { resourceName: 'ticketAttachment' }),
 			...addOperationsToResource(ticketCategoryFields, { resourceName: 'ticketCategory' }),
@@ -397,7 +404,7 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(timeEntryAttachmentFields, { resourceName: 'timeEntryAttachment' }),
 			...searchFilterDescription,
 			...searchFilterOperations,
-		],
+		]),
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
@@ -505,6 +512,8 @@ export class Autotask implements INodeType {
 				return executeCountryOperation.call(this);
 			case 'DomainRegistrar':
 				return executeDomainRegistrarOperation.call(this);
+			case 'appointment':
+				return executeAppointmentOperation.call(this);
 			case 'contractExclusionBillingCode':
 				return executeContractExclusionBillingCodeOperation.call(this);
 			case 'contractExclusionRoles':
@@ -539,6 +548,8 @@ export class Autotask implements INodeType {
 				return executeProjectPhaseOperation.call(this);
 			case 'task':
 				return executeProjectTaskOperation.call(this);
+			case 'taskSecondaryResource':
+				return executeTaskSecondaryResourceOperation.call(this);
 			case 'quote':
 				return executeQuoteOperation.call(this);
 			case 'quoteItem':

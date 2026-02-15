@@ -20,6 +20,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Check Autotask API usage limits and current threshold levels',
 	},
 	{
+		name: 'Appointment',
+		value: 'appointment',
+		description: 'Manage Appointments, which represent scheduled calendar work items assigned to resources',
+	},
+	{
 		name: 'Billing Code',
 		value: 'billingCode',
 		description: 'Query Billing Codes (Allocation Codes), which categorise billing items such as work types, materials, expenses, and services',
@@ -323,6 +328,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		name: 'Project Task',
 		value: 'task',
 		description: 'Manage Project Tasks, which define work items assigned to resources within projects for scheduling, tracking, and completion',
+	},
+	{
+		name: 'Project Task Secondary Resources',
+		value: 'taskSecondaryResource',
+		description: 'Manage Project Task Secondary Resources, which assign additional resources to project tasks alongside or instead of a primary resource',
 	},
 	{
 		name: 'Quote',

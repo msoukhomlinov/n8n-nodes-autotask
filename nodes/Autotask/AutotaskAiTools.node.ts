@@ -24,6 +24,8 @@ import {
     getCompanySearchByDomainSchema,
     getTicketSlaHealthCheckSchema,
     getConfigurationItemMoveConfigurationItemSchema,
+    getContactMoveToCompanySchema,
+    getTransferOwnershipSchema,
     getCountSchema,
     getDeleteSchema,
     getCreateSchema,
@@ -39,6 +41,8 @@ import {
     buildCompanySearchByDomainDescription,
     buildTicketSlaHealthCheckDescription,
     buildConfigurationItemMoveConfigurationItemDescription,
+    buildContactMoveToCompanyDescription,
+    buildResourceTransferOwnershipDescription,
     buildPostedTimeEntriesDescription,
     buildUnpostedTimeEntriesDescription,
     buildUpdateDescription,
@@ -60,7 +64,7 @@ const { StructuredToolkit } = require('n8n-core') as {
     StructuredToolkit: new (tools: DynamicStructuredTool[]) => { tools: DynamicStructuredTool[] };
 };
 
-const WRITE_OPERATIONS = ['create', 'moveConfigurationItem', 'update', 'delete'];
+const WRITE_OPERATIONS = ['create', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'];
 const SUPPORTED_TOOL_OPERATIONS = [
     'get',
     'getMany',
@@ -69,7 +73,9 @@ const SUPPORTED_TOOL_OPERATIONS = [
     'getUnposted',
     'count',
     'create',
+    'moveToCompany',
     'moveConfigurationItem',
+    'transferOwnership',
     'update',
     'delete',
     'whoAmI',
@@ -148,7 +154,7 @@ export class AutotaskAiTools implements INodeType {
                 name: 'allowWriteOperations',
                 type: 'boolean',
                 default: false,
-                description: 'Whether to enable mutating tools (create, moveConfigurationItem, update, delete). Disabled = read-only.',
+                description: 'Whether to enable mutating tools (create, moveToCompany, moveConfigurationItem, transferOwnership, update, delete). Disabled = read-only.',
             },
         ],
     };
@@ -255,6 +261,14 @@ export class AutotaskAiTools implements INodeType {
                 case 'moveConfigurationItem':
                     schema = getConfigurationItemMoveConfigurationItemSchema();
                     description = buildConfigurationItemMoveConfigurationItemDescription(resource);
+                    break;
+                case 'moveToCompany':
+                    schema = getContactMoveToCompanySchema();
+                    description = buildContactMoveToCompanyDescription(resource);
+                    break;
+                case 'transferOwnership':
+                    schema = getTransferOwnershipSchema();
+                    description = buildResourceTransferOwnershipDescription(resource);
                     break;
                 case 'delete':
                     schema = getDeleteSchema();
@@ -433,7 +447,9 @@ async function getToolResourceOperations(this: ILoadOptionsFunctions): Promise<I
         getUnposted: 'Get unposted time entries',
         count: 'Count',
         create: 'Create',
+        moveToCompany: 'Move contact to company',
         moveConfigurationItem: 'Move configuration item (clone to company)',
+        transferOwnership: 'Transfer ownership',
         update: 'Update',
         delete: 'Delete',
     };

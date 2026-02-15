@@ -127,6 +127,19 @@ export const contactFields: INodeProperties[] = [
 		description: 'The ID of the company to move the contact to',
 	},
 	{
+		displayName: 'Dry Run',
+		name: 'dryRun',
+		type: 'boolean',
+		default: false,
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'Whether to return a migration plan without executing any writes. Useful for previewing what would happen.',
+	},
+	{
 		displayName: 'Destination Location ID',
 		name: 'destinationCompanyLocationId',
 		type: 'string',
@@ -219,5 +232,31 @@ export const contactFields: INodeProperties[] = [
 			},
 		},
 		description: 'Note left on the destination company. Placeholders: {contactName}, {sourceContactId}, {sourceCompanyId}, {newContactId}, {sourceContactLink}, {newContactLink}, {date}.',
+	},
+	{
+		displayName: 'Impersonation Resource ID',
+		name: 'impersonationResourceId',
+		type: 'string',
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'Optional resource ID to impersonate. Created records (contact, notes, attachments) will be attributed to this resource. Leave blank to use the credential user.',
+	},
+	{
+		displayName: 'Proceed Without Impersonation If Denied',
+		name: 'proceedWithoutImpersonationIfDenied',
+		type: 'boolean',
+		default: true,
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['moveToCompany'],
+			},
+		},
+		description: 'Whether to proceed without impersonation when denied. Only applies when Impersonation Resource ID is set. When on, if the impersonated resource is active but Autotask denies the write due to permissions, the request is retried without impersonation and proceeds as the API user. Default: on.',
 	},
 ];

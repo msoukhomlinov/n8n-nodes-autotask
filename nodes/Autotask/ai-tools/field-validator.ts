@@ -121,7 +121,9 @@ export function validateEntityId(
         'getUnposted',
         'count',
         'create',
+        'moveToCompany',
         'moveConfigurationItem',
+        'transferOwnership',
         'whoAmI',
         'slaHealthCheck',
     ];

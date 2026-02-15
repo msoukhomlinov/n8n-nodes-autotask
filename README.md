@@ -62,7 +62,7 @@ To use this node, you need to have API access to your Autotask instance. Follow 
 
 ### Autotask AI Tools
 
-The **Autotask AI Tools** node exposes Autotask operations as individual tools for the AI Agent. Add one node per resource (e.g. ticket, company, contact), select the operations to expose (get, getMany, count, create, update, delete; plus whoAmI for Resource, getPosted/getUnposted for Time Entry, searchByDomain for Company, slaHealthCheck for Ticket, moveConfigurationItem for Configuration Items), and connect to an AI Agent. Each operation becomes a separate tool with a flat, typed schema that LLMs handle reliably. Available resources and operations are derived from the same entity metadata as the main Autotask node. Requires `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` in your n8n environment.
+The **Autotask AI Tools** node exposes Autotask operations as individual tools for the AI Agent. Add one node per resource (e.g. ticket, company, contact), select the operations to expose (get, getMany, count, create, update, delete; plus whoAmI and transferOwnership for Resource, getPosted/getUnposted for Time Entry, searchByDomain for Company, slaHealthCheck for Ticket, moveConfigurationItem for Configuration Items), and connect to an AI Agent. Each operation becomes a separate tool with a flat, typed schema that LLMs handle reliably. Available resources and operations are derived from the same entity metadata as the main Autotask node. Requires `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` in your n8n environment.
 
 ### Supported Resources
 
@@ -71,6 +71,7 @@ The node supports the following Autotask resources:
 | Resource | Description |
 |----------|-------------|
 | API Threshold | Check Autotask API usage limits and current usage levels |
+| Appointment | Manage appointments (scheduled calendar work assigned to resources) |
 | Billing Code | Manage billing codes for time entries and charges |
 | Billing Items | Manage Autotask Billing Items, which represent billable items that have been approved and posted for potential invoicing |
 | Checklist Library | Manage modular checklist components that can be applied to tickets or tasks |
@@ -132,11 +133,12 @@ The node supports the following Autotask resources:
 | Project Note | Manage notes attached to projects |
 | Project Phase | Manage phases within projects |
 | Project Task | Manage tasks within projects |
+| Project Task Secondary Resources | Manage secondary resource assignments on project tasks |
 | Quote | Manage quotes for opportunities with pricing for products, services, and labour |
 | Quote Item | Manage line items for quotes including products, services, and labour |
 | Quote Location | Manage shipping and billing address information for quotes |
 | Quote Template | Query quote templates that define content and appearance of quotes |
-| Resource | Manage staff resources |
+| Resource | Manage staff resources. Includes Who Am I and Transfer Ownership (companies, opportunities, tickets, tasks, projects, task/secondary and service-call assignments, appointments) with dry run and optional audit notes. |
 | Resource Role | Manage department/role relationships, service desk queues, and service desk roles |
 | Roles | Manage roles in the system |
 | Search Filter | Build advanced search filters |
@@ -216,7 +218,7 @@ For the **Company** resource, **Search by Domain** finds companies by website/do
 
 For the **Ticket** resource, **SLA Health Check** accepts either Ticket ID or Ticket Number, then combines Ticket and Service Level Agreement Result data to return first-response, resolution-plan, and resolution health with a consistent unit of hours (2 decimal places). It supports **Add Picklist Labels** and **Add Reference Labels** for enriched output, includes an SLA-only fallback to resolve `companyID_label` when reference labels are enabled, and lets you choose which ticket fields to include in the ticket payload (default: `id`, `ticketNumber`, `title`, `status`, `companyID`). This operation is available in both the main Autotask node and the Autotask AI Tools node (AI parameter: `ticketFields`).
 
-For the **Configuration Item** resource, **Move Configuration Item** clones a CI to another company (Autotask does not allow companyID changes in place), with optional copying of UDFs, CI attachments, notes, and note attachments. It leaves audit notes on both source and destination CIs, supports dry-run mode, and can deactivate the source CI after completion checks. Tickets/tasks/projects/contracts and other associations are explicitly not migrated by this operation.
+For the **Configuration Item** resource, **Move Configuration Item** clones a CI to another company (Autotask does not allow companyID changes in place), with optional copying of UDFs, CI attachments, notes, and note attachments. Uses API-driven writable field detection so new Autotask fields are handled automatically. Leaves customisable audit notes on both source and destination CIs with deep links and company names, supports dry-run mode, and can deactivate the source CI after completion checks. Optionally set **Impersonation Resource ID** so created records are attributed to a specific resource. Tickets/tasks/projects/contracts and other associations are explicitly not migrated by this operation.
 
 For webhook resources (Company Webhook, Contact Webhook, Configuration Item Webhook, Ticket Webhook, Ticket Note Webhook), the following operations are available:
 - **Get**: Retrieve a single webhook by ID

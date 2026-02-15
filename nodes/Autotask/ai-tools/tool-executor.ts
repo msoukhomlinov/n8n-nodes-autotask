@@ -322,6 +322,10 @@ function normaliseOperation(operation: string): string {
             return 'slaHealthCheck';
         case 'moveconfigurationitem':
             return 'moveConfigurationItem';
+        case 'movetocompany':
+            return 'moveToCompany';
+        case 'transferownership':
+            return 'transferOwnership';
         default:
             return key;
     }
@@ -626,6 +630,16 @@ function formatToolResponse(
         }
 
         case 'moveConfigurationItem': {
+            const result = firstRecord ?? null;
+            return JSON.stringify({ result });
+        }
+
+        case 'moveToCompany': {
+            const result = firstRecord ?? null;
+            return JSON.stringify({ result });
+        }
+
+        case 'transferOwnership': {
             const result = firstRecord ?? null;
             return JSON.stringify({ result });
         }

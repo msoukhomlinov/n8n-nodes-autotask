@@ -6,6 +6,7 @@ import { OperationType } from '../types/base/entity-types';
  * This includes all endpoints that can be accessed through the Autotask REST API
  */
 export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
+	{ name: 'Appointment', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	// BillingCode entity (read-only)
 	{ name: 'BillingCode', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'BillingItems', operations: { [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
@@ -99,6 +100,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'SurveyResults', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Task', childOf: 'Project', subname: 'task', parentIdField: 'projectID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
 	{ name: 'TaskNote', childOf: 'Task', subname: 'Note', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.DELETE]: 'parent' } },
+	{ name: 'TaskSecondaryResource', resourceKey: 'taskSecondaryResources', childOf: 'Task', subname: 'SecondaryResources', parentIdField: 'taskID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	// Tickets entity
 	{ name: 'Ticket', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' }, hasUserDefinedFields: true, supportsWebhookCallouts: true },
 	{ name: 'TicketChangeRequestApproval', resourceKey: 'ticketChangeRequestApprovals', childOf: 'Ticket', subname: 'ChangeRequestApprovals', parentIdField: 'ticketID', operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.READ]: 'self' } },

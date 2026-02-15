@@ -194,28 +194,28 @@ const baseFields: INodeProperties[] = [
     name: 'sourceAuditNote',
     type: 'string',
     typeOptions: { rows: 3 },
-    default: '>>> Copied to Configuration Item ID: {newConfigurationItemId} (Company {destinationCompanyId}) <<<\nLink: {newConfigurationItemLink}\n\nRun ID: {runId}',
+    default: 'This configuration item was moved to {destinationCompanyName} ({destinationCompanyId}) on {date}.\n\nNew CI: {newConfigurationItemId}\nLink: {newConfigurationItemLink}\n\nRun ID: {runId}',
     displayOptions: {
       show: {
         resource: ['configurationItems'],
         operation: ['moveConfigurationItem'],
       },
     },
-    description: 'Audit note left on the source CI. Placeholders: {sourceConfigurationItemId}, {newConfigurationItemId}, {sourceCompanyId}, {destinationCompanyId}, {sourceConfigurationItemLink}, {newConfigurationItemLink}, {runId}, {date}. Leave blank to skip.',
+    description: 'Audit note left on the source CI. Placeholders: {sourceConfigurationItemId}, {newConfigurationItemId}, {sourceCompanyId}, {sourceCompanyName}, {destinationCompanyId}, {destinationCompanyName}, {sourceConfigurationItemLink}, {newConfigurationItemLink}, {runId}, {date}. Leave blank to skip.',
   },
   {
     displayName: 'Destination Audit Note',
     name: 'destinationAuditNote',
     type: 'string',
     typeOptions: { rows: 3 },
-    default: '>>> Copied from Configuration Item ID: {sourceConfigurationItemId} (Company {sourceCompanyId}) <<<\nLink: {sourceConfigurationItemLink}\n\nRun ID: {runId}',
+    default: 'This configuration item was copied from {sourceCompanyName} ({sourceCompanyId}) on {date}.\n\nOriginal CI: {sourceConfigurationItemId}\nLink: {sourceConfigurationItemLink}\n\nRun ID: {runId}',
     displayOptions: {
       show: {
         resource: ['configurationItems'],
         operation: ['moveConfigurationItem'],
       },
     },
-    description: 'Audit note left on the destination CI. Placeholders: {sourceConfigurationItemId}, {newConfigurationItemId}, {sourceCompanyId}, {destinationCompanyId}, {sourceConfigurationItemLink}, {newConfigurationItemLink}, {runId}, {date}. Leave blank to skip.',
+    description: 'Audit note left on the destination CI. Placeholders: {sourceConfigurationItemId}, {newConfigurationItemId}, {sourceCompanyId}, {sourceCompanyName}, {destinationCompanyId}, {destinationCompanyName}, {sourceConfigurationItemLink}, {newConfigurationItemLink}, {runId}, {date}. Leave blank to skip.',
   },
   {
     displayName: 'Dry Run',
@@ -242,6 +242,32 @@ const baseFields: INodeProperties[] = [
       },
     },
     description: 'Optional idempotency key to include in audit notes and output for traceability',
+  },
+  {
+    displayName: 'Impersonation Resource ID',
+    name: 'impersonationResourceId',
+    type: 'string',
+    default: '',
+    displayOptions: {
+      show: {
+        resource: ['configurationItems'],
+        operation: ['moveConfigurationItem'],
+      },
+    },
+    description: 'Optional resource ID to impersonate. Created records (CI, notes, attachments) will be attributed to this resource. Leave blank to use the credential user.',
+  },
+  {
+    displayName: 'Proceed Without Impersonation If Denied',
+    name: 'proceedWithoutImpersonationIfDenied',
+    type: 'boolean',
+    default: true,
+    displayOptions: {
+      show: {
+        resource: ['configurationItems'],
+        operation: ['moveConfigurationItem'],
+      },
+    },
+    description: 'Whether to proceed without impersonation when denied. Only applies when Impersonation Resource ID is set. When on, if the impersonated resource is active but Autotask denies a write due to permissions, the request is retried without impersonation and proceeds as the API user. Default: on.',
   },
   {
     displayName: 'Masked UDF Policy',

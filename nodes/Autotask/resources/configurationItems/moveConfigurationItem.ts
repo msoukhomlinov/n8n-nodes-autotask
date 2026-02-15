@@ -1,7 +1,8 @@
 import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
 import { autotaskApiRequest } from '../../helpers/http';
+import { getOptionalImpersonationResourceId } from '../../helpers/impersonation';
 import { ATTACHMENT_TYPE, MAX_ATTACHMENT_SIZE_BYTES } from '../../helpers/attachment';
-import { withInactiveRefRetry } from '../../helpers/inactive-entity-activation';
+import { withActiveImpersonationResource, withInactiveRefRetry } from '../../helpers/inactive-entity-activation';
 import { getWritableFieldNames, applyRequiredFieldDefaults, buildEntityDeepLink } from '../../helpers/entity';
 
 type MaskedUdfPolicy = 'omit' | 'fail';
@@ -33,6 +34,8 @@ interface MoveConfigurationItemOptions {
   destinationAuditNote: string;
   dryRun: boolean;
   idempotencyKey: string | null;
+  impersonationResourceId?: number;
+  proceedWithoutImpersonationIfDenied: boolean;
   includeMaskedUdfsPolicy: MaskedUdfPolicy;
   attachmentOversizePolicy: OversizePolicy;
   partialFailureStrategy: PartialFailureStrategy;
@@ -185,8 +188,8 @@ async function throttleForUpload(
   }
 }
 
-function buildMigrationHeader(sourceConfigurationItemId: number, sourceCompanyId: number): string {
-  return `[MIGRATED] From CI ${sourceConfigurationItemId} (Company ${sourceCompanyId}) on ${nowUtcIso()} by n8n-nodes-autotask`;
+function buildMigrationHeader(sourceConfigurationItemId: number, sourceCompanyId: number, companyName: string): string {
+  return `[MIGRATED] From CI ${sourceConfigurationItemId} — ${companyName} (${sourceCompanyId}) on ${nowUtcIso()} by n8n-nodes-autotask`;
 }
 
 function resolveTemplate(
@@ -230,6 +233,12 @@ function parseCopyOptions(context: IExecuteFunctions, itemIndex: number): MoveCo
   const destinationAuditNote = (context.getNodeParameter('destinationAuditNote', itemIndex, '') as string).trim();
   const dryRun = context.getNodeParameter('dryRun', itemIndex, false) as boolean;
   const idempotencyRaw = (context.getNodeParameter('idempotencyKey', itemIndex, '') as string).trim();
+  const impersonationResourceId = getOptionalImpersonationResourceId(context, itemIndex);
+  const proceedWithoutImpersonationIfDenied = context.getNodeParameter(
+    'proceedWithoutImpersonationIfDenied',
+    itemIndex,
+    true,
+  ) as boolean;
   const includeMaskedUdfsPolicy = context.getNodeParameter('includeMaskedUdfsPolicy', itemIndex, 'omit') as MaskedUdfPolicy;
   const attachmentOversizePolicy = context.getNodeParameter('attachmentOversizePolicy', itemIndex, 'skip+note') as OversizePolicy;
   const partialFailureStrategy = context.getNodeParameter(
@@ -265,6 +274,8 @@ function parseCopyOptions(context: IExecuteFunctions, itemIndex: number): MoveCo
     destinationAuditNote,
     dryRun,
     idempotencyKey: idempotencyRaw === '' ? null : idempotencyRaw,
+    impersonationResourceId,
+    proceedWithoutImpersonationIfDenied,
     includeMaskedUdfsPolicy,
     attachmentOversizePolicy,
     partialFailureStrategy,
@@ -411,6 +422,8 @@ async function createCiWithReferenceFieldFallback(
   context: IExecuteFunctions,
   payload: IDataObject,
   warnings: string[],
+  impersonationResourceId?: number,
+  proceedWithoutImpersonationIfDenied = true,
 ): Promise<number> {
   const MAX_STRIPS = 5;
 
@@ -424,6 +437,9 @@ async function createCiWithReferenceFieldFallback(
           'POST',
           'ConfigurationItems/',
           payload,
+          {},
+          impersonationResourceId,
+          proceedWithoutImpersonationIfDenied,
         ) as Promise<IDataObject>,
       );
 
@@ -456,6 +472,8 @@ async function addAuditNote(
   title: string,
   body: string,
   warnings: string[],
+  impersonationResourceId?: number,
+  proceedWithoutImpersonationIfDenied = true,
 ): Promise<number | null> {
   const endpoint = `ConfigurationItems/${configurationItemId}/Notes/`;
   const payload: IDataObject = {
@@ -467,7 +485,15 @@ async function addAuditNote(
     configurationItemID: configurationItemId,
   };
   await applyRequiredFieldDefaults('ConfigurationItemNote', context, payload, warnings);
-  const response = await autotaskApiRequest.call(context, 'POST', endpoint, payload) as IDataObject;
+  const response = await autotaskApiRequest.call(
+    context,
+    'POST',
+    endpoint,
+    payload,
+    {},
+    impersonationResourceId,
+    proceedWithoutImpersonationIfDenied,
+  ) as IDataObject;
   return extractCreatedId(response);
 }
 
@@ -514,7 +540,15 @@ async function uploadAttachmentWithPolicies(
   };
 
   const response = await withRetries(
-    async () => autotaskApiRequest.call(context, 'POST', destinationEndpoint, payload) as Promise<IDataObject>,
+    async () => autotaskApiRequest.call(
+      context,
+      'POST',
+      destinationEndpoint,
+      payload,
+      {},
+      options.impersonationResourceId,
+      options.proceedWithoutImpersonationIfDenied,
+    ) as Promise<IDataObject>,
     options.retryPolicy,
   );
   throttleState.uploads.push({ timestampMs: Date.now(), bytes });
@@ -541,6 +575,7 @@ export async function executeMoveConfigurationItem(
   };
 
   const options = parseCopyOptions(context, itemIndex);
+  const impersonationResourceId = options.impersonationResourceId;
   const runId = options.idempotencyKey ?? `ci-move-${options.sourceConfigurationItemId}-${Date.now()}`;
   const warnings: string[] = [];
   const skipped: SkippedCollections = { udfs: [], attachments: [], noteAttachments: [] };
@@ -550,6 +585,8 @@ export async function executeMoveConfigurationItem(
 
   let sourceCi: IDataObject | null = null;
   let sourceCompanyId = 0;
+  let sourceCompanyName = '';
+  let destinationCompanyName = '';
   let destinationCiId: number | null = null;
   let auditNotesCreated = false;
   let sourceDeactivated = false;
@@ -574,11 +611,19 @@ export async function executeMoveConfigurationItem(
       );
     }
 
-    await fetchEntityById(
+    const sourceCompany = await fetchEntityById(
+      context,
+      `Companies/${sourceCompanyId}/`,
+      `Source company ${sourceCompanyId} was not found`,
+    );
+    sourceCompanyName = String(sourceCompany.companyName ?? '');
+
+    const destinationCompany = await fetchEntityById(
       context,
       `Companies/${options.destinationCompanyId}/`,
       `Destination company ${options.destinationCompanyId} was not found`,
     );
+    destinationCompanyName = String(destinationCompany.companyName ?? '');
 
     if (options.destinationCompanyLocationId !== null) {
       const location = await fetchEntityById(
@@ -697,12 +742,19 @@ export async function executeMoveConfigurationItem(
     return summary as IDataObject;
   }
 
-  try {
-    destinationCiId = await createCiWithReferenceFieldFallback(
-      context,
-      destinationPayload,
-      warnings,
-    );
+  await withActiveImpersonationResource(
+    context,
+    impersonationResourceId,
+    warnings,
+    async () => {
+      try {
+        destinationCiId = await createCiWithReferenceFieldFallback(
+          context,
+          destinationPayload,
+          warnings,
+          impersonationResourceId,
+          options.proceedWithoutImpersonationIfDenied,
+        );
 
     const createdCi = await fetchEntityById(
       context,
@@ -767,7 +819,7 @@ export async function executeMoveConfigurationItem(
         if (!Number.isInteger(sourceNoteId) || sourceNoteId <= 0) continue;
 
         const sourceNoteBody = readNoteDescription(sourceNote);
-        const migratedBody = truncateText(`${buildMigrationHeader(options.sourceConfigurationItemId, sourceCompanyId)}\n\n${sourceNoteBody}`);
+        const migratedBody = truncateText(`${buildMigrationHeader(options.sourceConfigurationItemId, sourceCompanyId, sourceCompanyName)}\n\n${sourceNoteBody}`);
         const notePayload: IDataObject = { id: 0 };
         for (const fieldName of noteWritableFields) {
           if (fieldName === 'id') continue;
@@ -789,6 +841,9 @@ export async function executeMoveConfigurationItem(
             'POST',
             `ConfigurationItems/${destinationCiId}/Notes/`,
             notePayload,
+            {},
+            impersonationResourceId,
+            options.proceedWithoutImpersonationIfDenied,
           ) as Promise<IDataObject>,
           options.retryPolicy,
         );
@@ -860,14 +915,13 @@ export async function executeMoveConfigurationItem(
 
     const newCiLink = await buildEntityDeepLink(context, 'configurationItem', destinationCiId) ?? '';
     const sourceCiLink = await buildEntityDeepLink(context, 'configurationItem', options.sourceConfigurationItemId) ?? '';
-    if (!newCiLink || !sourceCiLink) {
-      warnings.push('Deep links could not be generated — zone URL does not match the expected webservices{N}.autotask.net pattern.');
-    }
     const templateVars = {
       sourceConfigurationItemId: options.sourceConfigurationItemId,
       newConfigurationItemId: destinationCiId,
       sourceCompanyId,
+      sourceCompanyName,
       destinationCompanyId: options.destinationCompanyId,
+      destinationCompanyName,
       sourceConfigurationItemLink: sourceCiLink,
       newConfigurationItemLink: newCiLink,
       runId,
@@ -880,9 +934,11 @@ export async function executeMoveConfigurationItem(
       sourceAuditId = await addAuditNote(
         context,
         options.sourceConfigurationItemId,
-        `CI copied to Company ${options.destinationCompanyId}`,
+        `[Migration] Moved to ${destinationCompanyName} (${options.destinationCompanyId})`,
         sourceAuditBody,
         warnings,
+        impersonationResourceId,
+          options.proceedWithoutImpersonationIfDenied,
       );
     }
     let destinationAuditId: number | null = null;
@@ -891,9 +947,11 @@ export async function executeMoveConfigurationItem(
       destinationAuditId = await addAuditNote(
         context,
         destinationCiId,
-        `CI copied from Company ${sourceCompanyId}`,
+        `[Migration] Copied from ${sourceCompanyName} (${sourceCompanyId})`,
         destinationAuditBody,
         warnings,
+        impersonationResourceId,
+          options.proceedWithoutImpersonationIfDenied,
       );
     }
     const sourceNoteOk = !options.sourceAuditNote || sourceAuditId !== null;
@@ -910,38 +968,42 @@ export async function executeMoveConfigurationItem(
       await autotaskApiRequest.call(context, 'PATCH', 'ConfigurationItems/', {
         id: options.sourceConfigurationItemId,
         isActive: 0,
-      });
+      }, {}, impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
       sourceDeactivated = true;
     } else if (options.deactivateSource && !auditNotesCreated) {
       warnings.push('Source CI deactivation skipped because audit notes were not fully created.');
     }
 
-    const deactivateSourceMs = elapsedMs(phaseStartMs.deactivateSource);
-    phaseStartMs.deactivateSource = deactivateSourceMs;
-  } catch (error) {
-    if (destinationCiId !== null) {
-      const partialMessage = `Partial migration run ${runId}: ${error instanceof Error ? error.message : String(error)}`;
-      try {
-        if (options.partialFailureStrategy === 'deactivateDestination') {
-          await autotaskApiRequest.call(context, 'PATCH', 'ConfigurationItems/', {
-            id: destinationCiId,
-            isActive: 0,
-          });
-          warnings.push(`Destination CI ${destinationCiId} was deactivated due to partial migration failure.`);
+        const deactivateSourceMs = elapsedMs(phaseStartMs.deactivateSource);
+        phaseStartMs.deactivateSource = deactivateSourceMs;
+      } catch (error) {
+        if (destinationCiId !== null) {
+          const partialMessage = `Partial migration run ${runId}: ${error instanceof Error ? error.message : String(error)}`;
+          try {
+            if (options.partialFailureStrategy === 'deactivateDestination') {
+              await autotaskApiRequest.call(context, 'PATCH', 'ConfigurationItems/', {
+                id: destinationCiId,
+                isActive: 0,
+              }, {}, impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
+              warnings.push(`Destination CI ${destinationCiId} was deactivated due to partial migration failure.`);
+            }
+            await addAuditNote(
+              context,
+              destinationCiId,
+              'Partial migration',
+              partialMessage,
+              warnings,
+              impersonationResourceId,
+              options.proceedWithoutImpersonationIfDenied,
+            );
+          } catch (partialError) {
+            warnings.push(`Failed to apply partial failure strategy: ${partialError instanceof Error ? partialError.message : String(partialError)}`);
+          }
         }
-        await addAuditNote(
-          context,
-          destinationCiId,
-          'Partial migration',
-          partialMessage,
-          warnings,
-        );
-      } catch (partialError) {
-        warnings.push(`Failed to apply partial failure strategy: ${partialError instanceof Error ? partialError.message : String(partialError)}`);
+        throw error;
       }
-    }
-    throw error;
-  }
+    },
+  );
 
   const latency: LatencyPerPhase = {
     preflightMs: Number(phaseStartMs.preflight) || 0,
@@ -977,5 +1039,6 @@ export async function executeMoveConfigurationItem(
       sourceIsActive: !(sourceCi.isActive === 0 || sourceCi.isActive === false),
     },
     latencyPerPhase: latency as unknown as IDataObject,
+    ...(impersonationResourceId !== undefined && { impersonationResourceId }),
   };
 }

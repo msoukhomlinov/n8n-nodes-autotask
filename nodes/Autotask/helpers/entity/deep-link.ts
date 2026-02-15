@@ -6,7 +6,7 @@ import type { IAutotaskCredentials } from '../../types/base/auth';
  * @see https://www.autotask.net/help/developerhelp/Content/APIs/ExecuteCommand/UsingExecuteCommandAPI.htm
  */
 const ENTITY_LINK_MAP: Record<string, { code: string; param: string }> = {
-	configurationItem: { code: 'EditInstalledProduct', param: 'InstalledProductID' },
+	configurationitem: { code: 'EditInstalledProduct', param: 'InstalledProductID' },
 	contact:           { code: 'OpenContact', param: 'ContactID' },
 	company:           { code: 'OpenAccount', param: 'AccountID' },
 	ticket:            { code: 'OpenTicketDetail', param: 'TicketID' },

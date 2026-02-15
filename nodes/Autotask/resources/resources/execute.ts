@@ -17,6 +17,77 @@ import { getCachedOrFetch, createFilterCacheKeySuffix } from '../../helpers/cach
 
 const ENTITY_TYPE = 'resource';
 
+function parseRequiredPositiveInt(value: string, fieldLabel: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${fieldLabel} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function parseCsv(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function parseStatusValueCsv(value: string): string[] {
+  const parts = parseCsv(value);
+  for (const part of parts) {
+    const parsed = Number.parseInt(part, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`Status allowlist values must be comma-separated positive integers. Invalid value: "${part}"`);
+    }
+  }
+  return parts;
+}
+
+function parsePositiveIntCsv(value: string, fieldLabel: string): number[] {
+  const parts = parseCsv(value);
+  for (const part of parts) {
+    const parsed = Number.parseInt(part, 10);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new Error(`${fieldLabel} must be comma-separated non-negative integers. Invalid value: "${part}"`);
+    }
+  }
+  return parts.map((part) => Number.parseInt(part, 10));
+}
+
+function resolveDueBeforeFromPreset(dueWindowPreset: string, dueBeforeCustom: string): string | null {
+  if (!dueWindowPreset) return null;
+  if (dueWindowPreset === 'custom') {
+    const trimmed = dueBeforeCustom.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  const offsetByPreset: Record<string, number> = {
+    today: 0,
+    tomorrow: 1,
+    plus2Days: 2,
+    plus3Days: 3,
+    plus4Days: 4,
+    plus5Days: 5,
+    plus7Days: 7,
+    plus14Days: 14,
+    plus30Days: 30,
+  };
+  const offset = offsetByPreset[dueWindowPreset];
+  if (offset === undefined) {
+    throw new Error(`Unsupported due window preset: ${dueWindowPreset}`);
+  }
+
+  const now = new Date();
+  const baseUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset);
+  const date = new Date(baseUtc).toISOString().slice(0, 10);
+  return date;
+}
+
+function isParameterExplicitlySet(context: IExecuteFunctions, parameterName: string): boolean {
+  const nodeParams = context.getNode().parameters as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(nodeParams, parameterName);
+}
+
 export async function executeResourceOperation(
 	this: IExecuteFunctions,
 ): Promise<INodeExecutionData[][]> {
@@ -132,6 +203,103 @@ export async function executeResourceOperation(
 							throw error;
 						}
 					}
+					break;
+				}
+
+				case 'transferOwnership': {
+					const { transferOwnership } = await import('../../helpers/workReassigner');
+					const { getOptionalImpersonationResourceId } = await import('../../helpers/impersonation');
+
+					const sourceResourceId = parseRequiredPositiveInt(
+						this.getNodeParameter('sourceResourceId', i) as string,
+						'Source Resource ID',
+					);
+					const destinationResourceId = parseRequiredPositiveInt(
+						this.getNodeParameter('destinationResourceId', i) as string,
+						'Receiving Resource ID',
+					);
+					const dryRun = this.getNodeParameter('dryRun', i, false) as boolean;
+					const includeTickets = this.getNodeParameter('includeTickets', i, false) as boolean;
+					const includeProjects = this.getNodeParameter('includeProjects', i, false) as boolean;
+					const includeTaskSecondaryResources = this.getNodeParameter('includeTaskSecondaryResources', i, false) as boolean;
+					const includeServiceCallAssignments = this.getNodeParameter('includeServiceCallAssignments', i, false) as boolean;
+					const includeAppointments = this.getNodeParameter('includeAppointments', i, false) as boolean;
+					const includeCompanies = this.getNodeParameter('includeCompanies', i, false) as boolean;
+					const includeOpportunities = this.getNodeParameter('includeOpportunities', i, false) as boolean;
+					const companyIdAllowlistRaw = this.getNodeParameter('companyIdAllowlist', i, '') as string;
+					const companyIds = parsePositiveIntCsv(companyIdAllowlistRaw, 'Company ID Allowlist');
+					const dueWindowPreset = this.getNodeParameter('dueWindowPreset', i, '') as string;
+					const dueBeforeCustom = this.getNodeParameter('dueBeforeCustom', i, '') as string;
+					const dueBefore = resolveDueBeforeFromPreset(dueWindowPreset, dueBeforeCustom);
+					const onlyOpenActive = this.getNodeParameter('onlyOpenActive', i, true) as boolean;
+					const includeItemsWithNoDueDateInput = this.getNodeParameter('includeItemsWithNoDueDate', i, true) as boolean;
+					const includeItemsWithNoDueDateExplicit = isParameterExplicitlySet(this, 'includeItemsWithNoDueDate');
+					const includeItemsWithNoDueDate = includeItemsWithNoDueDateExplicit
+						? includeItemsWithNoDueDateInput
+						: dueBefore === null;
+					const ticketAssignmentMode = this.getNodeParameter('ticketAssignmentMode', i, 'primaryOnly') as 'primaryOnly' | 'primaryAndSecondary';
+					const projectReassignMode = this.getNodeParameter('projectReassignMode', i, 'leadAndTasks') as string;
+					const includeTasksInput = this.getNodeParameter('includeTasks', i, false) as boolean;
+					// Derive effective flags from projectReassignMode
+					const projectModeIncludesTasks = ['leadAndTasks', 'leadTasksAndSecondary', 'tasksOnly', 'tasksAndSecondary'].includes(projectReassignMode);
+					const projectModeIncludesSecondary = ['leadTasksAndSecondary', 'tasksAndSecondary'].includes(projectReassignMode);
+					const projectModeIncludesLead = ['leadOnly', 'leadAndTasks', 'leadTasksAndSecondary'].includes(projectReassignMode);
+					const includeTasks = projectModeIncludesTasks || includeTasksInput;
+					const maxItemsPerEntity = Math.max(
+						1,
+						Math.trunc(this.getNodeParameter('maxItemsPerEntity', i, 500) as number),
+					);
+					const maxCompanies = Math.max(
+						1,
+						Math.trunc(this.getNodeParameter('maxCompanies', i, 500) as number),
+					);
+					const statusAllowlistByLabelRaw = this.getNodeParameter('statusAllowlistByLabel', i, '') as string;
+					const statusAllowlistByValueRaw = this.getNodeParameter('statusAllowlistByValue', i, '') as string;
+					const statusAllowlistByLabel = parseCsv(statusAllowlistByLabelRaw);
+					const statusAllowlistByValue = parseStatusValueCsv(statusAllowlistByValueRaw);
+					const addAuditNotes = this.getNodeParameter('addAuditNotes', i, false) as boolean;
+					const auditNoteTemplate = this.getNodeParameter(
+						'auditNoteTemplate',
+						i,
+						'Ownership transferred from {sourceResourceName} ({sourceResourceId}) to {destinationResourceName} ({destinationResourceId}) on {date}',
+					) as string;
+					const impersonationResourceId = getOptionalImpersonationResourceId(this, i);
+					const proceedWithoutImpersonationIfDenied = this.getNodeParameter(
+						'proceedWithoutImpersonationIfDenied',
+						i,
+						true,
+					) as boolean;
+
+					const options = {
+						sourceResourceId,
+						destinationResourceId,
+						dryRun,
+						includeTickets,
+						includeTasks,
+						includeProjects,
+						includeTaskSecondaryResources: includeTaskSecondaryResources || projectModeIncludesSecondary,
+						includeServiceCallAssignments,
+						includeAppointments,
+						includeCompanies,
+						includeOpportunities,
+						dueBefore,
+						onlyOpenActive,
+						includeItemsWithNoDueDate,
+						ticketAssignmentMode,
+						projectModeIncludesLead,
+						maxItemsPerEntity,
+						maxCompanies,
+						addAuditNotes,
+						auditNoteTemplate,
+						proceedWithoutImpersonationIfDenied,
+						...(companyIds.length > 0 && { companyIds }),
+						...(statusAllowlistByLabel.length > 0 && { statusAllowlistByLabel }),
+						...(statusAllowlistByValue.length > 0 && { statusAllowlistByValue }),
+						...(impersonationResourceId !== undefined && { impersonationResourceId }),
+					};
+
+					const result = await transferOwnership(this, i, options);
+					returnData.push({ json: result as unknown as IAutotaskEntity });
 					break;
 				}
 

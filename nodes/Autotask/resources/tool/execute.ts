@@ -3,6 +3,7 @@ import { NodeOperationError } from 'n8n-workflow';
 import { validateParameters } from '../../helpers/aiHelper';
 import { createDryRunResponse } from '../../helpers/dry-run';
 import { buildEntityUrl } from '../../helpers/http/request';
+import { AUTOTASK_ENTITIES } from '../../constants/entities';
 
 // Import all existing resource executors
 import { executeAiHelperOperation } from '../aiHelper/execute';
@@ -68,6 +69,7 @@ import { executeProjectChargeOperation } from '../projectCharges/execute';
 import { executeProjectNoteOperation } from '../projectNotes/execute';
 import { executeProjectPhaseOperation } from '../projectPhases/execute';
 import { executeProjectTaskOperation } from '../projectTasks/execute';
+import { executeTaskSecondaryResourceOperation } from '../taskSecondaryResources/execute';
 import { executeQuoteOperation } from '../quotes/execute';
 import { executeQuoteItemOperation } from '../quoteItems/execute';
 import { executeQuoteLocationOperation } from '../quoteLocations/execute';
@@ -179,6 +181,7 @@ const RESOURCE_EXECUTORS: Record<
 	projectNote: executeProjectNoteOperation,
 	phase: executeProjectPhaseOperation,
 	task: executeProjectTaskOperation,
+	taskSecondaryResource: executeTaskSecondaryResourceOperation,
 	quote: executeQuoteOperation,
 	quoteItem: executeQuoteItemOperation,
 	quoteLocation: executeQuoteLocationOperation,
@@ -220,14 +223,55 @@ const RESOURCE_EXECUTORS: Record<
 };
 
 /**
- * Normalized executor map for case-insensitive lookups
+ * Build bidirectional alias map from entity metadata so that both
+ * lowerCamelCase(entity.name) and entity.resourceKey resolve to the
+ * same executor. This fixes AI tools routing where RESOURCE_OPERATIONS_MAP
+ * keys (derived from resourceKey) may differ from RESOURCE_EXECUTORS keys
+ * (derived from lowerCamelCase(entity.name) or the node resource value).
+ */
+function buildExecutorAliasMap(): Map<string, string> {
+	const aliases = new Map<string, string>();
+	for (const entity of AUTOTASK_ENTITIES) {
+		const defaultKey = entity.name.charAt(0).toLowerCase() + entity.name.slice(1);
+		const resourceKey = entity.resourceKey ?? defaultKey;
+		if (defaultKey.toLowerCase() !== resourceKey.toLowerCase()) {
+			// Forward: lowerCamelCase(name) → resourceKey
+			aliases.set(defaultKey.toLowerCase(), resourceKey.toLowerCase());
+			// Reverse: resourceKey → lowerCamelCase(name)
+			aliases.set(resourceKey.toLowerCase(), defaultKey.toLowerCase());
+		}
+	}
+	return aliases;
+}
+
+const EXECUTOR_ALIASES = buildExecutorAliasMap();
+
+/**
+ * Normalized executor map for case-insensitive lookups.
+ * Includes bidirectional aliases so that both the RESOURCE_EXECUTORS key
+ * and the RESOURCE_OPERATIONS_MAP key (which may differ due to explicit
+ * resourceKey on entities) resolve to the same executor function.
  */
 const NORMALIZED_RESOURCE_EXECUTORS: Record<
 	string,
 	(this: IExecuteFunctions) => Promise<INodeExecutionData[][]>
-> = Object.fromEntries(
-	Object.entries(RESOURCE_EXECUTORS).map(([key, value]) => [key.toLowerCase(), value]),
-);
+> = (() => {
+	const map: Record<string, (this: IExecuteFunctions) => Promise<INodeExecutionData[][]>> = {};
+
+	// Primary entries from RESOURCE_EXECUTORS
+	for (const [key, executor] of Object.entries(RESOURCE_EXECUTORS)) {
+		const normalisedKey = key.toLowerCase();
+		map[normalisedKey] = executor;
+
+		// Add alias entry if one exists (bidirectional)
+		const alias = EXECUTOR_ALIASES.get(normalisedKey);
+		if (alias && !map[alias]) {
+			map[alias] = executor;
+		}
+	}
+
+	return map;
+})();
 
 /**
  * Execute tool operation by routing to appropriate resource executor
@@ -410,7 +454,7 @@ export async function executeToolOperation(
 
 			case 'dryRun':
 				if (
-					resourceOperation === 'moveConfigurationItem' &&
+					(resourceOperation === 'moveConfigurationItem' || resourceOperation === 'moveToCompany' || resourceOperation === 'transferOwnership') &&
 					Object.prototype.hasOwnProperty.call(requestData, 'dryRun')
 				) {
 					return requestData.dryRun;
@@ -562,7 +606,7 @@ async function applySafetyGates(
 		}
 
 		// Check write operation restrictions
-		const isWriteOperation = ['create', 'moveConfigurationItem', 'update', 'delete'].includes(resourceOperation);
+		const isWriteOperation = ['create', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'].includes(resourceOperation);
 
 		if (isWriteOperation && !allowWriteOperations) {
 			if (isDryRun && allowDryRunForWrites) {

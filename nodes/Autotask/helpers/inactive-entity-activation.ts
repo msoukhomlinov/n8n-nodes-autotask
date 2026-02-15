@@ -188,6 +188,60 @@ export async function withInactiveRefRetry<T>(
 	}
 }
 
+/**
+ * Ensures an impersonation resource is active for the duration of an operation.
+ *
+ * When the configured impersonation resource is inactive, Autotask may return
+ * a generic permissions error (for example "adequate permissions to create this
+ * entity ..."). For move/copy flows, we can safely apply the same temporary
+ * activation pattern used for inactive reference fields.
+ */
+export async function withActiveImpersonationResource<T>(
+	context: IExecuteFunctions,
+	impersonationResourceId: number | undefined,
+	warnings: string[],
+	runOperation: () => Promise<T>,
+): Promise<T> {
+	if (!impersonationResourceId) {
+		return runOperation();
+	}
+
+	let resourceResponse: { item?: IDataObject };
+	try {
+		resourceResponse = await autotaskApiRequest.call(
+			context,
+			'GET',
+			`Resources/${impersonationResourceId}/`,
+		) as { item?: IDataObject };
+	} catch (error) {
+		warnings.push(
+			`Failed to verify impersonation resource ${impersonationResourceId} status before execution: ${error instanceof Error ? error.message : String(error)}. Proceeding without pre-activation check.`,
+		);
+		return runOperation();
+	}
+
+	const rawIsActive = resourceResponse?.item?.isActive;
+	const isActive = rawIsActive === true || rawIsActive === 1;
+	if (isActive) {
+		return runOperation();
+	}
+
+	warnings.push(
+		`Impersonation resource ${impersonationResourceId} is inactive; temporarily activating for this operation and restoring it to inactive afterwards.`,
+	);
+
+	return withTemporaryActivation(
+		context,
+		{
+			field: 'impersonationResourceId',
+			entityId: impersonationResourceId,
+			entityType: 'Resource',
+		},
+		warnings,
+		runOperation,
+	);
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

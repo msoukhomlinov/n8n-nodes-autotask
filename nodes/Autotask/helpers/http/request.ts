@@ -8,6 +8,7 @@ import type {
 } from 'n8n-workflow';
 import { API_VERSION } from '../../constants/operations';
 import { getAutotaskHeaders } from './headers';
+import { isImpersonationSupportedForEndpoint } from '../impersonation';
 import type { IRequestConfig, IAutotaskCredentials } from '../../types';
 import { NodeApiError } from 'n8n-workflow';
 import { plural, singular } from 'pluralize';
@@ -328,6 +329,11 @@ export async function fetchThresholdInformation(
 
 /**
  * Makes an authenticated request to the Autotask API
+ *
+ * @param impersonationResourceId - Optional resource ID for impersonation. When set, the
+ *   ImpersonationResourceId header is sent so created records are attributed to that resource.
+ * @param proceedWithoutImpersonationIfDenied - When true, retries once without impersonation
+ *   if the impersonated call is denied with an "adequate permissions" error.
  */
 export async function autotaskApiRequest<T = JsonObject>(
 	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
@@ -335,6 +341,8 @@ export async function autotaskApiRequest<T = JsonObject>(
 	endpoint: string,
 	body: IRequestConfig['body'] = {},
 	query: IRequestConfig['query'] = {},
+	impersonationResourceId?: number,
+	proceedWithoutImpersonationIfDenied = true,
 ): Promise<T> {
 	const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials | undefined;
 	if (!credentials) {
@@ -349,9 +357,18 @@ export async function autotaskApiRequest<T = JsonObject>(
 		);
 	}
 
+	// Guard: only apply impersonation to endpoints that Autotask supports
+	let effectiveImpersonation = impersonationResourceId;
+	if (effectiveImpersonation !== undefined && !isImpersonationSupportedForEndpoint(endpoint)) {
+		console.warn(
+			`[autotaskApiRequest] Impersonation requested (resource ${effectiveImpersonation}) but endpoint "${endpoint}" is not in the Autotask impersonation-supported entity list. Header will be omitted for this call.`,
+		);
+		effectiveImpersonation = undefined;
+	}
+
 	const options: IRequestOptions = {
 		method,
-		headers: getAutotaskHeaders(credentials),
+		headers: getAutotaskHeaders(credentials, effectiveImpersonation),
 		qs: query,
 		json: true,
 	};
@@ -567,8 +584,42 @@ export async function autotaskApiRequest<T = JsonObject>(
 				: '';
 
 		// Use API specific error message if available
-		const detailedMessage =
+		let detailedMessage =
 			apiErrorMessages || standardError.message || apiError.message || 'An unknown error occurred';
+		const isAdequatePermissionsDenied = /does not have the adequate permissions/i.test(detailedMessage);
+
+		// Optional fail-open mode for impersonation permission denials:
+		// retry the same request once without impersonation and return that result.
+		if (
+			proceedWithoutImpersonationIfDenied &&
+			effectiveImpersonation !== undefined &&
+			isAdequatePermissionsDenied
+		) {
+			console.warn(
+				`[autotaskApiRequest] Impersonation denied for resource ${effectiveImpersonation}; retrying ${method} ${endpoint} without impersonation.`,
+			);
+			return autotaskApiRequest.call(
+				this,
+				method,
+				endpoint,
+				body,
+				query,
+				undefined,
+				false,
+			) as Promise<T>;
+		}
+
+		// Enrich permissions errors with impersonation context when the header was active
+		if (effectiveImpersonation !== undefined && isAdequatePermissionsDenied) {
+			detailedMessage =
+				`Impersonation failed (resource ${effectiveImpersonation}): ${detailedMessage}\n\n` +
+				'The Autotask API executes impersonated requests under the impersonated resource\'s own security context. ' +
+				'The impersonated resource must have:\n' +
+				'  1. A security level that allows being impersonated\n' +
+				'  2. The same entity-level permissions (Add/Edit/Delete) as if they were performing the action themselves in the Autotask UI\n' +
+				'  3. Access to the specific entity sub-type (e.g. the CI type) involved\n\n' +
+				'Check Admin > Account Settings & Users > Resources > Security Levels for the impersonated resource\'s security level.';
+		}
 
 		// Set consistent properties on the error object to ensure n8n displays the right message
 		apiError.message = detailedMessage;

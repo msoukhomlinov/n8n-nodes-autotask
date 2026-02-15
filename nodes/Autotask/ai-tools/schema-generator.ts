@@ -11,6 +11,18 @@ const DOMAIN_SEARCH_OP_ENUM = z.enum(['eq', 'beginsWith', 'endsWith', 'contains'
 const MASKED_UDF_POLICY_ENUM = z.enum(['omit', 'fail']);
 const ATTACHMENT_OVERSIZE_POLICY_ENUM = z.enum(['skip+note', 'fail']);
 const PARTIAL_FAILURE_STRATEGY_ENUM = z.enum(['deactivateDestination', 'leaveActiveWithNote']);
+const DUE_WINDOW_PRESET_ENUM = z.enum([
+    'today',
+    'tomorrow',
+    'plus2Days',
+    'plus3Days',
+    'plus4Days',
+    'plus5Days',
+    'plus7Days',
+    'plus14Days',
+    'plus30Days',
+    'custom',
+]);
 const RECENCY_ENUM = z.enum([
     'last_15m',
     'last_1h',
@@ -268,6 +280,16 @@ export function getConfigurationItemMoveConfigurationItemSchema(): z.ZodObject<R
         deactivateSource: z.boolean().optional().describe('Whether to deactivate the source CI after safety checks (default true).'),
         dryRun: z.boolean().optional().describe('When true, return a migration plan without mutations (default false).'),
         idempotencyKey: z.string().optional().describe('Optional run key for traceability and workflow-managed idempotency.'),
+        impersonationResourceId: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('Optional resource ID to impersonate. Created records (CI, notes, attachments) will be attributed to this resource. Omit to use the credential user.'),
+        proceedWithoutImpersonationIfDenied: z
+            .boolean()
+            .optional()
+            .describe('Only applies when impersonationResourceId is set. When true, if an impersonated write is denied due to permissions, retry once without impersonation and proceed as the API user (default true).'),
         includeMaskedUdfsPolicy: MASKED_UDF_POLICY_ENUM
             .optional()
             .describe("How to handle masked UDFs: 'omit' (default) or 'fail'."),
@@ -282,6 +304,150 @@ export function getConfigurationItemMoveConfigurationItemSchema(): z.ZodObject<R
         retryJitter: z.boolean().optional().describe('Whether to use jitter in retry backoff (default true).'),
         throttleMaxBytesPer5Min: z.number().int().min(1).optional().describe('Rolling upload throughput limit in bytes per 5 minutes (default 10000000).'),
         throttleMaxSingleFileBytes: z.number().int().min(1).optional().describe('Maximum attachment size per file in bytes (default 6291456).'),
+    });
+}
+
+export function getContactMoveToCompanySchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
+    return z.object({
+        sourceContactId: z
+            .number()
+            .int()
+            .positive()
+            .describe('Source contact ID to move.'),
+        destinationCompanyId: z
+            .number()
+            .int()
+            .positive()
+            .describe('Destination company ID for the cloned contact.'),
+        dryRun: z
+            .boolean()
+            .optional()
+            .describe('When true, returns a migration plan without executing any writes (default false).'),
+        destinationCompanyLocationId: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('Optional destination company location ID. Omit or null for auto-mapping behaviour.'),
+        skipIfDuplicateEmailFound: z
+            .boolean()
+            .optional()
+            .describe('Whether to skip move when duplicate email exists on destination company (default true).'),
+        copyContactGroups: z
+            .boolean()
+            .optional()
+            .describe('Whether to copy contact group memberships (default true).'),
+        copyCompanyNotes: z
+            .boolean()
+            .optional()
+            .describe('Whether to copy company notes linked to the contact (default true).'),
+        copyNoteAttachments: z
+            .boolean()
+            .optional()
+            .describe('Whether to copy attachments for copied notes (default true).'),
+        sourceAuditNote: z
+            .string()
+            .optional()
+            .describe('Optional audit note template written to the source company context.'),
+        destinationAuditNote: z
+            .string()
+            .optional()
+            .describe('Optional audit note template written to the destination company context.'),
+        impersonationResourceId: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('Optional resource ID to impersonate for write calls.'),
+        proceedWithoutImpersonationIfDenied: z
+            .boolean()
+            .optional()
+            .describe('When true and impersonation is provided, retry once without impersonation if denied (default true).'),
+    });
+}
+
+export function getTransferOwnershipSchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
+    return z.object({
+        sourceResourceId: z
+            .number()
+            .int()
+            .positive()
+            .describe('Source resource ID currently assigned to work. Source can be inactive.'),
+        destinationResourceId: z
+            .number()
+            .int()
+            .positive()
+            .describe('Receiving resource ID to assign work to. Receiving resource must be active.'),
+        dryRun: z
+            .boolean()
+            .optional()
+            .describe('When true, returns a plan without writing updates (default false).'),
+        includeTickets: z.boolean().optional().describe('Whether to include tickets (default false).'),
+        includeTasks: z.boolean().optional().describe('Whether to include tasks (default false unless projectReassignMode leadAndSelectedTasks).'),
+        includeProjects: z.boolean().optional().describe('Whether to include projects (default false).'),
+        includeTaskSecondaryResources: z.boolean().optional().describe('Whether to reassign task secondary resources (default false).'),
+        includeServiceCallAssignments: z.boolean().optional().describe('Whether to reassign service call task/ticket resources (default false).'),
+        includeAppointments: z.boolean().optional().describe('Whether to reassign appointments (default false).'),
+        includeCompanies: z.boolean().optional().describe('Whether to transfer companies owned by the source resource (default false).'),
+        companyIdAllowlist: z
+            .string()
+            .optional()
+            .describe('Optional comma-separated company IDs to scope company transfer.'),
+        includeOpportunities: z.boolean().optional().describe('Whether to transfer opportunities owned by the source resource (default false).'),
+        dueWindowPreset: DUE_WINDOW_PRESET_ENUM
+            .optional()
+            .describe("Optional due window preset. Use 'custom' with dueBeforeCustom."),
+        dueBeforeCustom: z
+            .string()
+            .optional()
+            .describe('Required when dueWindowPreset is custom. Accepts YYYY-MM-DD or ISO-8601 datetime.'),
+        onlyOpenActive: z.boolean().optional().describe('When true, excludes terminal statuses by default (default true).'),
+        includeItemsWithNoDueDate: z.boolean().optional().describe('Whether items with no due/end date are included (default true, unless due window is set).'),
+        ticketAssignmentMode: z
+            .enum(['primaryOnly', 'primaryAndSecondary'])
+            .optional()
+            .describe('Ticket assignment scope (default primaryOnly).'),
+        projectReassignMode: z
+            .enum(['leadOnly', 'leadAndTasks', 'leadTasksAndSecondary', 'tasksOnly', 'tasksAndSecondary'])
+            .optional()
+            .describe('Project reassignment scope (default leadAndTasks). Lead = project lead. Tasks = tasks under projects. Secondary = task secondary resources under project tasks.'),
+        maxItemsPerEntity: z
+            .number()
+            .int()
+            .min(1)
+            .max(10000)
+            .optional()
+            .describe('Hard safety cap per entity type (default 500).'),
+        maxCompanies: z
+            .number()
+            .int()
+            .min(1)
+            .max(10000)
+            .optional()
+            .describe('Hard safety cap for companies (default 500).'),
+        statusAllowlistByLabel: z
+            .string()
+            .optional()
+            .describe('Optional comma-separated status labels to include.'),
+        statusAllowlistByValue: z
+            .string()
+            .optional()
+            .describe('Optional comma-separated status integer values to include.'),
+        addAuditNotes: z.boolean().optional().describe('Whether to create per-entity audit notes (default false).'),
+        auditNoteTemplate: z
+            .string()
+            .optional()
+            .describe('Audit note template with placeholders: {sourceResourceName}, {sourceResourceId}, {destinationResourceName}, {destinationResourceId}, {date}, {entityType}, {entityId}.'),
+        impersonationResourceId: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('Optional resource ID to impersonate for write calls.'),
+        proceedWithoutImpersonationIfDenied: z
+            .boolean()
+            .optional()
+            .describe('When true and impersonation is provided, retry once without impersonation if denied (default true).'),
     });
 }
 

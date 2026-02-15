@@ -2,7 +2,7 @@ import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest, buildChildEntityUrl } from './http';
 import { getWritableFieldNames, applyRequiredFieldDefaults, buildEntityDeepLink } from './entity';
 import { ATTACHMENT_TYPE, MAX_ATTACHMENT_SIZE_BYTES } from './attachment';
-import { withInactiveRefRetry } from './inactive-entity-activation';
+import { withActiveImpersonationResource, withInactiveRefRetry } from './inactive-entity-activation';
 
 export interface IMoveToCompanyOptions {
 	sourceContactId: number;
@@ -14,9 +14,13 @@ export interface IMoveToCompanyOptions {
 	copyNoteAttachments: boolean;
 	sourceAuditNote: string;
 	destinationAuditNote: string;
+	dryRun: boolean;
+	impersonationResourceId?: number;
+	proceedWithoutImpersonationIfDenied?: boolean;
 }
 
 export interface IMoveToCompanyResult {
+	dryRun: boolean;
 	success: boolean;
 	skipped: boolean;
 	newContactId: number;
@@ -28,6 +32,29 @@ export interface IMoveToCompanyResult {
 	contactGroupsCopied: number[];
 	auditNotes: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
 	warnings: string[];
+	impersonationResourceId?: number;
+	plan?: {
+		sourceContact: {
+			id: number;
+			name: string;
+			emailAddress: string | null;
+			isActive: boolean;
+		};
+		destinationCompanyId: number;
+		resolvedLocationId: number | null;
+		locationAutoMapped: boolean;
+		duplicateEmailCheck: {
+			emailChecked: string | null;
+			duplicateFound: boolean;
+			existingContactId: number | null;
+			wouldSkip: boolean;
+		};
+		payload: IDataObject;
+		plannedCounts: {
+			contactGroupsToCopy: number;
+			companyNotesToCopy: number;
+		};
+	};
 }
 
 /**
@@ -229,10 +256,20 @@ async function createDestinationContact(
 	destinationCompanyId: number,
 	payload: IDataObject,
 	warnings: string[],
+	impersonationResourceId?: number,
+	proceedWithoutImpersonationIfDenied?: boolean,
 ): Promise<number> {
 	const endpoint = buildChildEntityUrl('Company', 'Contact', destinationCompanyId);
 	const response = await withInactiveRefRetry(ctx, warnings, async () =>
-		autotaskApiRequest.call(ctx, 'POST', endpoint, payload) as Promise<IDataObject>,
+		autotaskApiRequest.call(
+			ctx,
+			'POST',
+			endpoint,
+			payload,
+			{},
+			impersonationResourceId,
+			proceedWithoutImpersonationIfDenied,
+		) as Promise<IDataObject>,
 	);
 
 	const id = extractCreatedId(response);
@@ -250,6 +287,8 @@ async function copyContactGroupMemberships(
 	sourceContactId: number,
 	newContactId: number,
 	warnings: string[],
+	impersonationResourceId?: number,
+	proceedWithoutImpersonationIfDenied?: boolean,
 ): Promise<number[]> {
 	const copiedGroups: number[] = [];
 
@@ -275,7 +314,7 @@ async function copyContactGroupMemberships(
 			await autotaskApiRequest.call(ctx, 'POST', 'ContactGroupContacts/', {
 				contactID: newContactId,
 				contactGroupID: groupId,
-			});
+			}, {}, impersonationResourceId, proceedWithoutImpersonationIfDenied);
 			copiedGroups.push(groupId);
 		} catch (err) {
 			warnings.push(`Failed to copy contact group ${groupId}: ${(err as Error).message}`);
@@ -296,6 +335,8 @@ async function copyCompanyNotesAndAttachments(
 	copyAttachments: boolean,
 	noteWritableFields: Set<string>,
 	warnings: string[],
+	impersonationResourceId?: number,
+	proceedWithoutImpersonationIfDenied?: boolean,
 ): Promise<Record<number, number>> {
 	const noteIdMapping: Record<number, number> = {};
 
@@ -333,7 +374,15 @@ async function copyCompanyNotesAndAttachments(
 
 			const endpoint = buildChildEntityUrl('Company', 'CompanyNote', destinationCompanyId);
 			const createResponse = await withInactiveRefRetry(ctx, warnings, async () =>
-				autotaskApiRequest.call(ctx, 'POST', endpoint, newNote) as Promise<IDataObject>,
+				autotaskApiRequest.call(
+					ctx,
+					'POST',
+					endpoint,
+					newNote,
+					{},
+					impersonationResourceId,
+					proceedWithoutImpersonationIfDenied,
+				) as Promise<IDataObject>,
 			);
 
 			const newNoteId = extractCreatedId(createResponse);
@@ -346,6 +395,8 @@ async function copyCompanyNotesAndAttachments(
 						ctx, sourceCompanyId, sourceNoteId,
 						destinationCompanyId, newNoteId,
 						warnings,
+						impersonationResourceId,
+						proceedWithoutImpersonationIfDenied,
 					);
 				}
 			} else {
@@ -366,6 +417,8 @@ async function copyNoteAttachments(
 	destinationCompanyId: number,
 	newNoteId: number,
 	warnings: string[],
+	impersonationResourceId?: number,
+	proceedWithoutImpersonationIfDenied?: boolean,
 ): Promise<void> {
 	// List attachments on the source note via the parent-chain URL
 	// CompanyNoteAttachment: parentChain ['Company','CompanyNote'], subname 'Attachment'
@@ -412,7 +465,7 @@ async function copyNoteAttachments(
 				fullPath: attachmentData.fullPath || attachmentData.title || 'attachment',
 				title: attachmentData.title || 'attachment',
 				publish: attachmentData.publish ?? 1,
-			});
+			}, {}, impersonationResourceId, proceedWithoutImpersonationIfDenied);
 		} catch (err) {
 			warnings.push(`Failed to copy attachment ${attachmentId} from note ${sourceNoteId}: ${(err as Error).message}`);
 		}
@@ -444,9 +497,6 @@ async function createAuditNotes(
 	const contactName = `${sourceContact.firstName || ''} ${sourceContact.lastName || ''}`.trim() || 'Unknown';
 	const sourceContactLink = await buildEntityDeepLink(ctx, 'contact', options.sourceContactId) ?? '';
 	const newContactLink = await buildEntityDeepLink(ctx, 'contact', newContactId) ?? '';
-	if (!sourceContactLink || !newContactLink) {
-		warnings.push('Deep links could not be generated — zone URL does not match the expected webservices{N}.autotask.net pattern.');
-	}
 	const templateVars = {
 		contactName,
 		sourceContactId: options.sourceContactId,
@@ -476,7 +526,15 @@ async function createAuditNotes(
 			};
 			await applyRequiredFieldDefaults('CompanyNote', ctx, notePayload, warnings);
 			const response = await withInactiveRefRetry(ctx, warnings, async () =>
-				autotaskApiRequest.call(ctx, 'POST', endpoint, notePayload) as Promise<IDataObject>,
+				autotaskApiRequest.call(
+					ctx,
+					'POST',
+					endpoint,
+					notePayload,
+					{},
+					options.impersonationResourceId,
+					options.proceedWithoutImpersonationIfDenied,
+				) as Promise<IDataObject>,
 			);
 			sourceCompanyNoteId = extractCreatedId(response) ?? 0;
 		} catch (err) {
@@ -499,7 +557,15 @@ async function createAuditNotes(
 			};
 			await applyRequiredFieldDefaults('CompanyNote', ctx, notePayload, warnings);
 			const response = await withInactiveRefRetry(ctx, warnings, async () =>
-				autotaskApiRequest.call(ctx, 'POST', endpoint, notePayload) as Promise<IDataObject>,
+				autotaskApiRequest.call(
+					ctx,
+					'POST',
+					endpoint,
+					notePayload,
+					{},
+					options.impersonationResourceId,
+					options.proceedWithoutImpersonationIfDenied,
+				) as Promise<IDataObject>,
 			);
 			destinationCompanyNoteId = extractCreatedId(response) ?? 0;
 		} catch (err) {
@@ -518,6 +584,8 @@ async function deactivateSourceContact(
 	sourceCompanyId: number,
 	sourceContact: IDataObject,
 	warnings: string[],
+	impersonationResourceId?: number,
+	proceedWithoutImpersonationIfDenied?: boolean,
 ): Promise<void> {
 	// Warn if primary contact
 	if (sourceContact.isPrimaryContact === true || sourceContact.isPrimaryContact === 1) {
@@ -529,7 +597,7 @@ async function deactivateSourceContact(
 		await autotaskApiRequest.call(ctx, 'PATCH', patchEndpoint, {
 			id: sourceContactId,
 			isActive: 0,
-		});
+		}, {}, impersonationResourceId, proceedWithoutImpersonationIfDenied);
 	} catch (err) {
 		warnings.push(`Failed to deactivate source contact ${sourceContactId}: ${(err as Error).message}. The new contact was created successfully.`);
 	}
@@ -543,6 +611,7 @@ export async function moveContactToCompany(
 	options: IMoveToCompanyOptions,
 ): Promise<IMoveToCompanyResult> {
 	const warnings: string[] = [];
+	const impersonationResourceId = options.impersonationResourceId;
 
 	// Step 1: Fetch source contact (critical)
 	const sourceContact = await fetchSourceContact(ctx, options.sourceContactId);
@@ -572,6 +641,7 @@ export async function moveContactToCompany(
 
 		warnings.push(`${duplicateMessage} Skipped move because "Skip If Duplicate Email Found" is enabled. No changes were made.`);
 		return {
+			dryRun: options.dryRun,
 			success: true,
 			skipped: true,
 			newContactId: duplicateDestinationContactId > 0 ? duplicateDestinationContactId : 0,
@@ -585,6 +655,7 @@ export async function moveContactToCompany(
 			contactGroupsCopied: [],
 			auditNotes: { sourceCompanyNoteId: 0, destinationCompanyNoteId: 0 },
 			warnings,
+			...(impersonationResourceId !== undefined && { impersonationResourceId }),
 		};
 	}
 
@@ -604,33 +675,146 @@ export async function moveContactToCompany(
 		options.destinationCompanyId, resolvedDestinationCompanyLocationId,
 	);
 
-	// Step 6: Create destination contact (critical)
-	const newContactId = await createDestinationContact(ctx, options.destinationCompanyId, payload, warnings);
+	// ─── Dry run: return plan without executing writes ───────────────────
+	if (options.dryRun) {
+		// Count contact groups for the source contact (read-only)
+		let contactGroupCount = 0;
+		if (options.copyContactGroups) {
+			try {
+				const groupResponse = await autotaskApiRequest.call(ctx, 'POST', 'ContactGroupContacts/query/', {
+					filter: [{ field: 'contactID', op: 'eq', value: options.sourceContactId }],
+				}) as { items?: IDataObject[] };
+				contactGroupCount = groupResponse?.items?.length ?? 0;
+			} catch {
+				warnings.push('Failed to query contact group memberships for dry run count.');
+			}
+		}
 
-	// Step 7: Copy contact group memberships (optional)
+		// Count company notes linked to the source contact (read-only)
+		let companyNoteCount = 0;
+		if (options.copyCompanyNotes) {
+			try {
+				const noteResponse = await autotaskApiRequest.call(ctx, 'POST', 'CompanyNotes/query/', {
+					filter: [{ field: 'contactID', op: 'eq', value: options.sourceContactId }],
+				}) as { items?: IDataObject[] };
+				companyNoteCount = noteResponse?.items?.length ?? 0;
+			} catch {
+				warnings.push('Failed to query company notes for dry run count.');
+			}
+		}
+
+		const contactName = `${String(sourceContact.firstName ?? '')} ${String(sourceContact.lastName ?? '')}`.trim() || 'Unknown';
+		const locationWasAutoMapped = options.destinationCompanyLocationId === null
+			&& resolvedDestinationCompanyLocationId !== undefined;
+
+		return {
+			dryRun: true,
+			success: true,
+			skipped: false,
+			newContactId: 0,
+			sourceContactId: options.sourceContactId,
+			sourceCompanyId,
+			destinationCompanyId: options.destinationCompanyId,
+			contactIdMapping: {},
+			companyNoteIdMapping: {},
+			contactGroupsCopied: [],
+			auditNotes: { sourceCompanyNoteId: 0, destinationCompanyNoteId: 0 },
+			warnings,
+			...(impersonationResourceId !== undefined && { impersonationResourceId }),
+			plan: {
+				sourceContact: {
+					id: options.sourceContactId,
+					name: contactName,
+					emailAddress: (sourceContact.emailAddress as string) ?? null,
+					isActive: sourceContact.isActive === true || sourceContact.isActive === 1,
+				},
+				destinationCompanyId: options.destinationCompanyId,
+				resolvedLocationId: resolvedDestinationCompanyLocationId ?? null,
+				locationAutoMapped: locationWasAutoMapped,
+				duplicateEmailCheck: {
+					emailChecked: (sourceContact.emailAddress as string) ?? null,
+					duplicateFound: false,
+					existingContactId: null,
+					wouldSkip: false,
+				},
+				payload,
+				plannedCounts: {
+					contactGroupsToCopy: contactGroupCount,
+					companyNotesToCopy: companyNoteCount,
+				},
+			},
+		};
+	}
+
+	let newContactId = 0;
 	let contactGroupsCopied: number[] = [];
-	if (options.copyContactGroups) {
-		contactGroupsCopied = await copyContactGroupMemberships(ctx, options.sourceContactId, newContactId, warnings);
-	}
-
-	// Step 8: Copy company notes and attachments (optional)
 	let companyNoteIdMapping: Record<number, number> = {};
-	if (options.copyCompanyNotes) {
-		const noteWritableFields = await getWritableFieldNames('CompanyNote', ctx);
-		companyNoteIdMapping = await copyCompanyNotesAndAttachments(
-			ctx, options.sourceContactId, sourceCompanyId,
-			newContactId, options.destinationCompanyId,
-			options.copyNoteAttachments, noteWritableFields, warnings,
-		);
-	}
+	let auditNotes = { sourceCompanyNoteId: 0, destinationCompanyNoteId: 0 };
 
-	// Step 9: Create audit notes (optional)
-	const auditNotes = await createAuditNotes(ctx, options, sourceContact, sourceCompanyId, newContactId, warnings);
+	await withActiveImpersonationResource(
+		ctx,
+		impersonationResourceId,
+		warnings,
+		async () => {
+			// Step 6: Create destination contact (critical)
+			newContactId = await createDestinationContact(
+				ctx,
+				options.destinationCompanyId,
+				payload,
+				warnings,
+				impersonationResourceId,
+				options.proceedWithoutImpersonationIfDenied,
+			);
 
-	// Step 10: Deactivate source contact (optional)
-	await deactivateSourceContact(ctx, options.sourceContactId, sourceCompanyId, sourceContact, warnings);
+			// Step 7: Copy contact group memberships (optional)
+			if (options.copyContactGroups) {
+				contactGroupsCopied = await copyContactGroupMemberships(
+					ctx,
+					options.sourceContactId,
+					newContactId,
+					warnings,
+					impersonationResourceId,
+					options.proceedWithoutImpersonationIfDenied,
+				);
+			}
+
+			// Step 8: Copy company notes and attachments (optional)
+			if (options.copyCompanyNotes) {
+				const noteWritableFields = await getWritableFieldNames('CompanyNote', ctx);
+				companyNoteIdMapping = await copyCompanyNotesAndAttachments(
+					ctx, options.sourceContactId, sourceCompanyId,
+					newContactId, options.destinationCompanyId,
+					options.copyNoteAttachments, noteWritableFields, warnings,
+					impersonationResourceId,
+					options.proceedWithoutImpersonationIfDenied,
+				);
+			}
+
+			// Step 9: Create audit notes (optional)
+			auditNotes = await createAuditNotes(
+				ctx,
+				options,
+				sourceContact,
+				sourceCompanyId,
+				newContactId,
+				warnings,
+			);
+
+			// Step 10: Deactivate source contact (optional)
+			await deactivateSourceContact(
+				ctx,
+				options.sourceContactId,
+				sourceCompanyId,
+				sourceContact,
+				warnings,
+				impersonationResourceId,
+				options.proceedWithoutImpersonationIfDenied,
+			);
+		},
+	);
 
 	return {
+		dryRun: false,
 		success: true,
 		skipped: false,
 		newContactId,
@@ -642,5 +826,6 @@ export async function moveContactToCompany(
 		contactGroupsCopied,
 		auditNotes,
 		warnings,
+		...(impersonationResourceId !== undefined && { impersonationResourceId }),
 	};
 }

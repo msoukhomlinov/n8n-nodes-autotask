@@ -160,7 +160,31 @@ export function buildConfigurationItemMoveConfigurationItemDescription(resourceN
         'Clone a configuration item to a different company because companyID cannot be updated in place. ' +
         'Copies CI core fields and optional UDFs, optional CI attachments, optional notes, and optional note attachments. ' +
         'Always writes audit notes and can deactivate the source CI after safety checks. ' +
+        'Optionally provide impersonationResourceId so created records (CI, notes, attachments) are attributed to that resource. ' +
+        'Optionally set proceedWithoutImpersonationIfDenied (default on); this only applies when impersonationResourceId is set and retries without impersonation if write permissions are denied for the impersonated resource. ' +
         'This operation does not migrate tickets, tasks, projects, contracts, related items, DNS records, or billing-product associations. ' +
+        `If field names or expected behaviour are uncertain, call autotask_${resourceName}_describeFields first.`
+    );
+}
+
+export function buildContactMoveToCompanyDescription(resourceName: string): string {
+    return (
+        'Move a contact to another company by cloning the contact record and optional related data. ' +
+        'Supports duplicate email safeguards, optional company note and attachment copy, contact group copy, and configurable source/destination audit notes. ' +
+        'Supports dry run planning which returns source contact details, the destination payload, location resolution, duplicate check result, and planned counts without writing. ' +
+        'Supports optional impersonation for write attribution with optional fallback when impersonation is denied. ' +
+        `If field names or expected behaviour are uncertain, call autotask_${resourceName}_describeFields first.`
+    );
+}
+
+export function buildResourceTransferOwnershipDescription(resourceName: string): string {
+    return (
+        'Transfer ownership and assignments from a source resource to a receiving resource. ' +
+        'Supports companies, opportunities, tickets, tasks, projects, task secondary resources, service call assignments, and appointments. ' +
+        'Supports dry run planning, due-window filtering, status filtering, and optional audit notes. ' +
+        'Dry run returns full item lists per entity type with key identifying fields (e.g. id, title, status) plus source/destination resource context. ' +
+        "Use dueWindowPreset for convenient date ranges, or dueWindowPreset='custom' with dueBeforeCustom for exact cut-offs. " +
+        "By default, only open/active-style work is targeted by excluding terminal statuses. " +
         `If field names or expected behaviour are uncertain, call autotask_${resourceName}_describeFields first.`
     );
 }

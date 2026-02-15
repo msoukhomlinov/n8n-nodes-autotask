@@ -81,6 +81,7 @@ export async function executeContactOperation(
 
 				case 'moveToCompany': {
 					const { moveContactToCompany } = await import('../../helpers/contact-mover');
+					const { getOptionalImpersonationResourceId } = await import('../../helpers/impersonation');
 					const sourceContactId = parseRequiredPositiveInt(
 						this.getNodeParameter('sourceContactId', i) as string,
 						'Source Contact ID',
@@ -96,6 +97,13 @@ export async function executeContactOperation(
 					const copyNoteAttachments = this.getNodeParameter('copyNoteAttachments', i, true) as boolean;
 					const sourceAuditNote = this.getNodeParameter('sourceAuditNote', i, '') as string;
 					const destinationAuditNote = this.getNodeParameter('destinationAuditNote', i, '') as string;
+					const dryRun = this.getNodeParameter('dryRun', i, false) as boolean;
+					const impersonationResourceId = getOptionalImpersonationResourceId(this, i);
+					const proceedWithoutImpersonationIfDenied = this.getNodeParameter(
+						'proceedWithoutImpersonationIfDenied',
+						i,
+						true,
+					) as boolean;
 
 					let destinationCompanyLocationId: number | null | undefined;
 					if (locationRaw === '') {
@@ -112,6 +120,9 @@ export async function executeContactOperation(
 						skipIfDuplicateEmailFound,
 						copyContactGroups, copyCompanyNotes, copyNoteAttachments,
 						sourceAuditNote, destinationAuditNote,
+						dryRun,
+						impersonationResourceId,
+						proceedWithoutImpersonationIfDenied,
 					});
 					returnData.push({ json: result as unknown as IDataObject });
 					break;
