@@ -197,27 +197,27 @@ export const contactFields: INodeProperties[] = [
 		name: 'sourceAuditNote',
 		type: 'string',
 		typeOptions: { rows: 3 },
-		default: 'Contact {contactName} (ID: {sourceContactId}) was copied to Company ID: {destinationCompanyId} as new Contact ID: {newContactId} on {date}. This contact has been deactivated.',
+		default: 'Contact {contactName} (ID: {sourceContactId}) was copied to Company ID: {destinationCompanyId} as new Contact ID: {newContactId} on {date}.\nNew contact: {newContactLink}\nThis contact has been deactivated.',
 		displayOptions: {
 			show: {
 				resource: ['contact'],
 				operation: ['moveToCompany'],
 			},
 		},
-		description: 'Note left on the source company. Placeholders: {contactName}, {sourceContactId}, {destinationCompanyId}, {newContactId}, {date}.',
+		description: 'Note left on the source company. Placeholders: {contactName}, {sourceContactId}, {destinationCompanyId}, {newContactId}, {sourceContactLink}, {newContactLink}, {date}.',
 	},
 	{
 		displayName: 'Destination Audit Note',
 		name: 'destinationAuditNote',
 		type: 'string',
 		typeOptions: { rows: 3 },
-		default: 'Contact {contactName} (ID: {newContactId}) was copied from Company ID: {sourceCompanyId} (original Contact ID: {sourceContactId}) on {date}.',
+		default: 'Contact {contactName} (ID: {newContactId}) was copied from Company ID: {sourceCompanyId} (original Contact ID: {sourceContactId}) on {date}.\nOriginal contact: {sourceContactLink}',
 		displayOptions: {
 			show: {
 				resource: ['contact'],
 				operation: ['moveToCompany'],
 			},
 		},
-		description: 'Note left on the destination company. Placeholders: {contactName}, {sourceContactId}, {sourceCompanyId}, {newContactId}, {date}.',
+		description: 'Note left on the destination company. Placeholders: {contactName}, {sourceContactId}, {sourceCompanyId}, {newContactId}, {sourceContactLink}, {newContactLink}, {date}.',
 	},
 ];

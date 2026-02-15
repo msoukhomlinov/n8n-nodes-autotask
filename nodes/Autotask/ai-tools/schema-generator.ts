@@ -8,6 +8,9 @@ const FILTER_OP_ENUM = z.enum([
     'exist', 'notExist', 'in', 'notIn',
 ]);
 const DOMAIN_SEARCH_OP_ENUM = z.enum(['eq', 'beginsWith', 'endsWith', 'contains', 'like']);
+const MASKED_UDF_POLICY_ENUM = z.enum(['omit', 'fail']);
+const ATTACHMENT_OVERSIZE_POLICY_ENUM = z.enum(['skip+note', 'fail']);
+const PARTIAL_FAILURE_STRATEGY_ENUM = z.enum(['deactivateDestination', 'leaveActiveWithNote']);
 const RECENCY_ENUM = z.enum([
     'last_15m',
     'last_1h',
@@ -213,6 +216,75 @@ export function getCompanySearchByDomainSchema(): z.ZodObject<Record<string, z.Z
     });
 }
 
+export function getTicketSlaHealthCheckSchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
+    return z.object({
+        id: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('Ticket ID to check. Provide this or ticketNumber.'),
+        ticketNumber: z
+            .string()
+            .optional()
+            .describe('Ticket number to check (for example T20240615.0674). Provide this or ticket id.'),
+        ticketFields: z
+            .string()
+            .optional()
+            .describe(
+                'Optional comma-separated ticket fields to return in the ticket section, for example id,ticketNumber,title,status,companyID.',
+            ),
+    });
+}
+
+export function getConfigurationItemMoveConfigurationItemSchema(): z.ZodObject<Record<string, z.ZodTypeAny>> {
+    return z.object({
+        sourceConfigurationItemId: z
+            .number()
+            .int()
+            .positive()
+            .describe('Source configuration item ID to clone.'),
+        destinationCompanyId: z
+            .number()
+            .int()
+            .positive()
+            .describe('Destination company ID for the new configuration item.'),
+        destinationCompanyLocationId: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('Optional destination company location ID. Omit to clear destination location.'),
+        destinationContactId: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('Optional destination contact ID. Omit to clear contact linkage.'),
+        copyUdfs: z.boolean().optional().describe('Whether to copy user-defined fields (default true).'),
+        copyAttachments: z.boolean().optional().describe('Whether to copy configuration item attachments (default true).'),
+        copyNotes: z.boolean().optional().describe('Whether to copy notes (default true).'),
+        copyNoteAttachments: z.boolean().optional().describe('Whether to copy note attachments (default true).'),
+        deactivateSource: z.boolean().optional().describe('Whether to deactivate the source CI after safety checks (default true).'),
+        dryRun: z.boolean().optional().describe('When true, return a migration plan without mutations (default false).'),
+        idempotencyKey: z.string().optional().describe('Optional run key for traceability and workflow-managed idempotency.'),
+        includeMaskedUdfsPolicy: MASKED_UDF_POLICY_ENUM
+            .optional()
+            .describe("How to handle masked UDFs: 'omit' (default) or 'fail'."),
+        attachmentOversizePolicy: ATTACHMENT_OVERSIZE_POLICY_ENUM
+            .optional()
+            .describe("How to handle oversize attachments: 'skip+note' (default) or 'fail'."),
+        partialFailureStrategy: PARTIAL_FAILURE_STRATEGY_ENUM
+            .optional()
+            .describe("How to handle partial failure after destination create: 'deactivateDestination' (default) or 'leaveActiveWithNote'."),
+        retryMaxRetries: z.number().int().min(0).max(10).optional().describe('Retry max attempts for transient copy errors (default 3).'),
+        retryBaseDelayMs: z.number().int().min(50).max(60000).optional().describe('Retry base delay in milliseconds (default 500).'),
+        retryJitter: z.boolean().optional().describe('Whether to use jitter in retry backoff (default true).'),
+        throttleMaxBytesPer5Min: z.number().int().min(1).optional().describe('Rolling upload throughput limit in bytes per 5 minutes (default 10000000).'),
+        throttleMaxSingleFileBytes: z.number().int().min(1).optional().describe('Maximum attachment size per file in bytes (default 6291456).'),
+    });
+}
+
 export function getDeleteSchema(): z.ZodObject<{ id: z.ZodNumber }> {
     return z.object({
         id: z.number().describe('Entity ID to delete'),
@@ -343,5 +415,8 @@ export function mapFilterOp(op: string): string {
         return FilterOperators.contains;
     }
     const valid = Object.keys(FilterOperators) as string[];
-    return valid.includes(lower) ? (FilterOperators as Record<string, string>)[lower] : FilterOperators.eq;
+    if (!valid.includes(lower)) {
+        throw new Error(`Unsupported filter operator: '${op}'. Valid operators are: ${valid.join(', ')}`);
+    }
+    return (FilterOperators as Record<string, string>)[lower];
 }

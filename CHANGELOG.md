@@ -14,7 +14,12 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - **Ticket Secondary Resource** — New child resource of Ticket supporting Get, Get Many, Count, Create, and Delete operations for managing secondary resource assignments. Automatically available in the AI Tools node.
 - **Service Level Agreement Result** — New read-only resource supporting root and Service Level Agreement child endpoint scopes for Get, Get Many, and Count operations on SLA results. Automatically available in the AI Tools node.
 - **Contact: Move to Company** — New operation on the Contact resource that clones a contact to a different company (all writable fields + UDFs), optionally copies CompanyNotes (with attachments) and ContactGroup memberships, leaves customizable audit trail notes on both companies, and deactivates the source contact.
+- **Ticket: SLA Health Check** — New operation on the Ticket resource that accepts ticket ID or ticket number, combines Ticket and Service Level Agreement Result data, and returns milestone timings plus consistent hour-based health fields for first response, resolution plan, and resolution. Supports Add Picklist Labels and Add Reference Labels, and is available in Autotask AI Tools.
+- **Configuration Item: Move Configuration Item** — New operation on the Configuration Item resource that clones a CI to a destination company, with optional UDF, CI attachment, note, and note-attachment copy. Supports dry run, masking and oversize policies, partial-failure strategy, audit notes on both CIs, optional source deactivation safety checks, and structured migration summary output in both the main node and Autotask AI Tools.
 
+### Improved
+
+- **Inactive entity handling (all entities)** — Centralised the temporary activation pattern into `CreateOperation` and `UpdateOperation` base classes. When any create or update is rejected because a reference field (e.g. `contactID`, `createdByPersonID`) points to an inactive contact or resource, the node now automatically activates the entity, retries, then deactivates it. Previously this was only handled for Company Notes; it now applies to every entity. The per-entity `companyNoteInactiveContact` helper has been removed in favour of the shared `inactive-entity-activation` helper.
 
 ## [1.8.3] - 2026-02-14
 

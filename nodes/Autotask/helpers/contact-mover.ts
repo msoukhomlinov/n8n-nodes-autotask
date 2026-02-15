@@ -1,8 +1,8 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
-import type { IAutotaskField } from '../types/base/entities';
 import { autotaskApiRequest, buildChildEntityUrl } from './http';
-import { getFields } from './entity/api';
+import { getWritableFieldNames, applyRequiredFieldDefaults, buildEntityDeepLink } from './entity';
 import { ATTACHMENT_TYPE, MAX_ATTACHMENT_SIZE_BYTES } from './attachment';
+import { withInactiveRefRetry } from './inactive-entity-activation';
 
 export interface IMoveToCompanyOptions {
 	sourceContactId: number;
@@ -30,13 +30,16 @@ export interface IMoveToCompanyResult {
 	warnings: string[];
 }
 
-/** Fields that must never be copied to the new contact */
-const EXCLUDED_FIELDS = new Set([
-	'id',
-	'createDate',
-	'lastActivityDate',
-	'lastModifiedDate',
-]);
+/**
+ * Extract the numeric entity ID from an autotaskApiRequest POST response.
+ * The helper normalises responses to `{ item: { itemId | id } }`, but
+ * callers historically cast to `{ itemId }` — handle both shapes.
+ */
+function extractCreatedId(response: IDataObject): number | null {
+	const item = response?.item as IDataObject | undefined;
+	const id = item?.itemId ?? item?.id ?? response?.itemId ?? response?.id;
+	return typeof id === 'number' && id > 0 ? id : null;
+}
 
 function isPositiveInteger(value: unknown): value is number {
 	return typeof value === 'number' && Number.isInteger(value) && value > 0;
@@ -64,16 +67,7 @@ async function fetchSourceContact(
 	return contact;
 }
 
-// ─── Step 2: Fetch writable field definitions ───────────────────────────────
-
-async function fetchWritableFieldDefs(
-	ctx: IExecuteFunctions,
-): Promise<IAutotaskField[]> {
-	const fields = await getFields('contact', ctx) as IAutotaskField[];
-	return fields.filter(f => !f.isReadOnly && !EXCLUDED_FIELDS.has(f.name));
-}
-
-// ─── Step 3: Check for duplicate email at destination ───────────────────────
+// ─── Step 2: Check for duplicate email at destination ───────────────────────
 
 async function checkDuplicateEmail(
 	ctx: IExecuteFunctions,
@@ -106,20 +100,18 @@ async function checkDuplicateEmail(
 	return null;
 }
 
-// ─── Step 4: Build new contact payload ──────────────────────────────────────
+// ─── Step 3: Build new contact payload ──────────────────────────────────────
 
 function buildNewContactPayload(
 	sourceContact: IDataObject,
-	writableFields: IAutotaskField[],
+	writableFieldNames: Set<string>,
 	destinationCompanyId: number,
 	resolvedDestinationCompanyLocationId: number | undefined,
 ): IDataObject {
 	const payload: IDataObject = { id: 0 };
 
-	const writableFieldNames = new Set(writableFields.map(f => f.name));
-
 	for (const fieldName of writableFieldNames) {
-		if (EXCLUDED_FIELDS.has(fieldName)) continue;
+		if (fieldName === 'id') continue;
 		if (sourceContact[fieldName] !== undefined && sourceContact[fieldName] !== null) {
 			payload[fieldName] = sourceContact[fieldName];
 		}
@@ -236,15 +228,19 @@ async function createDestinationContact(
 	ctx: IExecuteFunctions,
 	destinationCompanyId: number,
 	payload: IDataObject,
+	warnings: string[],
 ): Promise<number> {
 	const endpoint = buildChildEntityUrl('Company', 'Contact', destinationCompanyId);
-	const response = await autotaskApiRequest.call(ctx, 'POST', endpoint, payload) as { itemId?: number };
+	const response = await withInactiveRefRetry(ctx, warnings, async () =>
+		autotaskApiRequest.call(ctx, 'POST', endpoint, payload) as Promise<IDataObject>,
+	);
 
-	if (!response?.itemId) {
+	const id = extractCreatedId(response);
+	if (id === null) {
 		throw new Error('Failed to create contact at destination company: no itemId returned');
 	}
 
-	return response.itemId;
+	return id;
 }
 
 // ─── Step 6: Copy contact group memberships ─────────────────────────────────
@@ -298,6 +294,7 @@ async function copyCompanyNotesAndAttachments(
 	newContactId: number,
 	destinationCompanyId: number,
 	copyAttachments: boolean,
+	noteWritableFields: Set<string>,
 	warnings: string[],
 ): Promise<Record<number, number>> {
 	const noteIdMapping: Record<number, number> = {};
@@ -321,28 +318,33 @@ async function copyCompanyNotesAndAttachments(
 	for (const note of response.items) {
 		const sourceNoteId = note.id as number;
 		try {
-			// Build new note payload
-			const newNote: IDataObject = { ...note };
-			delete newNote.id;
+			// Build new note payload from writable fields only
+			const newNote: IDataObject = { id: 0 };
+			for (const fieldName of noteWritableFields) {
+				if (fieldName === 'id') continue;
+				const value = note[fieldName];
+				if (value !== undefined) {
+					newNote[fieldName] = value;
+				}
+			}
 			newNote.companyID = destinationCompanyId;
 			newNote.contactID = newContactId;
-			// Remove read-only fields
-			delete newNote.createDateTime;
-			delete newNote.lastModifiedDateTime;
-			delete newNote.creatorResourceID;
-			delete newNote.impersonatorCreatorResourceID;
+			await applyRequiredFieldDefaults('CompanyNote', ctx, newNote, warnings);
 
 			const endpoint = buildChildEntityUrl('Company', 'CompanyNote', destinationCompanyId);
-			const createResponse = await autotaskApiRequest.call(ctx, 'POST', endpoint, newNote) as { itemId?: number };
+			const createResponse = await withInactiveRefRetry(ctx, warnings, async () =>
+				autotaskApiRequest.call(ctx, 'POST', endpoint, newNote) as Promise<IDataObject>,
+			);
 
-			if (createResponse?.itemId) {
-				noteIdMapping[sourceNoteId] = createResponse.itemId;
+			const newNoteId = extractCreatedId(createResponse);
+			if (newNoteId !== null) {
+				noteIdMapping[sourceNoteId] = newNoteId;
 
 				// Copy attachments if enabled
 				if (copyAttachments) {
 					await copyNoteAttachments(
 						ctx, sourceCompanyId, sourceNoteId,
-						destinationCompanyId, createResponse.itemId,
+						destinationCompanyId, newNoteId,
 						warnings,
 					);
 				}
@@ -440,12 +442,19 @@ async function createAuditNotes(
 	warnings: string[],
 ): Promise<{ sourceCompanyNoteId: number; destinationCompanyNoteId: number }> {
 	const contactName = `${sourceContact.firstName || ''} ${sourceContact.lastName || ''}`.trim() || 'Unknown';
+	const sourceContactLink = await buildEntityDeepLink(ctx, 'contact', options.sourceContactId) ?? '';
+	const newContactLink = await buildEntityDeepLink(ctx, 'contact', newContactId) ?? '';
+	if (!sourceContactLink || !newContactLink) {
+		warnings.push('Deep links could not be generated — zone URL does not match the expected webservices{N}.autotask.net pattern.');
+	}
 	const templateVars = {
 		contactName,
 		sourceContactId: options.sourceContactId,
 		sourceCompanyId,
 		destinationCompanyId: options.destinationCompanyId,
 		newContactId,
+		sourceContactLink,
+		newContactLink,
 		date: new Date().toISOString().split('T')[0],
 	};
 
@@ -457,15 +466,19 @@ async function createAuditNotes(
 		try {
 			const noteText = resolveTemplate(options.sourceAuditNote, templateVars);
 			const endpoint = buildChildEntityUrl('Company', 'CompanyNote', sourceCompanyId);
-			const response = await autotaskApiRequest.call(ctx, 'POST', endpoint, {
+			const notePayload: IDataObject = {
 				companyID: sourceCompanyId,
 				contactID: options.sourceContactId,
 				title: 'Contact Copied',
 				description: noteText,
-				actionType: 1, // General note
+				actionType: 1,
 				publish: 1,
-			}) as { itemId?: number };
-			sourceCompanyNoteId = response?.itemId || 0;
+			};
+			await applyRequiredFieldDefaults('CompanyNote', ctx, notePayload, warnings);
+			const response = await withInactiveRefRetry(ctx, warnings, async () =>
+				autotaskApiRequest.call(ctx, 'POST', endpoint, notePayload) as Promise<IDataObject>,
+			);
+			sourceCompanyNoteId = extractCreatedId(response) ?? 0;
 		} catch (err) {
 			warnings.push(`Failed to create source audit note: ${(err as Error).message}`);
 		}
@@ -476,15 +489,19 @@ async function createAuditNotes(
 		try {
 			const noteText = resolveTemplate(options.destinationAuditNote, templateVars);
 			const endpoint = buildChildEntityUrl('Company', 'CompanyNote', options.destinationCompanyId);
-			const response = await autotaskApiRequest.call(ctx, 'POST', endpoint, {
+			const notePayload: IDataObject = {
 				companyID: options.destinationCompanyId,
 				contactID: newContactId,
 				title: 'Contact Copied',
 				description: noteText,
 				actionType: 1,
 				publish: 1,
-			}) as { itemId?: number };
-			destinationCompanyNoteId = response?.itemId || 0;
+			};
+			await applyRequiredFieldDefaults('CompanyNote', ctx, notePayload, warnings);
+			const response = await withInactiveRefRetry(ctx, warnings, async () =>
+				autotaskApiRequest.call(ctx, 'POST', endpoint, notePayload) as Promise<IDataObject>,
+			);
+			destinationCompanyNoteId = extractCreatedId(response) ?? 0;
 		} catch (err) {
 			warnings.push(`Failed to create destination audit note: ${(err as Error).message}`);
 		}
@@ -535,8 +552,8 @@ export async function moveContactToCompany(
 		throw new Error('Source and destination company are the same. No move needed.');
 	}
 
-	// Step 2: Fetch writable field definitions (critical)
-	const writableFields = await fetchWritableFieldDefs(ctx);
+	// Step 2: Fetch writable field names (critical)
+	const writableFields = await getWritableFieldNames('Contact', ctx);
 
 	// Step 3: Check for duplicate email (critical)
 	const duplicateDestinationContactId = await checkDuplicateEmail(
@@ -588,7 +605,7 @@ export async function moveContactToCompany(
 	);
 
 	// Step 6: Create destination contact (critical)
-	const newContactId = await createDestinationContact(ctx, options.destinationCompanyId, payload);
+	const newContactId = await createDestinationContact(ctx, options.destinationCompanyId, payload, warnings);
 
 	// Step 7: Copy contact group memberships (optional)
 	let contactGroupsCopied: number[] = [];
@@ -599,10 +616,11 @@ export async function moveContactToCompany(
 	// Step 8: Copy company notes and attachments (optional)
 	let companyNoteIdMapping: Record<number, number> = {};
 	if (options.copyCompanyNotes) {
+		const noteWritableFields = await getWritableFieldNames('CompanyNote', ctx);
 		companyNoteIdMapping = await copyCompanyNotesAndAttachments(
 			ctx, options.sourceContactId, sourceCompanyId,
 			newContactId, options.destinationCompanyId,
-			options.copyNoteAttachments, warnings,
+			options.copyNoteAttachments, noteWritableFields, warnings,
 		);
 	}
 

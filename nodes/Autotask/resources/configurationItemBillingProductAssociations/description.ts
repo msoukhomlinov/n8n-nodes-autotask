@@ -39,12 +39,6 @@ export const configurationItemBillingProductAssociationFields: INodeProperties[]
 				action: 'Get multiple billing product associations',
 			},
 			{
-				name: 'Get Many (Advanced)',
-				value: 'getManyAdvanced',
-				description: 'Get multiple billing product associations with advanced filtering',
-				action: 'Get multiple billing product associations with advanced filtering',
-			},
-			{
 				name: 'Delete',
 				value: 'delete',
 				description: 'Delete a billing product association',
@@ -85,7 +79,7 @@ export const configurationItemBillingProductAssociationFields: INodeProperties[]
 		displayOptions: {
 			show: {
 				resource: ['configurationItemBillingProductAssociation'],
-				operation: ['create', 'update', 'getMany', 'getManyAdvanced', 'count'],
+				operation: ['create', 'update', 'getMany', 'count'],
 			},
 		},
 		typeOptions: {

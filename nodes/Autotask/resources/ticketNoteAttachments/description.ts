@@ -25,12 +25,6 @@ export const ticketNoteAttachmentFields: INodeProperties[] = [
 				action: 'Get multiple attachments',
 			},
 			{
-				name: 'Get Many Advanced',
-				value: 'getManyAdvanced',
-				description: 'Get multiple ticket note attachments with advanced filtering',
-				action: 'Get multiple attachments with advanced filtering',
-			},
-			{
 				name: 'Download',
 				value: 'download',
 				description: 'Download an attachment as binary data',
@@ -47,18 +41,6 @@ export const ticketNoteAttachmentFields: INodeProperties[] = [
 				value: 'count',
 				description: 'Count ticket note attachments',
 				action: 'Count attachments',
-			},
-			{
-				name: 'Get Entity Info',
-				value: 'getEntityInfo',
-				description: 'Get metadata about the Ticket Note Attachment entity',
-				action: 'Get entity info',
-			},
-			{
-				name: 'Get Field Info',
-				value: 'getFieldInfo',
-				description: 'Get field definitions for Ticket Note Attachment',
-				action: 'Get field info',
 			},
 		],
 		default: 'getMany',

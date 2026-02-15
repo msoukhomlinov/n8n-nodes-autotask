@@ -62,7 +62,7 @@ To use this node, you need to have API access to your Autotask instance. Follow 
 
 ### Autotask AI Tools
 
-The **Autotask AI Tools** node exposes Autotask operations as individual tools for the AI Agent. Add one node per resource (e.g. ticket, company, contact), select the operations to expose (get, getMany, count, create, update, delete; plus whoAmI for Resource, getPosted/getUnposted for Time Entry, searchByDomain for Company), and connect to an AI Agent. Each operation becomes a separate tool with a flat, typed schema that LLMs handle reliably. Available resources and operations are derived from the same entity metadata as the main Autotask node. Requires `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` in your n8n environment.
+The **Autotask AI Tools** node exposes Autotask operations as individual tools for the AI Agent. Add one node per resource (e.g. ticket, company, contact), select the operations to expose (get, getMany, count, create, update, delete; plus whoAmI for Resource, getPosted/getUnposted for Time Entry, searchByDomain for Company, slaHealthCheck for Ticket, moveConfigurationItem for Configuration Items), and connect to an AI Agent. Each operation becomes a separate tool with a flat, typed schema that LLMs handle reliably. Available resources and operations are derived from the same entity metadata as the main Autotask node. Requires `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` in your n8n environment.
 
 ### Supported Resources
 
@@ -82,7 +82,7 @@ The node supports the following Autotask resources:
 | Company Note | Manage notes attached to companies |
 | Company Site Configuration | Manage company site configurations and user-defined fields for customer companies |
 | Company Webhook | Manage webhooks for company events |
-| Configuration Item | Manage configuration items (CIs) for companies |
+| Configuration Item | Manage configuration items (CIs) for companies. Includes Move Configuration Item for cross-company CI cloning with optional notes and attachments copy. |
 | Configuration Item Billing Product Association | Manage product associations for configuration items |
 | Configuration Item Category | Manage categories for configuration items |
 | Configuration Item Category UDF Association | Manage UDF associations for CI categories |
@@ -214,6 +214,10 @@ Both operations cross-reference TimeEntries with BillingItems (Autotask has no p
 
 For the **Company** resource, **Search by Domain** finds companies by website/domain (domain or full URL; operator: eq, contains, beginsWith, endsWith). If no company website matches and the option is enabled (default), it falls back to contact email domain and returns the most common company. Available on both the main Autotask node and the Autotask AI Tools node.
 
+For the **Ticket** resource, **SLA Health Check** accepts either Ticket ID or Ticket Number, then combines Ticket and Service Level Agreement Result data to return first-response, resolution-plan, and resolution health with a consistent unit of hours (2 decimal places). It supports **Add Picklist Labels** and **Add Reference Labels** for enriched output, includes an SLA-only fallback to resolve `companyID_label` when reference labels are enabled, and lets you choose which ticket fields to include in the ticket payload (default: `id`, `ticketNumber`, `title`, `status`, `companyID`). This operation is available in both the main Autotask node and the Autotask AI Tools node (AI parameter: `ticketFields`).
+
+For the **Configuration Item** resource, **Move Configuration Item** clones a CI to another company (Autotask does not allow companyID changes in place), with optional copying of UDFs, CI attachments, notes, and note attachments. It leaves audit notes on both source and destination CIs, supports dry-run mode, and can deactivate the source CI after completion checks. Tickets/tasks/projects/contracts and other associations are explicitly not migrated by this operation.
+
 For webhook resources (Company Webhook, Contact Webhook, Configuration Item Webhook, Ticket Webhook, Ticket Note Webhook), the following operations are available:
 - **Get**: Retrieve a single webhook by ID
 - **Get Many**: Retrieve multiple webhooks with basic filtering
@@ -244,6 +248,7 @@ The node includes an Autotask Trigger node that can receive webhook events from 
 - **Timezone Handling**: Automatic conversion between local time and UTC
 - **API Usage Monitoring**: Check current API usage thresholds and limits using the API Threshold resource to help prevent hitting rate limits and ensure smooth operations
 - **Dry Run Mode**: Preview write operations (create, update, delete) without making actual changes. When enabled, returns a preview of the request that would be sent, useful for testing and validation
+- **Inactive Entity Handling**: When a create or update is rejected because a reference field (e.g. `contactID`, `createdByPersonID`) points to an inactive contact or resource, the node automatically activates the entity, retries the operation, then deactivates it again. This applies to all entities and requires no configuration
 
 ### API Threshold Resource
 

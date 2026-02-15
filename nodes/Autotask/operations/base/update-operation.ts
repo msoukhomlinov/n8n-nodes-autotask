@@ -14,6 +14,7 @@ import { getEntityMetadata } from '../../constants/entities';
 import { convertDatesToUTC } from '../../helpers/date-time/utils';
 import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 import { resolveLabelsToIds } from '../../helpers/label-resolution';
+import { withInactiveRefRetry } from '../../helpers/inactive-entity-activation';
 
 /**
  * Base class for updating entities
@@ -121,13 +122,24 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 						return preview as unknown as T;
 					}
 
-					// Update entity using autotaskApiRequest's built-in pluralization
-					const response = await autotaskApiRequest.call(
+					// Update entity using autotaskApiRequest's built-in pluralization.
+					// Wrapped with inactive-entity retry: if the API rejects because a
+					// reference field points to an inactive contact/resource, the helper
+					// temporarily activates it, retries, then deactivates.
+					const inactiveRefWarnings: string[] = [];
+					const response = await withInactiveRefRetry(
 						this.context,
-						'PATCH',
-						endpoint,
-						requestBody,
+						inactiveRefWarnings,
+						async () => autotaskApiRequest.call(
+							this.context,
+							'PATCH',
+							endpoint,
+							requestBody,
+						),
 					) as IDataObject;
+					if (inactiveRefWarnings.length > 0) {
+						console.warn(`[UpdateOperation] ${this.entityType}:`, inactiveRefWarnings.join('; '));
+					}
 
 					if (!response) {
 						throw new Error(

@@ -568,27 +568,6 @@ export async function listPicklistValues(
 }
 
 /**
- * Response for validateParameters operation
- */
-export interface ValidateParametersResponse {
-    resource: string;
-    mode: 'create' | 'update';
-    isValid: boolean;
-    errors: Array<{
-        field: string;
-        message: string;
-        code: string;
-    }>;
-    warnings: Array<{
-        field: string;
-        message: string;
-        code: string;
-    }>;
-    fieldValidation: IDataObject;
-    summary: IDataObject;
-}
-
-/**
  * Validates parameters for create/update operations without making API calls
  */
 export async function validateParameters(

@@ -1,4 +1,5 @@
 import type { FieldMeta } from '../helpers/aiHelper';
+import { getEntityMetadata } from '../constants/entities';
 
 function listFilterableFields(readFields: FieldMeta[], max = 12): string {
     return readFields
@@ -9,28 +10,8 @@ function listFilterableFields(readFields: FieldMeta[], max = 12): string {
 }
 
 function getParentRequirement(resourceName: string): string | null {
-    const parentFieldByResource: Record<string, string> = {
-        companyNote: 'companyID',
-        companyLocation: 'companyID',
-        companySiteConfigurations: 'companyID',
-        contactGroupContacts: 'contactGroupID',
-        contractBlock: 'contractID',
-        contractCharge: 'contractID',
-        contractMilestone: 'contractID',
-        contractNote: 'contractID',
-        contractRate: 'contractID',
-        contractService: 'contractID',
-        projectCharge: 'projectID',
-        projectNote: 'projectID',
-        phase: 'projectID',
-        task: 'projectID',
-        serviceCallTask: 'serviceCallID',
-        serviceCallTicket: 'serviceCallID',
-        ticketNote: 'ticketID',
-        ticketChangeRequestApproval: 'ticketID',
-        quoteItem: 'quoteID',
-    };
-    return parentFieldByResource[resourceName] ?? null;
+    const metadata = getEntityMetadata(resourceName);
+    return metadata?.parentIdField ?? null;
 }
 
 export function buildGetDescription(resourceLabel: string, resourceName: string): string {
@@ -160,6 +141,27 @@ export function buildCompanySearchByDomainDescription(resourceName: string): str
         "To avoid false negatives, eq/like semantics are handled safely for website matching. " +
         "When searchContactEmails is true (default), if no company website matches exist, the tool searches Contact.emailAddress by domain and resolves the most common canonical company name from companyID references. " +
         `If field names are uncertain, call autotask_${resourceName}_describeFields first.`
+    );
+}
+
+export function buildTicketSlaHealthCheckDescription(resourceName: string): string {
+    return (
+        'Run an SLA health check for a ticket using either numeric id or ticketNumber. ' +
+        'Returns first-response, resolution-plan, and resolution milestone timing and status in consistent hours (2 decimal places). ' +
+        "Use 'ticketFields' to limit which ticket fields are returned in the ticket section. " +
+        'Includes wallClockRemainingHours, where negative values indicate overdue milestones. ' +
+        'This operation combines data from Ticket and ServiceLevelAgreementResults entities. ' +
+        `If field names are uncertain, call autotask_${resourceName}_describeFields first.`
+    );
+}
+
+export function buildConfigurationItemMoveConfigurationItemDescription(resourceName: string): string {
+    return (
+        'Clone a configuration item to a different company because companyID cannot be updated in place. ' +
+        'Copies CI core fields and optional UDFs, optional CI attachments, optional notes, and optional note attachments. ' +
+        'Always writes audit notes and can deactivate the source CI after safety checks. ' +
+        'This operation does not migrate tickets, tasks, projects, contracts, related items, DNS records, or billing-product associations. ' +
+        `If field names or expected behaviour are uncertain, call autotask_${resourceName}_describeFields first.`
     );
 }
 

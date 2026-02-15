@@ -9,6 +9,7 @@ import {
 } from '../../operations/base';
 import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
+import { executeMoveConfigurationItem } from './moveConfigurationItem';
 
 const ENTITY_TYPE = 'configurationItem';
 
@@ -67,6 +68,12 @@ export async function executeConfigurationItemOperation(
               entityType: ENTITY_TYPE,
             },
           });
+          break;
+        }
+
+        case 'moveConfigurationItem': {
+          const response = await executeMoveConfigurationItem(this, i);
+          returnData.push({ json: response });
           break;
         }
 

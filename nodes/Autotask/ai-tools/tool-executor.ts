@@ -9,6 +9,8 @@ export interface ToolExecutorParams {
     resource: string;
     operation: string;
     id?: number;
+    ticketNumber?: string;
+    ticketFields?: string;
     filter_field?: string;
     filter_op?: string;
     filter_value?: string | number | boolean | Array<string | number | boolean>;
@@ -316,6 +318,10 @@ function normaliseOperation(operation: string): string {
             return 'getUnposted';
         case 'searchbydomain':
             return 'searchByDomain';
+        case 'slahealthcheck':
+            return 'slaHealthCheck';
+        case 'moveconfigurationitem':
+            return 'moveConfigurationItem';
         default:
             return key;
     }
@@ -339,6 +345,7 @@ export async function executeAiTool(
     const filters = buildFilterFromParams(params, readFields);
     const entityId = params.id !== undefined ? String(params.id) : '';
     const selectedColumns = parseFieldsParam(params.fields);
+    const selectedSlaTicketColumns = parseFieldsParam(params.ticketFields);
     const effectiveLimit = getEffectiveLimit(params.limit);
     const normalisedOperation = normaliseOperation(operation);
 
@@ -423,6 +430,17 @@ export async function executeAiTool(
                         : Object.keys(fieldValues).length > 0
                             ? fieldValues
                             : {};
+                if (effectiveOperation === 'slaHealthCheck') {
+                    if (params.id !== undefined) {
+                        data.id = params.id;
+                    }
+                    if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim() !== '') {
+                        data.ticketNumber = params.ticketNumber.trim();
+                    }
+                    if (selectedSlaTicketColumns.length > 0) {
+                        data.slaTicketFields = selectedSlaTicketColumns;
+                    }
+                }
                 // Always apply bounded query limits for list/count style operations.
                 if (['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation)) {
                     data.limit = queryLimit;
@@ -466,6 +484,24 @@ export async function executeAiTool(
                 return true;
             case 'flattenUdfs':
                 return true;
+            case 'ticketIdentifierType':
+                if (effectiveOperation === 'slaHealthCheck') {
+                    if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim() !== '') {
+                        return 'ticketNumber';
+                    }
+                    return 'id';
+                }
+                return fallbackValue;
+            case 'ticketNumber':
+                if (effectiveOperation === 'slaHealthCheck') {
+                    return typeof params.ticketNumber === 'string' ? params.ticketNumber.trim() : fallbackValue;
+                }
+                return fallbackValue;
+            case 'slaTicketFields':
+                if (effectiveOperation === 'slaHealthCheck') {
+                    return selectedSlaTicketColumns.length > 0 ? selectedSlaTicketColumns : [];
+                }
+                return fallbackValue;
             // Column selection
             case 'selectColumns':
                 return selectedColumns.length > 0 ? selectedColumns : [];
@@ -580,6 +616,16 @@ function formatToolResponse(
         }
 
         case 'searchByDomain': {
+            const result = firstRecord ?? null;
+            return JSON.stringify({ result });
+        }
+
+        case 'slaHealthCheck': {
+            const result = firstRecord ?? null;
+            return JSON.stringify({ result });
+        }
+
+        case 'moveConfigurationItem': {
             const result = firstRecord ?? null;
             return JSON.stringify({ result });
         }

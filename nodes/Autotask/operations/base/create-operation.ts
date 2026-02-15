@@ -15,6 +15,7 @@ import { convertDatesToUTC } from '../../helpers/date-time/utils';
 import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 import { withAgentHint } from '../../helpers/agent-error-hints';
 import { resolveLabelsToIds } from '../../helpers/label-resolution';
+import { withInactiveRefRetry } from '../../helpers/inactive-entity-activation';
 
 /**
  * Base class for creating entities
@@ -118,13 +119,24 @@ export class CreateOperation<T extends IAutotaskEntity> extends BaseOperation {
 						return preview as unknown as T;
 					}
 
-					// Create entity using autotaskApiRequest's built-in pluralization
-					const response = await autotaskApiRequest.call(
+					// Create entity using autotaskApiRequest's built-in pluralization.
+					// Wrapped with inactive-entity retry: if the API rejects because a
+					// reference field points to an inactive contact/resource, the helper
+					// temporarily activates it, retries, then deactivates.
+					const inactiveRefWarnings: string[] = [];
+					const response = await withInactiveRefRetry(
 						this.context,
-						'POST',
-						endpoint,
-						requestBody,
+						inactiveRefWarnings,
+						async () => autotaskApiRequest.call(
+							this.context,
+							'POST',
+							endpoint,
+							requestBody,
+						),
 					) as IDataObject;
+					if (inactiveRefWarnings.length > 0) {
+						console.warn(`[CreateOperation] ${this.entityType}:`, inactiveRefWarnings.join('; '));
+					}
 
 					if (!response) {
 						const error = new Error(

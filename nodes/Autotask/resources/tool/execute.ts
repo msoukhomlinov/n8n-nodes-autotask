@@ -352,7 +352,25 @@ export async function executeToolOperation(
 			case 'operation':
 				return resourceOperation;
 			case 'id':
-				return entityId;
+				if (entityId !== undefined && entityId !== null && entityId !== '') {
+					return entityId;
+				}
+				if (Object.prototype.hasOwnProperty.call(requestData, 'id')) {
+					return requestData.id;
+				}
+				return fallbackValue;
+			case 'ticketIdentifierType':
+				if (resourceOperation === 'slaHealthCheck') {
+					if (
+						Object.prototype.hasOwnProperty.call(requestData, 'ticketNumber') &&
+						typeof requestData.ticketNumber === 'string' &&
+						requestData.ticketNumber.trim() !== ''
+					) {
+						return 'ticketNumber';
+					}
+					return 'id';
+				}
+				return fallbackValue;
 			// Map requestData to the format existing executors expect
 			case 'fields':
 			case 'filters':
@@ -391,6 +409,12 @@ export async function executeToolOperation(
 				return originalGetNodeParameter.call(this, 'selectColumns', index, fallbackValue, options);
 
 			case 'dryRun':
+				if (
+					resourceOperation === 'moveConfigurationItem' &&
+					Object.prototype.hasOwnProperty.call(requestData, 'dryRun')
+				) {
+					return requestData.dryRun;
+				}
 				return originalGetNodeParameter.call(this, 'dryRun', index, fallbackValue, options);
 			case 'returnAll':
 				return requestData.limit === undefined;
@@ -538,7 +562,7 @@ async function applySafetyGates(
 		}
 
 		// Check write operation restrictions
-		const isWriteOperation = ['create', 'update', 'delete'].includes(resourceOperation);
+		const isWriteOperation = ['create', 'moveConfigurationItem', 'update', 'delete'].includes(resourceOperation);
 
 		if (isWriteOperation && !allowWriteOperations) {
 			if (isDryRun && allowDryRunForWrites) {

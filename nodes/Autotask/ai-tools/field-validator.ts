@@ -114,7 +114,17 @@ export function validateEntityId(
     resource: string,
     operation: string,
 ): ValidationResult {
-    const noIdOperations = ['getMany', 'searchByDomain', 'getPosted', 'getUnposted', 'count', 'create', 'whoAmI'];
+    const noIdOperations = [
+        'getMany',
+        'searchByDomain',
+        'getPosted',
+        'getUnposted',
+        'count',
+        'create',
+        'moveConfigurationItem',
+        'whoAmI',
+        'slaHealthCheck',
+    ];
     if (noIdOperations.includes(operation)) {
         return { valid: true };
     }

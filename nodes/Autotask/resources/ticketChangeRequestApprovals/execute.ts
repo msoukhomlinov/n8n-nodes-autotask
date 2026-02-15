@@ -1,5 +1,5 @@
 import type { IDataObject, IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
-import type { IAutotaskEntity, IAutotaskQueryInput, IQueryResponse } from '../../types';
+import type { IAutotaskEntity } from '../../types';
 import {
     CountOperation,
     CreateOperation,
@@ -13,16 +13,16 @@ import { buildFiltersFromResourceMapper } from '../../helpers/filter';
 import { FilterOperators } from '../../constants/filters';
 import { OperationType } from '../../types/base/entity-types';
 import { autotaskApiRequest } from '../../helpers/http';
-import { getSelectedColumns, prepareIncludeFields } from '../../operations/common/select-columns';
-import { processOutputMode } from '../../helpers/output-mode';
-import { processResponseDates, processResponseDatesArray } from '../../helpers/date-time';
-import { flattenUdfsArray } from '../../helpers/udf/flatten';
-import { getEntityMetadata } from '../../constants/entities';
-import type { IEntityField } from '../../types/base/entities';
+import { processResponseDates } from '../../helpers/date-time';
+import {
+    getIncludeFields,
+    executeScopedQuery,
+    parseAdvancedFilter,
+    executeChildEntityInfoOperation,
+    executeChildFieldInfoOperation,
+} from '../../operations/common/scoped-query';
 
 const ENTITY_TYPE = 'ticketChangeRequestApproval';
-
-type QueryInput = IAutotaskQueryInput<IAutotaskEntity>;
 
 function getTicketId(context: IExecuteFunctions, itemIndex: number): string | number | undefined {
     const ticketID = context.getNodeParameter('ticketID', itemIndex, '') as string;
@@ -71,194 +71,6 @@ async function executeCreateWithChildTicket(
     }
 }
 
-function getIncludeFields(context: IExecuteFunctions, itemIndex: number): string[] {
-    const selectedColumns = getSelectedColumns(context, itemIndex);
-    let addPicklistLabels = false;
-    let addReferenceLabels = false;
-
-    try {
-        addPicklistLabels = context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
-    } catch {
-        addPicklistLabels = false;
-    }
-
-    try {
-        addReferenceLabels = context.getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
-    } catch {
-        addReferenceLabels = false;
-    }
-
-    return prepareIncludeFields(selectedColumns, { addPicklistLabels, addReferenceLabels });
-}
-
-async function executeScopedQuery(
-    context: IExecuteFunctions,
-    itemIndex: number,
-    endpoint: string,
-    queryBody: QueryInput,
-): Promise<IAutotaskEntity[]> {
-    const returnAll = context.getNodeParameter('returnAll', itemIndex, true) as boolean;
-    if (!returnAll && !queryBody.MaxRecords) {
-        queryBody.MaxRecords = context.getNodeParameter('maxRecords', itemIndex, 10) as number;
-    }
-
-    const response = await autotaskApiRequest.call(
-        context,
-        'POST',
-        endpoint,
-        queryBody as unknown as IDataObject,
-    ) as IQueryResponse<IAutotaskEntity>;
-
-    const results = [...(response.items ?? [])];
-    let nextPageUrl = response.pageDetails?.nextPageUrl;
-
-    if (returnAll) {
-        while (nextPageUrl) {
-            const nextResponse = await autotaskApiRequest.call(
-                context,
-                'POST',
-                nextPageUrl,
-                queryBody as unknown as IDataObject,
-            ) as IQueryResponse<IAutotaskEntity>;
-            results.push(...(nextResponse.items ?? []));
-            nextPageUrl = nextResponse.pageDetails?.nextPageUrl;
-        }
-    }
-
-    const withOutputMode = await processOutputMode(results, ENTITY_TYPE, context, itemIndex) as IAutotaskEntity[];
-    const withDates = await processResponseDatesArray.call(
-        context,
-        withOutputMode,
-        `${ENTITY_TYPE}.getMany`,
-    ) as IAutotaskEntity[];
-
-    const shouldFlattenUdfs = context.getNodeParameter('flattenUdfs', itemIndex, false) as boolean;
-    return shouldFlattenUdfs ? flattenUdfsArray(withDates) : withDates;
-}
-
-function parseAdvancedFilter(context: IExecuteFunctions, itemIndex: number): QueryInput {
-    const advancedFilter = context.getNodeParameter('advancedFilter', itemIndex) as string | QueryInput;
-    const queryInput = typeof advancedFilter === 'string'
-        ? JSON.parse(advancedFilter) as QueryInput
-        : advancedFilter;
-
-    if (!queryInput.filter || !Array.isArray(queryInput.filter)) {
-        throw new Error('Advanced filter must contain a "filter" array');
-    }
-
-    if (!queryInput.IncludeFields || !Array.isArray(queryInput.IncludeFields)) {
-        const includeFields = getIncludeFields(context, itemIndex);
-        if (includeFields.length > 0) {
-            queryInput.IncludeFields = includeFields;
-        }
-    } else if (!queryInput.IncludeFields.includes('id')) {
-        queryInput.IncludeFields.push('id');
-    }
-
-    return queryInput;
-}
-
-function processStandardFields(fields: IEntityField[]): IEntityField[] {
-    return fields.map(field => ({
-        ...field,
-        isUdf: false,
-        isSystemField: field.isSystemField || false,
-    }));
-}
-
-function processUdfFields(fields: IEntityField[]): IEntityField[] {
-    return fields.map(field => ({
-        ...field,
-        isUdf: true,
-        isSystemField: false,
-    }));
-}
-
-async function executeChildEntityInfoOperation(
-    context: IExecuteFunctions,
-    ticketID: string | number,
-): Promise<INodeExecutionData> {
-    const metadata = getEntityMetadata(ENTITY_TYPE);
-    if (!metadata) {
-        throw new Error(`Entity metadata not found for ${ENTITY_TYPE}`);
-    }
-
-    const response = await autotaskApiRequest.call(
-        context,
-        'GET',
-        `${buildChildBasePath(ticketID)}/entityInformation`,
-    ) as { info: IDataObject };
-
-    if (!response?.info || typeof response.info !== 'object') {
-        throw new Error('Invalid entity info response format');
-    }
-
-    return {
-        json: {
-            name: ENTITY_TYPE,
-            metadata: {
-                ...metadata,
-            },
-            apiInfo: response.info,
-        },
-    };
-}
-
-async function executeChildFieldInfoOperation(
-    context: IExecuteFunctions,
-    ticketID: string | number,
-): Promise<INodeExecutionData> {
-    const metadata = getEntityMetadata(ENTITY_TYPE);
-    if (!metadata) {
-        throw new Error(`Entity metadata not found for ${ENTITY_TYPE}`);
-    }
-
-    const entityInfoResponse = await autotaskApiRequest.call(
-        context,
-        'GET',
-        `${buildChildBasePath(ticketID)}/entityInformation`,
-    ) as { info: { hasUserDefinedFields?: boolean; supportsWebhookCallouts?: boolean } };
-
-    const standardFieldsResponse = await autotaskApiRequest.call(
-        context,
-        'GET',
-        `${buildChildBasePath(ticketID)}/entityInformation/fields`,
-    ) as { fields: IEntityField[] };
-
-    if (!Array.isArray(standardFieldsResponse?.fields)) {
-        throw new Error('Invalid standard fields response format');
-    }
-
-    let udfFields: IEntityField[] = [];
-    if (entityInfoResponse?.info?.hasUserDefinedFields) {
-        const udfFieldsResponse = await autotaskApiRequest.call(
-            context,
-            'GET',
-            `${buildChildBasePath(ticketID)}/entityInformation/userDefinedFields`,
-        ) as { fields: IEntityField[] };
-
-        udfFields = Array.isArray(udfFieldsResponse?.fields) ? udfFieldsResponse.fields : [];
-    }
-
-    const standardFields = processStandardFields(standardFieldsResponse.fields);
-    const processedUdfFields = processUdfFields(udfFields);
-    const allFields = [...standardFields, ...processedUdfFields];
-
-    return {
-        json: {
-            name: ENTITY_TYPE,
-            metadata: {
-                ...metadata,
-                hasUserDefinedFields: entityInfoResponse?.info?.hasUserDefinedFields ?? false,
-                supportsWebhookCallouts: entityInfoResponse?.info?.supportsWebhookCallouts ?? false,
-            },
-            standardFields,
-            udfFields: processedUdfFields,
-            allFields,
-        },
-    };
-}
-
 export async function executeTicketChangeRequestApprovalOperation(
     this: IExecuteFunctions,
 ): Promise<INodeExecutionData[][]> {
@@ -301,9 +113,10 @@ export async function executeTicketChangeRequestApprovalOperation(
 
                     const entityId = this.getNodeParameter('id', i) as string | number;
                     const includeFields = getIncludeFields(this, i);
-                    const queryBody: QueryInput = {
+                    const queryBody = {
                         filter: [{ field: 'id', op: FilterOperators.eq, value: entityId }],
-                        MaxRecords: 1,
+                        MaxRecords: 1 as number | undefined,
+                        IncludeFields: undefined as string[] | undefined,
                     };
                     if (includeFields.length > 0) {
                         queryBody.IncludeFields = includeFields;
@@ -314,6 +127,7 @@ export async function executeTicketChangeRequestApprovalOperation(
                         i,
                         `${buildChildBasePath(ticketID)}/query`,
                         queryBody,
+                        ENTITY_TYPE,
                     );
                     if (results.length === 0) {
                         throw new Error(`Ticket change request approval with ID ${entityId} was not found`);
@@ -340,7 +154,7 @@ export async function executeTicketChangeRequestApprovalOperation(
                         OperationType.READ,
                     );
                     const includeFields = getIncludeFields(this, i);
-                    const queryBody: QueryInput = { filter: filters };
+                    const queryBody = { filter: filters, IncludeFields: undefined as string[] | undefined };
                     if (includeFields.length > 0) {
                         queryBody.IncludeFields = includeFields;
                     }
@@ -350,6 +164,7 @@ export async function executeTicketChangeRequestApprovalOperation(
                         i,
                         `${buildChildBasePath(ticketID)}/query`,
                         queryBody,
+                        ENTITY_TYPE,
                     );
                     returnData.push(...results.map(item => ({ json: item })));
                     break;
@@ -368,6 +183,7 @@ export async function executeTicketChangeRequestApprovalOperation(
                         i,
                         `${buildChildBasePath(ticketID)}/query`,
                         queryBody,
+                        ENTITY_TYPE,
                     );
                     returnData.push(...results.map(item => ({ json: item })));
                     break;
@@ -418,8 +234,8 @@ export async function executeTicketChangeRequestApprovalOperation(
                     }
 
                     const response = operation === 'getEntityInfo'
-                        ? await executeChildEntityInfoOperation(this, ticketID)
-                        : await executeChildFieldInfoOperation(this, ticketID);
+                        ? await executeChildEntityInfoOperation(this, ENTITY_TYPE, buildChildBasePath(ticketID))
+                        : await executeChildFieldInfoOperation(this, ENTITY_TYPE, buildChildBasePath(ticketID));
                     returnData.push(response);
                     break;
                 }
@@ -429,7 +245,7 @@ export async function executeTicketChangeRequestApprovalOperation(
             }
         } catch (error) {
             if (this.continueOnFail()) {
-                returnData.push({ json: { error: error.message } });
+                returnData.push({ json: { error: (error as Error).message } });
                 continue;
             }
             throw error;

@@ -14,28 +14,10 @@ const operationOptions = [
 		action: 'Get multiple survey results',
 	},
 	{
-		name: 'Get Many (Advanced)',
-		value: 'getManyAdvanced',
-		description: 'Get multiple survey results using advanced filters',
-		action: 'Get multiple survey results (advanced)',
-	},
-	{
 		name: 'Count',
 		value: 'count',
 		description: 'Count number of survey results',
 		action: 'Count survey results',
-	},
-	{
-		name: 'Get Entity Info',
-		value: 'getEntityInfo',
-		description: 'Get entity information including fields',
-		action: 'Get entity information',
-	},
-	{
-		name: 'Get Field Info',
-		value: 'getFieldInfo',
-		description: 'Get field information',
-		action: 'Get field information',
 	},
 ];
 
@@ -101,35 +83,4 @@ const baseFields: INodeProperties[] = [
 	},
 ];
 
-// Add advanced options for the getManyAdvanced operation
-const advancedOptions: INodeProperties[] = [
-	{
-		displayName: 'Return All',
-		name: 'returnAll',
-		type: 'boolean',
-		default: true,
-		displayOptions: {
-			show: {
-				resource: ['surveyResults'],
-				operation: ['getManyAdvanced'],
-			},
-		},
-		description: 'Whether to return all results or only up to a given limit',
-	},
-	{
-		displayName: 'Max Records',
-		name: 'maxRecords',
-		type: 'number',
-		default: 10,
-		displayOptions: {
-			show: {
-				resource: ['surveyResults'],
-				operation: ['getManyAdvanced'],
-				returnAll: [false],
-			},
-		},
-		description: 'Max number of records to return',
-	},
-];
-
-export const surveyResultsFields = [...baseFields, ...advancedOptions];
+export const surveyResultsFields = baseFields;

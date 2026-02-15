@@ -1,5 +1,4 @@
 import type { INodeProperties } from 'n8n-workflow';
-import { getManyAdvancedOptions } from '../../operations/common/get-many-advanced';
 
 export const configurationItemSslSubjectAlternativeNameFields: INodeProperties[] = [
   {
@@ -92,14 +91,4 @@ export const configurationItemSslSubjectAlternativeNameFields: INodeProperties[]
       },
     },
   },
-  ...getManyAdvancedOptions.map(option => ({
-    ...option,
-    displayOptions: {
-      ...option.displayOptions,
-      show: {
-        ...(option.displayOptions?.show || {}),
-        resource: ['configurationItemSslSubjectAlternativeName'],
-      },
-    },
-  })),
 ];

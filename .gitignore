@@ -44,7 +44,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.claude/
 credentials.json
 
 # asdf
@@ -63,13 +62,8 @@ credentials.json
 .vscode/
 
 # documentation and reference files
-/docs/
-/.docs/
 /references/
 
 .cursorignore
-.cursorrules
-/.cursor-rules/
-/.cursor/
 
 /cache/

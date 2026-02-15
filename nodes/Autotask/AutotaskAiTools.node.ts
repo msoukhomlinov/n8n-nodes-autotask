@@ -3,6 +3,7 @@ import {
     NodeOperationError,
 } from 'n8n-workflow';
 import type {
+    IDataObject,
     IExecuteFunctions,
     ILoadOptionsFunctions,
     INodeType,
@@ -21,6 +22,8 @@ import {
     getWhoAmISchema,
     getGetManySchema,
     getCompanySearchByDomainSchema,
+    getTicketSlaHealthCheckSchema,
+    getConfigurationItemMoveConfigurationItemSchema,
     getCountSchema,
     getDeleteSchema,
     getCreateSchema,
@@ -34,6 +37,8 @@ import {
     buildGetDescription,
     buildGetManyDescription,
     buildCompanySearchByDomainDescription,
+    buildTicketSlaHealthCheckDescription,
+    buildConfigurationItemMoveConfigurationItemDescription,
     buildPostedTimeEntriesDescription,
     buildUnpostedTimeEntriesDescription,
     buildUpdateDescription,
@@ -55,8 +60,21 @@ const { StructuredToolkit } = require('n8n-core') as {
     StructuredToolkit: new (tools: DynamicStructuredTool[]) => { tools: DynamicStructuredTool[] };
 };
 
-const WRITE_OPERATIONS = ['create', 'update', 'delete'];
-const SUPPORTED_TOOL_OPERATIONS = ['get', 'getMany', 'searchByDomain', 'getPosted', 'getUnposted', 'count', 'create', 'update', 'delete', 'whoAmI'];
+const WRITE_OPERATIONS = ['create', 'moveConfigurationItem', 'update', 'delete'];
+const SUPPORTED_TOOL_OPERATIONS = [
+    'get',
+    'getMany',
+    'searchByDomain',
+    'getPosted',
+    'getUnposted',
+    'count',
+    'create',
+    'moveConfigurationItem',
+    'update',
+    'delete',
+    'whoAmI',
+    'slaHealthCheck',
+];
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
 
 function formatResourceName(value: string): string {
@@ -130,7 +148,7 @@ export class AutotaskAiTools implements INodeType {
                 name: 'allowWriteOperations',
                 type: 'boolean',
                 default: false,
-                description: 'Whether to enable create, update, delete tools. Disabled = read-only.',
+                description: 'Whether to enable mutating tools (create, moveConfigurationItem, update, delete). Disabled = read-only.',
             },
         ],
     };
@@ -218,6 +236,10 @@ export class AutotaskAiTools implements INodeType {
                     schema = getCompanySearchByDomainSchema();
                     description = buildCompanySearchByDomainDescription(resource);
                     break;
+                case 'slaHealthCheck':
+                    schema = getTicketSlaHealthCheckSchema();
+                    description = buildTicketSlaHealthCheckDescription(resource);
+                    break;
                 case 'getPosted':
                     schema = getGetManySchema(readDescribe?.fields ?? []);
                     description = buildPostedTimeEntriesDescription(resource);
@@ -229,6 +251,10 @@ export class AutotaskAiTools implements INodeType {
                 case 'count':
                     schema = getCountSchema(readDescribe?.fields ?? []);
                     description = buildCountDescription(resourceLabel);
+                    break;
+                case 'moveConfigurationItem':
+                    schema = getConfigurationItemMoveConfigurationItemSchema();
+                    description = buildConfigurationItemMoveConfigurationItemDescription(resource);
                     break;
                 case 'delete':
                     schema = getDeleteSchema();
@@ -281,7 +307,7 @@ export class AutotaskAiTools implements INodeType {
         if (tools.length === 0) {
             throw new NodeOperationError(
                 this.getNode(),
-                'No tools to expose. Select operations and enable "Allow Write Operations" if you need create/update/delete.',
+                'No tools to expose. Select operations and enable "Allow Write Operations" if you need mutating operations.',
             );
         }
 
@@ -348,7 +374,16 @@ export class AutotaskAiTools implements INodeType {
                 } as unknown as ToolExecutorParams;
 
                 const resultJson = await executeAiTool(this, resource, operation, params);
-                const parsed = typeof resultJson === 'string' ? JSON.parse(resultJson) : resultJson;
+                let parsed: IDataObject;
+                if (typeof resultJson === 'string') {
+                    try {
+                        parsed = JSON.parse(resultJson);
+                    } catch {
+                        parsed = { error: resultJson };
+                    }
+                } else {
+                    parsed = resultJson;
+                }
 
                 response.push({
                     json: parsed,
@@ -392,10 +427,13 @@ async function getToolResourceOperations(this: ILoadOptionsFunctions): Promise<I
         get: 'Get by ID',
         whoAmI: 'Who am I',
         getMany: 'Get many (with filters)',
+        searchByDomain: 'Search by domain',
+        slaHealthCheck: 'SLA health check',
         getPosted: 'Get posted time entries',
         getUnposted: 'Get unposted time entries',
         count: 'Count',
         create: 'Create',
+        moveConfigurationItem: 'Move configuration item (clone to company)',
         update: 'Update',
         delete: 'Delete',
     };

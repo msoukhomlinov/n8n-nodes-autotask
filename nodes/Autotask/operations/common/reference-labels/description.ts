@@ -11,7 +11,15 @@ export const referenceLabelOption: INodeProperties = {
 	description: 'Whether to automatically add "_label" fields for reference fields with human-readable values (no labels will be added for empty values)',
 	displayOptions: {
 		show: {
-			operation: ['get', 'getMany', 'getManyAdvanced', 'getUnposted', 'getPosted', 'whoAmI'],
+			operation: [
+                'get',
+                'getMany',
+                'getManyAdvanced',
+                'getUnposted',
+                'getPosted',
+                'whoAmI',
+                'slaHealthCheck',
+            ],
 		},
 	},
 	typeOptions: {
