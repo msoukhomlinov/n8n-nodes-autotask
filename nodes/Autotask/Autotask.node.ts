@@ -1,5 +1,5 @@
 import {
-	NodeConnectionTypes,
+	NodeConnectionType,
 	type ResourceMapperFields,
 	NodeOperationError,
 } from 'n8n-workflow';
@@ -268,8 +268,8 @@ export class Autotask implements INodeType {
 		defaults: {
 			name: 'Autotask',
 		},
-		inputs: [NodeConnectionTypes.Main],
-		outputs: [NodeConnectionTypes.Main],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'autotaskApi',

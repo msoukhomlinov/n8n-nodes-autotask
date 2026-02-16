@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.0.2] - 2026-02-16
+
+### Fixed
+
+- **Get Many Advanced / Get Entity Info / Get Field Info — "Entity type not found in metadata":** `buildResourceToContextMap` was storing the `resourceKey` (e.g. `"configurationItems"`) as `entityType` instead of `entity.name` (e.g. `"ConfigurationItem"`). Because `getEntityMetadata` matches by name, any entity whose `resourceKey` differs from its camelCase name — including Configuration Items, Configuration Item Categories, Ticket Categories, Ticket Secondary Resources, and others — would throw `Invalid entity type: <resourceKey>. Entity type not found in metadata` for all three common operations. Regular Get Many was unaffected as it routes directly to a dedicated executor that never resolves entity types at runtime.
+
+
 ## [2.0.1] - 2026-02-16
 
 ### Changed

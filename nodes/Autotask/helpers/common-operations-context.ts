@@ -18,7 +18,7 @@ function buildResourceToContextMap(): Map<string, ICommonOpContext> {
     for (const entity of AUTOTASK_ENTITIES) {
         const defaultKey = lowerCamelCase(entity.name);
         const resourceKey = entity.resourceKey ?? defaultKey;
-        const entityType = entity.resourceKey ?? defaultKey;
+        const entityType = entity.name;
         const context: ICommonOpContext = {
             entityType,
         };
