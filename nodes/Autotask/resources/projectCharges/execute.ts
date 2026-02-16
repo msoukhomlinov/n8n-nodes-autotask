@@ -8,8 +8,6 @@ import {
 	CountOperation,
 	DeleteOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
 const ENTITY_TYPE = 'projectCharge';
 
@@ -59,13 +57,6 @@ export async function executeProjectChargeOperation(
 					returnData.push(...getManyOp.processReturnData(response));
 					break;
 				}
-
-				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i, { parentType: 'project' });
-					returnData.push(...results);
-					break;
-				}
-
 				case 'count': {
 					const countOp = new CountOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const count = await countOp.execute(i);
@@ -77,14 +68,6 @@ export async function executeProjectChargeOperation(
 					});
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i, 'project');
-					returnData.push(response);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

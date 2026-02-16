@@ -2,6 +2,20 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.0.1] - 2026-02-16
+
+### Changed
+
+- **Impersonation on standard writes:** Added `Impersonation Resource ID` and `Proceed Without Impersonation If Denied` options to supported resources for standard create/update operations via the shared base operation path. Impersonation is off by default (blank ID), and strict mode is default (`Proceed Without Impersonation If Denied` defaults to off) for these standard write operations. AI Tools create/update schemas and descriptions now expose the same impersonation controls where supported.
+- **Resource: Transfer Ownership:** Consolidated project/task options. Removed standalone "Include Tasks" and "Include Task Secondary Resources" toggles; tasks and task secondary resources are now controlled only via **Include Projects** and **Project Reassign Mode** (lead, tasks, and task secondary resources within projects). Added description to Include Projects. AI Tools transfer ownership schema updated to match.
+- **Ticket Change Request Approval & Service Level Agreement Result:** Aligned with TicketNotes execution model. Removed dual-scope exception plumbing; both resources now use base operation classes for reads and common ops use root endpoints only. Ticket ID is required only for create/delete on Ticket Change Request Approval; Service Level Agreement ID parameter removed from Service Level Agreement Result.
+- **AI Tools (Autotask AI Tools node):** Improved usability for date/time and recency:
+  - Tool descriptions that reference date or time now include the **current UTC date-time** when tools were loaded, so the AI uses the real "now" instead of assuming its training cutoff. Applies to getMany, getPosted, getUnposted, count, create, and update operations.
+  - **Recency vs since/until** behaviour is now explicit in both descriptions and schema: use **either** recency **or** since/until, not both; when since or until is set, recency is ignored (since/until take precedence). Preset windows (e.g. `last_7d`, `last_30d`) are for simple "last N days" queries; use since/until only for an explicit UTC range.
+  - **Custom recency:** `recency` now accepts **last_Nd** with N from 1 to 365 (e.g. `last_5d`, `last_45d`) in addition to presets, so the AI can limit how far back to look and reduce result size.
+  - Schema parameter descriptions for `recency`, `since`, and `until` direct the AI to use the current UTC reference from the tool description when interpreting dates.
+
+
 ## [2.0.0] - 2026-02-15
 
 ### Added

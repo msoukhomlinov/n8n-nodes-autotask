@@ -20,18 +20,6 @@ export const contractServiceAdjustmentFields: INodeProperties[] = [
 				description: 'Create a contract service adjustment',
 				action: 'Create a contract service adjustment',
 			},
-			{
-				name: 'Get Entity Info',
-				value: 'getEntityInfo',
-				description: 'Get basic entity information',
-				action: 'Get entity info',
-			},
-			{
-				name: 'Get Field Info',
-				value: 'getFieldInfo',
-				description: 'Get information about entity fields',
-				action: 'Get field info',
-			},
 		],
 		default: 'create',
 	},

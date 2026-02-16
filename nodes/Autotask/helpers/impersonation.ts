@@ -38,6 +38,36 @@ const IMPERSONATION_SUPPORTED_SEGMENTS = new Set([
 ]);
 
 /**
+ * n8n node resource keys that map to entities where Autotask supports
+ * impersonation for write operations.
+ */
+const NODE_RESOURCE_IMPERSONATION_SUPPORTED = new Set([
+	'company',
+	'companyNote',
+	'contact',
+	'contractNote',
+	'configurationItems',
+	'configurationItemNote',
+	'opportunity',
+	'product',
+	'project',
+	'projectNote',
+	'quote',
+	'serviceCall',
+	'subscription',
+	'ticket',
+	'ticketNote',
+	'timeEntry',
+]);
+
+/**
+ * Check whether a node resource supports impersonation for create/update.
+ */
+export function isNodeResourceImpersonationSupported(resourceName: string): boolean {
+	return NODE_RESOURCE_IMPERSONATION_SUPPORTED.has(resourceName);
+}
+
+/**
  * Check whether an API endpoint supports impersonation based on the
  * entity type derived from the URL.
  *

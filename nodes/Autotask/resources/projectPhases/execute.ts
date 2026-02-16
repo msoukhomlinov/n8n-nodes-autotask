@@ -7,8 +7,6 @@ import {
 	GetManyOperation,
 	CountOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
 const ENTITY_TYPE = 'phase';  // Matches API endpoint
 
@@ -71,13 +69,6 @@ export async function executeProjectPhaseOperation(
 					returnData.push(...getManyOp.processReturnData(response));
 					break;
 				}
-
-				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i, { parentType: 'project' });
-					returnData.push(...results);
-					break;
-				}
-
 				case 'count': {
 					console.log('Debug: Starting count operation for project phases');
 					const countOp = new CountOperation<IAutotaskEntity>(ENTITY_TYPE, this);
@@ -94,14 +85,6 @@ export async function executeProjectPhaseOperation(
 					});
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i, 'project');
-					returnData.push(response);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

@@ -8,9 +8,6 @@ import {
   GetOperation,
   UpdateOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
-
 const ENTITY_TYPE = 'appointment';
 
 export async function executeAppointmentOperation(
@@ -52,12 +49,6 @@ export async function executeAppointmentOperation(
           break;
         }
 
-        case 'getManyAdvanced': {
-          const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-          returnData.push(...results);
-          break;
-        }
-
         case 'count': {
           const countOp = new CountOperation<IAutotaskEntity>(ENTITY_TYPE, this);
           const count = await countOp.execute(i);
@@ -75,13 +66,6 @@ export async function executeAppointmentOperation(
           const updateOp = new UpdateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
           const response = await updateOp.execute(i, id);
           returnData.push({ json: response });
-          break;
-        }
-
-        case 'getEntityInfo':
-        case 'getFieldInfo': {
-          const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
-          returnData.push(response);
           break;
         }
 

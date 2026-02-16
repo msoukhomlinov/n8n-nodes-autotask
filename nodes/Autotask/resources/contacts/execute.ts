@@ -8,9 +8,6 @@ import {
 	GetManyOperation,
 	CountOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
-
 const ENTITY_TYPE = 'contact';
 
 function parseRequiredPositiveInt(value: string, fieldLabel: string): number {
@@ -58,12 +55,6 @@ export async function executeContactOperation(
 					const filters = await getManyOp.buildFiltersFromResourceMapper(i);
 					const response = await getManyOp.execute({ filter: filters }, i);
 					returnData.push(...getManyOp.processReturnData(response));
-					break;
-				}
-
-				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-					returnData.push(...results);
 					break;
 				}
 
@@ -125,13 +116,6 @@ export async function executeContactOperation(
 						proceedWithoutImpersonationIfDenied,
 					});
 					returnData.push({ json: result as unknown as IDataObject });
-					break;
-				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
-					returnData.push(response);
 					break;
 				}
 

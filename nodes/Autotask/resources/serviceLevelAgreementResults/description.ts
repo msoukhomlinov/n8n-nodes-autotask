@@ -36,19 +36,6 @@ export const baseFields: INodeProperties[] = [
         default: 'get',
     },
     {
-        displayName: 'Service Level Agreement ID',
-        name: 'serviceLevelAgreementID',
-        type: 'string',
-        default: '',
-        displayOptions: {
-            show: {
-                resource: ['serviceLevelAgreementResult'],
-                operation: ['get', 'getMany', 'getManyAdvanced', 'count', 'getEntityInfo', 'getFieldInfo'],
-            },
-        },
-        description: 'Optional. When provided, child endpoints are used (/ServiceLevelAgreements/{serviceLevelAgreementID}/Results*). When empty, root endpoints are used (/ServiceLevelAgreementResults*)',
-    },
-    {
         displayName: 'Service Level Agreement Result ID',
         name: 'id',
         type: 'string',

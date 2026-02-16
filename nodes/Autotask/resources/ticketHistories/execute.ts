@@ -3,7 +3,6 @@ import type { IAutotaskEntity, IFilterCondition } from '../../types';
 import {
 	GetManyOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 import { FilterOperators } from '../../constants/filters';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { autotaskApiRequest } from '../../helpers/http';
@@ -155,14 +154,6 @@ export async function executeTicketHistoryOperation(
 					});
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
-					returnData.push(response);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported for ${ENTITY_TYPE}`);
 			}

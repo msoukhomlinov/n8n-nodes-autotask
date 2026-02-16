@@ -8,8 +8,6 @@ import {
 	CountOperation,
 	// DeleteOperation, // Not supported for Quotes
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
 const ENTITY_TYPE = 'quote';
 
@@ -58,17 +56,6 @@ export async function executeQuoteOperation(
 							entityType: ENTITY_TYPE,
 						},
 					});
-					break;
-				}
-				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-					returnData.push(...results);
-					break;
-				}
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
-					returnData.push({ json: response });
 					break;
 				}
 				default:

@@ -36,6 +36,22 @@ const RECENCY_ENUM = z.enum([
     'last_90d',
 ]);
 
+/** Custom recency: last_Nd where N is 1–365 (e.g. last_5d, last_45d) for a custom number of days. */
+const RECENCY_CUSTOM_DAYS = z.string().regex(/^last_\d+d$/).refine(
+    (s) => {
+        const n = parseInt(s.replace(/^last_(\d+)d$/, '$1'), 10);
+        return Number.isFinite(n) && n >= 1 && n <= 365;
+    },
+    { message: 'Custom recency must be last_Nd with N between 1 and 365 (e.g. last_5d, last_45d).' },
+);
+
+const RECENCY_SCHEMA = z
+    .union([RECENCY_ENUM, RECENCY_CUSTOM_DAYS])
+    .optional()
+    .describe(
+        "Preset time window (e.g. last_7d, last_30d) or custom days as last_Nd with N from 1 to 365 (e.g. last_5d, last_45d). Use EITHER recency OR since/until, not both. When since or until is set, recency is ignored. Use recency for simple 'last N days' style queries; use since/until only when you need an explicit UTC range. Tool description includes current UTC reference for 'now'.",
+    );
+
 const FILTER_VALUE_SCHEMA = z
     .union([
         z.string(),
@@ -158,22 +174,18 @@ export function getGetManySchema(readFields: FieldMeta[]): z.ZodObject<Record<st
             .describe(
                 "Comma-separated field names to return. Omit for all fields. Only use verified field names; call autotask_<resource>_describeFields with mode 'read' if unsure.",
             ),
-        recency: RECENCY_ENUM
-            .optional()
-            .describe(
-                "Time window shortcut for recent records. Auto-adds a date filter and returns newest first. Use for latest-style queries.",
-            ),
+        recency: RECENCY_SCHEMA,
         since: z
             .string()
             .optional()
             .describe(
-                'Custom range start in ISO-8601 UTC format (for example 2026-01-01T00:00:00Z). Overrides recency when both are set.',
+                'Custom range start in ISO-8601 UTC format (e.g. 2026-01-01T00:00:00Z). When set, recency is ignored (since/until take precedence). Use with until for an explicit range; prefer recency for preset windows. Use current UTC from tool description as reference.',
             ),
         until: z
             .string()
             .optional()
             .describe(
-                'Custom range end in ISO-8601 UTC format (for example 2026-01-31T23:59:59Z).',
+                'Custom range end in ISO-8601 UTC format (e.g. 2026-01-31T23:59:59Z). Requires either since or recency. When since is set, recency is ignored. Use current UTC from tool description as reference.',
             ),
     });
 }
@@ -383,9 +395,7 @@ export function getTransferOwnershipSchema(): z.ZodObject<Record<string, z.ZodTy
             .optional()
             .describe('When true, returns a plan without writing updates (default false).'),
         includeTickets: z.boolean().optional().describe('Whether to include tickets (default false).'),
-        includeTasks: z.boolean().optional().describe('Whether to include tasks (default false unless projectReassignMode leadAndSelectedTasks).'),
-        includeProjects: z.boolean().optional().describe('Whether to include projects (default false).'),
-        includeTaskSecondaryResources: z.boolean().optional().describe('Whether to reassign task secondary resources (default false).'),
+        includeProjects: z.boolean().optional().describe('Whether to include projects (default false). When true, use projectReassignMode to control lead, tasks, and task secondary resources.'),
         includeServiceCallAssignments: z.boolean().optional().describe('Whether to reassign service call task/ticket resources (default false).'),
         includeAppointments: z.boolean().optional().describe('Whether to reassign appointments (default false).'),
         includeCompanies: z.boolean().optional().describe('Whether to transfer companies owned by the source resource (default false).'),
@@ -461,7 +471,10 @@ export function getDeleteSchema(): z.ZodObject<{ id: z.ZodNumber }> {
  * Build create schema from field metadata.
  * All fields are included as flat typed parameters -- no additionalFields JSON.
  */
-export function getCreateSchema(fields: FieldMeta[]): z.ZodObject<Record<string, z.ZodTypeAny>> {
+export function getCreateSchema(
+	fields: FieldMeta[],
+	supportsImpersonation = false,
+): z.ZodObject<Record<string, z.ZodTypeAny>> {
     const shape: Record<string, z.ZodTypeAny> = {};
 
     for (const field of fields) {
@@ -476,6 +489,23 @@ export function getCreateSchema(fields: FieldMeta[]): z.ZodObject<Record<string,
         shape[field.id] = field.required ? withDesc : withDesc.optional();
     }
 
+	if (supportsImpersonation) {
+		shape.impersonationResourceId = z
+			.number()
+			.int()
+			.positive()
+			.optional()
+			.describe(
+				'Optional resource ID to impersonate for write attribution. Omit to write as the API credential user.',
+			);
+		shape.proceedWithoutImpersonationIfDenied = z
+			.boolean()
+			.optional()
+			.describe(
+				'Only applies when impersonationResourceId is set. When true, denied impersonated writes retry once without impersonation. Default false.',
+			);
+	}
+
     return z.object(shape);
 }
 
@@ -483,7 +513,10 @@ export function getCreateSchema(fields: FieldMeta[]): z.ZodObject<Record<string,
  * Build update schema from field metadata.
  * id is required; all other fields optional. No additionalFields JSON.
  */
-export function getUpdateSchema(fields: FieldMeta[]): z.ZodObject<Record<string, z.ZodTypeAny>> {
+export function getUpdateSchema(
+	fields: FieldMeta[],
+	supportsImpersonation = false,
+): z.ZodObject<Record<string, z.ZodTypeAny>> {
     const shape: Record<string, z.ZodTypeAny> = {
         id: z.number().describe('Entity ID to update'),
     };
@@ -498,6 +531,23 @@ export function getUpdateSchema(fields: FieldMeta[]): z.ZodObject<Record<string,
                 : z.string();
         shape[field.id] = base.optional().describe(desc);
     }
+
+	if (supportsImpersonation) {
+		shape.impersonationResourceId = z
+			.number()
+			.int()
+			.positive()
+			.optional()
+			.describe(
+				'Optional resource ID to impersonate for write attribution. Omit to write as the API credential user.',
+			);
+		shape.proceedWithoutImpersonationIfDenied = z
+			.boolean()
+			.optional()
+			.describe(
+				'Only applies when impersonationResourceId is set. When true, denied impersonated writes retry once without impersonation. Default false.',
+			);
+	}
 
     return z.object(shape);
 }

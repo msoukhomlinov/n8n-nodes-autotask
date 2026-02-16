@@ -8,8 +8,6 @@ import {
 	CountOperation,
 	DeleteOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
 const ENTITY_TYPE = 'ConfigurationItemBillingProductAssociations';
 
@@ -69,15 +67,6 @@ export async function executeConfigurationItemBillingProductAssociationOperation
 					returnData.push(...getManyOp.processReturnData(response));
 					break;
 				}
-
-				case 'getManyAdvanced': {
-					console.log('Debug: Starting getManyAdvanced operation');
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i, { parentType: 'configurationItem' });
-					console.log('Debug: GetManyAdvanced operation results:', results);
-					returnData.push(...results);
-					break;
-				}
-
 				case 'delete': {
 					console.log('Debug: Starting delete operation');
 					const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
@@ -113,16 +102,6 @@ export async function executeConfigurationItemBillingProductAssociationOperation
 					});
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					console.log(`Debug: Starting ${operation} operation`);
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i, 'configurationItem');
-					console.log(`Debug: ${operation} operation response:`, response);
-					returnData.push(response as INodeExecutionData);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

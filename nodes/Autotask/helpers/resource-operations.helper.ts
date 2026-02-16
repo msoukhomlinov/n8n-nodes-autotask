@@ -8,6 +8,7 @@ import { addSelectColumnsOption } from '../operations/common/select-columns';
 import { flattenUdfsOption } from '../operations/common/udf-flattening';
 import { addAgentFriendlyOptions, addDryRunOption } from '../operations/common/json-parameters';
 import { CACHEABLE_API_RESPONSE_OPERATIONS } from './cache/response-cache';
+import { isNodeResourceImpersonationSupported } from './impersonation';
 
 /**
  * Operation group types
@@ -44,6 +45,49 @@ export interface IOperationAdditionConfig {
  */
 function sortOperations(operations: INodePropertyOptions[]): INodePropertyOptions[] {
 	return [...operations].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function ensureOperationVisibility(
+	property: INodeProperties,
+	resourceName: string,
+	operations: string[],
+): INodeProperties {
+	const existingShow = property.displayOptions?.show ?? {};
+	const existingResources = Array.isArray(existingShow.resource) ? existingShow.resource : [];
+	const existingOperations = Array.isArray(existingShow.operation) ? existingShow.operation : [];
+	const mergedResources = Array.from(new Set([...existingResources, resourceName]));
+	const mergedOperations = Array.from(new Set([...existingOperations, ...operations]));
+
+	return {
+		...property,
+		displayOptions: {
+			...property.displayOptions,
+			show: {
+				...existingShow,
+				resource: mergedResources,
+				operation: mergedOperations,
+			},
+		},
+	};
+}
+
+function upsertImpersonationProperty(
+	properties: INodeProperties[],
+	resourceName: string,
+	property: INodeProperties,
+): INodeProperties[] {
+	const existingIndex = properties.findIndex((prop) => prop.name === property.name);
+	if (existingIndex === -1) {
+		return [...properties, property];
+	}
+
+	const updated = [...properties];
+	updated[existingIndex] = ensureOperationVisibility(
+		updated[existingIndex],
+		resourceName,
+		['create', 'update'],
+	);
+	return updated;
 }
 
 /**
@@ -111,6 +155,9 @@ export function addOperationsToResource(
 		const hasWriteOperations = operationProperty.options.some((op: INodePropertyOptions) =>
 			['create', 'update', 'delete'].includes(op.value as string)
 		);
+		const hasCreateOrUpdateOperations = operationProperty.options.some((op: INodePropertyOptions) =>
+			['create', 'update'].includes(op.value as string)
+		);
 
 		// Add dry run option for write operations if not already present
 		if (hasWriteOperations) {
@@ -118,6 +165,41 @@ export function addOperationsToResource(
 			if (!hasDryRunOption && !config.excludeOperations?.includes('dryRun')) {
 				properties = addDryRunOption(properties, config.resourceName);
 			}
+		}
+
+		if (
+			hasCreateOrUpdateOperations &&
+			isNodeResourceImpersonationSupported(config.resourceName)
+		) {
+			properties = upsertImpersonationProperty(properties, config.resourceName, {
+				displayName: 'Impersonation Resource ID',
+				name: 'impersonationResourceId',
+				type: 'string',
+				default: '',
+				displayOptions: {
+					show: {
+						resource: [config.resourceName],
+						operation: ['create', 'update'],
+					},
+				},
+				description:
+					'Optional resource ID to impersonate for write requests. Leave blank to write as the credential user.',
+			});
+
+			properties = upsertImpersonationProperty(properties, config.resourceName, {
+				displayName: 'Proceed Without Impersonation If Denied',
+				name: 'proceedWithoutImpersonationIfDenied',
+				type: 'boolean',
+				default: false,
+				displayOptions: {
+					show: {
+						resource: [config.resourceName],
+						operation: ['create', 'update'],
+					},
+				},
+				description:
+					'Whether to retry denied impersonated writes once without impersonation and proceed as the API user. Only applies when Impersonation Resource ID is set.',
+			});
 		}
 
 		// Add picklist label option if get operations exist, not excluded, and not already present

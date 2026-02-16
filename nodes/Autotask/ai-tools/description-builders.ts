@@ -14,6 +14,15 @@ function getParentRequirement(resourceName: string): string | null {
     return metadata?.parentIdField ?? null;
 }
 
+/** Snippet injected into tool descriptions that reference date/time so the AI uses actual "now" instead of training cutoff. */
+export function dateTimeReferenceSnippet(referenceUtc: string): string {
+    return `Reference: current UTC date-time when these tools were loaded is ${referenceUtc}. Use this for "today", "recent", or when choosing since/until or recency — do not assume a different date. `;
+}
+
+/** Rule for getMany/count/getPosted/getUnposted: how recency and since/until interact. */
+const RECENCY_VS_SINCE_UNTIL_RULE =
+    'Date filtering: use EITHER recency OR since/until, not both. If you provide since or until, recency is ignored (since/until take precedence). Use recency for preset windows (e.g. last_7d, last_30d) or custom days as last_Nd with N from 1 to 365 (e.g. last_5d, last_45d) to limit how far back to look. Use since/until only when you need an explicit UTC range. ';
+
 export function buildGetDescription(resourceLabel: string, resourceName: string): string {
     return (
         `Retrieve a single ${resourceLabel} record by numeric ID. ` +
@@ -27,10 +36,13 @@ export function buildGetManyDescription(
     resourceLabel: string,
     resourceName: string,
     readFields: FieldMeta[],
+    referenceUtc?: string,
 ): string {
     const fieldList = listFilterableFields(readFields);
+    const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) + RECENCY_VS_SINCE_UNTIL_RULE : '';
 
     return (
+        ref +
         `Search ${resourceLabel} records with up to two AND filters. ` +
         `Example: filter_field='companyName', filter_op='contains', filter_value='Acme'. ` +
         `Use filter_value as true/false for boolean fields, and use arrays (or comma-separated values) for in/notIn operators. ` +
@@ -45,8 +57,10 @@ export function buildGetManyDescription(
     );
 }
 
-export function buildCountDescription(resourceLabel: string): string {
+export function buildCountDescription(resourceLabel: string, referenceUtc?: string): string {
+    const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) + RECENCY_VS_SINCE_UNTIL_RULE : '';
     return (
+        ref +
         `Count ${resourceLabel} records matching optional filters. ` +
         `Use the same filter parameters as getMany and return only the count. ` +
         `For efficient polling-style checks, prefer LastModifiedDate or LastActivityDate filters where available.`
@@ -57,6 +71,8 @@ export function buildCreateDescription(
     resourceLabel: string,
     resourceName: string,
     writeFields: FieldMeta[],
+    supportsImpersonation = false,
+    referenceUtc?: string,
 ): string {
     const required = writeFields
         .filter((field) => field.required)
@@ -73,25 +89,42 @@ export function buildCreateDescription(
     const parentHint = parentField
         ? ` Parent relation required: include ${parentField}.`
         : '';
+    const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
+    const impersonationNote = supportsImpersonation
+		? ' Optional impersonation is supported with impersonationResourceId. Impersonation is off by default unless that value is set. If proceedWithoutImpersonationIfDenied is true, denied impersonated writes retry once without impersonation.'
+		: '';
 
     return (
+        ref +
         `Create a new ${resourceLabel} record. ` +
         `Required fields: ${requiredList}.${picklistNote}${parentHint} ` +
         `Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
         `Successful creates typically return an itemId to use in follow-up operations. ` +
         `Call autotask_${resourceName}_describeFields (mode 'write') before create if field requirements are unclear. ` +
-        `If picklist values fail validation, call autotask_${resourceName}_listPicklistValues.`
+        `If picklist values fail validation, call autotask_${resourceName}_listPicklistValues.` +
+		impersonationNote
     );
 }
 
-export function buildUpdateDescription(resourceLabel: string, resourceName: string): string {
+export function buildUpdateDescription(
+    resourceLabel: string,
+    resourceName: string,
+    supportsImpersonation = false,
+    referenceUtc?: string,
+): string {
+    const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
+    const impersonationNote = supportsImpersonation
+		? ' Optional impersonation is supported with impersonationResourceId. Impersonation is off by default unless that value is set. If proceedWithoutImpersonationIfDenied is true, denied impersonated writes retry once without impersonation.'
+		: '';
     return (
+        ref +
         `Update an existing ${resourceLabel} record by numeric ID. ` +
         `Only provide fields to change (PATCH-style behaviour). ` +
         `Do not assume PUT-style replacement where omitted fields become null. ` +
         `Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
         `Call autotask_${resourceName}_describeFields (mode 'write') to verify valid field names and required value types. ` +
-        `Use autotask_${resourceName}_listPicklistValues for picklist fields.`
+        `Use autotask_${resourceName}_listPicklistValues for picklist fields.` +
+		impersonationNote
     );
 }
 
@@ -111,8 +144,10 @@ export function buildWhoAmIDescription(resourceLabel: string): string {
     );
 }
 
-export function buildPostedTimeEntriesDescription(resourceName: string): string {
+export function buildPostedTimeEntriesDescription(resourceName: string, referenceUtc?: string): string {
+    const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) + RECENCY_VS_SINCE_UNTIL_RULE : '';
     return (
+        ref +
         `Get posted time entries (entries with matching Billing Items). ` +
         `Supports the same optional filters as getMany (up to two AND filters), plus 'limit' and 'fields'. ` +
         `IMPORTANT: The Autotask API returns records oldest first (ascending ID). Without recency or since, limit=1 returns the OLDEST entry, not the newest. ` +
@@ -122,8 +157,10 @@ export function buildPostedTimeEntriesDescription(resourceName: string): string 
     );
 }
 
-export function buildUnpostedTimeEntriesDescription(resourceName: string): string {
+export function buildUnpostedTimeEntriesDescription(resourceName: string, referenceUtc?: string): string {
+    const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) + RECENCY_VS_SINCE_UNTIL_RULE : '';
     return (
+        ref +
         `Get unposted time entries (entries without matching Billing Items). ` +
         `Supports the same optional filters as getMany (up to two AND filters), plus 'limit' and 'fields'. ` +
         `IMPORTANT: The Autotask API returns records oldest first (ascending ID). Without recency or since, limit=1 returns the OLDEST entry, not the newest. ` +

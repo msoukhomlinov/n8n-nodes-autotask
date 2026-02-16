@@ -15,6 +15,10 @@ import { convertDatesToUTC } from '../../helpers/date-time/utils';
 import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 import { resolveLabelsToIds } from '../../helpers/label-resolution';
 import { withInactiveRefRetry } from '../../helpers/inactive-entity-activation';
+import {
+	getOptionalImpersonationResourceId,
+	isImpersonationSupportedForEndpoint,
+} from '../../helpers/impersonation';
 
 /**
  * Base class for updating entities
@@ -90,6 +94,30 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 			const endpoint = await this.buildOperationUrl(itemIndex, parentIdOverride !== undefined ? { parentIdOverride } : {});
 			console.debug('[UpdateOperation] Using endpoint:', endpoint);
 
+			let impersonationResourceId: number | undefined;
+			let proceedWithoutImpersonationIfDenied = false;
+			if (isImpersonationSupportedForEndpoint(endpoint)) {
+				try {
+					impersonationResourceId = getOptionalImpersonationResourceId(this.context, itemIndex);
+					if (impersonationResourceId !== undefined) {
+						proceedWithoutImpersonationIfDenied = this.context.getNodeParameter(
+							'proceedWithoutImpersonationIfDenied',
+							itemIndex,
+							false,
+						) as boolean;
+					}
+				} catch (error) {
+					if (
+						error instanceof Error &&
+						error.message.includes('Could not get parameter')
+					) {
+						impersonationResourceId = undefined;
+					} else {
+						throw error;
+					}
+				}
+			}
+
 				try {
 					// Build request body
 					const { body: requestBody } = await buildRequestBody({
@@ -119,6 +147,10 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 
 						// Attach label-to-ID resolution map to preview for agent visibility
 						(preview as unknown as IDataObject).resolutions = resolution.resolutions as unknown as IDataObject[];
+						Object.assign(preview as unknown as IDataObject, {
+							...(impersonationResourceId !== undefined && { impersonationResourceId }),
+							...(impersonationResourceId !== undefined && { proceedWithoutImpersonationIfDenied }),
+						});
 						return preview as unknown as T;
 					}
 
@@ -135,6 +167,9 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 							'PATCH',
 							endpoint,
 							requestBody,
+							{},
+							impersonationResourceId,
+							proceedWithoutImpersonationIfDenied,
 						),
 					) as IDataObject;
 					if (inactiveRefWarnings.length > 0) {

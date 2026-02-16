@@ -69,10 +69,10 @@ export const baseFields: INodeProperties[] = [
         displayOptions: {
             show: {
                 resource: ['ticketChangeRequestApproval'],
-                operation: ['create', 'get', 'getMany', 'getManyAdvanced', 'count', 'delete', 'getEntityInfo', 'getFieldInfo'],
+                operation: ['create', 'delete'],
             },
         },
-        description: 'Optional for read operations. When provided, child endpoints are used (/Tickets/{ticketID}/ChangeRequestApprovals*). Required for create and delete.',
+        description: 'Required for create and delete operations',
     },
     {
         displayName: 'Fields',

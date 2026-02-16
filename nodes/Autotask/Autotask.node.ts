@@ -165,6 +165,8 @@ import { contractExclusionSetExcludedWorkTypesFields } from './resources/contrac
 import { opportunityFields } from './resources/opportunities/description';
 import { addOperationsToResource } from './helpers/resource-operations.helper';
 import { consolidateProperties } from './helpers/consolidate-properties';
+import { isCommonOperation, getCommonOpContext } from './helpers/common-operations-context';
+import { executeCommonOperation } from './operations/common/common-operations-handler';
 import { executeSurveyOperation } from './resources/surveys/execute';
 import { surveyFields } from './resources/surveys/description';
 import { executeSurveyResultsOperation } from './resources/surveyResults/execute';
@@ -339,9 +341,9 @@ export class Autotask implements INodeType {
 			...addOperationsToResource(contractRetainersFields, { resourceName: 'contractRetainer' }),
 			...addOperationsToResource(contractRoleCostsFields, { resourceName: 'contractRoleCosts' }),
 			...addOperationsToResource(contractServiceFields, { resourceName: 'contractService' }),
-			...contractServiceAdjustmentFields,
+			...addOperationsToResource(contractServiceAdjustmentFields, { resourceName: 'contractServiceAdjustment' }),
 			...addOperationsToResource(contractServiceBundleFields, { resourceName: 'contractServiceBundle' }),
-			...contractServiceBundleAdjustmentFields,
+			...addOperationsToResource(contractServiceBundleAdjustmentFields, { resourceName: 'contractServiceBundleAdjustment' }),
 			...addOperationsToResource(contractServiceBundleUnitFields, { resourceName: 'contractServiceBundleUnit' }),
 			...addOperationsToResource(contractServiceUnitFields, { resourceName: 'contractServiceUnit' }),
 			...addOperationsToResource(contractTicketPurchasesFields, { resourceName: 'contractTicketPurchase' }),
@@ -415,6 +417,29 @@ export class Autotask implements INodeType {
 
 		const resource = this.getNodeParameter('resource', 0) as string;
 		const operation = this.getNodeParameter('operation', 0) as string;
+
+		// Central handling for common operations (getEntityInfo, getFieldInfo, getManyAdvanced)
+		if (isCommonOperation(operation) && getCommonOpContext(resource)) {
+			const items = this.getInputData();
+			const returnData: INodeExecutionData[] = [];
+			for (let i = 0; i < items.length; i++) {
+				try {
+					const result = await executeCommonOperation.call(this, resource, operation, i);
+					if (result !== null) {
+						returnData.push(...result[0]);
+					}
+				} catch (error) {
+					if (this.continueOnFail()) {
+						returnData.push({ json: { error: (error as Error).message } });
+						continue;
+					}
+					throw error;
+				}
+			}
+			if (returnData.length > 0) {
+				return [returnData];
+			}
+		}
 
 		// Handle resource-specific operations
 		switch (resource) {

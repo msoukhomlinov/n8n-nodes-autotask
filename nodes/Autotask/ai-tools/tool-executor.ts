@@ -59,6 +59,28 @@ const RECENCY_WINDOWS_MS: Record<string, number> = {
     last_90d: 90 * 24 * 60 * 60 * 1000,
 };
 
+const RECENCY_CUSTOM_DAYS_MIN = 1;
+const RECENCY_CUSTOM_DAYS_MAX = 365;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function parseRecencyWindowMs(recency: string): number {
+    const preset = RECENCY_WINDOWS_MS[recency];
+    if (preset !== undefined) {
+        return preset;
+    }
+    const match = /^last_(\d+)d$/.exec(recency);
+    if (match) {
+        const days = parseInt(match[1], 10);
+        if (Number.isFinite(days) && days >= RECENCY_CUSTOM_DAYS_MIN && days <= RECENCY_CUSTOM_DAYS_MAX) {
+            return days * MS_PER_DAY;
+        }
+    }
+    const presets = Object.keys(RECENCY_WINDOWS_MS).join(', ');
+    throw new Error(
+        `Unsupported recency value '${recency}'. Use a preset (${presets}) or custom last_Nd with N between ${RECENCY_CUSTOM_DAYS_MIN} and ${RECENCY_CUSTOM_DAYS_MAX} (e.g. last_5d, last_45d).`,
+    );
+}
+
 interface ToolFilter {
     field: string;
     op: string;
@@ -136,12 +158,7 @@ function buildRecencyFilters(params: ToolExecutorParams, readFields: FieldMeta[]
     if (sinceRaw) {
         startIso = toUtcIsoSeconds(sinceRaw, 'since');
     } else if (recency) {
-        const windowMs = RECENCY_WINDOWS_MS[recency];
-        if (!windowMs) {
-            throw new Error(
-                `Unsupported recency value '${recency}'. Use one of: ${Object.keys(RECENCY_WINDOWS_MS).join(', ')}.`,
-            );
-        }
+        const windowMs = parseRecencyWindowMs(recency);
         startIso = new Date(Date.now() - windowMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
     } else if (untilRaw) {
         throw new Error("The 'until' parameter requires either 'since' or 'recency'.");
@@ -281,6 +298,8 @@ function buildFieldValues(
         'domain',
         'domainOperator',
         'searchContactEmails',
+				'impersonationResourceId',
+				'proceedWithoutImpersonationIfDenied',
     ]);
     for (const [key, value] of Object.entries(params)) {
         if (value !== undefined && value !== '' && !exclude.has(key)) {

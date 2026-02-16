@@ -7,8 +7,6 @@ import {
 	GetManyOperation,
 	CountOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
 const ENTITY_TYPE = 'quoteLocation';
 
@@ -57,17 +55,6 @@ export async function executeQuoteLocationOperation(
 							entityType: ENTITY_TYPE,
 						},
 					});
-					break;
-				}
-				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i, { parentType: 'quote' });
-					returnData.push(...results);
-					break;
-				}
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i, 'quote');
-					returnData.push({ json: response });
 					break;
 				}
 				default:

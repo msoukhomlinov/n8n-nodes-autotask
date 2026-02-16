@@ -4,8 +4,6 @@ import {
 	GetManyOperation,
 	CountOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 import { autotaskApiRequest } from '../../helpers/http';
 import { ATTACHMENT_TYPE, validateAttachmentSize, type IAttachmentPayload } from '../../helpers/attachment';
 
@@ -72,13 +70,6 @@ export async function executeTicketNoteAttachmentOperation(
 					returnData.push(...getManyOp.processReturnData(response));
 					break;
 				}
-
-				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i, { parentType: 'ticketNote' });
-					returnData.push(...results);
-					break;
-				}
-
 				case 'download': {
 					const ticketNoteId = this.getNodeParameter('ticketNoteId', i) as string;
 					const attachmentId = this.getNodeParameter('id', i) as string;
@@ -150,14 +141,6 @@ export async function executeTicketNoteAttachmentOperation(
 					});
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i, 'ticketNote');
-					returnData.push(response);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

@@ -8,8 +8,6 @@ import {
 	CountOperation,
 	DeleteOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
 const ENTITY_TYPE = 'quoteItem';
 
@@ -70,15 +68,6 @@ export async function executeQuoteItemOperation(
 					returnData.push(...getManyOp.processReturnData(response));
 					break;
 				}
-
-				case 'getManyAdvanced': {
-					console.log('Debug: Starting quote item getManyAdvanced operation');
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i, { parentType: 'quote' });
-					console.log('Debug: GetManyAdvanced operation results length:', results.length);
-					returnData.push(...results);
-					break;
-				}
-
 				case 'count': {
 					console.log('Debug: Starting quote item count operation');
 					const countOp = new CountOperation<IAutotaskEntity>(ENTITY_TYPE, this);
@@ -105,16 +94,6 @@ export async function executeQuoteItemOperation(
 					returnData.push({ json: (response || { success: true }) as IDataObject });
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					console.log('Debug: Starting quote item entity info operation');
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i, 'quote');
-					console.log('Debug: Entity info operation completed');
-					returnData.push(response);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

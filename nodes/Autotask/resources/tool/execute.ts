@@ -4,6 +4,8 @@ import { validateParameters } from '../../helpers/aiHelper';
 import { createDryRunResponse } from '../../helpers/dry-run';
 import { buildEntityUrl } from '../../helpers/http/request';
 import { AUTOTASK_ENTITIES } from '../../constants/entities';
+import { isCommonOperation, getCommonOpContext } from '../../helpers/common-operations-context';
+import { executeCommonOperation } from '../../operations/common/common-operations-handler';
 
 // Import all existing resource executors
 import { executeAiHelperOperation } from '../aiHelper/execute';
@@ -473,6 +475,22 @@ export async function executeToolOperation(
 	}) as typeof originalGetNodeParameter;
 
 	try {
+		// Central handling for common operations (getEntityInfo, getFieldInfo, getManyAdvanced)
+		if (isCommonOperation(resourceOperation)) {
+			const ctx = getCommonOpContext(canonicalResource);
+			if (ctx) {
+				const result = await executeCommonOperation.call(
+					this,
+					canonicalResource,
+					resourceOperation,
+					0,
+				);
+				if (result !== null) {
+					return result;
+				}
+			}
+		}
+
 		// Route to existing executor with mapped parameters
 		return await executor.call(this);
 	} finally {

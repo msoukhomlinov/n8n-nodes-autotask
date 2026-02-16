@@ -10,8 +10,6 @@ import {
 	GetManyOperation,
 	CountOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 import { getSelectedColumns, prepareIncludeFields } from '../../operations/common/select-columns';
 import { getCachedOrFetch, createFilterCacheKeySuffix } from '../../helpers/cache/response-cache';
 
@@ -221,7 +219,6 @@ export async function executeResourceOperation(
 					const dryRun = this.getNodeParameter('dryRun', i, false) as boolean;
 					const includeTickets = this.getNodeParameter('includeTickets', i, false) as boolean;
 					const includeProjects = this.getNodeParameter('includeProjects', i, false) as boolean;
-					const includeTaskSecondaryResources = this.getNodeParameter('includeTaskSecondaryResources', i, false) as boolean;
 					const includeServiceCallAssignments = this.getNodeParameter('includeServiceCallAssignments', i, false) as boolean;
 					const includeAppointments = this.getNodeParameter('includeAppointments', i, false) as boolean;
 					const includeCompanies = this.getNodeParameter('includeCompanies', i, false) as boolean;
@@ -239,12 +236,12 @@ export async function executeResourceOperation(
 						: dueBefore === null;
 					const ticketAssignmentMode = this.getNodeParameter('ticketAssignmentMode', i, 'primaryOnly') as 'primaryOnly' | 'primaryAndSecondary';
 					const projectReassignMode = this.getNodeParameter('projectReassignMode', i, 'leadAndTasks') as string;
-					const includeTasksInput = this.getNodeParameter('includeTasks', i, false) as boolean;
-					// Derive effective flags from projectReassignMode
+					// Tasks and task secondary resources are included only via Include Projects + Project Reassign Mode
 					const projectModeIncludesTasks = ['leadAndTasks', 'leadTasksAndSecondary', 'tasksOnly', 'tasksAndSecondary'].includes(projectReassignMode);
 					const projectModeIncludesSecondary = ['leadTasksAndSecondary', 'tasksAndSecondary'].includes(projectReassignMode);
 					const projectModeIncludesLead = ['leadOnly', 'leadAndTasks', 'leadTasksAndSecondary'].includes(projectReassignMode);
-					const includeTasks = projectModeIncludesTasks || includeTasksInput;
+					const includeTasks = includeProjects && projectModeIncludesTasks;
+					const includeTaskSecondaryResources = includeProjects && projectModeIncludesSecondary;
 					const maxItemsPerEntity = Math.max(
 						1,
 						Math.trunc(this.getNodeParameter('maxItemsPerEntity', i, 500) as number),
@@ -277,7 +274,7 @@ export async function executeResourceOperation(
 						includeTickets,
 						includeTasks,
 						includeProjects,
-						includeTaskSecondaryResources: includeTaskSecondaryResources || projectModeIncludesSecondary,
+						includeTaskSecondaryResources,
 						includeServiceCallAssignments,
 						includeAppointments,
 						includeCompanies,
@@ -302,13 +299,6 @@ export async function executeResourceOperation(
 					returnData.push({ json: result as unknown as IAutotaskEntity });
 					break;
 				}
-
-				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-					returnData.push(...results);
-					break;
-				}
-
 				case 'count': {
 					const countOp = new CountOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const count = await countOp.execute(i);
@@ -320,14 +310,6 @@ export async function executeResourceOperation(
 					});
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
-					returnData.push(response);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

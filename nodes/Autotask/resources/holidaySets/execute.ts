@@ -8,8 +8,6 @@ import {
 	DeleteOperation,
 	CountOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
 const ENTITY_TYPE = 'holidaySet';
 
@@ -71,20 +69,6 @@ export async function executeHolidaySetOperation(
 					});
 					break;
 				}
-
-				case 'getManyAdvanced': {
-					const response = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-					returnData.push(...response);
-					break;
-				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
-					returnData.push(response);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

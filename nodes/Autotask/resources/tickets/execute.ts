@@ -7,8 +7,6 @@ import {
     GetManyOperation,
     CountOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 import { autotaskApiRequest } from '../../helpers/http';
 import { FilterOperators } from '../../constants/filters';
 import { processOutputMode } from '../../helpers/output-mode';
@@ -376,13 +374,6 @@ export async function executeTicketOperation(
                     returnData.push(...getManyOp.processReturnData(response));
                     break;
                 }
-
-                case 'getManyAdvanced': {
-                    const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-                    returnData.push(...results);
-                    break;
-                }
-
                 case 'slaHealthCheck': {
                     const response = await executeSlaHealthCheck(this, i);
                     returnData.push(response);
@@ -400,14 +391,6 @@ export async function executeTicketOperation(
                     });
                     break;
                 }
-
-                case 'getEntityInfo':
-                case 'getFieldInfo': {
-                    const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
-                    returnData.push(response);
-                    break;
-                }
-
                 default:
                     throw new Error(`Operation ${operation} is not supported`);
             }

@@ -7,8 +7,6 @@ import {
 	CountOperation,
 	DeleteOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 
 const ENTITY_TYPE = 'ContractExclusionSetExcludedRoles';
 
@@ -57,15 +55,6 @@ export async function executeContractExclusionSetExcludedRolesOperation(
 					returnData.push(...getManyOp.processReturnData(response));
 					break;
 				}
-
-				case 'getManyAdvanced': {
-					console.log('Debug: Starting getManyAdvanced operation');
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i, { parentType: 'contractExclusionSets' });
-					console.log('Debug: getManyAdvanced operation completed');
-					returnData.push(...results);
-					break;
-				}
-
 				case 'count': {
 					console.log('Debug: Starting count operation');
 					const countOp = new CountOperation<IAutotaskEntity>(ENTITY_TYPE, this);
@@ -101,16 +90,6 @@ export async function executeContractExclusionSetExcludedRolesOperation(
 					}
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					console.log(`Debug: Starting ${operation} operation`);
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i, 'contractExclusionSets');
-					console.log(`Debug: ${operation} operation response:`, response);
-					returnData.push(response);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

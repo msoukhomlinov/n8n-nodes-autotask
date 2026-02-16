@@ -1,7 +1,6 @@
 import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import { CreateOperation } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 
 const ENTITY_TYPE = 'contractServiceBundleAdjustment';
 
@@ -59,14 +58,6 @@ export async function executeContractServiceBundleAdjustmentOperation(
 					returnData.push({ json: response });
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i, 'contract');
-					returnData.push(response);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported for Contract Service Bundle Adjustments`);
 			}

@@ -6,7 +6,6 @@ import {
 	UpdateOperation,
 } from '../../operations/base';
 import type { IAutotaskEntity } from '../../types';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 
 const ENTITY_TYPE = 'Country';
 
@@ -54,19 +53,6 @@ export async function executeCountryOperation(
 					});
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(
-						operation,
-						ENTITY_TYPE,
-						this,
-						i,
-					);
-					returnData.push({ json: response });
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported for ${ENTITY_TYPE}`);
 			}

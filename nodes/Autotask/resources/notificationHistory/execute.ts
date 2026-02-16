@@ -5,8 +5,6 @@ import {
   GetManyOperation,
   CountOperation
 } from '../../operations/base';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
 
 const ENTITY_TYPE = 'notificationHistory';
 
@@ -42,22 +40,6 @@ export async function executeNotificationHistoryOperation(
               entityType: ENTITY_TYPE,
             },
           });
-          break;
-        }
-        case 'getManyAdvanced': {
-          const response = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-          returnData.push(...response);
-          break;
-        }
-        case 'getEntityInfo':
-        case 'getFieldInfo': {
-          const response = await executeEntityInfoOperations(
-            ENTITY_TYPE,
-            operation,
-            this,
-            i
-          );
-          returnData.push({ json: response });
           break;
         }
         default:

@@ -50,6 +50,7 @@ import {
 } from './ai-tools/description-builders';
 import { buildHelperTools } from './ai-tools/helper-tools';
 import { normaliseToolInputSchema } from './ai-tools/schema-normalizer';
+import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
 
 // ---------------------------------------------------------------------------
 // Resolve n8n-core's StructuredToolkit at runtime.
@@ -194,6 +195,9 @@ export class AutotaskAiTools implements INodeType {
         // eslint-disable-next-line @typescript-eslint/no-this-alias -- needed for async closure in tool func
         const supplyDataContext = this;
 
+        // Current UTC at tool load so the AI has a real "now" for date/time and recency (not training cutoff)
+        const referenceUtc = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+
         // Fetch field metadata once for the resource -- used by multiple operations
         const needsReadFields = operations.some((op) => ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI'].includes(op));
         const needsWriteFields = operations.some((op) => ['create', 'update'].includes(op));
@@ -224,6 +228,7 @@ export class AutotaskAiTools implements INodeType {
             const toolName = `autotask_${resource}_${operation}`;
             let schema: z.ZodObject<z.ZodRawShape>;
             let description: string;
+			const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
 
             switch (operation) {
                 case 'get':
@@ -236,7 +241,12 @@ export class AutotaskAiTools implements INodeType {
                     break;
                 case 'getMany':
                     schema = getGetManySchema(readDescribe?.fields ?? []);
-                    description = buildGetManyDescription(resourceLabel, resource, readDescribe?.fields ?? []);
+                    description = buildGetManyDescription(
+                        resourceLabel,
+                        resource,
+                        readDescribe?.fields ?? [],
+                        referenceUtc,
+                    );
                     break;
                 case 'searchByDomain':
                     schema = getCompanySearchByDomainSchema();
@@ -248,15 +258,15 @@ export class AutotaskAiTools implements INodeType {
                     break;
                 case 'getPosted':
                     schema = getGetManySchema(readDescribe?.fields ?? []);
-                    description = buildPostedTimeEntriesDescription(resource);
+                    description = buildPostedTimeEntriesDescription(resource, referenceUtc);
                     break;
                 case 'getUnposted':
                     schema = getGetManySchema(readDescribe?.fields ?? []);
-                    description = buildUnpostedTimeEntriesDescription(resource);
+                    description = buildUnpostedTimeEntriesDescription(resource, referenceUtc);
                     break;
                 case 'count':
                     schema = getCountSchema(readDescribe?.fields ?? []);
-                    description = buildCountDescription(resourceLabel);
+                    description = buildCountDescription(resourceLabel, referenceUtc);
                     break;
                 case 'moveConfigurationItem':
                     schema = getConfigurationItemMoveConfigurationItemSchema();
@@ -276,14 +286,25 @@ export class AutotaskAiTools implements INodeType {
                     break;
                 case 'create': {
                     const fields = writeDescribe?.fields ?? [];
-                    schema = getCreateSchema(fields);
-                    description = buildCreateDescription(resourceLabel, resource, fields);
+                    schema = getCreateSchema(fields, supportsImpersonation);
+                    description = buildCreateDescription(
+                        resourceLabel,
+                        resource,
+                        fields,
+                        supportsImpersonation,
+                        referenceUtc,
+                    );
                     break;
                 }
                 case 'update': {
                     const fields = writeDescribe?.fields ?? [];
-                    schema = getUpdateSchema(fields);
-                    description = buildUpdateDescription(resourceLabel, resource);
+                    schema = getUpdateSchema(fields, supportsImpersonation);
+                    description = buildUpdateDescription(
+                        resourceLabel,
+                        resource,
+                        supportsImpersonation,
+                        referenceUtc,
+                    );
                     break;
                 }
                 default:

@@ -8,8 +8,6 @@ import {
 	CountOperation,
 	DeleteOperation,
 } from '../../operations/base';
-import { executeEntityInfoOperations } from '../../operations/common/entityInfo.execute';
-import { handleGetManyAdvancedOperation } from '../../operations/common/get-many-advanced';
 import { autotaskApiRequest, buildEntityUrl } from '../../helpers/http';
 import { FilterOperators } from '../../constants/filters';
 import { API_CONSTANTS, BILLING_ITEMS, ENTITY_NAMES } from '../../constants';
@@ -714,13 +712,6 @@ export async function executeTimeEntryOperation(
 					returnData.push(...getManyOp.processReturnData(response));
 					break;
 				}
-
-				case 'getManyAdvanced': {
-					const results = await handleGetManyAdvancedOperation.call(this, ENTITY_TYPE, i);
-					returnData.push(...results);
-					break;
-				}
-
 				case 'getUnposted':
 				case 'getPosted': {
 					const mode = operation === 'getPosted' ? 'posted' : 'unposted';
@@ -740,14 +731,6 @@ export async function executeTimeEntryOperation(
 					});
 					break;
 				}
-
-				case 'getEntityInfo':
-				case 'getFieldInfo': {
-					const response = await executeEntityInfoOperations(operation, ENTITY_TYPE, this, i);
-					returnData.push(response);
-					break;
-				}
-
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

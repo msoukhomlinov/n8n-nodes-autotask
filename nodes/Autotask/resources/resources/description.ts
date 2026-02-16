@@ -196,6 +196,7 @@ export const resourceFields: INodeProperties[] = [
     name: 'includeProjects',
     type: 'boolean',
     default: false,
+    description: 'Whether to reassign projects (lead, tasks, and/or task secondary resources). Use Project Reassign Mode to choose what is reassigned within each project.',
     displayOptions: {
       show: {
         resource: ['resource'],
@@ -230,32 +231,6 @@ export const resourceFields: INodeProperties[] = [
     type: 'boolean',
     default: false,
     description: 'Whether to move service call ticket/task resource assignments where the source resource is assigned',
-    displayOptions: {
-      show: {
-        resource: ['resource'],
-        operation: ['transferOwnership'],
-      },
-    },
-  },
-  {
-    displayName: 'Include Task Secondary Resources',
-    name: 'includeTaskSecondaryResources',
-    type: 'boolean',
-    default: false,
-    description: 'Whether to move task secondary resource assignments where the source resource is assigned',
-    displayOptions: {
-      show: {
-        resource: ['resource'],
-        operation: ['transferOwnership'],
-      },
-    },
-  },
-  {
-    displayName: 'Include Tasks',
-    name: 'includeTasks',
-    type: 'boolean',
-    default: false,
-    description: 'Whether to reassign standalone tasks (outside project scope) assigned to the source resource. Tasks under projects are controlled by Project Reassign Mode.',
     displayOptions: {
       show: {
         resource: ['resource'],
