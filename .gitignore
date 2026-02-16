@@ -67,3 +67,11 @@ credentials.json
 .cursorignore
 
 /cache/
+
+# Private config — managed via separate private repo (.private-git/)
+/.claude/
+/.cursor/
+/.cursor-rules/
+/.docs/
+/.private-git/
+CLAUDE.md
