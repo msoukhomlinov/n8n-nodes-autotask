@@ -4,21 +4,24 @@
 
 .DESCRIPTION
     Run without arguments for an interactive menu, or pass commands directly for quick execution.
+    Manages both the public repo and the private config repo (.private-git/).
 
     Usage:
-        git-helper                      # Interactive menu
-        git-helper <command> [args]     # Direct execution
-        git-helper help                 # Show all commands
-        git-helper help <command>       # Show help for specific command
+        git-helper                          # Interactive menu
+        git-helper <command> [args]         # Direct execution
+        git-helper help                     # Show all commands
+        git-helper help <command>           # Show help for specific command
 
 .EXAMPLE
     git-helper release v1.2.0 "Bug fixes"
     git-helper sync
-    git-helper save "WIP: refactoring"
+    git-helper private sync
+    git-helper private save "Updated cursor rules"
+    git-helper syncall
 
 .NOTES
     Author: Max Soukhomlinov
-    Version: 1.0.0
+    Version: 2.0.0
 #>
 
 param(
@@ -34,6 +37,16 @@ param(
     [Parameter(Position = 3)]
     [string]$Arg3
 )
+
+#region Configuration
+
+# Bare repo directory for private config (lives inside the project root, gitignored)
+$PRIVATE_GIT_DIR = ".private-git"
+
+# Paths managed by the private repo — used when staging all private files
+$PRIVATE_PATHS = @(".claude", ".cursor", ".cursor-rules", ".docs", "CLAUDE.md")
+
+#endregion
 
 #region Helper Functions
 
@@ -51,10 +64,10 @@ function Write-Colour {
 }
 
 function Write-Success { param([string]$Text) Write-Colour $Text -Colour Green }
-function Write-Error { param([string]$Text) Write-Colour $Text -Colour Red }
+function Write-Error   { param([string]$Text) Write-Colour $Text -Colour Red }
 function Write-Warning { param([string]$Text) Write-Colour $Text -Colour Yellow }
-function Write-Info { param([string]$Text) Write-Colour $Text -Colour Cyan }
-function Write-Subtle { param([string]$Text) Write-Colour $Text -Colour DarkGray }
+function Write-Info    { param([string]$Text) Write-Colour $Text -Colour Cyan }
+function Write-Subtle  { param([string]$Text) Write-Colour $Text -Colour DarkGray }
 
 function Get-CurrentBranch {
     $branch = git branch --show-current 2>$null
@@ -74,10 +87,7 @@ function Test-GitRepo {
 }
 
 function Get-Confirmation {
-    param(
-        [string]$Message,
-        [string]$DefaultNo = "N"
-    )
+    param([string]$Message)
     Write-Warning "$Message"
     Write-Colour "Type 'yes' to confirm: " -Colour Yellow -NoNewLine
     $response = Read-Host
@@ -91,9 +101,48 @@ function Show-CommandHeader {
     Write-Host ""
 }
 
+# Returns the absolute path to the repo root, or $null if not in a repo.
+function Get-RepoRoot {
+    $root = git rev-parse --show-toplevel 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($root)) { return $null }
+    return $root.Trim()
+}
+
+# Returns the absolute path to the private bare git dir.
+function Get-PrivateGitDir {
+    $root = Get-RepoRoot
+    if (-not $root) { return $null }
+    return Join-Path $root $PRIVATE_GIT_DIR
+}
+
+# Returns $true if .private-git exists and has commits; prints an error otherwise.
+function Test-PrivateRepo {
+    $gitDir = Get-PrivateGitDir
+    if (-not $gitDir -or -not (Test-Path $gitDir)) {
+        Write-Error "Private repo not initialised. Run: git-helper private setup <url>"
+        return $false
+    }
+    # Check HEAD is valid (has at least one commit)
+    & git --git-dir="$gitDir" rev-parse HEAD 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Private repo exists but has no commits. Check .private-git is a valid bare repo."
+        return $false
+    }
+    return $true
+}
+
+# Runs a git command against the private bare repo with the project root as the work tree.
+# Usage: Invoke-PrivateGit "status", "--short"
+function Invoke-PrivateGit {
+    param([string[]]$GitArgs)
+    $root   = Get-RepoRoot
+    $gitDir = Join-Path $root $PRIVATE_GIT_DIR
+    & git --git-dir="$gitDir" --work-tree="$root" @GitArgs
+}
+
 #endregion
 
-#region Command Implementations
+#region Public Repo Command Implementations
 
 function Invoke-Release {
     param([string]$Version, [string]$Message)
@@ -190,7 +239,7 @@ function Invoke-Status {
     Write-Colour $branch -Colour Cyan
     Write-Host ""
 
-    Write-Info "─── File Status ───"
+    Write-Info "─── Public Repo ───"
     git status --short
 
     $changes = git status --porcelain
@@ -201,6 +250,21 @@ function Invoke-Status {
     Write-Host ""
     Write-Info "─── Recent Commits ───"
     git log --oneline -5
+
+    # Brief private config summary if the private repo is initialised
+    $gitDir = Get-PrivateGitDir
+    if ($gitDir -and (Test-Path $gitDir)) {
+        Write-Host ""
+        Write-Info "─── Private Config ───"
+        $privateChanges = Invoke-PrivateGit @("status", "--porcelain") 2>$null | Out-String
+        if ([string]::IsNullOrWhiteSpace($privateChanges)) {
+            Write-Subtle "  (no uncommitted changes)"
+        } else {
+            Invoke-PrivateGit @("status", "--short")
+            Write-Subtle "  Run 'git-helper private status' for full details."
+        }
+    }
+
     Write-Host ""
 }
 
@@ -254,22 +318,10 @@ function Invoke-Branches {
     Show-CommandHeader "BRANCHES"
 
     switch ($Scope.ToLower()) {
-        "local" {
-            Write-Info "Local branches:"
-            git branch
-        }
-        "remote" {
-            Write-Info "Remote branches:"
-            git branch -r
-        }
-        "all" {
-            Write-Info "All branches (local and remote):"
-            git branch -a
-        }
-        default {
-            Write-Warning "Unknown scope: $Scope"
-            Write-Subtle "Options: local, remote, all"
-        }
+        "local"  { Write-Info "Local branches:";                git branch }
+        "remote" { Write-Info "Remote branches:";               git branch -r }
+        "all"    { Write-Info "All branches (local + remote):"; git branch -a }
+        default  { Write-Warning "Unknown scope: $Scope"; Write-Subtle "Options: local, remote, all" }
     }
 }
 
@@ -312,24 +364,15 @@ function Invoke-Delete {
     }
 
     switch ($Scope.ToLower()) {
-        "local" {
-            Write-Info "Deleting local branch..."
-            git branch -d $BranchName
-        }
-        "remote" {
-            Write-Info "Deleting remote branch..."
-            git push origin --delete $BranchName
-        }
-        "both" {
+        "local"  { Write-Info "Deleting local branch...";  git branch -d $BranchName }
+        "remote" { Write-Info "Deleting remote branch..."; git push origin --delete $BranchName }
+        "both"   {
             Write-Info "Deleting local branch..."
             git branch -d $BranchName
             Write-Info "Deleting remote branch..."
             git push origin --delete $BranchName
         }
-        default {
-            Write-Warning "Unknown scope: $Scope. Use: local, remote, both"
-            return
-        }
+        default { Write-Warning "Unknown scope: $Scope. Use: local, remote, both"; return }
     }
 
     if ($LASTEXITCODE -eq 0) {
@@ -349,11 +392,8 @@ function Invoke-Tags {
         "list" {
             Write-Info "Tags (newest first):"
             $tags = git tag --sort=-creatordate
-            if ([string]::IsNullOrEmpty($tags)) {
-                Write-Subtle "  (no tags found)"
-            } else {
-                git tag --sort=-creatordate
-            }
+            if ([string]::IsNullOrEmpty($tags)) { Write-Subtle "  (no tags found)" }
+            else { git tag --sort=-creatordate }
         }
         "create" {
             if ([string]::IsNullOrEmpty($TagName)) {
@@ -362,10 +402,8 @@ function Invoke-Tags {
                 return
             }
             if ([string]::IsNullOrEmpty($Message)) { $Message = $TagName }
-
             Write-Info "Creating tag: $TagName..."
             git tag -a $TagName -m $Message
-
             if ($LASTEXITCODE -eq 0) {
                 Write-Success "✓ Tag '$TagName' created locally."
                 Write-Subtle "Use 'git-helper tags push' to push tags to remote."
@@ -376,31 +414,19 @@ function Invoke-Tags {
                 Write-Error "Usage: git-helper tags delete <tag-name>"
                 return
             }
-
-            if (-not (Get-Confirmation "Delete tag '$TagName'?")) {
-                Write-Warning "Cancelled."
-                return
-            }
-
+            if (-not (Get-Confirmation "Delete tag '$TagName'?")) { Write-Warning "Cancelled."; return }
             Write-Info "Deleting local tag..."
             git tag -d $TagName
             Write-Info "Deleting remote tag..."
             git push origin --delete $TagName
-
             Write-Success "✓ Tag '$TagName' deleted."
         }
         "push" {
             Write-Info "Pushing all tags to remote..."
             git push --tags
-
-            if ($LASTEXITCODE -eq 0) {
-                Write-Success "✓ Tags pushed to remote."
-            }
+            if ($LASTEXITCODE -eq 0) { Write-Success "✓ Tags pushed to remote." }
         }
-        default {
-            Write-Warning "Unknown action: $Action"
-            Write-Subtle "Options: list, create, delete, push"
-        }
+        default { Write-Warning "Unknown action: $Action"; Write-Subtle "Options: list, create, delete, push" }
     }
 }
 
@@ -413,47 +439,31 @@ function Invoke-Stash {
         "list" {
             Write-Info "Stashed changes:"
             $stashes = git stash list
-            if ([string]::IsNullOrEmpty($stashes)) {
-                Write-Subtle "  (no stashes found)"
-            } else {
-                git stash list
-            }
+            if ([string]::IsNullOrEmpty($stashes)) { Write-Subtle "  (no stashes found)" }
+            else { git stash list }
         }
         "save" {
-            if ([string]::IsNullOrEmpty($Message)) {
-                $Message = "WIP: $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
-            }
+            if ([string]::IsNullOrEmpty($Message)) { $Message = "WIP: $(Get-Date -Format 'yyyy-MM-dd HH:mm')" }
             Write-Info "Stashing changes: $Message..."
             git stash push -m $Message
-
-            if ($LASTEXITCODE -eq 0) {
-                Write-Success "✓ Changes stashed. Use 'stash pop' to retrieve them."
-            }
+            if ($LASTEXITCODE -eq 0) { Write-Success "✓ Changes stashed. Use 'stash pop' to retrieve them." }
         }
         "pop" {
             Write-Info "Retrieving most recent stash..."
             git stash pop
-
-            if ($LASTEXITCODE -eq 0) {
-                Write-Success "✓ Stash applied and removed from stash list."
-            } else {
-                Write-Error "✗ Failed to pop stash. You may have conflicts."
-            }
+            if ($LASTEXITCODE -eq 0) { Write-Success "✓ Stash applied and removed from stash list." }
+            else { Write-Error "✗ Failed to pop stash. You may have conflicts." }
         }
         "drop" {
             if (-not (Get-Confirmation "This will permanently delete the most recent stash.")) {
                 Write-Warning "Cancelled."
                 return
             }
-
             Write-Info "Dropping most recent stash..."
             git stash drop
             Write-Success "✓ Stash dropped."
         }
-        default {
-            Write-Warning "Unknown action: $Action"
-            Write-Subtle "Options: list, save, pop, drop"
-        }
+        default { Write-Warning "Unknown action: $Action"; Write-Subtle "Options: list, save, pop, drop" }
     }
 }
 
@@ -474,10 +484,7 @@ function Invoke-Undo {
     Write-Subtle "Your changes will be staged and ready to recommit."
     Write-Host ""
 
-    if (-not (Get-Confirmation "Undo the last commit?")) {
-        Write-Warning "Cancelled."
-        return
-    }
+    if (-not (Get-Confirmation "Undo the last commit?")) { Write-Warning "Cancelled."; return }
 
     git reset --soft HEAD~1
 
@@ -516,6 +523,266 @@ function Invoke-Discard {
 
 #endregion
 
+#region Private Repo Command Implementations
+
+function Invoke-PrivateStatus {
+    Show-CommandHeader "PRIVATE CONFIG STATUS"
+
+    if (-not (Test-PrivateRepo)) { return }
+
+    $branch = Invoke-PrivateGit @("branch", "--show-current") 2>$null | Out-String
+    Write-Colour "Branch: " -Colour White -NoNewLine
+    Write-Colour $branch.Trim() -Colour Cyan
+    Write-Host ""
+
+    Write-Info "─── Changes ───"
+    Invoke-PrivateGit @("status", "--short")
+
+    $changes = Invoke-PrivateGit @("status", "--porcelain") | Out-String
+    if ([string]::IsNullOrWhiteSpace($changes)) {
+        Write-Subtle "  (no uncommitted changes)"
+    }
+
+    Write-Host ""
+    Write-Info "─── Recent Commits ───"
+    Invoke-PrivateGit @("log", "--oneline", "--graph", "--decorate", "-5")
+    Write-Host ""
+}
+
+function Invoke-PrivateSync {
+    Show-CommandHeader "PRIVATE CONFIG SYNC"
+
+    if (-not (Test-PrivateRepo)) { return }
+
+    Write-Info "Pulling latest private config from remote..."
+    Invoke-PrivateGit @("pull")
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "✓ Private config is up to date."
+    } else {
+        Write-Error "✗ Pull failed. Check output above for errors."
+    }
+}
+
+function Invoke-PrivateSave {
+    param([string]$Message)
+
+    if ([string]::IsNullOrEmpty($Message)) {
+        Write-Error "Usage: git-helper private save <message>"
+        Write-Subtle "Example: git-helper private save `"Updated cursor rules`""
+        return
+    }
+
+    if (-not (Test-PrivateRepo)) { return }
+
+    Show-CommandHeader "PRIVATE CONFIG SAVE"
+
+    # Only stage paths that exist on disk to avoid warnings for missing dirs
+    $existingPaths = $PRIVATE_PATHS | Where-Object { Test-Path $_ }
+    if ($existingPaths.Count -eq 0) {
+        Write-Warning "None of the configured private paths exist on disk."
+        Write-Subtle "Paths: $($PRIVATE_PATHS -join ', ')"
+        return
+    }
+
+    Write-Info "Staging private files..."
+    Invoke-PrivateGit (@("add", "-f") + $existingPaths)
+
+    Write-Info "Creating commit..."
+    Invoke-PrivateGit @("commit", "-m", $Message)
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "✓ Private config saved locally. Use 'private push' to upload."
+    } else {
+        Write-Warning "Nothing to commit, or commit failed."
+    }
+}
+
+function Invoke-PrivatePush {
+    Show-CommandHeader "PRIVATE CONFIG PUSH"
+
+    if (-not (Test-PrivateRepo)) { return }
+
+    Write-Info "Pushing private config to remote..."
+    Invoke-PrivateGit @("push")
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "✓ Private config pushed."
+    } else {
+        Write-Error "✗ Push failed. Try 'private sync' first."
+    }
+}
+
+function Invoke-PrivateAdd {
+    param([string]$FilePath)
+
+    if ([string]::IsNullOrEmpty($FilePath)) {
+        Write-Error "Usage: git-helper private add <file-path>"
+        Write-Subtle "Example: git-helper private add .claude/settings.local.json"
+        return
+    }
+
+    if (-not (Test-PrivateRepo)) { return }
+
+    Show-CommandHeader "PRIVATE ADD: $FilePath"
+
+    if (-not (Test-Path $FilePath)) {
+        Write-Error "File not found: $FilePath"
+        return
+    }
+
+    Invoke-PrivateGit @("add", "-f", $FilePath)
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "✓ Staged: $FilePath"
+        Write-Subtle "Use 'private save <msg>' to commit, then 'private push' to upload."
+    } else {
+        Write-Error "✗ Failed to stage file."
+    }
+}
+
+function Invoke-PrivateLog {
+    param([int]$Count = 10)
+
+    if (-not (Test-PrivateRepo)) { return }
+
+    Show-CommandHeader "PRIVATE CONFIG LOG"
+
+    Write-Info "Last $Count commits:"
+    Write-Host ""
+    Invoke-PrivateGit @("log", "--oneline", "--graph", "--decorate", "-$Count")
+    Write-Host ""
+}
+
+function Invoke-PrivateSetup {
+    param([string]$Url)
+
+    Show-CommandHeader "PRIVATE REPO SETUP"
+
+    $root = Get-RepoRoot
+    if (-not $root) { Write-Error "Not in a git repository."; return }
+
+    $gitDir = Join-Path $root $PRIVATE_GIT_DIR
+
+    if (Test-Path $gitDir) {
+        Write-Warning "Private repo already exists at $gitDir"
+        Write-Subtle "If you need to re-initialise, delete the .private-git folder first."
+        return
+    }
+
+    # Auto-derive URL from public remote if not supplied
+    if ([string]::IsNullOrEmpty($Url)) {
+        $publicUrl = git remote get-url origin 2>$null
+        if ($publicUrl -and $LASTEXITCODE -eq 0) {
+            $derived = $publicUrl -replace "\.git$", "-private.git"
+            Write-Info "Derived private repo URL: $derived"
+            Write-Colour "Is this correct? (y/n): " -Colour Yellow -NoNewLine
+            $confirm = Read-Host
+            if ($confirm -eq "y") {
+                $Url = $derived
+            } else {
+                Write-Colour "Enter private repo URL: " -Colour Yellow -NoNewLine
+                $Url = Read-Host
+            }
+        } else {
+            Write-Error "Usage: git-helper private setup <url>"
+            Write-Subtle "Example: git-helper private setup https://github.com/user/repo-private.git"
+            return
+        }
+    }
+
+    Write-Info "Cloning private repo as bare repo into $PRIVATE_GIT_DIR ..."
+    & git clone --bare $Url $gitDir
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "✗ Clone failed. Check the URL and your GitHub credentials."
+        return
+    }
+
+    Write-Info "Restoring private files to working tree..."
+    & git --git-dir="$gitDir" --work-tree="$root" checkout main -- .
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Checkout step had issues — the 'main' branch may not exist yet."
+        Write-Subtle "Try: git --git-dir=`".private-git`" --work-tree=`".`" branch -a"
+    }
+
+    Write-Info "Configuring private repo (suppress untracked-file noise)..."
+    & git --git-dir="$gitDir" --work-tree="$root" config status.showUntrackedFiles no
+
+    Write-Host ""
+    Write-Success "✓ Private repo set up. Run 'git-helper private status' to verify."
+}
+
+# Dispatcher for all "private" sub-commands
+function Invoke-Private {
+    param([string]$SubCommand, [string]$SubArg1, [string]$SubArg2)
+
+    if ([string]::IsNullOrEmpty($SubCommand)) {
+        # No sub-command — show private status as default
+        Invoke-PrivateStatus
+        return
+    }
+
+    switch ($SubCommand.ToLower()) {
+        "status" { Invoke-PrivateStatus }
+        "sync"   { Invoke-PrivateSync }
+        "pull"   { Invoke-PrivateSync }   # alias for sync
+        "save"   { Invoke-PrivateSave  -Message  $SubArg1 }
+        "push"   { Invoke-PrivatePush }
+        "add"    { Invoke-PrivateAdd   -FilePath $SubArg1 }
+        "log"    { Invoke-PrivateLog   -Count    $(if ($SubArg1) { [int]$SubArg1 } else { 10 }) }
+        "setup"  { Invoke-PrivateSetup -Url      $SubArg1 }
+        default {
+            Write-Error "Unknown private sub-command: $SubCommand"
+            Write-Subtle "Options: status, sync, save, push, add, log, setup"
+        }
+    }
+}
+
+#endregion
+
+#region SyncAll
+
+# Pulls both the public repo and the private config repo in one step.
+function Invoke-SyncAll {
+    Show-CommandHeader "SYNC ALL (public + private)"
+
+    # --- Public ---
+    Write-Info "[PUBLIC] Fetching & pulling..."
+    git fetch --all --prune
+    $branch = Get-CurrentBranch
+    git pull origin $branch
+    $publicOk = ($LASTEXITCODE -eq 0)
+
+    if ($publicOk) { Write-Success "  ✓ Public repo up to date." }
+    else           { Write-Error   "  ✗ Public sync had issues." }
+
+    # --- Private ---
+    $gitDir = Get-PrivateGitDir
+    if ($gitDir -and (Test-Path $gitDir)) {
+        Write-Host ""
+        Write-Info "[PRIVATE] Pulling..."
+        Invoke-PrivateGit @("pull")
+        $privateOk = ($LASTEXITCODE -eq 0)
+
+        if ($privateOk) { Write-Success "  ✓ Private config up to date." }
+        else            { Write-Error   "  ✗ Private sync had issues." }
+    } else {
+        Write-Subtle "[PRIVATE] Skipped — .private-git not found. Run 'git-helper private setup' to initialise."
+        $privateOk = $true
+    }
+
+    Write-Host ""
+    if ($publicOk -and $privateOk) {
+        Write-Success "✓ All repos are up to date."
+    } else {
+        Write-Error "✗ One or more repos had sync issues. See details above."
+    }
+}
+
+#endregion
+
 #region Help System
 
 function Show-Help {
@@ -523,79 +790,79 @@ function Show-Help {
 
     $helpData = @{
         "release" = @{
-            Usage = "git-helper release <version> <message>"
+            Usage       = "git-helper release <version> <message>"
             Description = "When you're ready to publish a new version - bundles changes, creates version tag, and pushes everything."
-            Examples = @(
+            Examples    = @(
                 "git-helper release v1.0.0 `"Initial release`"",
                 "git-helper release v1.2.1 `"Fixed login bug`""
             )
         }
         "sync" = @{
-            Usage = "git-helper sync"
+            Usage       = "git-helper sync"
             Description = "Updates your local copy with all changes from remote. Do this before starting new work."
-            Examples = @("git-helper sync")
+            Examples    = @("git-helper sync")
         }
         "save" = @{
-            Usage = "git-helper save <message>"
+            Usage       = "git-helper save <message>"
             Description = "Checkpoint your work locally without pushing. Like hitting 'save' on a document."
-            Examples = @(
+            Examples    = @(
                 "git-helper save `"WIP: auth refactor`"",
                 "git-helper save `"Added validation`""
             )
         }
         "push" = @{
-            Usage = "git-helper push"
+            Usage       = "git-helper push"
             Description = "Upload your committed changes to remote so others can see them."
-            Examples = @("git-helper push")
+            Examples    = @("git-helper push")
         }
         "status" = @{
-            Usage = "git-helper status"
-            Description = "Quick overview - current branch, changed files, and recent commits."
-            Examples = @("git-helper status")
+            Usage       = "git-helper status"
+            Description = "Quick overview - current branch, changed files, recent commits, and a brief private config summary."
+            Examples    = @("git-helper status")
         }
         "newbranch" = @{
-            Usage = "git-helper newbranch <branch-name>"
+            Usage       = "git-helper newbranch <branch-name>"
             Description = "Start work on a new feature/fix in isolation from main code."
-            Examples = @(
+            Examples    = @(
                 "git-helper newbranch feature/login",
                 "git-helper newbranch bugfix/header-crash"
             )
         }
         "switchto" = @{
-            Usage = "git-helper switchto <branch-name>"
+            Usage       = "git-helper switchto <branch-name>"
             Description = "Move to a different branch to work on something else."
-            Examples = @(
+            Examples    = @(
                 "git-helper switchto main",
                 "git-helper switchto feature/login"
             )
         }
         "branches" = @{
-            Usage = "git-helper branches [local|remote|all]"
+            Usage       = "git-helper branches [local|remote|all]"
             Description = "See what branches exist. Default shows local branches only."
-            Examples = @(
+            Examples    = @(
                 "git-helper branches",
                 "git-helper branches all",
                 "git-helper branches remote"
             )
         }
         "merge" = @{
-            Usage = "git-helper merge <branch-name>"
+            Usage       = "git-helper merge <branch-name>"
             Description = "Combine another branch's changes into your current branch."
-            Examples = @("git-helper merge feature/login")
+            Examples    = @("git-helper merge feature/login")
         }
         "delete" = @{
-            Usage = "git-helper delete <branch-name> [local|remote|both]"
+            Usage       = "git-helper delete <branch-name> [local|remote|both]"
             Description = "Remove a branch that's no longer needed. Default is local only."
-            Examples = @(
+            Examples    = @(
                 "git-helper delete feature/old-stuff",
                 "git-helper delete feature/old-stuff remote",
                 "git-helper delete feature/old-stuff both"
             )
         }
         "tags" = @{
-            Usage = "git-helper tags [list|create|delete|push] [args]"
+            Usage       = "git-helper tags [list|create|delete|push] [args]"
             Description = "Manage version tags - list existing, create new, or delete old ones."
-            Examples = @(
+            Examples    = @(
                 "git-helper tags list",
                 "git-helper tags create v1.0.0 `"Initial release`"",
                 "git-helper tags delete v0.9.0",
@@ -603,9 +870,9 @@ function Show-Help {
             )
         }
         "stash" = @{
-            Usage = "git-helper stash [list|save|pop|drop] [message]"
+            Usage       = "git-helper stash [list|save|pop|drop] [message]"
             Description = "Temporarily set aside changes to switch tasks, then retrieve later."
-            Examples = @(
+            Examples    = @(
                 "git-helper stash list",
                 "git-helper stash save `"parking this`"",
                 "git-helper stash pop",
@@ -613,30 +880,47 @@ function Show-Help {
             )
         }
         "log" = @{
-            Usage = "git-helper log [count]"
+            Usage       = "git-helper log [count]"
             Description = "View commit history. Default shows last 10 commits."
-            Examples = @(
+            Examples    = @(
                 "git-helper log",
                 "git-helper log 20"
             )
         }
         "undo" = @{
-            Usage = "git-helper undo"
+            Usage       = "git-helper undo"
             Description = "Uncommit last commit but keep all file changes intact for editing."
-            Examples = @("git-helper undo")
+            Examples    = @("git-helper undo")
         }
         "discard" = @{
-            Usage = "git-helper discard"
+            Usage       = "git-helper discard"
             Description = "Throw away ALL uncommitted changes. Use with extreme caution!"
-            Examples = @("git-helper discard")
+            Examples    = @("git-helper discard")
+        }
+        "private" = @{
+            Usage       = "git-helper private <sub-command> [args]"
+            Description = "Manage the private config repo (.private-git/). Sub-commands: status, sync, save, push, add, log, setup."
+            Examples    = @(
+                "git-helper private status",
+                "git-helper private sync",
+                "git-helper private save `"Updated cursor rules`"",
+                "git-helper private push",
+                "git-helper private add .claude/settings.local.json",
+                "git-helper private log",
+                "git-helper private setup https://github.com/user/repo-private.git"
+            )
+        }
+        "syncall" = @{
+            Usage       = "git-helper syncall"
+            Description = "Pull the latest from BOTH the public repo and the private config repo in one step."
+            Examples    = @("git-helper syncall")
         }
     }
 
     if ([string]::IsNullOrEmpty($CommandName)) {
-        # Show all commands
         Write-Host ""
         Write-Info "═══════════════════════════════════════════════════════════════"
-        Write-Info "  GIT HELPER - Command Reference"
+        Write-Info "  GIT HELPER v2.0 - Command Reference"
         Write-Info "═══════════════════════════════════════════════════════════════"
         Write-Host ""
         Write-Colour "  Usage: " -Colour White -NoNewLine
@@ -644,29 +928,46 @@ function Show-Help {
         Write-Colour "         git-helper              " -Colour White -NoNewLine
         Write-Colour "(interactive menu)" -Colour Cyan
         Write-Host ""
-        Write-Info "  Commands:"
+
+        Write-Info "  Public Repo"
         Write-Host ""
-
-        $commands = @(
-            @{ Name = "release"; Desc = "Commit, tag, and push a new version" },
-            @{ Name = "sync"; Desc = "Pull latest changes from remote" },
-            @{ Name = "save"; Desc = "Commit locally (no push)" },
-            @{ Name = "push"; Desc = "Push commits to remote" },
-            @{ Name = "status"; Desc = "Show current state overview" },
+        $publicCmds = @(
+            @{ Name = "release";   Desc = "Commit, tag, and push a new version" },
+            @{ Name = "sync";      Desc = "Pull latest changes from remote" },
+            @{ Name = "save";      Desc = "Commit locally (no push)" },
+            @{ Name = "push";      Desc = "Push commits to remote" },
+            @{ Name = "status";    Desc = "Show current state overview (public + private)" },
             @{ Name = "newbranch"; Desc = "Create and switch to new branch" },
-            @{ Name = "switchto"; Desc = "Switch to existing branch" },
-            @{ Name = "branches"; Desc = "List branches" },
-            @{ Name = "merge"; Desc = "Merge branch into current" },
-            @{ Name = "delete"; Desc = "Delete a branch" },
-            @{ Name = "tags"; Desc = "Manage version tags" },
-            @{ Name = "stash"; Desc = "Temporarily shelve changes" },
-            @{ Name = "log"; Desc = "View commit history" },
-            @{ Name = "undo"; Desc = "Uncommit (keep changes)" },
-            @{ Name = "discard"; Desc = "Throw away all changes" }
+            @{ Name = "switchto";  Desc = "Switch to existing branch" },
+            @{ Name = "branches";  Desc = "List branches" },
+            @{ Name = "merge";     Desc = "Merge branch into current" },
+            @{ Name = "delete";    Desc = "Delete a branch" },
+            @{ Name = "tags";      Desc = "Manage version tags" },
+            @{ Name = "stash";     Desc = "Temporarily shelve changes" },
+            @{ Name = "log";       Desc = "View commit history" },
+            @{ Name = "undo";      Desc = "Uncommit (keep changes)" },
+            @{ Name = "discard";   Desc = "Throw away all changes" }
         )
-
-        foreach ($cmd in $commands) {
+        foreach ($cmd in $publicCmds) {
             Write-Colour ("    {0,-12}" -f $cmd.Name) -Colour Green -NoNewLine
+            Write-Host $cmd.Desc
+        }
+
+        Write-Host ""
+        Write-Info "  Private Config (.private-git/)"
+        Write-Host ""
+        $privateCmds = @(
+            @{ Name = "private status"; Desc = "Show private config changes and recent commits" },
+            @{ Name = "private sync";   Desc = "Pull latest private config from remote" },
+            @{ Name = "private save";   Desc = "Stage all private files and commit" },
+            @{ Name = "private push";   Desc = "Push private config commits to remote" },
+            @{ Name = "private add";    Desc = "Force-stage a specific private file" },
+            @{ Name = "private log";    Desc = "View private config commit history" },
+            @{ Name = "private setup";  Desc = "First-time setup on a new PC" },
+            @{ Name = "syncall";        Desc = "Pull both public and private repos at once" }
+        )
+        foreach ($cmd in $privateCmds) {
+            Write-Colour ("    {0,-16}" -f $cmd.Name) -Colour Magenta -NoNewLine
             Write-Host $cmd.Desc
         }
 
@@ -675,7 +976,6 @@ function Show-Help {
         Write-Host ""
 
     } else {
-        # Show specific command help
         $cmd = $CommandName.ToLower()
         if ($helpData.ContainsKey($cmd)) {
             $help = $helpData[$cmd]
@@ -690,9 +990,7 @@ function Show-Help {
             Write-Host "  $($help.Description)"
             Write-Host ""
             Write-Info "  Examples:"
-            foreach ($ex in $help.Examples) {
-                Write-Subtle "    $ex"
-            }
+            foreach ($ex in $help.Examples) { Write-Subtle "    $ex" }
             Write-Host ""
         } else {
             Write-Error "Unknown command: $CommandName"
@@ -710,12 +1008,12 @@ function Show-Menu {
     $branch = Get-CurrentBranch
 
     Write-Info "═══════════════════════════════════════════════════════════════"
-    Write-Colour "  GIT HELPER                              " -Colour Cyan -NoNewLine
+    Write-Colour "  GIT HELPER v2.0                          " -Colour Cyan -NoNewLine
     Write-Colour "📁 " -Colour White -NoNewLine
     Write-Colour $branch -Colour Green
     Write-Info "═══════════════════════════════════════════════════════════════"
     Write-Host ""
-    Write-Subtle "  Core Workflow"
+    Write-Subtle "  Public Repo"
     Write-Host "   1. release      Release a new version (commit, tag, push)"
     Write-Host "   2. sync         Pull latest changes from remote"
     Write-Host "   3. save         Commit changes locally (no push)"
@@ -735,6 +1033,14 @@ function Show-Menu {
     Write-Host "  13. log          View commit history"
     Write-Host "  14. undo         Uncommit last (keep changes)"
     Write-Host "  15. discard      Throw away all uncommitted changes"
+    Write-Host ""
+    Write-Subtle "  Private Config (.private-git/)"
+    Write-Host "  16. private status   Show private config changes"
+    Write-Host "  17. private sync     Pull latest private config"
+    Write-Host "  18. private save     Commit private config changes"
+    Write-Host "  19. private push     Push private config to remote"
+    Write-Host "  20. syncall          Sync BOTH repos at once"
+    Write-Host "  21. private setup    First-time setup on a new PC"
     Write-Info "═══════════════════════════════════════════════════════════════"
     Write-Host "   0. Exit         help. Command reference"
     Write-Info "═══════════════════════════════════════════════════════════════"
@@ -752,14 +1058,10 @@ function Start-InteractiveMenu {
 
     do {
         Show-Menu
-        $selection = Read-MenuInput "  Select [0-15 or help]: "
+        $selection = Read-MenuInput "  Select [0-21 or help]: "
 
         switch ($selection) {
-            "0" {
-                Write-Host ""
-                Write-Info "Goodbye!"
-                return
-            }
+            "0" { Write-Host ""; Write-Info "Goodbye!"; return }
             "help" {
                 Show-Help
                 Read-Host "Press Enter to continue"
@@ -816,7 +1118,7 @@ function Start-InteractiveMenu {
                 Write-Info "  Available branches:"
                 git branch -a
                 $branchName = Read-MenuInput "  Enter branch name to delete: "
-                $scope = Read-MenuInput "  Scope [local/remote/both] (default: local): "
+                $scope      = Read-MenuInput "  Scope [local/remote/both] (default: local): "
                 if ([string]::IsNullOrEmpty($scope)) { $scope = "local" }
                 Invoke-Delete -BranchName $branchName -Scope $scope
                 Read-Host "Press Enter to continue"
@@ -826,10 +1128,9 @@ function Start-InteractiveMenu {
                 Write-Subtle "  Tag options: list, create, delete, push"
                 $action = Read-MenuInput "  Action (default: list): "
                 if ([string]::IsNullOrEmpty($action)) { $action = "list" }
-
                 switch ($action.ToLower()) {
                     "create" {
-                        $tagName = Read-MenuInput "  Tag name (e.g., v1.0.0): "
+                        $tagName    = Read-MenuInput "  Tag name (e.g., v1.0.0): "
                         $tagMessage = Read-MenuInput "  Tag message: "
                         Invoke-Tags -Action $action -TagName $tagName -Message $tagMessage
                     }
@@ -838,9 +1139,7 @@ function Start-InteractiveMenu {
                         $tagName = Read-MenuInput "  Tag name to delete: "
                         Invoke-Tags -Action $action -TagName $tagName
                     }
-                    default {
-                        Invoke-Tags -Action $action
-                    }
+                    default { Invoke-Tags -Action $action }
                 }
                 Read-Host "Press Enter to continue"
             }
@@ -849,7 +1148,6 @@ function Start-InteractiveMenu {
                 Write-Subtle "  Stash options: list, save, pop, drop"
                 $action = Read-MenuInput "  Action (default: list): "
                 if ([string]::IsNullOrEmpty($action)) { $action = "list" }
-
                 if ($action.ToLower() -eq "save") {
                     $message = Read-MenuInput "  Stash message (optional): "
                     Invoke-Stash -Action $action -Message $message
@@ -872,6 +1170,32 @@ function Start-InteractiveMenu {
                 Invoke-Discard
                 Read-Host "Press Enter to continue"
             }
+            "16" {
+                Invoke-PrivateStatus
+                Read-Host "Press Enter to continue"
+            }
+            "17" {
+                Invoke-PrivateSync
+                Read-Host "Press Enter to continue"
+            }
+            "18" {
+                $message = Read-MenuInput "  Enter commit message: "
+                Invoke-PrivateSave -Message $message
+                Read-Host "Press Enter to continue"
+            }
+            "19" {
+                Invoke-PrivatePush
+                Read-Host "Press Enter to continue"
+            }
+            "20" {
+                Invoke-SyncAll
+                Read-Host "Press Enter to continue"
+            }
+            "21" {
+                $url = Read-MenuInput "  Private repo URL (leave blank to auto-derive): "
+                Invoke-PrivateSetup -Url $url
+                Read-Host "Press Enter to continue"
+            }
             default {
                 if (-not [string]::IsNullOrEmpty($selection)) {
                     Write-Error "  Invalid selection: $selection"
@@ -886,19 +1210,16 @@ function Start-InteractiveMenu {
 
 #region Main Entry Point
 
-# If no arguments, show interactive menu
 if ([string]::IsNullOrEmpty($Command)) {
     Start-InteractiveMenu
     exit
 }
 
-# Verify we're in a git repo for commands that need it
 $noRepoCommands = @("help")
 if ($Command.ToLower() -notin $noRepoCommands) {
     if (-not (Test-GitRepo)) { exit 1 }
 }
 
-# Direct command execution
 switch ($Command.ToLower()) {
     "help"      { Show-Help -CommandName $Arg1 }
     "release"   { Invoke-Release -Version $Arg1 -Message $Arg2 }
@@ -911,11 +1232,13 @@ switch ($Command.ToLower()) {
     "branches"  { Invoke-Branches -Scope $(if ($Arg1) { $Arg1 } else { "local" }) }
     "merge"     { Invoke-Merge -BranchName $Arg1 }
     "delete"    { Invoke-Delete -BranchName $Arg1 -Scope $(if ($Arg2) { $Arg2 } else { "local" }) }
-    "tags"      { Invoke-Tags -Action $(if ($Arg1) { $Arg1 } else { "list" }) -TagName $Arg2 -Message $Arg3 }
+    "tags"      { Invoke-Tags  -Action $(if ($Arg1) { $Arg1 } else { "list" }) -TagName $Arg2 -Message $Arg3 }
     "stash"     { Invoke-Stash -Action $(if ($Arg1) { $Arg1 } else { "list" }) -Message $Arg2 }
-    "log"       { Invoke-Log -Count $(if ($Arg1) { [int]$Arg1 } else { 10 }) }
+    "log"       { Invoke-Log   -Count  $(if ($Arg1) { [int]$Arg1 } else { 10 }) }
     "undo"      { Invoke-Undo }
     "discard"   { Invoke-Discard }
+    "private"   { Invoke-Private -SubCommand $Arg1 -SubArg1 $Arg2 -SubArg2 $Arg3 }
+    "syncall"   { Invoke-SyncAll }
     default {
         Write-Error "Unknown command: $Command"
         Write-Subtle "Use 'git-helper help' to see all commands."
