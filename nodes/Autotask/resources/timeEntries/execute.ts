@@ -525,7 +525,10 @@ async function getTimeEntriesByPostingStatus(
 
 	// Date range (dateWorked)
 	const dateRange = (filterOpts.dateRange ?? '') as string;
-	if (dateRange) {
+	const dateFromStr = (filterOpts.dateFrom ?? '') as string;
+	const dateToStr = (filterOpts.dateTo ?? '') as string;
+
+	if (dateRange || dateFromStr || dateToStr) {
 		const tz = await getConfiguredTimezone.call(context);
 		let from: moment.Moment | undefined;
 		let to: moment.Moment | undefined;
@@ -575,9 +578,8 @@ async function getTimeEntriesByPostingStatus(
 				from = moment.tz(tz).subtract(1, 'quarter').startOf('quarter');
 				to = moment.tz(tz).subtract(1, 'quarter').endOf('quarter');
 				break;
-			case 'customRange': {
-				const dateFromStr = (filterOpts.dateFrom ?? '') as string;
-				const dateToStr = (filterOpts.dateTo ?? '') as string;
+			case 'customRange':
+			default:
 				if (dateFromStr) {
 					from = moment.tz(dateFromStr, tz);
 				}
@@ -585,7 +587,6 @@ async function getTimeEntriesByPostingStatus(
 					to = moment.tz(dateToStr, tz);
 				}
 				break;
-			}
 		}
 
 		if (from && from.isValid()) {

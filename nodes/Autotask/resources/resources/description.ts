@@ -96,12 +96,15 @@ export const resourceFields: INodeProperties[] = [
   },
   // ── Transfer Ownership: core identifiers ──
   {
-    displayName: 'Source Resource ID',
+    displayName: 'Source Resource Name or ID',
     name: 'sourceResourceId',
-    type: 'string',
+    type: 'options',
     required: true,
     default: '',
-    description: 'ID of the resource currently assigned to the work',
+    description: 'Resource currently assigned to the work. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+    typeOptions: {
+      loadOptionsMethod: 'getResourceOptions',
+    },
     displayOptions: {
       show: {
         resource: ['resource'],
@@ -110,12 +113,15 @@ export const resourceFields: INodeProperties[] = [
     },
   },
   {
-    displayName: 'Receiving Resource ID',
+    displayName: 'Receiving Resource Name or ID',
     name: 'destinationResourceId',
-    type: 'string',
+    type: 'options',
     required: true,
     default: '',
-    description: 'ID of the resource receiving reassigned work',
+    description: 'Resource receiving the reassigned work. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+    typeOptions: {
+      loadOptionsMethod: 'getResourceOptions',
+    },
     displayOptions: {
       show: {
         resource: ['resource'],

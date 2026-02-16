@@ -147,7 +147,7 @@ export const timeEntryFields: INodeProperties[] = [
 				name: 'dateFrom',
 				type: 'dateTime',
 				default: '',
-				description: 'Start of the custom date range (inclusive). Only used when Date Range is set to "Custom Range".',
+				description: 'Filter entries where dateWorked is on or after this date/time. Can be used alone or combined with Date To. If Date Range is set to "Custom Range" this value is also used.',
 			},
 			{
 				displayName: 'Date Range',
@@ -176,7 +176,7 @@ export const timeEntryFields: INodeProperties[] = [
 				name: 'dateTo',
 				type: 'dateTime',
 				default: '',
-				description: 'End of the custom date range (inclusive). Only used when Date Range is set to "Custom Range".',
+				description: 'Filter entries where dateWorked is on or before this date/time. Can be used alone or combined with Date From. If Date Range is set to "Custom Range" this value is also used.',
 			},
 			{
 				displayName: 'Maximum Hours',
