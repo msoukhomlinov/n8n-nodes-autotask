@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { AutotaskErrorType } from '../errorHandler';
 
 /**
@@ -145,7 +145,8 @@ export function verifyWebhookSignature(
 		hmac.update(escapedPayload, 'utf8');
 		const generatedSignature = hmac.digest('base64');
 
-		if (generatedSignature === normalizedSignature) {
+		if (generatedSignature.length === normalizedSignature.length &&
+			timingSafeEqual(Buffer.from(generatedSignature), Buffer.from(normalizedSignature))) {
 			console.log('✓ Webhook signature verified successfully');
 			return true;
 		}
@@ -155,7 +156,8 @@ export function verifyWebhookSignature(
 		hmacAlt.update(escapedPayload, 'utf8');
 		const altSignature = hmacAlt.digest('base64');
 
-		if (altSignature === normalizedSignature) {
+		if (altSignature.length === normalizedSignature.length &&
+			timingSafeEqual(Buffer.from(altSignature), Buffer.from(normalizedSignature))) {
 			console.log('✓ Webhook signature verified using Buffer-encoded secret key');
 			return true;
 		}
@@ -165,7 +167,8 @@ export function verifyWebhookSignature(
 		hmacFallback.update(rawPayload, 'utf8');
 		const fallbackSignature = hmacFallback.digest('base64');
 
-		if (fallbackSignature === normalizedSignature) {
+		if (fallbackSignature.length === normalizedSignature.length &&
+			timingSafeEqual(Buffer.from(fallbackSignature), Buffer.from(normalizedSignature))) {
 			console.log('✓ Webhook signature verified using fallback unescaped payload');
 			return true;
 		}

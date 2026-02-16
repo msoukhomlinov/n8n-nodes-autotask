@@ -27,11 +27,16 @@ export function flattenUdfs<T extends IDataObject>(entity: T): T {
 	// Create a shallow copy of the entity as Record to avoid index signature error
 	const result = { ...entity } as Record<string, unknown>;
 
-	// Flatten UDFs to top level
+	// Flatten UDFs to top level, skipping collisions with standard entity properties
 	for (const udf of userDefinedFields) {
 		if (udf && typeof udf === 'object' && 'name' in udf && 'value' in udf) {
-			// Add UDF to top level with its name as the key
-			result[udf.name as string] = udf.value;
+			const udfName = udf.name as string;
+			if (udfName in result) {
+				// Prefix with udf_ to avoid overwriting standard properties like id, status, etc.
+				result[`udf_${udfName}`] = udf.value;
+			} else {
+				result[udfName] = udf.value;
+			}
 		}
 	}
 

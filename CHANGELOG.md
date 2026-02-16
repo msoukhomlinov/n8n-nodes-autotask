@@ -25,6 +25,26 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - **AI Tools — `proceedWithoutImpersonationIfDenied` default documented as `false` in create/update schemas:** Schema descriptions now consistently state `Default true`, matching the move and transfer operation schemas.
 - **Ticket Change Request Approval — Ticket ID field not enforced in UI:** `ticketID` field was not marked `required: true`; the UI would allow submission without it, deferring the error to runtime.
 - **Removed debug `console.log` from Ticket `getMany`** that logged filter details to stdout on every execution.
+- **Date/time conversion direction reversed:** `convertValueToUTC` was converting UTC→local instead of local→UTC; outbound dates were offset in the wrong direction.
+- **`||` masking `false`/`0` in UDF field mapping:** 10 boolean/numeric defaults in `mapUdfField` used `||` instead of `??`; fields with legitimate `false` or `0` values were silently overwritten.
+- **AI Tools — case-insensitive filter operator rejected camelCase:** `mapFilterOp` lowered input but compared against original-case keys; `beginsWith`, `endsWith` etc. were invalid.
+- **AI Tools — `exist`/`notExist` filters unusable:** Filter builder required a value for all operators; null-check operators now omit value.
+- **AI Tools — count schema missing time parameters:** `recency`, `since`, `until` were absent from count operations; the AI could not count records in a time range.
+- **Field validator never detected errors:** `validateFields` was synchronous; `await` on the returned Promise always evaluated truthy.
+- **IncludeFields lost base fields:** `filter()` returned a new array, discarding fields pushed to the original reference inside the callback.
+- **Webhook HMAC signature timing attack:** Replaced `===` string comparisons with `crypto.timingSafeEqual` at all three verification points.
+- **Webhook 500 on mismatched entity/event type:** Threw `NodeOperationError` on non-matching events, causing Autotask retry storms; now returns empty workflow data.
+- **Ticket Secondary Resource — missing `ticketID` for create/delete:** Parent endpoint requires ticket ID but the UI did not expose the field.
+- **Malformed `continueOnFail` error objects in 9 resources:** `{ error: ..., json: {} }` placed the message outside `json`; n8n silently dropped it.
+- **Webhook URL missing `/` separator:** Entity info URLs rendered as `/TicketsentityInformation/fields` instead of `/Tickets/entityInformation/fields`.
+- **`REQUIRED_UPDATE_ID_FIELDS` key `'Charge'` matched no entity:** Changed to `'ProjectCharge'` to match the actual entity name.
+- **Common operation fell through to resource switch:** Zero-result common ops continued into the resource-specific handler instead of returning.
+- **DateTimeWrapper dropped time from zero-millisecond datetimes:** `10:30:00.000` was formatted as date-only; now checks all time components for midnight.
+- **`includeInactive=true` sent invalid `eq null` filter:** Webhook resource query now sends an empty filter array when including inactive resources.
+- **UDF flatten overwrote standard properties:** UDFs named `id`, `status` etc. now get a `udf_` prefix to avoid collisions.
+- **GetManyAdvanced overwrote user IncludeFields:** `execute()` unconditionally reset IncludeFields already set by the user's advanced filter JSON.
+- **Missing `await` on `processResponseDates` in create/update:** Response dates were never converted; the variable held a Promise instead of the result.
+- **Contracts default operation was `create`:** Changed to `get`, consistent with all other resources.
 
 
 ## [2.0.0] - 2026-02-15

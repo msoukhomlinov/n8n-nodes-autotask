@@ -79,7 +79,7 @@ export async function executeTagAliasOperation(
 			}
 		} catch (error) {
 			if (this.continueOnFail()) {
-				returnData.push({ error: error.message, json: {} });
+				returnData.push({ json: { error: (error as Error).message } });
 				continue;
 			}
 			throw error;

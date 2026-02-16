@@ -188,7 +188,7 @@ export class CreateOperation<T extends IAutotaskEntity> extends BaseOperation {
 					}
 
 					// Process any date fields in the response and apply output mode
-					let entity = processResponseDates.call(
+					let entity = await processResponseDates.call(
 						this.context,
 						response,
 						`${this.entityType}.create`,

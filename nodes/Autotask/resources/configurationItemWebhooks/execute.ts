@@ -19,6 +19,12 @@ export async function executeConfigurationItemWebhookOperation(
 		try {
 			switch (operation) {
 				case 'get': {
+					// parentType is 'configurationItems' (plural) matching the Autotask API path
+					// (/ConfigurationItems/{id}/Webhooks). This value is stored but not used in
+					// URL construction for GET/GET_MANY because ConfigurationItemWebhook has
+					// QUERY:'self' — reads go through buildEntityUrl directly, not
+					// buildChildEntityUrl. Do not change to singular; getEntityMetadata() looks
+					// up by entity name ('ConfigurationItem'), not resourceKey.
 					const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this, 'configurationItems');
 					const response = await getOp.execute(i);
 					returnData.push({ json: response as unknown as IDataObject });

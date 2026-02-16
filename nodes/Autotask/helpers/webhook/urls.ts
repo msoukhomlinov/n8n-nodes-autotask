@@ -249,7 +249,7 @@ export function buildWebhookUrl(
         );
       }
       validateEntityType(entityType, true, operation);
-      return `/${pluralize(entityType)}entityInformation/fields`;
+      return `/${pluralize(entityType)}/entityInformation/fields`;
 
     case WebhookUrlType.ENTITY_UDF_FIELDS:
       if (!entityType) {
@@ -261,7 +261,7 @@ export function buildWebhookUrl(
         );
       }
       validateEntityType(entityType, true, operation);
-      return `/${pluralize(entityType)}entityInformation/userDefinedFields`;
+      return `/${pluralize(entityType)}/entityInformation/userDefinedFields`;
 
     case WebhookUrlType.GENERAL_QUERY:
       if (!endpoint) {

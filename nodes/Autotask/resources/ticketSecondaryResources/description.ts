@@ -62,6 +62,20 @@ export const baseFields: INodeProperties[] = [
         description: 'The ID of the ticket secondary resource record',
     },
     {
+        displayName: 'Ticket ID',
+        name: 'ticketID',
+        type: 'string',
+        required: true,
+        default: '',
+        displayOptions: {
+            show: {
+                resource: ['ticketSecondaryResource'],
+                operation: ['create', 'delete'],
+            },
+        },
+        description: 'The ID of the ticket this secondary resource belongs to',
+    },
+    {
         displayName: 'Fields',
         name: 'fieldsToMap',
         type: 'resourceMapper',

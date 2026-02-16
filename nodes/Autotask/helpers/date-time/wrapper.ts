@@ -91,9 +91,12 @@ export class DateTimeWrapper {
             : this.momentValue;
 
         const formatString = format ?? (
+            this.momentValue.hours() === 0 &&
+            this.momentValue.minutes() === 0 &&
+            this.momentValue.seconds() === 0 &&
             this.momentValue.milliseconds() === 0
-                ? 'YYYY-MM-DD' // Date only
-                : 'YYYY-MM-DDTHH:mm:ss.SSS' // DateTime with milliseconds
+                ? 'YYYY-MM-DD' // Date only (midnight = no time component)
+                : 'YYYY-MM-DDTHH:mm:ss.SSS' // DateTime with time component
         );
 
         return value.format(formatString);

@@ -71,7 +71,7 @@ export async function getFields(
 		}
 	}
 
-	// Filter active fields if requested
+	// Filter active fields if requested (standard fields only - UDFs don't have isActive from the API)
 	if (isActive !== undefined && fieldType === 'standard') {
 		fields = fields.filter(field => field.isActive === isActive);
 	}
@@ -125,7 +125,7 @@ function mapUdfField(field: IDataObject): IUdfFieldDefinition {
 				label: value.label as string,
 				isDefaultValue: value.isDefaultValue as boolean || false,
 				sortOrder: value.sortOrder as number || 0,
-				isActive: value.isActive as boolean || true,
+				isActive: (value.isActive as boolean) ?? true,
 				isSystem: value.isSystem as boolean || false,
 				parentValue: value.parentValue as string | undefined,
 			}))
@@ -176,19 +176,19 @@ function mapUdfField(field: IDataObject): IUdfFieldDefinition {
 		description: field.description as string || null,
 		isRequired: field.isRequired as boolean,
 		isReadOnly: field.isReadOnly as boolean,
-		isActive: field.isActive as boolean || true,
-		isQueryable: field.isQueryable as boolean || true,
+		isActive: (field.isActive as boolean) ?? true,
+		isQueryable: (field.isQueryable as boolean) ?? true,
 		isSupportedWebhookField: field.isSupportedWebhookField as boolean,
 		isSystemField: field.isSystemField as boolean || false,
 		createDate: field.createDate as string || new Date().toISOString(),
 		dataType,
-		udfType: field.udfType as number || 1, // Default to Standard type
-		displayFormat: field.displayFormat as number || 1, // Default to Default format
-		isEncrypted: field.isEncrypted as boolean || false,
-		isFieldMapping: field.isFieldMapping as boolean || false,
-		isPrivate: field.isPrivate as boolean || false,
-		isProtected: field.isProtected as boolean || false,
-		isVisibleToClientPortal: field.isVisibleToClientPortal as boolean || true,
+		udfType: (field.udfType as number) ?? 1, // Default to Standard type
+		displayFormat: (field.displayFormat as number) ?? 1, // Default to Default format
+		isEncrypted: (field.isEncrypted as boolean) ?? false,
+		isFieldMapping: (field.isFieldMapping as boolean) ?? false,
+		isPrivate: (field.isPrivate as boolean) ?? false,
+		isProtected: (field.isProtected as boolean) ?? false,
+		isVisibleToClientPortal: (field.isVisibleToClientPortal as boolean) ?? true,
 		numberOfDecimalPlaces: field.numberOfDecimalPlaces as number,
 		sortOrder: field.sortOrder as number || 0,
 		isPickList,

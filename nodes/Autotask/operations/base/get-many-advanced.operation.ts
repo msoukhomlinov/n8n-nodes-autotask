@@ -132,25 +132,27 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 					queryInput.MaxRecords = maxRecords;
 				}
 
-				// Check for column selection
-				try {
-					const selectedColumns = getSelectedColumns(this.context, itemIndex);
-					if (selectedColumns?.length) {
-						// Get label options from parameters
-						const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
-						const addReferenceLabels = this.context.getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
+				// Check for column selection only if IncludeFields wasn't already set by parseAdvancedFilter
+				if (!queryInput.IncludeFields) {
+					try {
+						const selectedColumns = getSelectedColumns(this.context, itemIndex);
+						if (selectedColumns?.length) {
+							// Get label options from parameters
+							const addPicklistLabels = this.context.getNodeParameter('addPicklistLabels', itemIndex, false) as boolean;
+							const addReferenceLabels = this.context.getNodeParameter('addReferenceLabels', itemIndex, false) as boolean;
 
-						// Set IncludeFields in the query
-						const includeFields = prepareIncludeFields(selectedColumns, {
-							addPicklistLabels,
-							addReferenceLabels,
-						});
-						queryInput.IncludeFields = includeFields;
-						console.debug(`[GetManyAdvancedOperation] Using IncludeFields with ${includeFields.length} fields`);
+							// Set IncludeFields in the query
+							const includeFields = prepareIncludeFields(selectedColumns, {
+								addPicklistLabels,
+								addReferenceLabels,
+							});
+							queryInput.IncludeFields = includeFields;
+							console.debug(`[GetManyAdvancedOperation] Using IncludeFields with ${includeFields.length} fields`);
+						}
+					} catch (error) {
+						// If parameter doesn't exist or there's an error, log it but don't fail the operation
+						console.warn(`[GetManyAdvancedOperation] Error preparing IncludeFields: ${error.message}`);
 					}
-				} catch (error) {
-					// If parameter doesn't exist or there's an error, log it but don't fail the operation
-					console.warn(`[GetManyAdvancedOperation] Error preparing IncludeFields: ${error.message}`);
 				}
 
 				// Execute query with pagination

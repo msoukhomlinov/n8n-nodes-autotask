@@ -436,9 +436,7 @@ export class Autotask implements INodeType {
 					throw error;
 				}
 			}
-			if (returnData.length > 0) {
-				return [returnData];
-			}
+			return [returnData];
 		}
 
 		// Handle resource-specific operations

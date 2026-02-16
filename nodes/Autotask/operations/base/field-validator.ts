@@ -249,7 +249,7 @@ export class FieldValidator {
 	/**
 	 * Validates multiple fields
 	 */
-	validateFields(fields: IAutotaskField[], data: IDataObject): boolean {
+	async validateFields(fields: IAutotaskField[], data: IDataObject): Promise<boolean> {
 		try {
 			for (const field of fields) {
 				const value = data[field.name];
@@ -263,7 +263,8 @@ export class FieldValidator {
 					},
 				};
 
-				if (!this.validateField(fieldWithValidation, value)) {
+				const result = await this.validateField(fieldWithValidation, value);
+				if (result.error) {
 					return false;
 				}
 			}

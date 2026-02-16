@@ -883,10 +883,7 @@ export class AutotaskTrigger implements INodeType {
 		// Validate entity type - allow for case-insensitive comparison with aliases
 		if (entityType.toLowerCase() !== normalizedEntityType) {
 			console.error(`Entity type mismatch: received ${bodyData.entityType} (normalized to ${normalizedEntityType}), expected ${entityType}`);
-			throw new NodeOperationError(
-				this.getNode(),
-				`Invalid entity type. Received ${bodyData.entityType}, expected ${entityType}.`,
-			);
+			return { workflowData: [[]] };
 		}
 
 		// Map the lower-case event type back to Autotask enum values for comparison
@@ -902,10 +899,7 @@ export class AutotaskTrigger implements INodeType {
 		// Validate event type against selected event types - allow for case-insensitive comparison
 		if (eventTypes.length > 0 && !mappedEventTypes.includes(bodyData.eventType)) {
 			console.error(`Event type mismatch: received ${bodyData.eventType}, expected one of: ${eventTypes.join(', ')}`);
-			throw new NodeOperationError(
-				this.getNode(),
-				`Invalid event type. Received ${bodyData.eventType}, expected one of: ${eventTypes.join(', ')}.`,
-			);
+			return { workflowData: [[]] };
 		}
 
 		// Verify the webhook payload using the secret key

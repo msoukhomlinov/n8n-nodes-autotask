@@ -84,7 +84,7 @@ function parseRecencyWindowMs(recency: string): number {
 interface ToolFilter {
     field: string;
     op: string;
-    value: string | number | boolean | Array<string | number | boolean>;
+    value?: string | number | boolean | Array<string | number | boolean>;
     udf?: boolean;
 }
 
@@ -243,25 +243,27 @@ function buildFilterFromParams(
     const readFieldLookup = buildFieldLookup(readFields);
 
     // First filter
-    if (params.filter_field && params.filter_value !== undefined && params.filter_value !== '') {
+    const mappedOp1 = params.filter_op ? mapFilterOp(params.filter_op) : 'eq';
+    const isNullCheckOp1 = mappedOp1 === 'exist' || mappedOp1 === 'notExist';
+    if (params.filter_field && (isNullCheckOp1 || (params.filter_value !== undefined && params.filter_value !== ''))) {
         const canonicalField = readFieldLookup.get(params.filter_field.toLowerCase());
-        const mappedOp = mapFilterOp(params.filter_op || 'eq');
         filters.push({
             field: canonicalField?.id ?? params.filter_field,
-            op: mappedOp,
-            value: coerceFilterValueByFieldType(params.filter_value, canonicalField?.type, mappedOp),
+            op: mappedOp1,
+            ...(!isNullCheckOp1 ? { value: coerceFilterValueByFieldType(params.filter_value as string | number | boolean | Array<string | number | boolean>, canonicalField?.type, mappedOp1) } : {}),
             ...(canonicalField?.udf ? { udf: true } : {}),
         });
     }
 
     // Second filter
-    if (params.filter_field_2 && params.filter_value_2 !== undefined && params.filter_value_2 !== '') {
+    const mappedOp2 = params.filter_op_2 ? mapFilterOp(params.filter_op_2) : 'eq';
+    const isNullCheckOp2 = mappedOp2 === 'exist' || mappedOp2 === 'notExist';
+    if (params.filter_field_2 && (isNullCheckOp2 || (params.filter_value_2 !== undefined && params.filter_value_2 !== ''))) {
         const canonicalField = readFieldLookup.get(params.filter_field_2.toLowerCase());
-        const mappedOp = mapFilterOp(params.filter_op_2 || 'eq');
         filters.push({
             field: canonicalField?.id ?? params.filter_field_2,
-            op: mappedOp,
-            value: coerceFilterValueByFieldType(params.filter_value_2, canonicalField?.type, mappedOp),
+            op: mappedOp2,
+            ...(!isNullCheckOp2 ? { value: coerceFilterValueByFieldType(params.filter_value_2 as string | number | boolean | Array<string | number | boolean>, canonicalField?.type, mappedOp2) } : {}),
             ...(canonicalField?.udf ? { udf: true } : {}),
         });
     }

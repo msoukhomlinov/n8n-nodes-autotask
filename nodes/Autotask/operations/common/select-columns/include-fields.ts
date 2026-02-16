@@ -37,35 +37,24 @@ export function prepareIncludeFields(
 	selectedColumns: string[],
 	options: IPrepareIncludeFieldsOptions = {},
 ): string[] {
-	// Initialize with empty array
-	let includeFields: string[] = [];
-
 	// If no columns selected, return empty array (API will return all fields)
 	if (!selectedColumns || !selectedColumns.length) {
-		console.debug('[prepareIncludeFields] No columns selected, returning empty array');
-		return includeFields;
+		return [];
 	}
 
-	// Process selected columns
-	includeFields = selectedColumns.filter(column => {
+	// Collect base fields that need to be added for label resolution
+	const extraBaseFields: string[] = [];
+
+	// Process selected columns - filter out _label fields and track their base fields
+	const includeFields = selectedColumns.filter(column => {
 		// Skip label fields - these are generated client-side
 		if (column.endsWith('_label')) {
-			// Handle picklist labels
-			if (options.addPicklistLabels) {
-				const baseField = column.replace('_label', '');
-				// Make sure the base field is included if it's not already
-				if (!includeFields.includes(baseField) && !selectedColumns.includes(baseField)) {
-					includeFields.push(baseField);
-					console.debug(`[prepareIncludeFields] Adding base field ${baseField} for picklist label field ${column}`);
-				}
-			}
-			// Handle reference labels - same logic as picklist labels
-			else if (options.addReferenceLabels) {
-				const baseField = column.replace('_label', '');
-				// Make sure the base field is included if it's not already
-				if (!includeFields.includes(baseField) && !selectedColumns.includes(baseField)) {
-					includeFields.push(baseField);
-					console.debug(`[prepareIncludeFields] Adding base field ${baseField} for reference label field ${column}`);
+			const baseField = column.replace('_label', '');
+			// Handle picklist or reference labels
+			if (options.addPicklistLabels || options.addReferenceLabels) {
+				// Make sure the base field is included if it's not already selected
+				if (!selectedColumns.includes(baseField) && !extraBaseFields.includes(baseField)) {
+					extraBaseFields.push(baseField);
 				}
 			}
 			return false;
@@ -73,6 +62,13 @@ export function prepareIncludeFields(
 
 		return true;
 	});
+
+	// Append any extra base fields needed for label resolution
+	for (const baseField of extraBaseFields) {
+		if (!includeFields.includes(baseField)) {
+			includeFields.push(baseField);
+		}
+	}
 
 	// Always ensure 'id' field is included for reference
 	if (!includeFields.includes('id')) {

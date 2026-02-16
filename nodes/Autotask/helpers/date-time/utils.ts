@@ -220,7 +220,7 @@ function checkDatePattern(value: string): boolean {
  */
 function convertValueToUTC(value: string, fieldType: string, timezone: string): string {
 	if (fieldType === 'date' || fieldType === 'dateTime') {
-		const date = moment.utc(value).tz(timezone);
+		const date = moment.tz(value, timezone).utc();
 		if (date.isValid()) {
 			return date.format();
 		}

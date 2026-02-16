@@ -214,6 +214,19 @@ export function getCountSchema(readFields: FieldMeta[]): z.ZodObject<Record<stri
         filter_field_2: filterField2Schema,
         filter_op_2: FILTER_OP_ENUM.optional().describe('Second filter operator'),
         filter_value_2: FILTER_VALUE_SCHEMA.optional().describe('Second filter value'),
+        recency: RECENCY_SCHEMA,
+        since: z
+            .string()
+            .optional()
+            .describe(
+                'Custom range start in ISO-8601 UTC format (e.g. 2026-01-01T00:00:00Z). When set, recency is ignored (since/until take precedence). Use current UTC from tool description as reference.',
+            ),
+        until: z
+            .string()
+            .optional()
+            .describe(
+                'Custom range end in ISO-8601 UTC format (e.g. 2026-01-31T23:59:59Z). Requires either since or recency. When since is set, recency is ignored. Use current UTC from tool description as reference.',
+            ),
     });
 }
 
@@ -630,9 +643,10 @@ export function mapFilterOp(op: string): string {
     if (lower === 'like') {
         return FilterOperators.contains;
     }
-    const valid = Object.keys(FilterOperators) as string[];
-    if (!valid.includes(lower)) {
-        throw new Error(`Unsupported filter operator: '${op}'. Valid operators are: ${valid.join(', ')}`);
+    const validKeys = Object.keys(FilterOperators) as string[];
+    const matchedKey = validKeys.find(k => k.toLowerCase() === lower);
+    if (!matchedKey) {
+        throw new Error(`Unsupported filter operator: '${op}'. Valid operators are: ${validKeys.join(', ')}`);
     }
-    return (FilterOperators as Record<string, string>)[lower];
+    return (FilterOperators as Record<string, string>)[matchedKey];
 }

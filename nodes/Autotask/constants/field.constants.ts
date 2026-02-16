@@ -183,7 +183,7 @@ export const REQUIRED_UPDATE_ID_FIELDS: Record<string, string[]> = {
 	'ConfigurationItemSslSubjectAlternativeName': ['configurationItemID'],
 	'ProjectNote': ['projectID'],
 	'Phase': ['projectID'],
-	'Charge': ['projectID'],
+	'ProjectCharge': ['projectID'],
 	'TicketNote': ['ticketID'],
 	'TicketCharge': ['ticketID'],
 	'TicketChecklistItem': ['ticketID'],

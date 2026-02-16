@@ -85,14 +85,14 @@ export async function getResourcesForExclusion(
 				maxRecords: number;
 				pageIndex?: number;
 			} = {
-				filter: [
+				filter: includeInactive ? [] : [
 					{
 						op: 'and',
 						items: [
 							{
 								op: 'eq',
 								field: 'isActive',
-								value: includeInactive ? null : true
+								value: true
 							}
 						]
 					}
