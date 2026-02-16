@@ -315,7 +315,7 @@ export async function executeResourceOperation(
 			}
 		} catch (error) {
 			if (this.continueOnFail()) {
-				returnData.push({ json: { error: error.message } });
+				returnData.push({ json: { error: (error as Error).message } });
 				continue;
 			}
 			throw error;

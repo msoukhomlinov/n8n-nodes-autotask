@@ -502,7 +502,7 @@ export function getCreateSchema(
 			.boolean()
 			.optional()
 			.describe(
-				'Only applies when impersonationResourceId is set. When true, denied impersonated writes retry once without impersonation. Default false.',
+				'Only applies when impersonationResourceId is set. When true, denied impersonated writes retry once without impersonation. Default true.',
 			);
 	}
 
@@ -545,7 +545,7 @@ export function getUpdateSchema(
 			.boolean()
 			.optional()
 			.describe(
-				'Only applies when impersonationResourceId is set. When true, denied impersonated writes retry once without impersonation. Default false.',
+				'Only applies when impersonationResourceId is set. When true, denied impersonated writes retry once without impersonation. Default true.',
 			);
 	}
 

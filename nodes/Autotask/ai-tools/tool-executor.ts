@@ -533,7 +533,7 @@ export async function executeAiTool(
             case 'allowWriteOperations':
                 return originalGetNodeParameter('allowWriteOperations', index, false);
             case 'dryRun':
-                return false;
+                return params.dryRun === true;
             case 'allowedResources':
                 return '[]';
             case 'allowDryRunForWrites':

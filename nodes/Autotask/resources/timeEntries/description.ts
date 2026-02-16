@@ -106,7 +106,7 @@ export const timeEntryFields: INodeProperties[] = [
 				typeOptions: {
 					loadOptionsMethod: 'getResourceOptions',
 				},
-				description: 'Filter by the ownerResourceID on the parent Company. Requires multiple cross-entity lookups and may be noticeably slower on large datasets. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+				description: 'Filter by the ownerResourceID on the parent Company. Applies to entries linked to tickets/tasks; internal/general entries without ticket/task pass through unchanged. Requires multiple cross-entity lookups and may be noticeably slower on large datasets. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Billable Status',
@@ -278,8 +278,6 @@ export const timeEntryFields: INodeProperties[] = [
 					'create',
 					'update',
 					'getMany',
-					'getUnposted',
-					'getPosted',
 					'count',
 				],
 			},

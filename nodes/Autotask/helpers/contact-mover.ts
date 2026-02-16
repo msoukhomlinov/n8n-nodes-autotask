@@ -340,10 +340,13 @@ async function copyCompanyNotesAndAttachments(
 ): Promise<Record<number, number>> {
 	const noteIdMapping: Record<number, number> = {};
 
-	// Query CompanyNotes linked to the source contact
+	// Query CompanyNotes linked to the source contact at the source company
 	const queryEndpoint = 'CompanyNotes/query/';
 	const body = {
-		filter: [{ field: 'contactID', op: 'eq', value: sourceContactId }],
+		filter: [
+			{ field: 'companyID', op: 'eq', value: sourceCompanyId },
+			{ field: 'contactID', op: 'eq', value: sourceContactId },
+		],
 	};
 
 	let response: { items?: IDataObject[] };
@@ -439,9 +442,9 @@ async function copyNoteAttachments(
 		try {
 			// Download attachment data via parent-chain URL
 			const downloadEndpoint = `Companies/${sourceCompanyId}/Notes/${sourceNoteId}/Attachments/${attachmentId}/`;
-			const dataResponse = await autotaskApiRequest.call(ctx, 'GET', downloadEndpoint) as { items?: IDataObject[] };
+			const dataResponse = await autotaskApiRequest.call(ctx, 'GET', downloadEndpoint) as { item?: IDataObject };
 
-			const attachmentData = dataResponse?.items?.[0];
+			const attachmentData = dataResponse?.item;
 			if (!attachmentData?.data) {
 				warnings.push(`Attachment ${attachmentId} on note ${sourceNoteId} has no data, skipping`);
 				continue;
@@ -519,7 +522,7 @@ async function createAuditNotes(
 			const notePayload: IDataObject = {
 				companyID: sourceCompanyId,
 				contactID: options.sourceContactId,
-				title: 'Contact Copied',
+				title: 'Contact Transferred',
 				description: noteText,
 				actionType: 1,
 				publish: 1,
@@ -550,7 +553,7 @@ async function createAuditNotes(
 			const notePayload: IDataObject = {
 				companyID: options.destinationCompanyId,
 				contactID: newContactId,
-				title: 'Contact Copied',
+				title: 'Contact Transferred',
 				description: noteText,
 				actionType: 1,
 				publish: 1,
@@ -695,7 +698,10 @@ export async function moveContactToCompany(
 		if (options.copyCompanyNotes) {
 			try {
 				const noteResponse = await autotaskApiRequest.call(ctx, 'POST', 'CompanyNotes/query/', {
-					filter: [{ field: 'contactID', op: 'eq', value: options.sourceContactId }],
+					filter: [
+						{ field: 'companyID', op: 'eq', value: sourceCompanyId },
+						{ field: 'contactID', op: 'eq', value: options.sourceContactId },
+					],
 				}) as { items?: IDataObject[] };
 				companyNoteCount = noteResponse?.items?.length ?? 0;
 			} catch {

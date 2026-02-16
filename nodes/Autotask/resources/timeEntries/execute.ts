@@ -22,6 +22,39 @@ import moment from 'moment-timezone';
 
 const ENTITY_TYPE = 'TimeEntry';
 
+function buildIdBatches(ids: number[]): number[][] {
+	const batches: number[][] = [];
+	for (let start = 0; start < ids.length; start += API_CONSTANTS.MAX_OR_CONDITIONS) {
+		batches.push(ids.slice(start, start + API_CONSTANTS.MAX_OR_CONDITIONS));
+	}
+	return batches;
+}
+
+async function runBatchesWithConcurrency<T>(
+	items: T[],
+	concurrency: number,
+	worker: (item: T) => Promise<void>,
+): Promise<void> {
+	if (items.length === 0) {
+		return;
+	}
+
+	const boundedConcurrency = Math.max(1, Math.min(concurrency, items.length));
+	let currentIndex = 0;
+
+	await Promise.all(
+		Array.from({ length: boundedConcurrency }, async () => {
+			while (currentIndex < items.length) {
+				const itemIndex = currentIndex++;
+				if (itemIndex >= items.length) {
+					return;
+				}
+				await worker(items[itemIndex]);
+			}
+		}),
+	);
+}
+
 /**
  * Queries BillingItems to determine which time entry IDs have been approved and posted.
  * Handles batching (max 500 IDs per query) and pagination automatically.
@@ -41,49 +74,34 @@ async function getPostedTimeEntryIds(
 		return postedIds;
 	}
 
-	// Process in batches (Autotask API 'in' operator limit: API_CONSTANTS.MAX_OR_CONDITIONS)
-	for (let start = 0; start < allIds.length; start += API_CONSTANTS.MAX_OR_CONDITIONS) {
-		const batch = allIds.slice(start, start + API_CONSTANTS.MAX_OR_CONDITIONS);
+	// Process top-level ID batches concurrently (bounded), while each batch still paginates serially.
+	const batches = buildIdBatches(allIds);
+	await runBatchesWithConcurrency(
+		batches,
+		API_CONSTANTS.MAX_CONCURRENT_REQUESTS,
+		async (batch) => {
+			const endpoint = buildEntityUrl(ENTITY_NAMES.BILLING_ITEMS, { isQuery: true });
+			const queryBody = {
+				filter: [
+					{ field: 'timeEntryID', op: FilterOperators.in, value: batch },
+					{
+						field: 'billingItemType',
+						op: FilterOperators.in,
+						value: [BILLING_ITEMS.TYPE_LABOUR, BILLING_ITEMS.TYPE_LABOUR_ADJUSTMENT],
+					},
+				],
+				IncludeFields: ['timeEntryID'],
+			};
 
-		const endpoint = buildEntityUrl(ENTITY_NAMES.BILLING_ITEMS, { isQuery: true });
-		const queryBody = {
-			filter: [
-				{ field: 'timeEntryID', op: FilterOperators.in, value: batch },
-				{
-					field: 'billingItemType',
-					op: FilterOperators.in,
-					value: [BILLING_ITEMS.TYPE_LABOUR, BILLING_ITEMS.TYPE_LABOUR_ADJUSTMENT],
-				},
-			],
-			IncludeFields: ['timeEntryID'],
-		};
-
-		// Initial query
-		let response = await autotaskApiRequest.call(
-			context,
-			'POST',
-			endpoint,
-			queryBody as unknown as IDataObject,
-		) as IQueryResponse<IAutotaskEntity>;
-
-		// Collect posted IDs from results
-		if (response.items) {
-			for (const item of response.items) {
-				if (item.timeEntryID != null) {
-					postedIds.add(item.timeEntryID as number);
-				}
-			}
-		}
-
-		// Handle pagination — a batch could return multiple pages
-		while (response.pageDetails?.nextPageUrl) {
-			response = await autotaskApiRequest.call(
+			// Initial query
+			let response = await autotaskApiRequest.call(
 				context,
 				'POST',
-				response.pageDetails.nextPageUrl,
+				endpoint,
 				queryBody as unknown as IDataObject,
 			) as IQueryResponse<IAutotaskEntity>;
 
+			// Collect posted IDs from results
 			if (response.items) {
 				for (const item of response.items) {
 					if (item.timeEntryID != null) {
@@ -91,8 +109,26 @@ async function getPostedTimeEntryIds(
 					}
 				}
 			}
-		}
-	}
+
+			// Handle pagination — a batch could return multiple pages
+			while (response.pageDetails?.nextPageUrl) {
+				response = await autotaskApiRequest.call(
+					context,
+					'POST',
+					response.pageDetails.nextPageUrl,
+					queryBody as unknown as IDataObject,
+				) as IQueryResponse<IAutotaskEntity>;
+
+				if (response.items) {
+					for (const item of response.items) {
+						if (item.timeEntryID != null) {
+							postedIds.add(item.timeEntryID as number);
+						}
+					}
+				}
+			}
+		},
+	);
 
 	return postedIds;
 }
@@ -118,36 +154,40 @@ async function batchQueryByIds(
 	const results: IAutotaskEntity[] = [];
 	if (ids.length === 0) return results;
 
-	for (let start = 0; start < ids.length; start += API_CONSTANTS.MAX_OR_CONDITIONS) {
-		const batch = ids.slice(start, start + API_CONSTANTS.MAX_OR_CONDITIONS);
-		const endpoint = buildEntityUrl(entityName, { isQuery: true });
-		const queryBody = {
-			filter: [
-				{ field: 'id', op: FilterOperators.in, value: batch },
-				...extraFilters,
-			],
-			IncludeFields: includeFields,
-		};
+	const batches = buildIdBatches(ids);
+	await runBatchesWithConcurrency(
+		batches,
+		API_CONSTANTS.MAX_CONCURRENT_REQUESTS,
+		async (batch) => {
+			const endpoint = buildEntityUrl(entityName, { isQuery: true });
+			const queryBody = {
+				filter: [
+					{ field: 'id', op: FilterOperators.in, value: batch },
+					...extraFilters,
+				],
+				IncludeFields: includeFields,
+			};
 
-		let response = (await autotaskApiRequest.call(
-			context,
-			'POST',
-			endpoint,
-			queryBody as unknown as IDataObject,
-		)) as IQueryResponse<IAutotaskEntity>;
-
-		if (response.items) results.push(...response.items);
-
-		while (response.pageDetails?.nextPageUrl) {
-			response = (await autotaskApiRequest.call(
+			let response = (await autotaskApiRequest.call(
 				context,
 				'POST',
-				response.pageDetails.nextPageUrl,
+				endpoint,
 				queryBody as unknown as IDataObject,
 			)) as IQueryResponse<IAutotaskEntity>;
+
 			if (response.items) results.push(...response.items);
-		}
-	}
+
+			while (response.pageDetails?.nextPageUrl) {
+				response = (await autotaskApiRequest.call(
+					context,
+					'POST',
+					response.pageDetails.nextPageUrl,
+					queryBody as unknown as IDataObject,
+				)) as IQueryResponse<IAutotaskEntity>;
+				if (response.items) results.push(...response.items);
+			}
+		},
+	);
 
 	return results;
 }
@@ -169,6 +209,10 @@ async function applyCrossEntityFilters(
 	let filtered = entries;
 
 	// ── Contract Type ──────────────────────────────────────────────────
+	// NOTE: In the bounded streaming path this lookup runs per page. The
+	// result is identical each time. Acceptable for typical maxRecords
+	// usage (few pages, cheap lookup). If contract queries appear
+	// repeatedly in logs, consider hoisting the lookup to the caller.
 	const contractTypeFilter = ((filterOpts.contractTypeFilter ?? '') as string).trim();
 	if (contractTypeFilter && filtered.length > 0) {
 		const contractTypeValue = Number(contractTypeFilter);
@@ -208,26 +252,38 @@ async function applyCrossEntityFilters(
 		);
 	}
 
-	// ── Ticket Status ──────────────────────────────────────────────────
+	// ── Ticket Status + Queue (both live on Ticket) ───────────────────
 	const ticketStatusRaw = filterOpts.ticketStatusFilter;
 	const ticketStatusSelection = (Array.isArray(ticketStatusRaw) ? ticketStatusRaw : []) as string[];
-	if (ticketStatusSelection.length > 0 && filtered.length > 0) {
-		const statusValues = ticketStatusSelection.map((s) => Number(s)).filter((n) => !isNaN(n));
+	const statusValues = ticketStatusSelection.map((s) => Number(s)).filter((n) => !isNaN(n));
+	const queueFilter = ((filterOpts.queueFilter ?? '') as string).trim();
+	const queueId = queueFilter ? Number(queueFilter) : NaN;
+	const hasTicketStatusFilter = statusValues.length > 0;
+	const hasQueueFilter = queueFilter !== '' && !isNaN(queueId);
 
-		if (statusValues.length > 0) {
-			const ticketIds = [
-				...new Set(
-					filtered
-						.map((e) => e.ticketID as number | null)
-						.filter((id): id is number => id != null),
-				),
-			];
+	if ((hasTicketStatusFilter || hasQueueFilter) && filtered.length > 0) {
+		const ticketIds = [
+			...new Set(
+				filtered
+					.map((e) => e.ticketID as number | null)
+					.filter((id): id is number => id != null),
+			),
+		];
+
+		if (ticketIds.length > 0) {
+			const ticketFilters: Array<{ field: string; op: string; value: unknown }> = [];
+			if (hasTicketStatusFilter) {
+				ticketFilters.push({ field: 'status', op: FilterOperators.in, value: statusValues });
+			}
+			if (hasQueueFilter) {
+				ticketFilters.push({ field: 'queueID', op: FilterOperators.eq, value: queueId });
+			}
 
 			const matchingTickets = await batchQueryByIds(
 				context,
 				ENTITY_NAMES.TICKETS,
 				ticketIds,
-				[{ field: 'status', op: FilterOperators.in, value: statusValues }],
+				ticketFilters,
 				['id'],
 			);
 			const matchingTicketIds = new Set(matchingTickets.map((t) => t.id as number));
@@ -237,7 +293,6 @@ async function applyCrossEntityFilters(
 			);
 		}
 	}
-
 	// ── Task Status ────────────────────────────────────────────────────
 	const taskStatusRaw = filterOpts.taskStatusFilter;
 	const taskStatusSelection = (Array.isArray(taskStatusRaw) ? taskStatusRaw : []) as string[];
@@ -264,35 +319,6 @@ async function applyCrossEntityFilters(
 
 			filtered = filtered.filter(
 				(e) => e.taskID == null || matchingTaskIds.has(e.taskID as number),
-			);
-		}
-	}
-
-	// ── Queue (lives on Ticket) ────────────────────────────────────────
-	const queueFilter = ((filterOpts.queueFilter ?? '') as string).trim();
-	if (queueFilter && filtered.length > 0) {
-		const queueId = Number(queueFilter);
-		if (!isNaN(queueId)) {
-			const ticketIds = [
-				...new Set(
-					filtered
-						.map((e) => e.ticketID as number | null)
-						.filter((id): id is number => id != null),
-				),
-			];
-
-			const matchingTickets = await batchQueryByIds(
-				context,
-				ENTITY_NAMES.TICKETS,
-				ticketIds,
-				[{ field: 'queueID', op: FilterOperators.eq, value: queueId }],
-				['id'],
-			);
-			const matchingTicketIds = new Set(matchingTickets.map((t) => t.id as number));
-
-			// Keep entries that have a matching ticket OR are task-time (no ticketID)
-			filtered = filtered.filter(
-				(e) => e.ticketID == null || matchingTicketIds.has(e.ticketID as number),
 			);
 		}
 	}
@@ -404,8 +430,9 @@ async function applyCrossEntityFilters(
 					const companyId = taskToCompany.get(e.taskID as number);
 					return companyId != null && matchingCompanyIds.has(companyId);
 				}
-				// Entry has neither ticket nor task — cannot determine company
-				return false;
+				// Cross-entity filters only apply where there is a parent relationship.
+				// Keep internal/general entries (no ticket/task) consistent with other filters.
+				return true;
 			});
 		}
 	}
@@ -413,11 +440,40 @@ async function applyCrossEntityFilters(
 	return filtered;
 }
 
+async function fetchTimeEntryPage(
+	context: IExecuteFunctions,
+	filters: Array<{ field?: string; op?: string; value?: unknown }>,
+	nextPageUrl?: string,
+): Promise<IQueryResponse<IAutotaskEntity>> {
+	const queryFilters = [...filters];
+	if (queryFilters.length === 0) {
+		queryFilters.push({
+			field: 'id',
+			op: FilterOperators.exist,
+		});
+	}
+
+	const queryBody = {
+		filter: queryFilters,
+	};
+
+	const endpoint = nextPageUrl ?? buildEntityUrl(ENTITY_TYPE, { isQuery: true });
+	return (await autotaskApiRequest.call(
+		context,
+		'POST',
+		endpoint,
+		queryBody as unknown as IDataObject,
+	)) as IQueryResponse<IAutotaskEntity>;
+}
+
 /**
  * Shared logic for getPosted / getUnposted operations.
  * Phase 1: Queries all matching TimeEntries (ignoring user pagination to get the full set).
  * Phase 2: Cross-references with BillingItems to determine posting status.
  * Returns the filtered set with user pagination and enrichment applied.
+ *
+ * Future optimisation: add an adaptive BillingItems-first path for getPosted
+ * when query selectivity is low on TimeEntries-side filters.
  */
 async function getTimeEntriesByPostingStatus(
 	context: IExecuteFunctions,
@@ -433,16 +489,24 @@ async function getTimeEntriesByPostingStatus(
 		: 0;
 
 	// ------------------------------------------------------------------
-	// 2. Build TimeEntry filters from the resource mapper
+	// 2. Build TimeEntry filters
 	// ------------------------------------------------------------------
-	// Use isPicklistQuery to force returnAll=true in Phase 1 (we need the
-	// complete set for cross-referencing), and skipEnrichment so we can
-	// apply enrichment only to the final filtered result.
+	// The resource mapper is not shown for getPosted/getUnposted (all
+	// user-facing filters live in the filters collection below). We still
+	// create a GetManyOperation for the returnAll=true bulk-fetch path.
 	const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, context, {
 		skipEnrichment: true,
 		isPicklistQuery: true,
 	});
-	const filters = await getManyOp.buildFiltersFromResourceMapper(itemIndex);
+
+	// Attempt to read resource mapper filters; returns empty when the
+	// parameter is not displayed for this operation.
+	let filters: Awaited<ReturnType<typeof getManyOp.buildFiltersFromResourceMapper>>;
+	try {
+		filters = await getManyOp.buildFiltersFromResourceMapper(itemIndex);
+	} catch {
+		filters = [];
+	}
 
 	// ------------------------------------------------------------------
 	// 3. Read the filters collection (all filter fields live here)
@@ -564,42 +628,53 @@ async function getTimeEntriesByPostingStatus(
 		filters.push({ field: 'resourceID', op: FilterOperators.eq, value: Number(resourceFilter) });
 	}
 
-	// ------------------------------------------------------------------
-	// 4. Phase 1 — Query all matching TimeEntries
-	// ------------------------------------------------------------------
-	const allTimeEntries = await getManyOp.execute({ filter: filters }, itemIndex);
-
-	if (allTimeEntries.length === 0) {
-		return [];
-	}
-
-	// ------------------------------------------------------------------
-	// 4b. Apply Tier 2 cross-entity post-filters (before BillingItems
-	//     cross-ref to reduce the set that needs the expensive check)
-	// ------------------------------------------------------------------
-	const crossFiltered = await applyCrossEntityFilters(context, allTimeEntries, filterOpts);
-
-	if (crossFiltered.length === 0) {
-		return [];
-	}
-
-	// ------------------------------------------------------------------
-	// 5. Phase 2 — Determine which entries have been posted
-	// ------------------------------------------------------------------
-	const postedIds = await getPostedTimeEntryIds(context, crossFiltered);
-
-	// ------------------------------------------------------------------
-	// 6. Filter based on the requested mode
-	// ------------------------------------------------------------------
 	let filteredEntries: IAutotaskEntity[];
-	if (mode === 'unposted') {
-		filteredEntries = crossFiltered.filter(
-			(entry) => !postedIds.has(entry.id as number),
-		);
+
+	if (!returnAll && maxRecords > 0) {
+		// Bounded mode: stream pages and stop once we've collected enough matches.
+		filteredEntries = [];
+		let nextPageUrl: string | undefined;
+
+		while (filteredEntries.length < maxRecords) {
+			const response = await fetchTimeEntryPage(context, filters, nextPageUrl);
+			const pageItems = response.items ?? [];
+			nextPageUrl = response.pageDetails?.nextPageUrl ?? undefined;
+
+			if (pageItems.length > 0) {
+				const crossFiltered = await applyCrossEntityFilters(context, pageItems, filterOpts);
+				if (crossFiltered.length > 0) {
+					const postedIds = await getPostedTimeEntryIds(context, crossFiltered);
+					const pageMatches =
+						mode === 'unposted'
+							? crossFiltered.filter((entry) => !postedIds.has(entry.id as number))
+							: crossFiltered.filter((entry) => postedIds.has(entry.id as number));
+					if (pageMatches.length > 0) {
+						filteredEntries.push(...pageMatches);
+					}
+				}
+			}
+
+			if (!nextPageUrl) {
+				break;
+			}
+		}
 	} else {
-		filteredEntries = crossFiltered.filter(
-			(entry) => postedIds.has(entry.id as number),
-		);
+		// returnAll (or invalid maxRecords): retain full-set behaviour for compatibility.
+		const allTimeEntries = await getManyOp.execute({ filter: filters }, itemIndex);
+		if (allTimeEntries.length === 0) {
+			return [];
+		}
+
+		const crossFiltered = await applyCrossEntityFilters(context, allTimeEntries, filterOpts);
+		if (crossFiltered.length === 0) {
+			return [];
+		}
+
+		const postedIds = await getPostedTimeEntryIds(context, crossFiltered);
+		filteredEntries =
+			mode === 'unposted'
+				? crossFiltered.filter((entry) => !postedIds.has(entry.id as number))
+				: crossFiltered.filter((entry) => postedIds.has(entry.id as number));
 	}
 
 	// ------------------------------------------------------------------

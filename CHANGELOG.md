@@ -15,6 +15,17 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
   - **Custom recency:** `recency` now accepts **last_Nd** with N from 1 to 365 (e.g. `last_5d`, `last_45d`) in addition to presets, so the AI can limit how far back to look and reduce result size.
   - Schema parameter descriptions for `recency`, `since`, and `until` direct the AI to use the current UTC reference from the tool description when interpreting dates.
 
+### Fixed
+
+- **Contact: Move to Company — note attachment copy silently skipped:** Attachment download response was cast as `{ items[] }` instead of the correct `{ item }` shape returned by single-entity GET endpoints; every note attachment was silently skipped regardless of options.
+- **Contact: Move to Company — company notes query not scoped to source company:** `CompanyNotes/query/` was filtered only by `contactID`, pulling notes linked to that contact from any company in the tenant. Query now also filters by `companyID` of the source company. Dry-run note count query had the same missing scope and now uses the same compound filter.
+- **Contact: Move to Company — audit note title:** Changed from "Contact Copied" to "Contact Transferred" on both source and destination audit notes.
+- **Resource: Transfer Ownership — task secondary resources over-included:** When tasks were being transferred but none matched the configured filters, the secondary-resource filter short-circuited to include all task secondary resources for the source. Filter now correctly returns no rows when `includeTasks` is true but the task query is empty.
+- **AI Tools — `dryRun` parameter ignored for move/transfer operations:** `dryRun` was hardcoded to `false` in the tool executor, so AI-supplied `dryRun: true` for `moveConfigurationItem` and `transferOwnership` silently executed the operation instead of returning a preview.
+- **AI Tools — `proceedWithoutImpersonationIfDenied` default documented as `false` in create/update schemas:** Schema descriptions now consistently state `Default true`, matching the move and transfer operation schemas.
+- **Ticket Change Request Approval — Ticket ID field not enforced in UI:** `ticketID` field was not marked `required: true`; the UI would allow submission without it, deferring the error to runtime.
+- **Removed debug `console.log` from Ticket `getMany`** that logged filter details to stdout on every execution.
+
 
 ## [2.0.0] - 2026-02-15
 

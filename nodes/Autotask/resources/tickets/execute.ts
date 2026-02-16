@@ -369,7 +369,6 @@ export async function executeTicketOperation(
                 case 'getMany': {
                     const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
                     const filters = await getManyOp.buildFiltersFromResourceMapper(i);
-                    console.log('Debug: Built filters:', filters);
                     const response = await getManyOp.execute({ filter: filters }, i);
                     returnData.push(...getManyOp.processReturnData(response));
                     break;
@@ -396,7 +395,7 @@ export async function executeTicketOperation(
             }
         } catch (error) {
             if (this.continueOnFail()) {
-                returnData.push({ json: { error: error.message } });
+                returnData.push({ json: { error: (error as Error).message } });
                 continue;
             }
             throw error;

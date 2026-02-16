@@ -65,6 +65,7 @@ export const baseFields: INodeProperties[] = [
         displayName: 'Ticket ID',
         name: 'ticketID',
         type: 'string',
+        required: true,
         default: '',
         displayOptions: {
             show: {
@@ -72,7 +73,7 @@ export const baseFields: INodeProperties[] = [
                 operation: ['create', 'delete'],
             },
         },
-        description: 'Required for create and delete operations',
+        description: 'The ID of the ticket this change request approval belongs to',
     },
     {
         displayName: 'Fields',

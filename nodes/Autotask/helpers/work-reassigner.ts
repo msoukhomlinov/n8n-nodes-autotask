@@ -610,7 +610,9 @@ export async function transferOwnership(
     ? await queryAll(context, 'TaskSecondaryResources/query/', [{ field: 'resourceID', op: 'eq', value: options.sourceResourceId }])
     : [];
   const taskSecondaryResources = taskSecondaryRaw.filter((item) => {
-    if (taskIds.size === 0 || !options.includeTasks) return true;
+    // When tasks are not being transferred, secondary resources are standalone — include all
+    if (!options.includeTasks) return true;
+    // When tasks are being transferred, only include secondary resources for tasks in the primary set
     const taskId = asNumber(item.taskID);
     return taskId !== null && taskIds.has(taskId);
   });
