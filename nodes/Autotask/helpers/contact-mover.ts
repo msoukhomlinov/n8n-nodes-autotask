@@ -270,6 +270,7 @@ async function createDestinationContact(
 			impersonationResourceId,
 			proceedWithoutImpersonationIfDenied,
 		) as Promise<IDataObject>,
+	payload,
 	);
 
 	const id = extractCreatedId(response);
@@ -386,6 +387,7 @@ async function copyCompanyNotesAndAttachments(
 					impersonationResourceId,
 					proceedWithoutImpersonationIfDenied,
 				) as Promise<IDataObject>,
+			newNote,
 			);
 
 			const newNoteId = extractCreatedId(createResponse);
@@ -538,6 +540,7 @@ async function createAuditNotes(
 					options.impersonationResourceId,
 					options.proceedWithoutImpersonationIfDenied,
 				) as Promise<IDataObject>,
+			notePayload,
 			);
 			sourceCompanyNoteId = extractCreatedId(response) ?? 0;
 		} catch (err) {
@@ -569,6 +572,7 @@ async function createAuditNotes(
 					options.impersonationResourceId,
 					options.proceedWithoutImpersonationIfDenied,
 				) as Promise<IDataObject>,
+			notePayload,
 			);
 			destinationCompanyNoteId = extractCreatedId(response) ?? 0;
 		} catch (err) {

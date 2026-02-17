@@ -441,6 +441,7 @@ async function createCiWithReferenceFieldFallback(
           impersonationResourceId,
           proceedWithoutImpersonationIfDenied,
         ) as Promise<IDataObject>,
+        payload,
       );
 
       const id = extractCreatedId(response);

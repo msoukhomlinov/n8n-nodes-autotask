@@ -171,6 +171,7 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 							impersonationResourceId,
 							proceedWithoutImpersonationIfDenied,
 						),
+						apiReadyData as IDataObject,
 					) as IDataObject;
 					if (inactiveRefWarnings.length > 0) {
 						console.warn(`[UpdateOperation] ${this.entityType}:`, inactiveRefWarnings.join('; '));

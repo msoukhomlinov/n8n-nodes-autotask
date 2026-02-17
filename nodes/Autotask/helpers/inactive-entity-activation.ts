@@ -43,15 +43,20 @@ import { autotaskApiRequest, buildChildEntityUrl } from './http';
 // ---------------------------------------------------------------------------
 
 /**
- * Pattern the Autotask REST API uses when a reference field points to an
- * inactive (or soft-deleted) contact or resource.
+ * Unified pattern for inactive-entity reference errors from the Autotask REST API.
  *
- * Examples observed in the wild:
- *   "contactID: Value 12345 does not exist or is invalid"
- *   "createdByPersonID: Value 67890 does not exist or is invalid"
+ * Capture group 1: field name (always present, e.g. "contactID")
+ * Capture group 2: entity ID — present only in the older format
+ *
+ * Formats handled:
+ *   older: "contactID: Value 12345 does not exist or is invalid"
+ *   newer: "Reference value on field: contactID of type: Contact does not exist or is invalid."
+ *
+ * When group 2 is absent the caller must supply `fieldValues` so the ID can be
+ * resolved from the request body.
  */
 const INACTIVE_REF_PATTERN =
-	/(\w+ID)\s*:\s*Value\s+(\d+)\s+does not exist or is invalid/i;
+	/(?:Reference value on field:\s*)?(\w+ID)(?:\s*:\s*Value\s+(\d+)|\s+of type:\s*\w+)\s+does not exist or is invalid/i;
 
 // ---------------------------------------------------------------------------
 // Field classification
@@ -89,18 +94,32 @@ export interface InactiveRefInfo {
  * Parse an Autotask API error and, if it matches the "inactive entity"
  * pattern, return structured information about the offending reference.
  *
+ * Handles both Autotask error formats via a single regex:
+ * - ID in message:  "contactID: Value 12345 does not exist or is invalid"
+ * - ID not in msg:  "Reference value on field: contactID of type: Contact does not exist or is invalid."
+ *   For the latter, supply `fieldValues` (the request body) so the ID can be resolved.
+ *
  * Returns `null` when the error is unrelated.
  */
-export function parseInactiveRefError(error: unknown): InactiveRefInfo | null {
+export function parseInactiveRefError(error: unknown, fieldValues?: IDataObject): InactiveRefInfo | null {
 	const message = error instanceof Error ? error.message : String(error);
 	const match = INACTIVE_REF_PATTERN.exec(message);
 	if (!match) return null;
 
 	const field = match[1];
-	const entityId = Number.parseInt(match[2], 10);
-	if (!Number.isInteger(entityId) || entityId <= 0) return null;
-
 	const fieldLower = field.toLowerCase();
+
+	// Group 2 is present in the older format; absent in the newer one.
+	let entityId: number;
+	if (match[2] !== undefined) {
+		entityId = Number.parseInt(match[2], 10);
+	} else if (fieldValues) {
+		// Resolve from the request body using original casing then lowercase fallback.
+		entityId = Number(fieldValues[field] ?? fieldValues[fieldLower]);
+	} else {
+		return null;
+	}
+	if (!Number.isInteger(entityId) || entityId <= 0) return null;
 
 	if (CONTACT_REF_FIELDS.has(fieldLower) || fieldLower.endsWith('contactid')) {
 		return { field, entityId, entityType: 'Contact' };
@@ -121,8 +140,8 @@ export function parseInactiveRefError(error: unknown): InactiveRefInfo | null {
  * Convenience predicate — returns `true` when the error looks like an
  * inactive-entity rejection from the Autotask API.
  */
-export function isInactiveEntityError(error: unknown): boolean {
-	return parseInactiveRefError(error) !== null;
+export function isInactiveEntityError(error: unknown, fieldValues?: IDataObject): boolean {
+	return parseInactiveRefError(error, fieldValues) !== null;
 }
 
 /**
@@ -172,16 +191,20 @@ export async function withTemporaryActivation<T>(
 /**
  * All-in-one wrapper: attempt the operation; if it fails because a reference
  * field points to an inactive entity, temporarily activate it and retry once.
+ *
+ * Pass `fieldValues` (the request body) so the newer Autotask error format
+ * — which omits the entity ID from the message — can still be handled.
  */
 export async function withInactiveRefRetry<T>(
 	context: IExecuteFunctions,
 	warnings: string[],
 	runOperation: () => Promise<T>,
+	fieldValues?: IDataObject,
 ): Promise<T> {
 	try {
 		return await runOperation();
 	} catch (error) {
-		const ref = parseInactiveRefError(error);
+		const ref = parseInactiveRefError(error, fieldValues);
 		if (!ref) throw error;
 
 		return withTemporaryActivation(context, ref, warnings, runOperation);

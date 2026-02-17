@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.0.3] - 2026-02-17
+
+### Fixed
+
+- **Inactive contact/resource retry — new Autotask error format not recognised:** The inactive-entity retry mechanism (`withInactiveRefRetry`) failed silently when Autotask returned the newer error format `Reference value on field: contactID of type: Contact does not exist or is invalid.` instead of the previously observed `contactID: Value 12345 does not exist or is invalid`. The unified regex now handles both formats. Because the newer format omits the entity ID from the message, the request body (`fieldValues`) is now threaded through to all call sites so the ID can be resolved from the payload. Affected operations: create, update, contact move, work reassignment, and configuration item move.
+
 ## [2.0.2] - 2026-02-16
 
 ### Fixed

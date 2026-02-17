@@ -764,12 +764,10 @@ export async function transferOwnership(
       for (const company of companies) {
         const companyId = asNumber(company.id) ?? 0;
         try {
+          const companyPatch = { id: companyId, ownerResourceID: options.destinationResourceId };
           await withInactiveRefRetry(context, warnings, async () => {
-            await autotaskApiRequest.call(context, 'PATCH', 'Companies/', {
-              id: companyId,
-              ownerResourceID: options.destinationResourceId,
-            }, {}, options.impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
-          });
+            await autotaskApiRequest.call(context, 'PATCH', 'Companies/', companyPatch, {}, options.impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
+          }, companyPatch);
           summary.companiesUpdated += 1;
         } catch (error) {
           failures.push(toFailure('company', companyId, error));
@@ -780,12 +778,10 @@ export async function transferOwnership(
       for (const ticket of tickets) {
         const ticketId = asNumber(ticket.id) ?? 0;
         try {
+          const ticketPatch = { id: ticketId, assignedResourceID: options.destinationResourceId };
           await withInactiveRefRetry(context, warnings, async () => {
-            await autotaskApiRequest.call(context, 'PATCH', 'Tickets/', {
-              id: ticketId,
-              assignedResourceID: options.destinationResourceId,
-            }, {}, options.impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
-          });
+            await autotaskApiRequest.call(context, 'PATCH', 'Tickets/', ticketPatch, {}, options.impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
+          }, ticketPatch);
           summary.ticketsUpdated += 1;
         } catch (error) {
           failures.push(toFailure('ticket', ticketId, error));
@@ -855,13 +851,10 @@ export async function transferOwnership(
           warnings.push(`Task ${taskId}: billingCodeID missing, PATCH may be rejected by API.`);
         }
         try {
+          const taskPatch = { id: taskId, assignedResourceID: options.destinationResourceId, billingCodeID: billingCodeId };
           await withInactiveRefRetry(context, warnings, async () => {
-            await autotaskApiRequest.call(context, 'PATCH', 'Tasks/', {
-              id: taskId,
-              assignedResourceID: options.destinationResourceId,
-              billingCodeID: billingCodeId,
-            }, {}, options.impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
-          });
+            await autotaskApiRequest.call(context, 'PATCH', 'Tasks/', taskPatch, {}, options.impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
+          }, taskPatch);
           summary.tasksUpdated += 1;
         } catch (error) {
           failures.push(toFailure('task', taskId, error));
@@ -873,12 +866,10 @@ export async function transferOwnership(
         for (const project of projects) {
           const projectId = asNumber(project.id) ?? 0;
           try {
+            const projectPatch = { id: projectId, projectLeadResourceID: options.destinationResourceId };
             await withInactiveRefRetry(context, warnings, async () => {
-              await autotaskApiRequest.call(context, 'PATCH', 'Projects/', {
-                id: projectId,
-                projectLeadResourceID: options.destinationResourceId,
-              }, {}, options.impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
-            });
+              await autotaskApiRequest.call(context, 'PATCH', 'Projects/', projectPatch, {}, options.impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
+            }, projectPatch);
             summary.projectsUpdated += 1;
           } catch (error) {
             failures.push(toFailure('project', projectId, error));
@@ -971,12 +962,10 @@ export async function transferOwnership(
       for (const opportunity of opportunities) {
         const opportunityId = asNumber(opportunity.id) ?? 0;
         try {
+          const opportunityPatch = { id: opportunityId, ownerResourceID: options.destinationResourceId };
           await withInactiveRefRetry(context, warnings, async () => {
-            await autotaskApiRequest.call(context, 'PATCH', 'Opportunities/', {
-              id: opportunityId,
-              ownerResourceID: options.destinationResourceId,
-            }, {}, options.impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
-          });
+            await autotaskApiRequest.call(context, 'PATCH', 'Opportunities/', opportunityPatch, {}, options.impersonationResourceId, options.proceedWithoutImpersonationIfDenied);
+          }, opportunityPatch);
           summary.opportunitiesUpdated += 1;
         } catch (error) {
           failures.push(toFailure('opportunity', opportunityId, error));
