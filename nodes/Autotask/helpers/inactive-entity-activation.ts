@@ -102,7 +102,20 @@ export interface InactiveRefInfo {
  * Returns `null` when the error is unrelated.
  */
 export function parseInactiveRefError(error: unknown, fieldValues?: IDataObject): InactiveRefInfo | null {
-	const message = error instanceof Error ? error.message : String(error);
+	// Build a search string from all available message locations — different n8n
+	// versions store the Autotask-specific error in different places on NodeApiError.
+	let message: string;
+	if (error instanceof Error) {
+		const candidates = [
+			error.message,
+			(error as { description?: string }).description,
+			error.cause instanceof Error ? error.cause.message : undefined,
+		].filter((s): s is string => typeof s === 'string' && s.length > 0);
+		message = candidates.join(' | ');
+	} else {
+		message = String(error);
+	}
+	console.warn(`[InactiveEntityActivation] parseInactiveRefError input: "${message.slice(0, 300)}"`);
 	const match = INACTIVE_REF_PATTERN.exec(message);
 	if (!match) return null;
 

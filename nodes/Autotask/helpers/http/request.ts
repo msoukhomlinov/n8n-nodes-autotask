@@ -652,8 +652,11 @@ export async function autotaskApiRequest<T = JsonObject>(
 			errorObjectErrors: directErrors,
 		});
 
-		// Throw standardized error with the detailed message
-		throw new NodeApiError(this.getNode(), apiError as unknown as JsonObject);
+		// Throw standardized error with the detailed message.
+		// Pass message explicitly so NodeApiError.message is guaranteed to be the
+		// Autotask-specific error regardless of how this n8n version's constructor
+		// extracts it from the error object (behaviour varies across n8n versions).
+		throw new NodeApiError(this.getNode(), apiError as unknown as JsonObject, { message: detailedMessage });
 	} finally {
 		// Release the thread when done (whether successful or failed)
 		endpointThreadTracker.releaseThread(baseEndpoint);

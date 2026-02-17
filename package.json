@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-autotask",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "n8n node for Autotask PSA integration",
   "keywords": [
     "n8n-community-node-package",

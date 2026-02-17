@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.0.4] - 2026-02-17
+
+### Fixed
+
+- **Inactive contact/resource retry — new Autotask error format not recognised:** Changes to cover additional edge cases.
+
 ## [2.0.3] - 2026-02-17
 
 ### Fixed
