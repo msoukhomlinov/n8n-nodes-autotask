@@ -2,6 +2,15 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.0.6] - 2026-02-19
+
+### Fixed
+
+- **Trigger — stale webhook detection & cleanup (Issue #27):** When a workflow is deactivated without a clean webhook deletion (network timeout, n8n crash, tunnel change), the next activation could silently reuse a webhook pointing to the wrong URL, or create a duplicate alongside the orphaned one. Two self-healing mechanisms are now in place:
+  - **URL-mismatch detection in `checkExists()`:** After fetching the stored webhook from Autotask, the stored `webhookUrl` is compared against the node's current URL. If they differ, the stale webhook is deleted, static data is cleared, and `create()` is invoked to register a fresh webhook.
+  - **Stale-webhook query in `create()`:** Before creating a new webhook, the node queries Autotask for any existing webhooks whose name matches the node-specific prefix (`n8n-{entityType}-{eventTypeCode}-{workflowId8}-{nodeId8}-`). Any matches are deleted before the new webhook is created. Query failure is non-fatal — creation proceeds regardless.
+  - **Webhook naming now includes node ID:** The webhook name format is updated to `n8n-{entityType}-{eventTypeCode}-{workflowId8}-{nodeId8}-{timestamp}`, making it unique per node and preventing false-positive cleanup when two trigger nodes in the same workflow watch the same entity and events.
+
 ## [2.0.5] - 2026-02-19
 
 ### Fixed

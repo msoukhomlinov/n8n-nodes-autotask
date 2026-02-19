@@ -23,6 +23,7 @@ function logAndThrowError(operation: string, errorType: AutotaskErrorType, messa
 export enum WebhookUrlType {
   WEBHOOK_BASE = 'webhookBase',         // /{SingularEntityName}Webhooks
   WEBHOOK_SPECIFIC = 'webhookSpecific', // /{SingularEntityName}Webhooks/{id}
+  WEBHOOK_QUERY = 'webhookQuery',       // /{SingularEntityName}Webhooks/query
   WEBHOOK_FIELDS = 'webhookFields',     // /{SingularEntityName}Webhooks/{parentId}/Fields
   WEBHOOK_UDF_FIELDS = 'webhookUdfFields', // /{SingularEntityName}Webhooks/{parentId}/UdfFields
   WEBHOOK_RESOURCES = 'webhookResources', // /{SingularEntityName}Webhooks/{parentId}/ExcludedResources
@@ -128,6 +129,18 @@ export function buildWebhookUrl(
       }
       validateEntityType(entityType, true, operation);
       return `/${getSingularEntityName(entityType)}Webhooks`;
+
+    case WebhookUrlType.WEBHOOK_QUERY:
+      if (!entityType) {
+        logAndThrowError(
+          operation,
+          AutotaskErrorType.Validation,
+          'Entity type is required for webhook query URLs',
+          { urlType }
+        );
+      }
+      validateEntityType(entityType, true, operation);
+      return `/${getSingularEntityName(entityType)}Webhooks/query`;
 
     case WebhookUrlType.WEBHOOK_SPECIFIC:
       if (!entityType) {

@@ -371,17 +371,42 @@ export class AutotaskTrigger implements INodeType {
 
 					// Try to retrieve the webhook from Autotask
 					try {
-						await autotaskApiRequest.call(
+						const existingWebhook = await autotaskApiRequest.call(
 							this,
 							'GET',
 							buildWebhookUrl(WebhookUrlType.WEBHOOK_SPECIFIC, {
 								entityType,
-								id: webhookId as string | number
+								id: webhookId as string | number,
 							}),
 							{},
-						);
+						) as { item?: { webhookUrl?: string } };
 
-						console.log(`Webhook ID: ${webhookId} exists in Autotask`);
+						const existingUrl = existingWebhook?.item?.webhookUrl;
+						const currentUrl  = this.getNodeWebhookUrl('default');
+
+						if (existingUrl && existingUrl !== currentUrl) {
+							console.log(
+								`Stale webhook detected (URL mismatch). Stored: ${existingUrl}, Current: ${currentUrl}. Deleting.`,
+							);
+							try {
+								await autotaskApiRequest.call(
+									this,
+									'DELETE',
+									buildWebhookUrl(WebhookUrlType.WEBHOOK_SPECIFIC, {
+										entityType,
+										id: webhookId as string | number,
+									}),
+									{},
+								);
+							} catch (deleteError) {
+								console.warn(`Could not delete stale webhook: ${(deleteError as Error).message}`);
+							}
+							webhookData.webhookId = undefined;
+							webhookData.secretKey = undefined;
+							return false;
+						}
+
+						console.log(`Webhook ID: ${webhookId} exists in Autotask and URL is current`);
 						return true;
 					} catch (error) {
 						// If we get a 404, the webhook doesn't exist
@@ -454,8 +479,43 @@ export class AutotaskTrigger implements INodeType {
 					};
 					const eventTypeCode = eventTypes.map(type => eventTypeMap[type] || type.charAt(0)).join('');
 
-					// Format: n8n-{entityType}-{eventTypesAbbreviated}-{workflowId}-{timestamp}
-					const webhookName = `n8n-${entityType}-${eventTypeCode}-${workflowId}-${timestamp}`;
+					const nodeId8    = this.getNode().id?.slice(0, 8)     || randomBytes(4).toString('hex');
+					// Format: n8n-{entityType}-{eventTypesAbbreviated}-{workflowId}-{nodeId8}-{timestamp}
+					const webhookName = `n8n-${entityType}-${eventTypeCode}-${workflowId}-${nodeId8}-${timestamp}`;
+
+					// Clean up any stale webhooks from this node that weren't deleted on deactivation
+					if (this.getWorkflow().id && this.getNode().id) {
+						const staleNamePrefix = `n8n-${entityType}-${eventTypeCode}-${workflowId}-${nodeId8}-`;
+						try {
+							const queryResponse = await autotaskApiRequest.call(
+								this,
+								'POST',
+								buildWebhookUrl(WebhookUrlType.WEBHOOK_QUERY, { entityType }),
+								{ filter: [{ field: 'name', op: 'beginsWith', value: staleNamePrefix }] },
+							) as { items?: Array<{ id: string | number }> };
+
+							const staleWebhooks = queryResponse?.items ?? [];
+							if (staleWebhooks.length > 0) {
+								console.log(`Found ${staleWebhooks.length} stale webhook(s) matching "${staleNamePrefix}" — cleaning up`);
+								for (const stale of staleWebhooks) {
+									try {
+										await autotaskApiRequest.call(
+											this,
+											'DELETE',
+											buildWebhookUrl(WebhookUrlType.WEBHOOK_SPECIFIC, { entityType, id: stale.id }),
+											{},
+										);
+										console.log(`Deleted stale webhook ID: ${stale.id}`);
+									} catch (delError) {
+										console.warn(`Could not delete stale webhook ID ${stale.id}: ${(delError as Error).message}`);
+									}
+								}
+							}
+						} catch (queryError) {
+							// Non-fatal — proceed with creation even if stale cleanup fails
+							console.warn(`Stale webhook query failed (non-fatal): ${(queryError as Error).message}`);
+						}
+					}
 
 					// Get fields for webhook configuration
 					let subscribedFields: string[] = [];
