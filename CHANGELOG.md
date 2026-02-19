@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.0.5] - 2026-02-19
+
+### Fixed
+
+- **Ticket / Ticket Note / Time Entry attachments — uploaded file corrupt or 1 KB:** `binaryItem.data` was used directly as the base64 payload, which is unreliable when n8n is configured with filesystem or S3 binary data storage (the field is empty or a storage reference in those modes). All three attachment `create` operations now use `this.helpers.getBinaryDataBuffer()` to retrieve the actual bytes, then convert to base64. The returned attachment `id` was also always `undefined` due to an incorrect response-type cast; corrected to `response.item.itemId`.
+
 ## [2.0.4] - 2026-02-17
 
 ### Fixed

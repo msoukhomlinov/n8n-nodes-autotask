@@ -32,7 +32,8 @@ export async function executeTimeEntryAttachmentOperation(
 					}
 
 					const binaryItem = binaryData[binaryPropertyName];
-					const dataBuffer = Buffer.from(binaryItem.data, 'base64');
+					// Use getBinaryDataBuffer to correctly retrieve binary data in all n8n storage modes
+					const dataBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
 
 					// Validate file size
 					validateAttachmentSize(dataBuffer.length);
@@ -45,17 +46,17 @@ export async function executeTimeEntryAttachmentOperation(
 					const payload: IAttachmentPayload = {
 						id: 0,
 						attachmentType: ATTACHMENT_TYPE,
-						data: binaryItem.data,
+						data: dataBuffer.toString('base64'),
 						fullPath: fileName,
 						title: title,
 						publish: publish,
 						timeEntryID: Number(timeEntryId),
 					};
 
-					const response = await autotaskApiRequest.call(this, 'POST', endpoint, payload as IDataObject) as { itemId: number };
+					const response = await autotaskApiRequest.call(this, 'POST', endpoint, payload as IDataObject) as { item: { itemId: number } };
 					returnData.push({
 						json: {
-							id: response.itemId,
+							id: response.item?.itemId,
 							timeEntryId: Number(timeEntryId),
 							title: title,
 							fileName: fileName,
