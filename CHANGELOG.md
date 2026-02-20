@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.1.1] - 2026-02-20
+
+### Fixed
+
+- **Label resolution — ambiguous substring fallback causes wrong picklist/reference value selection (Issue #43):** When a user-supplied label did not exactly match a candidate (e.g. supplying `"Place Order"` when the stored label is `"4-Place Order"`), the previous `.includes()` fallback returned the first label containing the search string as a substring — which could be an entirely different option such as `"Place Order Waiting Payment"`. The fallback is now uniqueness-gated: a substring match is only accepted when exactly one candidate matches. If multiple candidates match, a descriptive warning is emitted listing the conflicting labels, and the field is left unresolved so the user can supply a more specific label. This fix applies to both picklist and reference field resolution.
+
 ## [2.1.0] - 2026-02-20
 
 ### Fixed

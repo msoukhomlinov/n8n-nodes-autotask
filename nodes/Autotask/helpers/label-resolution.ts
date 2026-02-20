@@ -60,8 +60,14 @@ export async function resolveLabelsToIds(
             // If not found, query values via helper (paginated)
             if (idMatch === undefined) {
                 const result = await listPicklistValues(context, resource, field.id, label, 50, 1);
+                // 1. Exact case-insensitive match
                 const exact = result.values.find(v => v.label.toLowerCase() === label.toLowerCase());
-                const partial = result.values.find(v => v.label.toLowerCase().includes(label.toLowerCase()));
+                // 2. Substring match — only accepted when unambiguous (exactly one candidate)
+                const subMatches = result.values.filter(v => v.label.toLowerCase().includes(label.toLowerCase()));
+                const partial = subMatches.length === 1 ? subMatches[0] : undefined;
+                if (subMatches.length > 1) {
+                    warnings.push(`Ambiguous picklist label '${label}' for field '${field.id}': ${subMatches.length} candidates matched (${subMatches.map(v => v.label).join(', ')}). Provide an exact label.`);
+                }
                 idMatch = exact?.id ?? partial?.id;
             }
 
@@ -92,13 +98,15 @@ export async function resolveLabelsToIds(
                 }
 
                 if (bestId === undefined) {
-                    // Fallback: contains match
-                    for (const entity of candidates) {
+                    // Fallback: substring match — only accepted when unambiguous (exactly one candidate)
+                    const subMatches = candidates.filter(entity => {
                         const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
-                        if (display && display.toLowerCase().includes(label.toLowerCase())) {
-                            bestId = (entity as unknown as IDataObject).id as string | number;
-                            break;
-                        }
+                        return display && display.toLowerCase().includes(label.toLowerCase());
+                    });
+                    if (subMatches.length === 1) {
+                        bestId = (subMatches[0] as unknown as IDataObject).id as string | number;
+                    } else if (subMatches.length > 1) {
+                        warnings.push(`Ambiguous reference label '${label}' for field '${field.id}' (${field.referencesEntity}): ${subMatches.length} candidates matched. Provide an exact label.`);
                     }
                 }
 
