@@ -2,6 +2,18 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.1.0] - 2026-02-20
+
+### Fixed
+
+- **Company: Search by Domain — Limit field description and default:** Corrected the `Limit` field default from `50` to `25` to match `DEFAULT_DOMAIN_LIMIT` and the execute fallback. Updated the description to clarify that the limit controls the size of the embedded `results` array in the returned object, not the number of n8n output items.
+
+### Changed
+
+- **Remove `preinstall` lifecycle hook:** Dropped `"preinstall": "npx only-allow pnpm"` from `package.json`. The hook was intended to enforce pnpm usage in this repo but shipped in the published tarball, causing unnecessary latency or failures in restricted-network consumer environments where pnpm is not pre-resolved via npx.
+- **Remove unused runtime dependencies:** Removed `chalk`, `pino`, and `pino-pretty` from `dependencies`. None of these packages were imported anywhere in the codebase; their presence added installation weight without benefit.
+- **Bump `keyv` and `keyv-file`:** Updated `keyv` from `5.2.3` to `^5.6.0` and `keyv-file` from `5.1.1` to `^5.3.3`, picking up minor/patch improvements and switching from exact pins to caret specifiers to allow future patch updates.
+
 ## [2.0.7] - 2026-02-20
 
 ### Added
