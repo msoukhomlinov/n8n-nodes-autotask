@@ -406,7 +406,7 @@ export async function executeAiTool(
         return JSON.stringify(idValidation.error);
     }
 
-    if (['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI'].includes(effectiveOperation)) {
+    if (['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(effectiveOperation)) {
         const udfFilters = filters.filter((filter) => filter.udf);
         if (udfFilters.length > 1) {
             return JSON.stringify(

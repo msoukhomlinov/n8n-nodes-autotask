@@ -2,6 +2,15 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.0.7] - 2026-02-20
+
+### Added
+
+- **Company: Search by Domain — selectColumns / field selection support:** The `searchByDomain` operation now supports the same field-selection controls as `get` and `getMany`.
+  - **Manual node:** A **Select Columns** multi-select dropdown (identical to the one on Get / Get Many) is now shown for the Search by Domain operation. Leave it empty to return all company fields; select specific columns to limit the response.
+  - **Default behaviour — full entity returned:** Previously, each result contained only `id`, `companyName`, `matchedField`, `matchedValue`, and a single `website` convenience field. The default now returns the complete company entity (all fields), matching what a Get by ID would return.  `matchedField` and `matchedValue` are still always appended to each result as search metadata.
+  - **AI Tool:** The `autotask_company_searchByDomain` tool schema gains a `fields` parameter (comma-separated field names) with the same semantics as `get`/`getMany`. Supplied field names are validated against the entity's field list before execution, returning a clear error with valid examples if an unknown field is specified. The tool description is updated to document this capability.
+
 ## [2.0.6] - 2026-02-19
 
 ### Fixed

@@ -12,7 +12,7 @@ export const selectColumnsOption: INodeProperties = {
 	hint: 'Choose which fields to include in the response. If no fields are selected, all fields will be returned. The ID field is always included regardless of selection.',
 	displayOptions: {
 		show: {
-			operation: ['get', 'getMany', 'getManyAdvanced', 'getUnposted', 'getPosted', 'whoAmI'],
+			operation: ['get', 'getMany', 'getManyAdvanced', 'getUnposted', 'getPosted', 'whoAmI', 'searchByDomain'],
 		},
 	},
 	typeOptions: {

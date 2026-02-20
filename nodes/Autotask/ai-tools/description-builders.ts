@@ -177,6 +177,7 @@ export function buildCompanySearchByDomainDescription(resourceName: string): str
         "IMPORTANT: Autotask typically stores company websites as full URLs (for example https://www.autotask.net/), so exact operator matches can fail on bare domain input. " +
         "To avoid false negatives, eq/like semantics are handled safely for website matching. " +
         "When searchContactEmails is true (default), if no company website matches exist, the tool searches Contact.emailAddress by domain and resolves the most common canonical company name from companyID references. " +
+        "Use the 'fields' parameter to limit which company fields are returned per result (comma-separated); omit to receive the full company entity. matchedField and matchedValue are always included to indicate which website field matched and its value. " +
         `If field names are uncertain, call autotask_${resourceName}_describeFields first.`
     );
 }

@@ -250,6 +250,16 @@ export function getCompanySearchByDomainSchema(): z.ZodObject<Record<string, z.Z
             .max(100)
             .optional()
             .describe('Maximum company matches to return (1-100, default 25).'),
+        fields: z
+            .string()
+            .optional()
+            .describe(
+                'Comma-separated company field names to include in each result ' +
+                '(for example id,companyName,webAddress,phone,companyType). ' +
+                'If omitted, all company fields are returned. ' +
+                'matchedField and matchedValue metadata are always added regardless of this selection. ' +
+                'If field names are uncertain, call autotask_company_describeFields first.'
+            ),
     });
 }
 

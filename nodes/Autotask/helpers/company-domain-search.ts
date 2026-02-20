@@ -25,14 +25,7 @@ interface DomainSearchOptions {
     searchContactEmails?: boolean;
     limit?: number;
     itemIndex?: number;
-}
-
-interface CompanySummary extends IDataObject {
-    id: number | string | null;
-    companyName: string | null;
-    matchedField: string | null;
-    matchedValue: string | null;
-    website: string | null;
+    selectColumns?: string[];
 }
 
 interface CompanyFrequency extends IDataObject {
@@ -49,7 +42,7 @@ export interface CompanyDomainSearchResult extends IDataObject {
     appliedCompanyOperator: DomainOperator;
     searchContactEmails: boolean;
     count: number;
-    results: CompanySummary[];
+    results: IDataObject[];
     topCompanyName?: string;
     topCompanyId?: number | string | null;
     matchedContacts?: number;
@@ -232,17 +225,22 @@ export async function searchCompaniesByDomain(
     const companyFilters = companyFilterItems.length === 1
         ? companyFilterItems
         : [{ op: 'or', items: companyFilterItems }];
-    const companySelectColumns = Array.from(new Set(['id', 'companyName', ...websiteFields]));
+    const userSelectColumns = options.selectColumns ?? [];
+    // If user specified columns, merge with websiteFields so matching still works.
+    // If no columns (default), pass [] → API returns all fields.
+    const queryColumns = userSelectColumns.length > 0
+        ? Array.from(new Set([...userSelectColumns, 'id', ...websiteFields]))
+        : [];
     const companyResults = await runBoundedQuery(
         context,
         'company',
         itemIndex,
         limit,
         companyFilters,
-        companySelectColumns,
+        queryColumns,
     );
 
-    const summarisedCompanies: CompanySummary[] = companyResults.map((company) => {
+    const enrichedResults: IDataObject[] = companyResults.map((company) => {
         let matchedField: string | null = null;
         let matchedValue: string | null = null;
         for (const fieldName of websiteFields) {
@@ -254,19 +252,21 @@ export async function searchCompaniesByDomain(
                 break;
             }
         }
-        const firstWebsite = websiteFields
-            .map((field) => company[field])
-            .find((value) => typeof value === 'string' && value.trim() !== '') as string | undefined;
-        return {
-            id: (company.id as number | string | undefined) ?? null,
-            companyName: (company.companyName as string | undefined) ?? null,
-            matchedField,
-            matchedValue,
-            website: firstWebsite ?? null,
-        };
+
+        let resultEntity: IDataObject;
+        if (userSelectColumns.length === 0) {
+            resultEntity = { ...company };
+        } else {
+            resultEntity = { id: (company.id as number | string | undefined) ?? null };
+            for (const col of userSelectColumns) {
+                if (col in company) resultEntity[col] = company[col];
+            }
+        }
+
+        return { ...resultEntity, matchedField, matchedValue };
     });
 
-    if (summarisedCompanies.length > 0) {
+    if (enrichedResults.length > 0) {
         return {
             source: 'companyWebsite',
             domainInput,
@@ -274,8 +274,8 @@ export async function searchCompaniesByDomain(
             requestedOperator,
             appliedCompanyOperator,
             searchContactEmails,
-            count: summarisedCompanies.length,
-            results: summarisedCompanies,
+            count: enrichedResults.length,
+            results: enrichedResults,
             ...(notes.length > 0 ? { notes } : {}),
         };
     }
