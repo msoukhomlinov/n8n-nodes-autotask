@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.1.2] - 2026-02-25
+
+### Fixed
+
+- **Trigger — webhook name exceeds 50-character API limit:** For entity types with long names (e.g. `ConfigurationItems`), the constructed webhook name could reach 53 characters, causing Autotask's API to reject activation with *"name must be less than or equal to 50 characters"*. The name is now capped at 50 characters via `.slice(0, 50)`. The stale-webhook cleanup prefix is unaffected — it is at most 45 characters for the longest entity type and always fits within the stored truncated name, so `beginsWith` cleanup continues to work correctly.
+
 ## [2.1.1] - 2026-02-20
 
 ### Fixed

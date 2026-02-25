@@ -481,7 +481,7 @@ export class AutotaskTrigger implements INodeType {
 
 					const nodeId8    = this.getNode().id?.slice(0, 8)     || randomBytes(4).toString('hex');
 					// Format: n8n-{entityType}-{eventTypesAbbreviated}-{workflowId}-{nodeId8}-{timestamp}
-					const webhookName = `n8n-${entityType}-${eventTypeCode}-${workflowId}-${nodeId8}-${timestamp}`;
+					const webhookName = `n8n-${entityType}-${eventTypeCode}-${workflowId}-${nodeId8}-${timestamp}`.slice(0, 50);
 
 					// Clean up any stale webhooks from this node that weren't deleted on deactivation
 					if (this.getWorkflow().id && this.getNode().id) {
