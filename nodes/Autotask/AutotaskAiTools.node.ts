@@ -1,5 +1,5 @@
 import {
-    NodeConnectionTypes,
+    NodeConnectionType,
     NodeOperationError,
 } from 'n8n-workflow';
 import type {
@@ -125,7 +125,7 @@ export class AutotaskAiTools implements INodeType {
             name: 'Autotask AI Tools',
         },
         inputs: [],
-        outputs: [{ type: NodeConnectionTypes.AiTool, displayName: 'Tools' }],
+        outputs: [{ type: NodeConnectionType.AiTool, displayName: 'Tools' }],
         credentials: [{ name: 'autotaskApi', required: true }],
         properties: [
             {
