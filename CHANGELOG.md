@@ -2,6 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.2.1] - 2026-03-09
+
+### Fixed
+
+- **Package — install fails with "Cannot find module @langchain/core/tools.cjs" (critical):** The top-level `import { DynamicStructuredTool } from '@langchain/core/tools'` and `import { toJsonSchema } from '@langchain/core/utils/json_schema'` compiled to synchronous `require()` calls that ran at package load time. In some n8n environments the resolved `@langchain/core` is ESM-only (no `.cjs` files), causing an immediate "Cannot find module" error that prevented the entire package — including the standard Autotask node — from loading. All three `@langchain/core` imports are now `import type` (type-only, no runtime require). The runtime values are acquired via lazy `require()` calls inside `supplyData()` / `buildHelperTools()` / `normaliseToolInputSchema()`, so they only execute when the AI Tools node is actually invoked by an agent, at which point n8n's CJS-compatible copy is used.
+- **AI Tools — "Test step" in editor produces confusing errors:** `execute()` now returns a friendly stub (`"This is an AI Tool node. Connect it to an AI Agent node to use it."`) when no `tool` field is present in the input, instead of falling back to the first configured operation and likely throwing a missing-ID error.
+- **AI Tools — `getById` description missing ID prerequisite guard:** `buildGetDescription` now explicitly states *"ONLY call this when you already have a numeric ID — never pass a name or text"* and names `autotask_<resource>_getMany` as the prerequisite lookup step. Previously the description omitted this guard, risking the LLM passing names instead of IDs.
+- **AI Tools — `update` description missing ID prerequisite:** `buildUpdateDescription` now includes *"PREREQUISITE: you need the numeric ID"* with an explicit getMany lookup hint before calling update. Previously omitted, risking update-by-name attempts.
+- **AI Tools — `delete` description uses generic tool names:** `buildDeleteDescription` now references the exact tool names (`autotask_<resource>_getMany` / `autotask_<resource>_getById`) in the confirmation-before-deletion guidance instead of the generic "getMany or get".
+
 ## [2.2.0] - 2026-03-09
 
 ### Fixed
@@ -10,14 +20,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - **AI Tools — n8n metadata fields contaminating API requests:** Framework-injected fields (`sessionId`, `action`, `chatInput`, `root`, `tool`, `toolName`, `toolCallId`) are now stripped from tool call parameters before routing. These could previously reach create/update request bodies, causing silent API errors.
 - **AI Tools — `NodeConnectionType` value import breaks on some n8n versions:** `NodeConnectionType` is now imported as `import type` and the outputs array uses the string literal `'ai_tool' as NodeConnectionType`, matching the pattern required when `NodeConnectionType` is type-only in the host's `n8n-workflow` build.
 
-- **AI Tools — "Test step" in editor produces confusing errors:** `execute()` now returns a friendly stub (`"This is an AI Tool node. Connect it to an AI Agent node to use it."`) when no `tool` field is present in the input, instead of falling back to the first configured operation and likely throwing a missing-ID error.
-- **AI Tools — `getById` description missing ID prerequisite guard:** `buildGetDescription` now explicitly states *"ONLY call this when you already have a numeric ID — never pass a name or text"* and names `autotask_<resource>_getMany` as the prerequisite lookup step. Previously the description omitted this guard, risking the LLM passing names instead of IDs.
-- **AI Tools — `update` description missing ID prerequisite:** `buildUpdateDescription` now includes *"PREREQUISITE: you need the numeric ID"* with an explicit getMany lookup hint before calling update. Previously omitted, risking update-by-name attempts.
-- **AI Tools — `delete` description uses generic tool names:** `buildDeleteDescription` now references the exact tool names (`autotask_<resource>_getMany` / `autotask_<resource>_getById`) in the confirmation-before-deletion guidance instead of the generic "getMany or get".
-
 ### Changed
-
-- **Package — `@langchain/core` and `zod` moved to `devDependencies`:** Both packages are host-provided by n8n at runtime and should not be listed under `dependencies`. Moving them to `devDependencies` avoids redundant installation and aligns with n8n cloud compliance requirements.
 
 - **AI Tools — `get` tool renamed to `getById` (⚠️ breaking for existing workflows):** The `get` operation tool is now named `autotask_<resource>_getById` (e.g. `autotask_contact_getById`) instead of `autotask_<resource>_get`. This makes it unambiguous to the LLM that a numeric ID is required. A silent backward-compat alias (`autotask_<resource>_get`) is registered so existing workflows continue to function — it is intentionally undescribed so the LLM will not use it. **This alias will be removed in v3.0.0; update any hardcoded tool name references before then.**
 

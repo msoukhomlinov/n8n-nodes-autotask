@@ -1,4 +1,4 @@
-import { DynamicStructuredTool } from '@langchain/core/tools';
+import type { DynamicStructuredTool } from '@langchain/core/tools';
 import type { IExecuteFunctions } from 'n8n-workflow';
 import { describeResource, listPicklistValues, type DescribeResourceResponse } from '../helpers/aiHelper';
 import { buildDescribeFieldsDescription, buildListPicklistValuesDescription } from './description-builders';
@@ -41,7 +41,9 @@ export function buildHelperTools(
     resourceLabel: string,
     context: IExecuteFunctions,
 ): DynamicStructuredTool[] {
-    const describeFieldsTool = new DynamicStructuredTool({
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { DynamicStructuredTool: DSTool } = require('@langchain/core/tools') as typeof import('@langchain/core/tools');
+    const describeFieldsTool = new DSTool({
         name: `autotask_${resource}_describeFields`,
         description: buildDescribeFieldsDescription(resourceLabel),
         // Use explicit JSON Schema with guaranteed root type: "object".
@@ -59,7 +61,7 @@ export function buildHelperTools(
         },
     });
 
-    const listPicklistValuesTool = new DynamicStructuredTool({
+    const listPicklistValuesTool = new DSTool({
         name: `autotask_${resource}_listPicklistValues`,
         description: buildListPicklistValuesDescription(resourceLabel),
         // Use explicit JSON Schema with guaranteed root type: "object".

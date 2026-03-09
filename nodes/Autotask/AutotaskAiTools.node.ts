@@ -11,7 +11,7 @@ import type {
     ISupplyDataFunctions,
     SupplyData,
 } from 'n8n-workflow';
-import { DynamicStructuredTool } from '@langchain/core/tools';
+import type { DynamicStructuredTool } from '@langchain/core/tools';
 import type { z } from 'zod';
 import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/resource-operations';
 import { describeResource, type DescribeResourceResponse } from './helpers/aiHelper';
@@ -191,6 +191,12 @@ export class AutotaskAiTools implements INodeType {
     };
 
     async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
+        // Lazy require — must NOT be a top-level import. @langchain/core ships ESM-only in some
+        // environments; resolving it here (inside supplyData) defers the require until the AI
+        // agent actually invokes the toolkit, at which point n8n's CJS-compatible copy is used.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { DynamicStructuredTool: DSTool } = require('@langchain/core/tools') as typeof import('@langchain/core/tools');
+
         const resource = this.getNodeParameter('resource', itemIndex) as string;
         const operations = this.getNodeParameter('operations', itemIndex) as string[];
         const allowWriteOperations = this.getNodeParameter('allowWriteOperations', itemIndex, false) as boolean;
@@ -349,7 +355,7 @@ export class AutotaskAiTools implements INodeType {
                 );
             };
             const normalisedSchema = normaliseToolInputSchema(schema);
-            const tool = new DynamicStructuredTool({
+            const tool = new DSTool({
                 name: toolName,
                 description,
                 schema: normalisedSchema,
@@ -360,7 +366,7 @@ export class AutotaskAiTools implements INodeType {
             // Backward-compat alias: autotask_<resource>_get — callable by existing
             // workflows but undescribed so the LLM will not proactively use it.
             if (operation === 'get') {
-                tools.push(new DynamicStructuredTool({
+                tools.push(new DSTool({
                     name: `autotask_${resource}_get`,
                     description: '',
                     schema: normalisedSchema,
