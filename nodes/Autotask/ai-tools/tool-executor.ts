@@ -352,6 +352,13 @@ function normaliseOperation(operation: string): string {
     }
 }
 
+/** n8n framework fields injected into every tool call — must not reach API request bodies */
+const N8N_METADATA_FIELDS = new Set([
+    'sessionId', 'action', 'chatInput',
+    'root',
+    'tool', 'toolName', 'toolCallId',
+]);
+
 /**
  * Execute an Autotask operation by routing to the existing tool executor
  * with getNodeParameter overridden to map flat AI tool params.
@@ -360,9 +367,15 @@ export async function executeAiTool(
     context: IExecuteFunctions,
     resource: string,
     operation: string,
-    params: ToolExecutorParams,
+    rawParams: ToolExecutorParams,
     metadata: ToolExecutionMetadata = {},
 ): Promise<string> {
+    // Strip n8n framework metadata injected into every tool call
+    const params = {} as ToolExecutorParams;
+    for (const [key, value] of Object.entries(rawParams)) {
+        if (!N8N_METADATA_FIELDS.has(key)) (params as Record<string, unknown>)[key] = value;
+    }
+
     const originalGetNodeParameter = context.getNodeParameter.bind(context);
     const readFields = metadata.readFields ?? [];
     const writeFields = metadata.writeFields ?? [];

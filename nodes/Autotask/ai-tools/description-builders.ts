@@ -26,6 +26,8 @@ const RECENCY_VS_SINCE_UNTIL_RULE =
 export function buildGetDescription(resourceLabel: string, resourceName: string): string {
     return (
         `Retrieve a single ${resourceLabel} record by numeric ID. ` +
+        `ONLY call this when you already have a numeric ID — never pass a name or text. ` +
+        `If you only have a name or description, call autotask_${resourceName}_getMany with a filter first, extract the 'id' from results, then call this. ` +
         `Optionally use 'fields' to return only selected columns. ` +
         `If a record should exist but response is empty, verify API user permissions (including line-of-business access). ` +
         `Do not guess field names. Call autotask_${resourceName}_describeFields (mode 'read') first when unsure.`
@@ -119,6 +121,7 @@ export function buildUpdateDescription(
     return (
         ref +
         `Update an existing ${resourceLabel} record by numeric ID. ` +
+        `PREREQUISITE: you need the numeric ID. If you only have a name or text, call autotask_${resourceName}_getMany with a filter to find the record and get its 'id' first. ` +
         `Only provide fields to change (PATCH-style behaviour). ` +
         `Do not assume PUT-style replacement where omitted fields become null. ` +
         `Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
@@ -128,11 +131,11 @@ export function buildUpdateDescription(
     );
 }
 
-export function buildDeleteDescription(resourceLabel: string): string {
+export function buildDeleteDescription(resourceLabel: string, resourceName: string): string {
     return (
         `Delete a ${resourceLabel} record by numeric ID. ` +
         `Operational delete responses may be minimal, so treat non-200 outcomes as failures. ` +
-        `Use getMany or get first to confirm the correct ID before deletion.`
+        `Use autotask_${resourceName}_getMany or autotask_${resourceName}_getById first to confirm the correct ID before deletion.`
     );
 }
 

@@ -1,8 +1,6 @@
-import {
-    NodeConnectionType,
-    NodeOperationError,
-} from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type {
+    NodeConnectionType,
     IDataObject,
     IExecuteFunctions,
     ILoadOptionsFunctions,
@@ -59,11 +57,35 @@ import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
 // in n8n's agent tool-consumption flow (getConnectedTools / extendResponseMetadata)
 // recognise our toolkit correctly — matching exactly what n8n's own MCP Client
 // Tool node does: `import { StructuredToolkit } from 'n8n-core'`.
+//
+// Fallback: older n8n versions don't export StructuredToolkit — use the
+// Toolkit base from @langchain/classic/agents instead (resolved from n8n's host).
 // ---------------------------------------------------------------------------
-// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
-const { StructuredToolkit } = require('n8n-core') as {
-    StructuredToolkit: new (tools: DynamicStructuredTool[]) => { tools: DynamicStructuredTool[] };
-};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let LangChainToolkitBase: new (...args: any[]) => { tools?: DynamicStructuredTool[]; getTools?(): DynamicStructuredTool[] };
+try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+    const nCore = require('n8n-core') as Record<string, unknown>;
+    const StructuredToolkit = nCore['StructuredToolkit'];
+    if (typeof StructuredToolkit !== 'function') throw new Error('not found');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    LangChainToolkitBase = StructuredToolkit as any;
+} catch {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+    ({ Toolkit: LangChainToolkitBase } = require('@langchain/classic/agents') as {
+        Toolkit: typeof LangChainToolkitBase;
+    });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+class AutotaskToolkit extends (LangChainToolkitBase as any) {
+    declare tools: DynamicStructuredTool[];
+    constructor(toolList: DynamicStructuredTool[]) {
+        super();
+        this.tools = toolList;
+    }
+    getTools(): DynamicStructuredTool[] { return this.tools; }
+}
 
 const WRITE_OPERATIONS = ['create', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'];
 const SUPPORTED_TOOL_OPERATIONS = [
@@ -98,7 +120,8 @@ function parseOperationFromToolName(toolName: unknown, resource: string): string
     if (!lowerToolName.startsWith(prefix)) {
         return undefined;
     }
-    return lowerToolName.slice(prefix.length);
+    const suffix = lowerToolName.slice(prefix.length);
+    return suffix === 'getbyid' ? 'get' : suffix;
 }
 
 function resolveOperationCaseInsensitive(
@@ -125,7 +148,7 @@ export class AutotaskAiTools implements INodeType {
             name: 'Autotask AI Tools',
         },
         inputs: [],
-        outputs: [{ type: NodeConnectionType.AiTool, displayName: 'Tools' }],
+        outputs: [{ type: 'ai_tool' as NodeConnectionType, displayName: 'Tools' }],
         credentials: [{ name: 'autotaskApi', required: true }],
         properties: [
             {
@@ -225,7 +248,8 @@ export class AutotaskAiTools implements INodeType {
                 continue;
             }
 
-            const toolName = `autotask_${resource}_${operation}`;
+            const toolSuffix = operation === 'get' ? 'getById' : operation;
+            const toolName = `autotask_${resource}_${toolSuffix}`;
             let schema: z.ZodObject<z.ZodRawShape>;
             let description: string;
 			const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
@@ -282,7 +306,7 @@ export class AutotaskAiTools implements INodeType {
                     break;
                 case 'delete':
                     schema = getDeleteSchema();
-                    description = buildDeleteDescription(resourceLabel);
+                    description = buildDeleteDescription(resourceLabel, resource);
                     break;
                 case 'create': {
                     const fields = writeDescribe?.fields ?? [];
@@ -311,25 +335,38 @@ export class AutotaskAiTools implements INodeType {
                     continue;
             }
 
+            const toolFunc = async (params: Record<string, unknown>) => {
+                const typedParams = params as unknown as ToolExecutorParams;
+                return executeAiTool(
+                    supplyDataContext as unknown as IExecuteFunctions,
+                    resource,
+                    operation,
+                    typedParams,
+                    {
+                        readFields: readDescribe?.fields ?? [],
+                        writeFields: writeDescribe?.fields ?? [],
+                    },
+                );
+            };
+            const normalisedSchema = normaliseToolInputSchema(schema);
             const tool = new DynamicStructuredTool({
                 name: toolName,
                 description,
-                schema: normaliseToolInputSchema(schema),
-                func: async (params: Record<string, unknown>) => {
-                    const typedParams = params as unknown as ToolExecutorParams;
-                    return executeAiTool(
-                        supplyDataContext as unknown as IExecuteFunctions,
-                        resource,
-                        operation,
-                        typedParams,
-                        {
-                            readFields: readDescribe?.fields ?? [],
-                            writeFields: writeDescribe?.fields ?? [],
-                        },
-                    );
-                },
+                schema: normalisedSchema,
+                func: toolFunc,
             });
             tools.push(tool);
+
+            // Backward-compat alias: autotask_<resource>_get — callable by existing
+            // workflows but undescribed so the LLM will not proactively use it.
+            if (operation === 'get') {
+                tools.push(new DynamicStructuredTool({
+                    name: `autotask_${resource}_get`,
+                    description: '',
+                    schema: normalisedSchema,
+                    func: toolFunc,
+                }));
+            }
         }
 
         const helperTools = buildHelperTools(
@@ -346,9 +383,9 @@ export class AutotaskAiTools implements INodeType {
             );
         }
 
-        // Wrap in n8n-core's StructuredToolkit so the AI Agent's getConnectedTools
-        // correctly recognises and flattens the tools (instanceof StructuredToolkit).
-        const toolkit = new StructuredToolkit(tools);
+        // Wrap in a toolkit so the AI Agent's getConnectedTools correctly
+        // recognises and flattens the tools (instanceof StructuredToolkit / Toolkit).
+        const toolkit = new AutotaskToolkit(tools);
         return { response: toolkit };
     }
 
@@ -385,6 +422,18 @@ export class AutotaskAiTools implements INodeType {
                 this.getNode(),
                 'No permitted operations. Enable "Allow Write Operations" if needed.',
             );
+        }
+
+        // When run via "Test step" in the editor there is no tool field — return a friendly stub.
+        const firstItemTool = items[0]?.json?.['tool'] as string | undefined;
+        if (!firstItemTool) {
+            return [[{
+                json: {
+                    message: 'This is an AI Tool node. Connect it to an AI Agent node to use it.',
+                    configured: { resource, operations },
+                },
+                pairedItem: { item: 0 },
+            }]];
         }
 
         const response: INodeExecutionData[] = [];
