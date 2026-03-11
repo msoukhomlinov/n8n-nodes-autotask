@@ -21,7 +21,76 @@
 
 .NOTES
     Author: Max Soukhomlinov
-    Version: 2.0.0
+    Version: 2.3.5
+
+    Changelog:
+    2.3.5 - fix: Test-PrivateRepo no longer requires commits to exist. Previously it called
+            rev-parse HEAD which fails on a freshly-cloned empty private repo, blocking every
+            private sub-command (save, push, status, log) with "no commits" error. Now uses
+            rev-parse --git-dir which validates the bare repo structure without needing any
+            commits, so operations work immediately after setup on a new empty remote.
+            fix: Invoke-PrivateStatus and Invoke-PrivateLog guard the git log call and show a
+            friendly "(no commits yet)" message instead of a git error on an empty repo.
+    2.3.4 - fix: Invoke-PrivateMigration Step 5 no longer silently skips the push when
+            ls-remote fails (auth error, network issue, or unreachable remote). Previously
+            $shouldPush was gated on $LASTEXITCODE from ls-remote, so any ls-remote failure
+            caused the push to be silently skipped. Now: if local commits exist and remoteInfo
+            is empty (for any reason), the push is always attempted so the real error surfaces.
+            fix: removed 2>$null from the private push in Step 5 so authentication and network
+            errors are visible to the user instead of being swallowed silently.
+            fix: Invoke-PrivateSetup now checks if the remote has commits before attempting
+            checkout; for new empty repos the restore step is skipped gracefully instead of
+            showing a confusing "main branch may not exist" warning.
+            fix: Invoke-PrivateSetup uses Get-PrivateDefaultBranch for the checkout instead
+            of hardcoded "main", handling repos whose default branch is not "main".
+            fix: removed misleading "Run 'git-helper private push'" hint from end of
+            Invoke-PrivateSetup — Invoke-PrivateMigration already handles the push.
+    2.3.3 - fix: .private-git/ added to $PRIVATE_GIT_ALWAYS_IGNORE so it is always written to
+            .gitignore regardless of $PRIVATE_PATHS, preventing bare-repo internals from being
+            staged by `git add .` during release.
+            fix: gitignore presence check now matches actual gitignore lines (anchored regex)
+            instead of a raw substring search on the full file content, which previously caused
+            entries like `docs` to be considered "already covered" by matching the word in a
+            comment line, leaving /docs absent from .gitignore.
+    2.3.2 - fix: Step 5 private push now compares local HEAD SHA vs remote SHA via ls-remote
+            instead of rev-list "refs/remotes/origin/<branch>..HEAD". Bare repos have no remote
+            tracking refs so the rev-list range silently returned nothing, causing the push to
+            be skipped on subsequent runs (e.g. docs committed locally but never pushed).
+    2.3.1 - fix: Invoke-PrivateMigration now also pushes the public repo after committing the
+            cleanup (git rm --cached + .gitignore). Previously the public cleanup commit was
+            only made locally, leaving docs/AI files visible on the remote until a manual push.
+            Added Step 6: detect if local public branch is ahead of origin and auto-push.
+    2.3.0 - $PRIVATE_PATHS now supports glob patterns; added AGENT.md and .agent* entries.
+            .cursor* glob replaces individual .cursor / .cursor-rules entries, catching all
+            cursor files and dirs (.cursorrules, .cursorignore, .cursorconfig, etc.).
+            Added Get-PrivateDiskPaths helper that expands globs to actual on-disk paths;
+            used by both Invoke-PrivateSave and Invoke-PrivateMigration.
+    2.2.2 - fix: private commit step now checks git diff --cached before running commit,
+            eliminating "nothing to commit" noise when files are already up to date.
+            fix: push in step 5 now compares local HEAD vs remote ref directly (ls-remote +
+            rev-list) so unpushed commits from previous runs are always flushed, not just
+            commits made in the current migration run.
+    2.2.1 - fix: Invoke-PrivateMigration now auto-pushes to private remote after committing
+            (previously files were only committed locally, never pushed).
+            fix: .gitignore update in step 1 is now correctly staged before the public commit
+            (previously only staged when $toAdd was non-empty, causing the commit to be skipped).
+    2.2.0 - Invoke-PrivateMigration: replaces Move-PrivateFilesFromPublic with an automatic,
+            prompt-free migration that runs on setup AND every private sync / syncall:
+            - Pushes ALL on-disk $PRIVATE_PATHS (AI/Cursor/docs) into the private repo.
+            - Removes any still tracked in the public repo (git rm --cached).
+            - Ensures .gitignore covers all $PRIVATE_PATHS so re-commits can't happen.
+            - Runs after every successful pull so repos stay clean over time.
+    2.1.1 - fix: private sync/push/syncall failed with "couldn't find remote ref HEAD" on bare repos.
+            Added Get-PrivateDefaultBranch helper (reads remote symref, falls back to 'main').
+            All private pull/push operations now use explicit 'origin <branch>' instead of bare 'pull'/'push'.
+            Empty remote repos (no commits yet) are now detected and skipped gracefully instead of erroring.
+    2.1.0 - private setup now auto-migrates AI/Cursor config files from the public repo:
+            - Ensures ALL $PRIVATE_PATHS entries are added to .gitignore (even if no files
+              are tracked), so the script is portable to repos with incomplete .gitignore files.
+            - Detects any $PRIVATE_PATHS tracked in the public repo, prompts to migrate them:
+              stages + commits to private repo, removes from public tracking, commits cleanup.
+            - .gitignore is always committed whether or not a migration takes place.
+    2.0.0 - Initial release with interactive menu, public + private repo management.
 #>
 
 param(
@@ -43,8 +112,12 @@ param(
 # Bare repo directory for private config (lives inside the project root, gitignored)
 $PRIVATE_GIT_DIR = ".private-git"
 
-# Paths managed by the private repo — used when staging all private files
-$PRIVATE_PATHS = @(".claude", ".cursor", ".cursor-rules", ".docs", "CLAUDE.md")
+# Paths managed by the private repo — supports exact names and glob patterns (e.g. ".cursor*")
+$PRIVATE_PATHS = @(".claude", ".cursor*", "docs", "CLAUDE.md", "AGENT.md", ".agent*")
+
+# Paths that must always be in .gitignore regardless of $PRIVATE_PATHS.
+# The bare private-git directory must never be staged into the public repo.
+$PRIVATE_GIT_ALWAYS_IGNORE = @($PRIVATE_GIT_DIR)
 
 #endregion
 
@@ -115,17 +188,33 @@ function Get-PrivateGitDir {
     return Join-Path $root $PRIVATE_GIT_DIR
 }
 
-# Returns $true if .private-git exists and has commits; prints an error otherwise.
+# Expands $PRIVATE_PATHS glob patterns to actual paths that exist on disk.
+function Get-PrivateDiskPaths {
+    $root = Get-RepoRoot
+    if (-not $root) { return @() }
+    $paths = @()
+    foreach ($pattern in $PRIVATE_PATHS) {
+        if ($pattern -match '[*?]') {
+            Get-ChildItem -Path $root -Filter $pattern -ErrorAction SilentlyContinue |
+                ForEach-Object { $paths += $_.Name }
+        } elseif (Test-Path (Join-Path $root $pattern)) {
+            $paths += $pattern
+        }
+    }
+    return $paths
+}
+
+# Returns $true if .private-git exists and is a valid bare git repo; prints an error otherwise.
 function Test-PrivateRepo {
     $gitDir = Get-PrivateGitDir
     if (-not $gitDir -or -not (Test-Path $gitDir)) {
         Write-Error "Private repo not initialised. Run: git-helper private setup <url>"
         return $false
     }
-    # Check HEAD is valid (has at least one commit)
-    & git --git-dir="$gitDir" rev-parse HEAD 2>$null | Out-Null
+    # Verify the directory is a valid bare git repo (does NOT require commits to exist)
+    & git --git-dir="$gitDir" rev-parse --git-dir 2>$null | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Private repo exists but has no commits. Check .private-git is a valid bare repo."
+        Write-Error "Private repo directory exists but is not a valid git repo. Try deleting .private-git and re-running setup."
         return $false
     }
     return $true
@@ -545,8 +634,26 @@ function Invoke-PrivateStatus {
 
     Write-Host ""
     Write-Info "─── Recent Commits ───"
-    Invoke-PrivateGit @("log", "--oneline", "--graph", "--decorate", "-5")
+    $gitDir = Get-PrivateGitDir
+    $hasCommits = -not [string]::IsNullOrEmpty((& git --git-dir="$gitDir" rev-parse HEAD 2>$null))
+    if ($hasCommits) {
+        Invoke-PrivateGit @("log", "--oneline", "--graph", "--decorate", "-5")
+    } else {
+        Write-Subtle "  (no commits yet — use 'private save <message>' to make the first commit)"
+    }
     Write-Host ""
+}
+
+# Returns the default branch name from the private remote (falls back to 'main').
+function Get-PrivateDefaultBranch {
+    $gitDir = Get-PrivateGitDir
+    if (-not $gitDir) { return "main" }
+    $symref = & git --git-dir="$gitDir" ls-remote --symref origin HEAD 2>$null |
+              Select-String "^ref: refs/heads/(\S+)\s+HEAD" |
+              ForEach-Object { $_.Matches[0].Groups[1].Value } |
+              Select-Object -First 1
+    if ($symref) { return $symref }
+    return "main"
 }
 
 function Invoke-PrivateSync {
@@ -554,11 +661,25 @@ function Invoke-PrivateSync {
 
     if (-not (Test-PrivateRepo)) { return }
 
-    Write-Info "Pulling latest private config from remote..."
-    Invoke-PrivateGit @("pull")
+    $gitDir = Get-PrivateGitDir
+
+    # Guard: remote may be empty (no commits pushed yet)
+    $remoteRefs = & git --git-dir="$gitDir" ls-remote --heads origin 2>$null
+    if ([string]::IsNullOrWhiteSpace($remoteRefs)) {
+        Write-Warning "Remote private repo has no commits yet — nothing to pull."
+        Write-Subtle "Push your first commit with 'git-helper private push'."
+        return
+    }
+
+    $branch = Get-PrivateDefaultBranch
+    Write-Info "Pulling latest private config from remote (origin/$branch)..."
+    Invoke-PrivateGit @("pull", "origin", $branch)
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "✓ Private config is up to date."
+        Write-Host ""
+        Write-Info "Checking for AI/Cursor/docs files to migrate..."
+        Invoke-PrivateMigration
     } else {
         Write-Error "✗ Pull failed. Check output above for errors."
     }
@@ -578,7 +699,7 @@ function Invoke-PrivateSave {
     Show-CommandHeader "PRIVATE CONFIG SAVE"
 
     # Only stage paths that exist on disk to avoid warnings for missing dirs
-    $existingPaths = $PRIVATE_PATHS | Where-Object { Test-Path $_ }
+    $existingPaths = Get-PrivateDiskPaths
     if ($existingPaths.Count -eq 0) {
         Write-Warning "None of the configured private paths exist on disk."
         Write-Subtle "Paths: $($PRIVATE_PATHS -join ', ')"
@@ -603,8 +724,9 @@ function Invoke-PrivatePush {
 
     if (-not (Test-PrivateRepo)) { return }
 
-    Write-Info "Pushing private config to remote..."
-    Invoke-PrivateGit @("push")
+    $branch = Get-PrivateDefaultBranch
+    Write-Info "Pushing private config to remote (origin/$branch)..."
+    Invoke-PrivateGit @("push", "--set-upstream", "origin", $branch)
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "✓ Private config pushed."
@@ -648,10 +770,118 @@ function Invoke-PrivateLog {
 
     Show-CommandHeader "PRIVATE CONFIG LOG"
 
+    $gitDir = Get-PrivateGitDir
+    $hasCommits = -not [string]::IsNullOrEmpty((& git --git-dir="$gitDir" rev-parse HEAD 2>$null))
+    if (-not $hasCommits) {
+        Write-Subtle "  (no commits yet — use 'private save <message>' to make the first commit)"
+        Write-Host ""
+        return
+    }
+
     Write-Info "Last $Count commits:"
     Write-Host ""
     Invoke-PrivateGit @("log", "--oneline", "--graph", "--decorate", "-$Count")
     Write-Host ""
+}
+
+# Ensures all $PRIVATE_PATHS are in .gitignore, pushed into the private repo,
+# and removed from public tracking. Called automatically during setup and sync.
+function Invoke-PrivateMigration {
+    $root   = Get-RepoRoot
+    $gitDir = Get-PrivateGitDir
+    if (-not $root -or -not $gitDir -or -not (Test-Path $gitDir)) { return }
+
+    # --- Step 1: Ensure ALL private paths are in .gitignore ---
+    $gitignorePath = Join-Path $root ".gitignore"
+    $existingLines = if (Test-Path $gitignorePath) { Get-Content $gitignorePath } else { @() }
+
+    # Check for a line that matches the pattern as an actual gitignore entry (not in comments).
+    # Anchored to handle both /pattern and pattern forms.
+    function Test-GitignoreCoversPattern {
+        param([string]$Pat, [string[]]$Lines)
+        $escaped = [regex]::Escape($Pat)
+        return ($Lines | Where-Object { $_ -match "^/?$escaped/?$" }).Count -gt 0
+    }
+
+    $allRequiredPaths = $PRIVATE_PATHS + $PRIVATE_GIT_ALWAYS_IGNORE
+    $toAdd = $allRequiredPaths | Where-Object { -not (Test-GitignoreCoversPattern $_ $existingLines) }
+    if ($toAdd.Count -gt 0) {
+        Write-Info "  Updating .gitignore ($($toAdd -join ', '))..."
+        $block = "`n# AI / Cursor / docs configs (managed by private repo)`n" + ($toAdd | ForEach-Object { "/$_" } | Out-String).TrimEnd()
+        Add-Content -Path $gitignorePath -Value $block -NoNewline:$false
+        Write-Success "  ✓ .gitignore updated."
+    }
+
+    # --- Step 2: Stage and commit all on-disk private paths into the private repo ---
+    $diskPaths = Get-PrivateDiskPaths
+    if ($diskPaths.Count -gt 0) {
+        & git --git-dir="$gitDir" --work-tree="$root" add -f @diskPaths 2>$null
+        # Only commit if something was actually staged (avoids noisy "nothing to commit" output)
+        $privateStaged = & git --git-dir="$gitDir" diff --cached --name-only 2>$null
+        if (-not [string]::IsNullOrWhiteSpace($privateStaged)) {
+            & git --git-dir="$gitDir" --work-tree="$root" commit -m "chore: sync AI/Cursor/docs config to private repo"
+            if ($LASTEXITCODE -eq 0) { Write-Success "  ✓ Private config committed ($($diskPaths -join ', '))." }
+        }
+    }
+
+    # --- Step 3: Remove any still tracked in the public repo ---
+    $trackedPaths = $PRIVATE_PATHS | Where-Object {
+        -not [string]::IsNullOrEmpty((git ls-files $_ 2>$null))
+    }
+    if ($trackedPaths.Count -gt 0) {
+        Write-Info "  Removing $($trackedPaths -join ', ') from public repo tracking..."
+        foreach ($path in $trackedPaths) { git rm -r --cached $path 2>$null | Out-Null }
+    }
+
+    # --- Step 4: Commit public repo changes (.gitignore update + index removals) ---
+    if ($toAdd.Count -gt 0) { git add .gitignore 2>$null | Out-Null }
+    $staged = git diff --cached --name-only 2>$null
+    if (-not [string]::IsNullOrWhiteSpace($staged)) {
+        git commit -m "chore: remove AI/Cursor/docs config from public repo — now in private"
+        if ($LASTEXITCODE -eq 0) { Write-Success "  ✓ Public repo cleanup committed." }
+    }
+
+    # --- Step 5: Push private repo if local is ahead of remote ---
+    # Use ls-remote for the SHA comparison — bare repos often have no remote tracking refs,
+    # so rev-list "refs/remotes/origin/<branch>..HEAD" silently returns nothing.
+    $branch = Get-PrivateDefaultBranch
+    $localHead  = (& git --git-dir="$gitDir" rev-parse HEAD 2>$null).Trim()
+    if (-not [string]::IsNullOrEmpty($localHead)) {
+        $remoteInfo = & git --git-dir="$gitDir" ls-remote origin $branch 2>$null
+        if ([string]::IsNullOrWhiteSpace($remoteInfo)) {
+            # Remote branch doesn't exist yet, OR ls-remote failed (auth/network error).
+            # In either case attempt the push — the push itself will surface the real error.
+            $shouldPush = $true
+        } else {
+            # Remote exists — push only if local SHA differs from remote SHA
+            $remoteSha = ($remoteInfo -split '\s+')[0].Trim()
+            $shouldPush = ($localHead -ne $remoteSha)
+        }
+    } else {
+        $shouldPush = $false  # No local commits yet; nothing to push
+    }
+    if ($shouldPush) {
+        Write-Info "  Pushing private config to remote (origin/$branch)..."
+        & git --git-dir="$gitDir" push --set-upstream origin $branch
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "  ✓ Private config pushed to remote."
+        } else {
+            Write-Warning "  Push failed — run 'git-helper private push' to retry."
+        }
+    }
+
+    # --- Step 6: Push public repo if local is ahead of remote ---
+    $pubBranch = Get-CurrentBranch
+    $pubAhead = git rev-list --count "origin/$pubBranch..HEAD" 2>$null
+    if ($pubAhead -match '^\d+$' -and [int]$pubAhead -gt 0) {
+        Write-Info "  Pushing public repo cleanup to remote (origin/$pubBranch)..."
+        git push origin $pubBranch 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "  ✓ Public repo pushed to remote."
+        } else {
+            Write-Warning "  Public push failed — run 'git push' to retry."
+        }
+    }
 }
 
 function Invoke-PrivateSetup {
@@ -665,9 +895,9 @@ function Invoke-PrivateSetup {
     $gitDir = Join-Path $root $PRIVATE_GIT_DIR
 
     if (Test-Path $gitDir) {
-        Write-Warning "Private repo already exists at $gitDir"
-        Write-Subtle "If you need to re-initialise, delete the .private-git folder first."
-        return
+        Write-Error "✗ Private repo already exists at $gitDir"
+        Write-Subtle "  To re-initialise, delete the .private-git folder first, then re-run setup."
+        exit 1
     }
 
     # Auto-derive URL from public remote if not supplied
@@ -699,12 +929,16 @@ function Invoke-PrivateSetup {
         return
     }
 
-    Write-Info "Restoring private files to working tree..."
-    & git --git-dir="$gitDir" --work-tree="$root" checkout main -- .
-
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Checkout step had issues — the 'main' branch may not exist yet."
-        Write-Subtle "Try: git --git-dir=`".private-git`" --work-tree=`".`" branch -a"
+    $remoteHasCommits = & git --git-dir="$gitDir" ls-remote --heads origin 2>$null
+    if (-not [string]::IsNullOrWhiteSpace($remoteHasCommits)) {
+        Write-Info "Restoring private files to working tree..."
+        $setupBranch = Get-PrivateDefaultBranch
+        & git --git-dir="$gitDir" --work-tree="$root" checkout $setupBranch -- .
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Checkout step had issues — run 'git-helper private status' to verify."
+        }
+    } else {
+        Write-Subtle "  (New empty private repo — restore step skipped.)"
     }
 
     Write-Info "Configuring private repo (suppress untracked-file noise)..."
@@ -712,6 +946,11 @@ function Invoke-PrivateSetup {
 
     Write-Host ""
     Write-Success "✓ Private repo set up. Run 'git-helper private status' to verify."
+
+    # Push all AI/Cursor/docs files into private repo and clean up public repo
+    Write-Host ""
+    Write-Info "Migrating AI/Cursor/docs config to private repo..."
+    Invoke-PrivateMigration
 }
 
 # Dispatcher for all "private" sub-commands
@@ -763,11 +1002,23 @@ function Invoke-SyncAll {
     if ($gitDir -and (Test-Path $gitDir)) {
         Write-Host ""
         Write-Info "[PRIVATE] Pulling..."
-        Invoke-PrivateGit @("pull")
-        $privateOk = ($LASTEXITCODE -eq 0)
+        $remoteRefs = & git --git-dir="$gitDir" ls-remote --heads origin 2>$null
+        if ([string]::IsNullOrWhiteSpace($remoteRefs)) {
+            Write-Subtle "  [PRIVATE] Remote has no commits yet — skipping pull."
+            $privateOk = $true
+        } else {
+            $branch = Get-PrivateDefaultBranch
+            Invoke-PrivateGit @("pull", "origin", $branch)
+            $privateOk = ($LASTEXITCODE -eq 0)
+            if ($privateOk) { Write-Success "  ✓ Private config up to date." }
+            else            { Write-Error   "  ✗ Private sync had issues." }
+        }
 
-        if ($privateOk) { Write-Success "  ✓ Private config up to date." }
-        else            { Write-Error   "  ✗ Private sync had issues." }
+        if ($privateOk) {
+            Write-Host ""
+            Write-Info "[PRIVATE] Checking for AI/Cursor/docs files to migrate..."
+            Invoke-PrivateMigration
+        }
     } else {
         Write-Subtle "[PRIVATE] Skipped — .private-git not found. Run 'git-helper private setup' to initialise."
         $privateOk = $true
@@ -920,7 +1171,7 @@ function Show-Help {
     if ([string]::IsNullOrEmpty($CommandName)) {
         Write-Host ""
         Write-Info "═══════════════════════════════════════════════════════════════"
-        Write-Info "  GIT HELPER v2.0 - Command Reference"
+        Write-Info "  GIT HELPER v2.3 - Command Reference"
         Write-Info "═══════════════════════════════════════════════════════════════"
         Write-Host ""
         Write-Colour "  Usage: " -Colour White -NoNewLine
@@ -1008,7 +1259,7 @@ function Show-Menu {
     $branch = Get-CurrentBranch
 
     Write-Info "═══════════════════════════════════════════════════════════════"
-    Write-Colour "  GIT HELPER v2.0                          " -Colour Cyan -NoNewLine
+    Write-Colour "  GIT HELPER v2.3" -Colour Cyan -NoNewLine
     Write-Colour "📁 " -Colour White -NoNewLine
     Write-Colour $branch -Colour Green
     Write-Info "═══════════════════════════════════════════════════════════════"
