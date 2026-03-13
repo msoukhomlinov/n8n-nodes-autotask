@@ -1018,12 +1018,14 @@ function Invoke-PrivateForcePush {
     }
 
     Write-Info "Force-pushing private config to remote (origin/$branch)..."
-    Invoke-PrivateGit @("push", "--force-with-lease", "--set-upstream", "origin", $branch)
+    # Use --force (not --force-with-lease) because bare repos via --git-dir have no
+    # remote tracking refs, so --force-with-lease always rejects the push.
+    Invoke-PrivateGit @("push", "--force", "--set-upstream", "origin", $branch)
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "✓ Private config force-pushed. Remote now matches local."
     } else {
-        Write-Error "✗ Force-push failed. Try 'private sync' first, then retry."
+        Write-Error "✗ Force-push failed. Check network/auth. Do NOT run 'private sync' — that would merge remote changes into local."
     }
 }
 
