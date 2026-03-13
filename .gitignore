@@ -75,3 +75,9 @@ credentials.json
 /.docs/
 /.private-git/
 CLAUDE.md
+
+# AI / Cursor / docs configs (managed by private repo)
+/.cursor*
+/docs
+/AGENT.md
+/.agent*
