@@ -11,81 +11,16 @@ import type {
     ISupplyDataFunctions,
     SupplyData,
 } from 'n8n-workflow';
-import type { DynamicStructuredTool } from '@langchain/core/tools';
-import type { z } from 'zod';
 import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/resource-operations';
-import { describeResource, type DescribeResourceResponse } from './helpers/aiHelper';
-import {
-    getGetSchema,
-    getWhoAmISchema,
-    getGetManySchema,
-    getCompanySearchByDomainSchema,
-    getTicketSlaHealthCheckSchema,
-    getConfigurationItemMoveConfigurationItemSchema,
-    getContactMoveToCompanySchema,
-    getTransferOwnershipSchema,
-    getCountSchema,
-    getDeleteSchema,
-    getCreateSchema,
-    getUpdateSchema,
-} from './ai-tools/schema-generator';
+import { describeResource } from './helpers/aiHelper';
 import { executeAiTool, type ToolExecutorParams } from './ai-tools/tool-executor';
-import {
-    buildCountDescription,
-    buildCreateDescription,
-    buildDeleteDescription,
-    buildGetDescription,
-    buildGetManyDescription,
-    buildCompanySearchByDomainDescription,
-    buildTicketSlaHealthCheckDescription,
-    buildConfigurationItemMoveConfigurationItemDescription,
-    buildContactMoveToCompanyDescription,
-    buildResourceTransferOwnershipDescription,
-    buildPostedTimeEntriesDescription,
-    buildUnpostedTimeEntriesDescription,
-    buildUpdateDescription,
-    buildWhoAmIDescription,
-} from './ai-tools/description-builders';
-import { buildHelperTools } from './ai-tools/helper-tools';
-import { normaliseToolInputSchema } from './ai-tools/schema-normalizer';
+import { buildUnifiedDescription } from './ai-tools/description-builders';
+import { RuntimeDynamicStructuredTool, runtimeZod } from './ai-tools/runtime';
+import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
 import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
+import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
 
-// ---------------------------------------------------------------------------
-// Resolve n8n-core's StructuredToolkit at runtime.
-// n8n-core is always present in the n8n host but is not a declared dependency
-// for community node packages. Using the host's class ensures instanceof checks
-// in n8n's agent tool-consumption flow (getConnectedTools / extendResponseMetadata)
-// recognise our toolkit correctly — matching exactly what n8n's own MCP Client
-// Tool node does: `import { StructuredToolkit } from 'n8n-core'`.
-//
-// Fallback: older n8n versions don't export StructuredToolkit — use the
-// Toolkit base from @langchain/classic/agents instead (resolved from n8n's host).
-// ---------------------------------------------------------------------------
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let LangChainToolkitBase: new (...args: any[]) => { tools?: DynamicStructuredTool[]; getTools?(): DynamicStructuredTool[] };
-try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
-    const nCore = require('n8n-core') as Record<string, unknown>;
-    const StructuredToolkit = nCore['StructuredToolkit'];
-    if (typeof StructuredToolkit !== 'function') throw new Error('not found');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    LangChainToolkitBase = StructuredToolkit as any;
-} catch {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
-    ({ Toolkit: LangChainToolkitBase } = require('@langchain/classic/agents') as {
-        Toolkit: typeof LangChainToolkitBase;
-    });
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-class AutotaskToolkit extends (LangChainToolkitBase as any) {
-    declare tools: DynamicStructuredTool[];
-    constructor(toolList: DynamicStructuredTool[]) {
-        super();
-        this.tools = toolList;
-    }
-    getTools(): DynamicStructuredTool[] { return this.tools; }
-}
+const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
 
 const WRITE_OPERATIONS = ['create', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'];
 const SUPPORTED_TOOL_OPERATIONS = [
@@ -108,28 +43,6 @@ const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
 
 function formatResourceName(value: string): string {
     return value.charAt(0).toUpperCase() + value.slice(1).replace(/([A-Z])/g, ' $1').trim();
-}
-
-function parseOperationFromToolName(toolName: unknown, resource: string): string | undefined {
-    if (typeof toolName !== 'string' || !toolName.trim()) {
-        return undefined;
-    }
-    const trimmedToolName = toolName.trim();
-    const prefix = `autotask_${resource.toLowerCase()}_`;
-    const lowerToolName = trimmedToolName.toLowerCase();
-    if (!lowerToolName.startsWith(prefix)) {
-        return undefined;
-    }
-    const suffix = lowerToolName.slice(prefix.length);
-    return suffix === 'getbyid' ? 'get' : suffix;
-}
-
-function resolveOperationCaseInsensitive(
-    requestedOperation: string,
-    allowedOperations: string[],
-): string | undefined {
-    const normalisedRequested = requestedOperation.trim().toLowerCase();
-    return allowedOperations.find((op) => op.toLowerCase() === normalisedRequested);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,12 +104,6 @@ export class AutotaskAiTools implements INodeType {
     };
 
     async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
-        // Lazy require — must NOT be a top-level import. @langchain/core ships ESM-only in some
-        // environments; resolving it here (inside supplyData) defers the require until the AI
-        // agent actually invokes the toolkit, at which point n8n's CJS-compatible copy is used.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { DynamicStructuredTool: DSTool } = require('@langchain/core/tools') as typeof import('@langchain/core/tools');
-
         const resource = this.getNodeParameter('resource', itemIndex) as string;
         const operations = this.getNodeParameter('operations', itemIndex) as string[];
         const allowWriteOperations = this.getNodeParameter('allowWriteOperations', itemIndex, false) as boolean;
@@ -219,180 +126,92 @@ export class AutotaskAiTools implements INodeType {
             );
         }
 
+        const effectiveOps = operations.filter(
+            (op) => !WRITE_OPERATIONS.includes(op) || allowWriteOperations,
+        );
+        if (effectiveOps.length === 0) {
+            throw new NodeOperationError(
+                this.getNode(),
+                'No permitted operations. Enable "Allow Write Operations" if write operations are needed.',
+            );
+        }
+
         const resourceLabel = formatResourceName(resource);
-        const tools: DynamicStructuredTool[] = [];
-        // eslint-disable-next-line @typescript-eslint/no-this-alias -- needed for async closure in tool func
+        const referenceUtc = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+        const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
+
+        // Fetch field metadata once — reused by schema + description + executor
+        const needsReadFields = effectiveOps.some((op) =>
+            ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(op),
+        );
+        const needsWriteFields = effectiveOps.some((op) => ['create', 'update'].includes(op));
+
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         const supplyDataContext = this;
 
-        // Current UTC at tool load so the AI has a real "now" for date/time and recency (not training cutoff)
-        const referenceUtc = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+        const [readDescribe, writeDescribe] = await Promise.all([
+            needsReadFields
+                ? describeResource(supplyDataContext as unknown as ILoadOptionsFunctions, resource, 'read')
+                : Promise.resolve(undefined),
+            needsWriteFields
+                ? describeResource(supplyDataContext as unknown as ILoadOptionsFunctions, resource, 'write')
+                : Promise.resolve(undefined),
+        ]);
 
-        // Fetch field metadata once for the resource -- used by multiple operations
-        const needsReadFields = operations.some((op) => ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI'].includes(op));
-        const needsWriteFields = operations.some((op) => ['create', 'update'].includes(op));
+        const schema = buildUnifiedSchema(
+            resource,
+            effectiveOps,
+            readDescribe?.fields ?? [],
+            writeDescribe?.fields ?? [],
+        );
 
-        let readDescribe: DescribeResourceResponse | undefined;
-        let writeDescribe: DescribeResourceResponse | undefined;
+        const description = buildUnifiedDescription(
+            resourceLabel,
+            resource,
+            effectiveOps,
+            readDescribe?.fields ?? [],
+            writeDescribe?.fields ?? [],
+            referenceUtc,
+            supportsImpersonation,
+        );
 
-        if (needsReadFields) {
-            readDescribe = await describeResource(
-                supplyDataContext as unknown as ILoadOptionsFunctions,
-                resource,
-                'read',
-            );
-        }
-        if (needsWriteFields) {
-            writeDescribe = await describeResource(
-                supplyDataContext as unknown as ILoadOptionsFunctions,
-                resource,
-                'write',
-            );
-        }
+        const allAllowedOps = [...new Set([...effectiveOps, 'describeFields', 'listPicklistValues'])];
 
-        for (const operation of operations) {
-            if (WRITE_OPERATIONS.includes(operation) && !allowWriteOperations) {
-                continue;
-            }
-
-            const toolSuffix = operation === 'get' ? 'getById' : operation;
-            const toolName = `autotask_${resource}_${toolSuffix}`;
-            let schema: z.ZodObject<z.ZodRawShape>;
-            let description: string;
-			const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
-
-            switch (operation) {
-                case 'get':
-                    schema = getGetSchema();
-                    description = buildGetDescription(resourceLabel, resource);
-                    break;
-                case 'whoAmI':
-                    schema = getWhoAmISchema();
-                    description = buildWhoAmIDescription(resourceLabel);
-                    break;
-                case 'getMany':
-                    schema = getGetManySchema(readDescribe?.fields ?? []);
-                    description = buildGetManyDescription(
-                        resourceLabel,
-                        resource,
-                        readDescribe?.fields ?? [],
-                        referenceUtc,
-                    );
-                    break;
-                case 'searchByDomain':
-                    schema = getCompanySearchByDomainSchema();
-                    description = buildCompanySearchByDomainDescription(resource);
-                    break;
-                case 'slaHealthCheck':
-                    schema = getTicketSlaHealthCheckSchema();
-                    description = buildTicketSlaHealthCheckDescription(resource);
-                    break;
-                case 'getPosted':
-                    schema = getGetManySchema(readDescribe?.fields ?? []);
-                    description = buildPostedTimeEntriesDescription(resource, referenceUtc);
-                    break;
-                case 'getUnposted':
-                    schema = getGetManySchema(readDescribe?.fields ?? []);
-                    description = buildUnpostedTimeEntriesDescription(resource, referenceUtc);
-                    break;
-                case 'count':
-                    schema = getCountSchema(readDescribe?.fields ?? []);
-                    description = buildCountDescription(resourceLabel, referenceUtc);
-                    break;
-                case 'moveConfigurationItem':
-                    schema = getConfigurationItemMoveConfigurationItemSchema();
-                    description = buildConfigurationItemMoveConfigurationItemDescription(resource);
-                    break;
-                case 'moveToCompany':
-                    schema = getContactMoveToCompanySchema();
-                    description = buildContactMoveToCompanyDescription(resource);
-                    break;
-                case 'transferOwnership':
-                    schema = getTransferOwnershipSchema();
-                    description = buildResourceTransferOwnershipDescription(resource);
-                    break;
-                case 'delete':
-                    schema = getDeleteSchema();
-                    description = buildDeleteDescription(resourceLabel, resource);
-                    break;
-                case 'create': {
-                    const fields = writeDescribe?.fields ?? [];
-                    schema = getCreateSchema(fields, supportsImpersonation);
-                    description = buildCreateDescription(
-                        resourceLabel,
-                        resource,
-                        fields,
-                        supportsImpersonation,
-                        referenceUtc,
-                    );
-                    break;
+        const unifiedTool = new RuntimeDynamicStructuredTool({
+            name: `autotask_${resource}`,
+            description,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            schema: schema as any,
+            func: async (rawParams: Record<string, unknown>) => {
+                const operation = rawParams.operation as string;
+                if (!operation || !allAllowedOps.includes(operation)) {
+                    if (operation && WRITE_OPERATIONS.includes(operation) && !allowWriteOperations) {
+                        return JSON.stringify(wrapError(
+                            resource, operation, ERROR_TYPES.WRITE_OPERATION_BLOCKED,
+                            `Write operation '${operation}' is blocked. Enable "Allow Write Operations" in the node configuration.`,
+                            `Use a read operation such as 'get' or 'getMany', or ask the user to enable write operations.`,
+                        ));
+                    }
+                    return JSON.stringify(wrapError(
+                        resource, operation ?? 'unknown', ERROR_TYPES.INVALID_OPERATION,
+                        `Unknown operation '${operation}'.`,
+                        `Use one of: ${allAllowedOps.join(', ')}`,
+                    ));
                 }
-                case 'update': {
-                    const fields = writeDescribe?.fields ?? [];
-                    schema = getUpdateSchema(fields, supportsImpersonation);
-                    description = buildUpdateDescription(
-                        resourceLabel,
-                        resource,
-                        supportsImpersonation,
-                        referenceUtc,
-                    );
-                    break;
-                }
-                default:
-                    continue;
-            }
-
-            const toolFunc = async (params: Record<string, unknown>) => {
-                const typedParams = params as unknown as ToolExecutorParams;
                 return executeAiTool(
                     supplyDataContext as unknown as IExecuteFunctions,
                     resource,
                     operation,
-                    typedParams,
+                    rawParams as unknown as ToolExecutorParams,
                     {
                         readFields: readDescribe?.fields ?? [],
                         writeFields: writeDescribe?.fields ?? [],
                     },
                 );
-            };
-            const normalisedSchema = normaliseToolInputSchema(schema);
-            const tool = new DSTool({
-                name: toolName,
-                description,
-                schema: normalisedSchema,
-                func: toolFunc,
-            });
-            tools.push(tool);
+            },
+        });
 
-            // Backward-compat alias: autotask_<resource>_get — callable by existing
-            // workflows but undescribed so the LLM will not proactively use it.
-            if (operation === 'get') {
-                tools.push(new DSTool({
-                    name: `autotask_${resource}_get`,
-                    description: '',
-                    schema: normalisedSchema,
-                    func: toolFunc,
-                }));
-            }
-        }
-
-        const helperTools = buildHelperTools(
-            resource,
-            resourceLabel,
-            supplyDataContext as unknown as IExecuteFunctions,
-        );
-        tools.push(...helperTools);
-
-        if (tools.length === 0) {
-            throw new NodeOperationError(
-                this.getNode(),
-                'No tools to expose. Select operations and enable "Allow Write Operations" if you need mutating operations.',
-            );
-        }
-
-        // Wrap in a toolkit so the AI Agent's getConnectedTools correctly
-        // recognises and flattens the tools (instanceof StructuredToolkit / Toolkit).
-        const toolkit = new AutotaskToolkit(tools);
-        return { response: toolkit };
+        return { response: unifiedTool };
     }
 
     /**
@@ -448,13 +267,30 @@ export class AutotaskAiTools implements INodeType {
             const item = items[itemIndex];
             if (!item) continue;
 
-            // Execution payload may provide operation directly, or provide a tool name.
-            // In AI mode the payload often includes `tool: autotask_<resource>_<operation>`.
-            const requestedOpFromName =
-                parseOperationFromToolName(item.json.tool, resource) ??
-                parseOperationFromToolName(item.json.toolName, resource);
-            const requestedOp = (item.json.operation as string) || requestedOpFromName || effectiveOps[0];
-            const operation = resolveOperationCaseInsensitive(requestedOp, effectiveOps) ?? effectiveOps[0];
+            const requestedOp = (item.json.operation as string) || effectiveOps[0];
+            if (requestedOp && !effectiveOps.includes(requestedOp)) {
+                if (WRITE_OPERATIONS.includes(requestedOp) && !allowWriteOperations) {
+                    response.push({
+                        json: { ...wrapError(
+                            resource, requestedOp, ERROR_TYPES.WRITE_OPERATION_BLOCKED,
+                            `Write operation '${requestedOp}' is blocked. Enable "Allow Write Operations" in the node configuration.`,
+                            `Use a read operation such as 'get' or 'getMany', or ask the user to enable write operations.`,
+                        ) },
+                        pairedItem: { item: itemIndex },
+                    });
+                    continue;
+                }
+                response.push({
+                    json: { ...wrapError(
+                        resource, requestedOp, ERROR_TYPES.INVALID_OPERATION,
+                        `Operation '${requestedOp}' is not configured for this node.`,
+                        `Use one of: ${effectiveOps.join(', ')}`,
+                    ) },
+                    pairedItem: { item: itemIndex },
+                });
+                continue;
+            }
+            const operation = requestedOp;
 
             try {
                 const params: ToolExecutorParams = {

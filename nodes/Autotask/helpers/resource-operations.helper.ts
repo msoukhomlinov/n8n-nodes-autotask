@@ -98,9 +98,19 @@ export function addOperationsToResource(
 	config: IOperationAdditionConfig,
 ): INodeProperties[] {
 	let properties = [...baseFields];
-	const operationProperty = properties.find(p => p.name === 'operation' && p.type === 'options') as INodeProperties & { options: INodePropertyOptions[] };
+	const opIndex = properties.findIndex(p => p.name === 'operation' && p.type === 'options');
+	const found = opIndex !== -1 ? properties[opIndex] as INodeProperties & { options: INodePropertyOptions[] } : null;
 
-	if (operationProperty) {
+	// Clone the operation property so we never mutate the caller's module-level *Fields object.
+	// Without this clone, the shallow copy of baseFields still shares the same property object,
+	// and every new Autotask() call would accumulate duplicate options.
+	if (found) {
+		const operationProperty: INodeProperties & { options: INodePropertyOptions[] } = {
+			...found,
+			options: [...found.options],
+		};
+		properties = [...properties.slice(0, opIndex), operationProperty, ...properties.slice(opIndex + 1)];
+
 		// Sort the initial operations alphabetically
 		operationProperty.options = sortOperations(operationProperty.options);
 
@@ -307,7 +317,7 @@ export function addOperationsToResource(
 	}
 
 	// Check for write operations in resources without get operations (write-only resources)
-	if (!operationProperty) {
+	if (!found) {
 		const writeOnlyOperationProperty = properties.find(p => p.name === 'operation' && p.type === 'options') as INodeProperties & { options: INodePropertyOptions[] };
 		if (writeOnlyOperationProperty) {
 			const hasWriteOperations = writeOnlyOperationProperty.options.some((op: INodePropertyOptions) =>

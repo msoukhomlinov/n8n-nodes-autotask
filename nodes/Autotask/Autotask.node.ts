@@ -239,11 +239,10 @@ import { countryFields } from './resources/countries/description';
 // -----------------------------------------------------------------------------
 const selectColumnsCache: Map<string, INodePropertyOptions[]> = new Map();
 
-/**
- * Autotask node implementation
- */
-export class Autotask implements INodeType {
-	description: INodeTypeDescription = {
+// Module-level constant ensures consolidateProperties + addOperationsToResource run exactly once,
+// regardless of how many times n8n internally calls `new Autotask()` (usableAsTool processing,
+// tool adapters, type validation, etc.). Prevents duplicate operation options accumulating.
+const autotaskDescription: INodeTypeDescription = {
 		displayName: 'Autotask',
 		name: 'autotask',
 		icon: 'file:autotask.svg',
@@ -408,6 +407,12 @@ export class Autotask implements INodeType {
 			...searchFilterOperations,
 		]),
 	};
+
+/**
+ * Autotask node implementation
+ */
+export class Autotask implements INodeType {
+	description = autotaskDescription;
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		// Initialise rate tracker with actual Autotask usage.
