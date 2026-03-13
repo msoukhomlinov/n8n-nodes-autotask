@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Git Helper - A user-friendly PowerShell script for common Git operations.
 
@@ -8,9 +8,9 @@
 
     Usage:
         git-helper                          # Interactive menu
-        git-helper <command> [args]         # Direct execution
+        git-helper {command} [args]         # Direct execution
         git-helper help                     # Show all commands
-        git-helper help <command>           # Show help for specific command
+        git-helper help {command}           # Show help for specific command
 
 .EXAMPLE
     git-helper release v1.2.0 "Bug fixes"
@@ -21,9 +21,27 @@
 
 .NOTES
     Author: Max Soukhomlinov
-    Version: 2.3.5
+    Version: 2.4.0
 
     Changelog:
+    2.4.0 - feat: Invoke-Push and Invoke-Release now auto-push private repo when the public
+            push succeeds. Previously private config changes were silently left behind on the
+            remote unless the user remembered to run 'git-helper private push' separately.
+            Private push is best-effort: if .private-git is not set up or has nothing to push,
+            it is silently skipped. Failures show a warning but do not fail the overall command.
+            feat: Invoke-SyncAll is now bidirectional -pulls then pushes for both public and
+            private repos. Auto-commits uncommitted private changes before pushing. Previously
+            syncall only pulled, leaving unpushed commits behind.
+            feat: Show-Menu now displays yellow warnings when there are uncommitted changes or
+            unpushed commits in either repo, so pending work is immediately visible.
+            feat: Invoke-Status now shows unpushed commit counts for both public and private
+            repos, with actionable hints ("run 'push'" / "run 'private push'").
+            Added helpers: Get-PublicAheadCount, Get-PrivateAheadCount, Test-PrivateDirty.
+            fix: Added UTF-8 BOM to file - PowerShell 5.1 defaults to ANSI without BOM, causing
+            em-dash and Unicode characters to corrupt the parser and produce 34 cascading parse
+            errors that prevented the script from loading. All angle-bracket placeholders in
+            usage strings (<param>) replaced with curly-brace style ({param}) to avoid
+            PowerShell treating '<' as a reserved redirection operator in string contexts.
     2.3.5 - fix: Test-PrivateRepo no longer requires commits to exist. Previously it called
             rev-parse HEAD which fails on a freshly-cloned empty private repo, blocking every
             private sub-command (save, push, status, log) with "no commits" error. Now uses
@@ -44,7 +62,7 @@
             fix: Invoke-PrivateSetup uses Get-PrivateDefaultBranch for the checkout instead
             of hardcoded "main", handling repos whose default branch is not "main".
             fix: removed misleading "Run 'git-helper private push'" hint from end of
-            Invoke-PrivateSetup — Invoke-PrivateMigration already handles the push.
+            Invoke-PrivateSetup -Invoke-PrivateMigration already handles the push.
     2.3.3 - fix: .private-git/ added to $PRIVATE_GIT_ALWAYS_IGNORE so it is always written to
             .gitignore regardless of $PRIVATE_PATHS, preventing bare-repo internals from being
             staged by `git add .` during release.
@@ -112,7 +130,7 @@ param(
 # Bare repo directory for private config (lives inside the project root, gitignored)
 $PRIVATE_GIT_DIR = ".private-git"
 
-# Paths managed by the private repo — supports exact names and glob patterns (e.g. ".cursor*")
+# Paths managed by the private repo -supports exact names and glob patterns (e.g. ".cursor*")
 $PRIVATE_PATHS = @(".claude", ".cursor*", "docs", "CLAUDE.md", "AGENT.md", ".agent*")
 
 # Paths that must always be in .gitignore regardless of $PRIVATE_PATHS.
@@ -148,6 +166,56 @@ function Get-CurrentBranch {
         return "not a git repo"
     }
     return $branch
+}
+
+# Returns the number of commits the local public branch is ahead of its remote tracking branch.
+# Returns 0 if up to date or if remote tracking is not configured.
+function Get-PublicAheadCount {
+    $branch = Get-CurrentBranch
+    $ahead = git rev-list --count "origin/$branch..HEAD" 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($ahead)) { return 0 }
+    return [int]$ahead
+}
+
+# Returns the number of commits the local private repo is ahead of its remote.
+# Returns 0 if up to date, not set up, or no commits exist.
+function Get-PrivateAheadCount {
+    $gitDir = Get-PrivateGitDir
+    if (-not $gitDir -or -not (Test-Path $gitDir)) { return 0 }
+
+    $hasCommits = -not [string]::IsNullOrEmpty((& git --git-dir="$gitDir" rev-parse HEAD 2>$null))
+    if (-not $hasCommits) { return 0 }
+
+    $branch    = Get-PrivateDefaultBranch
+    $localSha  = & git --git-dir="$gitDir" rev-parse HEAD 2>$null
+    $remoteSha = & git --git-dir="$gitDir" ls-remote --heads origin $branch 2>$null |
+                   ForEach-Object { ($_ -split '\s+')[0] }
+
+    if ([string]::IsNullOrEmpty($remoteSha)) {
+        # Remote has no commits -everything local is unpushed
+        $count = & git --git-dir="$gitDir" rev-list --count HEAD 2>$null
+        if ($LASTEXITCODE -ne 0) { return 0 }
+        return [int]$count
+    }
+    if ($localSha -eq $remoteSha) { return 0 }
+
+    # Count commits between remote SHA and local HEAD
+    $count = & git --git-dir="$gitDir" rev-list --count "$remoteSha..HEAD" 2>$null
+    if ($LASTEXITCODE -ne 0) { return 1 }  # at least 1 if SHAs differ
+    return [int]$count
+}
+
+# Checks for uncommitted changes in the private repo. Returns $true if dirty.
+function Test-PrivateDirty {
+    $gitDir = Get-PrivateGitDir
+    if (-not $gitDir -or -not (Test-Path $gitDir)) { return $false }
+
+    $root = Get-RepoRoot
+    $existingPaths = Get-PrivateDiskPaths
+    if ($existingPaths.Count -eq 0) { return $false }
+
+    $changes = & git --git-dir="$gitDir" --work-tree="$root" status --porcelain -- @existingPaths 2>$null | Out-String
+    return -not [string]::IsNullOrWhiteSpace($changes)
 }
 
 function Test-GitRepo {
@@ -208,7 +276,7 @@ function Get-PrivateDiskPaths {
 function Test-PrivateRepo {
     $gitDir = Get-PrivateGitDir
     if (-not $gitDir -or -not (Test-Path $gitDir)) {
-        Write-Error "Private repo not initialised. Run: git-helper private setup <url>"
+        Write-Error 'Private repo not initialised. Run: git-helper private setup {url}'
         return $false
     }
     # Verify the directory is a valid bare git repo (does NOT require commits to exist)
@@ -237,7 +305,7 @@ function Invoke-Release {
     param([string]$Version, [string]$Message)
 
     if ([string]::IsNullOrEmpty($Version) -or [string]::IsNullOrEmpty($Message)) {
-        Write-Error "Usage: git-helper release <version> <message>"
+        Write-Error 'Usage: git-helper release {version} {message}'
         Write-Subtle "Example: git-helper release v1.2.0 `"Fixed calculation bug`""
         return
     }
@@ -260,6 +328,7 @@ function Invoke-Release {
     if ($LASTEXITCODE -eq 0) {
         Write-Host ""
         Write-Success "✓ Released $Version successfully!"
+        Invoke-PrivateAutoPush
     } else {
         Write-Error "✗ Release failed. Check the output above for errors."
     }
@@ -286,7 +355,7 @@ function Invoke-Save {
     param([string]$Message)
 
     if ([string]::IsNullOrEmpty($Message)) {
-        Write-Error "Usage: git-helper save <message>"
+        Write-Error 'Usage: git-helper save {message}'
         Write-Subtle "Example: git-helper save `"WIP: refactoring auth module`""
         return
     }
@@ -306,6 +375,49 @@ function Invoke-Save {
     }
 }
 
+# Best-effort push of private repo. Silently skips if .private-git is not set up,
+# has no commits, or has nothing to push. Shows a warning on failure but never
+# causes the calling command to fail.
+function Invoke-PrivateAutoPush {
+    $gitDir = Get-PrivateGitDir
+    if (-not $gitDir -or -not (Test-Path $gitDir)) { return }
+
+    # Verify it's a valid bare repo
+    & git --git-dir="$gitDir" rev-parse --git-dir 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) { return }
+
+    # Check if there are any local commits at all
+    $hasCommits = -not [string]::IsNullOrEmpty((& git --git-dir="$gitDir" rev-parse HEAD 2>$null))
+    if (-not $hasCommits) { return }
+
+    # Check if local is ahead of remote (has unpushed commits)
+    $branch = Get-PrivateDefaultBranch
+    $localSha  = & git --git-dir="$gitDir" rev-parse HEAD 2>$null
+    $remoteSha = & git --git-dir="$gitDir" ls-remote --heads origin $branch 2>$null |
+                   ForEach-Object { ($_ -split '\s+')[0] }
+    if ($localSha -eq $remoteSha) { return }
+
+    # Stage any changed private files before pushing
+    $existingPaths = Get-PrivateDiskPaths
+    if ($existingPaths.Count -gt 0) {
+        Invoke-PrivateGit (@("add", "-f") + $existingPaths)
+        $hasStagedChanges = -not [string]::IsNullOrEmpty((Invoke-PrivateGit @("diff", "--cached", "--name-only") 2>$null | Out-String).Trim())
+        if ($hasStagedChanges) {
+            Invoke-PrivateGit @("commit", "-m", "Auto-sync private config")
+        }
+    }
+
+    Write-Host ""
+    Write-Info "[PRIVATE] Pushing private config..."
+    Invoke-PrivateGit @("push", "--set-upstream", "origin", $branch)
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "  ✓ Private config pushed."
+    } else {
+        Write-Warning "  ⚠ Private push failed -run 'git-helper private push' manually."
+    }
+}
+
 function Invoke-Push {
     Show-CommandHeader "PUSH"
 
@@ -315,6 +427,7 @@ function Invoke-Push {
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "✓ Pushed to origin/$branch successfully."
+        Invoke-PrivateAutoPush
     } else {
         Write-Error "✗ Push failed. You may need to sync first."
     }
@@ -336,6 +449,14 @@ function Invoke-Status {
         Write-Subtle "  (no uncommitted changes)"
     }
 
+    # Unpushed public commits
+    $publicAhead = Get-PublicAheadCount
+    if ($publicAhead -gt 0) {
+        Write-Warning "  ⚠ $publicAhead unpushed commit(s) -run 'push' or 'release'"
+    } else {
+        Write-Subtle "  (up to date with remote)"
+    }
+
     Write-Host ""
     Write-Info "─── Recent Commits ───"
     git log --oneline -5
@@ -350,7 +471,16 @@ function Invoke-Status {
             Write-Subtle "  (no uncommitted changes)"
         } else {
             Invoke-PrivateGit @("status", "--short")
-            Write-Subtle "  Run 'git-helper private status' for full details."
+        }
+
+        # Unpushed private commits
+        $privateAhead = Get-PrivateAheadCount
+        if ($privateAhead -gt 0) {
+            Write-Warning "  ⚠ $privateAhead unpushed private commit(s) -run 'private push'"
+        } elseif (Test-PrivateDirty) {
+            Write-Warning '  ⚠ Uncommitted private changes - run: private save {msg}'
+        } else {
+            Write-Subtle "  (up to date with remote)"
         }
     }
 
@@ -361,7 +491,7 @@ function Invoke-NewBranch {
     param([string]$BranchName)
 
     if ([string]::IsNullOrEmpty($BranchName)) {
-        Write-Error "Usage: git-helper newbranch <branch-name>"
+        Write-Error 'Usage: git-helper newbranch {branch-name}'
         Write-Subtle "Example: git-helper newbranch feature/new-login"
         return
     }
@@ -382,7 +512,7 @@ function Invoke-SwitchTo {
     param([string]$BranchName)
 
     if ([string]::IsNullOrEmpty($BranchName)) {
-        Write-Error "Usage: git-helper switchto <branch-name>"
+        Write-Error 'Usage: git-helper switchto {branch-name}'
         Write-Subtle "Example: git-helper switchto main"
         Write-Host ""
         Write-Info "Available local branches:"
@@ -418,7 +548,7 @@ function Invoke-Merge {
     param([string]$BranchName)
 
     if ([string]::IsNullOrEmpty($BranchName)) {
-        Write-Error "Usage: git-helper merge <branch-name>"
+        Write-Error 'Usage: git-helper merge {branch-name}'
         Write-Subtle "Example: git-helper merge feature/login"
         return
     }
@@ -440,7 +570,7 @@ function Invoke-Delete {
     param([string]$BranchName, [string]$Scope = "local")
 
     if ([string]::IsNullOrEmpty($BranchName)) {
-        Write-Error "Usage: git-helper delete <branch-name> [local|remote|both]"
+        Write-Error 'Usage: git-helper delete {branch-name} [local|remote|both]'
         Write-Subtle "Example: git-helper delete feature/old-stuff remote"
         return
     }
@@ -486,8 +616,8 @@ function Invoke-Tags {
         }
         "create" {
             if ([string]::IsNullOrEmpty($TagName)) {
-                Write-Error "Usage: git-helper tags create <tag-name> <message>"
-                Write-Subtle "Example: git-helper tags create v1.0.0 `"Initial release`""
+                Write-Error 'Usage: git-helper tags create {tag-name} {message}'
+                Write-Subtle 'Example: git-helper tags create v1.0.0 "Initial release"'
                 return
             }
             if ([string]::IsNullOrEmpty($Message)) { $Message = $TagName }
@@ -500,7 +630,7 @@ function Invoke-Tags {
         }
         "delete" {
             if ([string]::IsNullOrEmpty($TagName)) {
-                Write-Error "Usage: git-helper tags delete <tag-name>"
+                Write-Error 'Usage: git-helper tags delete {tag-name}'
                 return
             }
             if (-not (Get-Confirmation "Delete tag '$TagName'?")) { Write-Warning "Cancelled."; return }
@@ -639,7 +769,7 @@ function Invoke-PrivateStatus {
     if ($hasCommits) {
         Invoke-PrivateGit @("log", "--oneline", "--graph", "--decorate", "-5")
     } else {
-        Write-Subtle "  (no commits yet — use 'private save <message>' to make the first commit)"
+        Write-Subtle "  (no commits yet - use 'private save' with a message to make the first commit)"
     }
     Write-Host ""
 }
@@ -666,7 +796,7 @@ function Invoke-PrivateSync {
     # Guard: remote may be empty (no commits pushed yet)
     $remoteRefs = & git --git-dir="$gitDir" ls-remote --heads origin 2>$null
     if ([string]::IsNullOrWhiteSpace($remoteRefs)) {
-        Write-Warning "Remote private repo has no commits yet — nothing to pull."
+        Write-Warning "Remote private repo has no commits yet -nothing to pull."
         Write-Subtle "Push your first commit with 'git-helper private push'."
         return
     }
@@ -689,7 +819,7 @@ function Invoke-PrivateSave {
     param([string]$Message)
 
     if ([string]::IsNullOrEmpty($Message)) {
-        Write-Error "Usage: git-helper private save <message>"
+        Write-Error 'Usage: git-helper private save {message}'
         Write-Subtle "Example: git-helper private save `"Updated cursor rules`""
         return
     }
@@ -739,7 +869,7 @@ function Invoke-PrivateAdd {
     param([string]$FilePath)
 
     if ([string]::IsNullOrEmpty($FilePath)) {
-        Write-Error "Usage: git-helper private add <file-path>"
+        Write-Error 'Usage: git-helper private add {file-path}'
         Write-Subtle "Example: git-helper private add .claude/settings.local.json"
         return
     }
@@ -757,7 +887,7 @@ function Invoke-PrivateAdd {
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "✓ Staged: $FilePath"
-        Write-Subtle "Use 'private save <msg>' to commit, then 'private push' to upload."
+        Write-Subtle 'Use: private save {msg} to commit, then: private push to upload.'
     } else {
         Write-Error "✗ Failed to stage file."
     }
@@ -773,7 +903,7 @@ function Invoke-PrivateLog {
     $gitDir = Get-PrivateGitDir
     $hasCommits = -not [string]::IsNullOrEmpty((& git --git-dir="$gitDir" rev-parse HEAD 2>$null))
     if (-not $hasCommits) {
-        Write-Subtle "  (no commits yet — use 'private save <message>' to make the first commit)"
+        Write-Subtle "  (no commits yet - use 'private save' with a message to make the first commit)"
         Write-Host ""
         return
     }
@@ -837,12 +967,12 @@ function Invoke-PrivateMigration {
     if ($toAdd.Count -gt 0) { git add .gitignore 2>$null | Out-Null }
     $staged = git diff --cached --name-only 2>$null
     if (-not [string]::IsNullOrWhiteSpace($staged)) {
-        git commit -m "chore: remove AI/Cursor/docs config from public repo — now in private"
+        git commit -m "chore: remove AI/Cursor/docs config from public repo -now in private"
         if ($LASTEXITCODE -eq 0) { Write-Success "  ✓ Public repo cleanup committed." }
     }
 
     # --- Step 5: Push private repo if local is ahead of remote ---
-    # Use ls-remote for the SHA comparison — bare repos often have no remote tracking refs,
+    # Use ls-remote for the SHA comparison -bare repos often have no remote tracking refs,
     # so rev-list "refs/remotes/origin/<branch>..HEAD" silently returns nothing.
     $branch = Get-PrivateDefaultBranch
     $localHead  = (& git --git-dir="$gitDir" rev-parse HEAD 2>$null).Trim()
@@ -850,10 +980,10 @@ function Invoke-PrivateMigration {
         $remoteInfo = & git --git-dir="$gitDir" ls-remote origin $branch 2>$null
         if ([string]::IsNullOrWhiteSpace($remoteInfo)) {
             # Remote branch doesn't exist yet, OR ls-remote failed (auth/network error).
-            # In either case attempt the push — the push itself will surface the real error.
+            # In either case attempt the push -the push itself will surface the real error.
             $shouldPush = $true
         } else {
-            # Remote exists — push only if local SHA differs from remote SHA
+            # Remote exists -push only if local SHA differs from remote SHA
             $remoteSha = ($remoteInfo -split '\s+')[0].Trim()
             $shouldPush = ($localHead -ne $remoteSha)
         }
@@ -866,7 +996,7 @@ function Invoke-PrivateMigration {
         if ($LASTEXITCODE -eq 0) {
             Write-Success "  ✓ Private config pushed to remote."
         } else {
-            Write-Warning "  Push failed — run 'git-helper private push' to retry."
+            Write-Warning "  Push failed -run 'git-helper private push' to retry."
         }
     }
 
@@ -879,7 +1009,7 @@ function Invoke-PrivateMigration {
         if ($LASTEXITCODE -eq 0) {
             Write-Success "  ✓ Public repo pushed to remote."
         } else {
-            Write-Warning "  Public push failed — run 'git push' to retry."
+            Write-Warning "  Public push failed -run 'git push' to retry."
         }
     }
 }
@@ -915,7 +1045,7 @@ function Invoke-PrivateSetup {
                 $Url = Read-Host
             }
         } else {
-            Write-Error "Usage: git-helper private setup <url>"
+            Write-Error 'Usage: git-helper private setup {url}'
             Write-Subtle "Example: git-helper private setup https://github.com/user/repo-private.git"
             return
         }
@@ -935,10 +1065,10 @@ function Invoke-PrivateSetup {
         $setupBranch = Get-PrivateDefaultBranch
         & git --git-dir="$gitDir" --work-tree="$root" checkout $setupBranch -- .
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Checkout step had issues — run 'git-helper private status' to verify."
+            Write-Warning "Checkout step had issues -run 'git-helper private status' to verify."
         }
     } else {
-        Write-Subtle "  (New empty private repo — restore step skipped.)"
+        Write-Subtle "  (New empty private repo - restore step skipped.)"
     }
 
     Write-Info "Configuring private repo (suppress untracked-file noise)..."
@@ -958,7 +1088,7 @@ function Invoke-Private {
     param([string]$SubCommand, [string]$SubArg1, [string]$SubArg2)
 
     if ([string]::IsNullOrEmpty($SubCommand)) {
-        # No sub-command — show private status as default
+        # No sub-command -show private status as default
         Invoke-PrivateStatus
         return
     }
@@ -983,35 +1113,59 @@ function Invoke-Private {
 
 #region SyncAll
 
-# Pulls both the public repo and the private config repo in one step.
+# Full bidirectional sync: pull then push for both public and private repos.
 function Invoke-SyncAll {
     Show-CommandHeader "SYNC ALL (public + private)"
 
-    # --- Public ---
-    Write-Info "[PUBLIC] Fetching & pulling..."
+    $publicOk  = $true
+    $privateOk = $true
+
+    # ── Public: Pull ──
+    Write-Info "[PUBLIC] Fetching and pulling..."
     git fetch --all --prune
     $branch = Get-CurrentBranch
     git pull origin $branch
-    $publicOk = ($LASTEXITCODE -eq 0)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "  ✗ Public pull had issues."
+        $publicOk = $false
+    } else {
+        Write-Success "  ✓ Public repo pulled."
+    }
 
-    if ($publicOk) { Write-Success "  ✓ Public repo up to date." }
-    else           { Write-Error   "  ✗ Public sync had issues." }
+    # ── Public: Push (if ahead) ──
+    if ($publicOk) {
+        $publicAhead = Get-PublicAheadCount
+        if ($publicAhead -gt 0) {
+            Write-Info "[PUBLIC] Pushing $publicAhead unpushed commit(s)..."
+            git push origin $branch
+            if ($LASTEXITCODE -eq 0) {
+                Write-Success "  ✓ Public repo pushed."
+            } else {
+                Write-Error "  ✗ Public push failed."
+                $publicOk = $false
+            }
+        } else {
+            Write-Subtle "  (nothing to push)"
+        }
+    }
 
-    # --- Private ---
+    # ── Private: Pull ──
     $gitDir = Get-PrivateGitDir
     if ($gitDir -and (Test-Path $gitDir)) {
         Write-Host ""
         Write-Info "[PRIVATE] Pulling..."
         $remoteRefs = & git --git-dir="$gitDir" ls-remote --heads origin 2>$null
         if ([string]::IsNullOrWhiteSpace($remoteRefs)) {
-            Write-Subtle "  [PRIVATE] Remote has no commits yet — skipping pull."
-            $privateOk = $true
+            Write-Subtle "  [PRIVATE] Remote has no commits yet -skipping pull."
         } else {
-            $branch = Get-PrivateDefaultBranch
-            Invoke-PrivateGit @("pull", "origin", $branch)
-            $privateOk = ($LASTEXITCODE -eq 0)
-            if ($privateOk) { Write-Success "  ✓ Private config up to date." }
-            else            { Write-Error   "  ✗ Private sync had issues." }
+            $privBranch = Get-PrivateDefaultBranch
+            Invoke-PrivateGit @("pull", "origin", $privBranch)
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "  ✗ Private pull had issues."
+                $privateOk = $false
+            } else {
+                Write-Success "  ✓ Private config pulled."
+            }
         }
 
         if ($privateOk) {
@@ -1019,14 +1173,45 @@ function Invoke-SyncAll {
             Write-Info "[PRIVATE] Checking for AI/Cursor/docs files to migrate..."
             Invoke-PrivateMigration
         }
+
+        # ── Private: Auto-commit + Push (if ahead or dirty) ──
+        if ($privateOk) {
+            # Stage and commit any uncommitted private changes
+            $existingPaths = Get-PrivateDiskPaths
+            if ($existingPaths.Count -gt 0) {
+                Invoke-PrivateGit (@("add", "-f") + $existingPaths)
+                $hasStagedChanges = -not [string]::IsNullOrEmpty((Invoke-PrivateGit @("diff", "--cached", "--name-only") 2>$null | Out-String).Trim())
+                if ($hasStagedChanges) {
+                    Write-Info "[PRIVATE] Committing changed private files..."
+                    Invoke-PrivateGit @("commit", "-m", "Auto-sync private config")
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Success "  ✓ Private changes committed."
+                    }
+                }
+            }
+
+            $privateAhead = Get-PrivateAheadCount
+            if ($privateAhead -gt 0) {
+                $privBranch = Get-PrivateDefaultBranch
+                Write-Info "[PRIVATE] Pushing $privateAhead unpushed commit(s)..."
+                Invoke-PrivateGit @("push", "--set-upstream", "origin", $privBranch)
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Success "  ✓ Private config pushed."
+                } else {
+                    Write-Error "  ✗ Private push failed."
+                    $privateOk = $false
+                }
+            } else {
+                Write-Subtle "  (nothing to push)"
+            }
+        }
     } else {
-        Write-Subtle "[PRIVATE] Skipped — .private-git not found. Run 'git-helper private setup' to initialise."
-        $privateOk = $true
+        Write-Subtle "[PRIVATE] Skipped -.private-git not found. Run 'git-helper private setup' to initialise."
     }
 
     Write-Host ""
     if ($publicOk -and $privateOk) {
-        Write-Success "✓ All repos are up to date."
+        Write-Success "✓ All repos fully synced."
     } else {
         Write-Error "✗ One or more repos had sync issues. See details above."
     }
@@ -1041,7 +1226,7 @@ function Show-Help {
 
     $helpData = @{
         "release" = @{
-            Usage       = "git-helper release <version> <message>"
+            Usage       = 'git-helper release {version} {message}'
             Description = "When you're ready to publish a new version - bundles changes, creates version tag, and pushes everything."
             Examples    = @(
                 "git-helper release v1.0.0 `"Initial release`"",
@@ -1054,7 +1239,7 @@ function Show-Help {
             Examples    = @("git-helper sync")
         }
         "save" = @{
-            Usage       = "git-helper save <message>"
+            Usage       = 'git-helper save {message}'
             Description = "Checkpoint your work locally without pushing. Like hitting 'save' on a document."
             Examples    = @(
                 "git-helper save `"WIP: auth refactor`"",
@@ -1072,7 +1257,7 @@ function Show-Help {
             Examples    = @("git-helper status")
         }
         "newbranch" = @{
-            Usage       = "git-helper newbranch <branch-name>"
+            Usage       = 'git-helper newbranch {branch-name}'
             Description = "Start work on a new feature/fix in isolation from main code."
             Examples    = @(
                 "git-helper newbranch feature/login",
@@ -1080,7 +1265,7 @@ function Show-Help {
             )
         }
         "switchto" = @{
-            Usage       = "git-helper switchto <branch-name>"
+            Usage       = 'git-helper switchto {branch-name}'
             Description = "Move to a different branch to work on something else."
             Examples    = @(
                 "git-helper switchto main",
@@ -1097,12 +1282,12 @@ function Show-Help {
             )
         }
         "merge" = @{
-            Usage       = "git-helper merge <branch-name>"
+            Usage       = 'git-helper merge {branch-name}'
             Description = "Combine another branch's changes into your current branch."
             Examples    = @("git-helper merge feature/login")
         }
         "delete" = @{
-            Usage       = "git-helper delete <branch-name> [local|remote|both]"
+            Usage       = 'git-helper delete {branch-name} [local|remote|both]'
             Description = "Remove a branch that's no longer needed. Default is local only."
             Examples    = @(
                 "git-helper delete feature/old-stuff",
@@ -1149,7 +1334,7 @@ function Show-Help {
             Examples    = @("git-helper discard")
         }
         "private" = @{
-            Usage       = "git-helper private <sub-command> [args]"
+            Usage       = 'git-helper private {sub-command} [args]'
             Description = "Manage the private config repo (.private-git/). Sub-commands: status, sync, save, push, add, log, setup."
             Examples    = @(
                 "git-helper private status",
@@ -1163,7 +1348,7 @@ function Show-Help {
         }
         "syncall" = @{
             Usage       = "git-helper syncall"
-            Description = "Pull the latest from BOTH the public repo and the private config repo in one step."
+            Description = "Full bidirectional sync - pull then push for BOTH public and private repos. Auto-commits uncommitted private changes before pushing."
             Examples    = @("git-helper syncall")
         }
     }
@@ -1171,11 +1356,11 @@ function Show-Help {
     if ([string]::IsNullOrEmpty($CommandName)) {
         Write-Host ""
         Write-Info "═══════════════════════════════════════════════════════════════"
-        Write-Info "  GIT HELPER v2.3 - Command Reference"
+        Write-Info "  GIT HELPER v2.4 - Command Reference"
         Write-Info "═══════════════════════════════════════════════════════════════"
         Write-Host ""
         Write-Colour "  Usage: " -Colour White -NoNewLine
-        Write-Colour "git-helper <command> [arguments]" -Colour Cyan
+        Write-Colour 'git-helper {command} [arguments]' -Colour Cyan
         Write-Colour "         git-helper              " -Colour White -NoNewLine
         Write-Colour "(interactive menu)" -Colour Cyan
         Write-Host ""
@@ -1215,7 +1400,7 @@ function Show-Help {
             @{ Name = "private add";    Desc = "Force-stage a specific private file" },
             @{ Name = "private log";    Desc = "View private config commit history" },
             @{ Name = "private setup";  Desc = "First-time setup on a new PC" },
-            @{ Name = "syncall";        Desc = "Pull both public and private repos at once" }
+            @{ Name = "syncall";        Desc = "Pull + push both public and private repos" }
         )
         foreach ($cmd in $privateCmds) {
             Write-Colour ("    {0,-16}" -f $cmd.Name) -Colour Magenta -NoNewLine
@@ -1223,7 +1408,7 @@ function Show-Help {
         }
 
         Write-Host ""
-        Write-Subtle "  For detailed help: git-helper help <command>"
+        Write-Subtle '  For detailed help: git-helper help {command}'
         Write-Host ""
 
     } else {
@@ -1245,7 +1430,7 @@ function Show-Help {
             Write-Host ""
         } else {
             Write-Error "Unknown command: $CommandName"
-            Write-Subtle "Use 'git-helper help' to see all commands."
+            Write-Subtle 'Use "git-helper help" to see all commands.'
         }
     }
 }
@@ -1259,10 +1444,26 @@ function Show-Menu {
     $branch = Get-CurrentBranch
 
     Write-Info "═══════════════════════════════════════════════════════════════"
-    Write-Colour "  GIT HELPER v2.3" -Colour Cyan -NoNewLine
-    Write-Colour "📁 " -Colour White -NoNewLine
+    Write-Colour "  GIT HELPER v2.4" -Colour Cyan -NoNewLine
+    Write-Colour "  📁 " -Colour White -NoNewLine
     Write-Colour $branch -Colour Green
     Write-Info "═══════════════════════════════════════════════════════════════"
+
+    # Flash warnings for pending changes
+    $publicAhead  = Get-PublicAheadCount
+    $privateAhead = Get-PrivateAheadCount
+    $privateDirty = Test-PrivateDirty
+    $publicDirty  = -not [string]::IsNullOrEmpty((git status --porcelain 2>$null))
+
+    $hasWarnings = ($publicAhead -gt 0) -or ($privateAhead -gt 0) -or $privateDirty -or $publicDirty
+    if ($hasWarnings) {
+        Write-Host ""
+        if ($publicDirty)        { Write-Warning "  ⚠ Uncommitted public changes" }
+        if ($publicAhead -gt 0)  { Write-Warning "  ⚠ $publicAhead unpushed public commit(s)" }
+        if ($privateDirty)       { Write-Warning "  ⚠ Uncommitted private config changes" }
+        if ($privateAhead -gt 0) { Write-Warning "  ⚠ $privateAhead unpushed private commit(s)" }
+    }
+
     Write-Host ""
     Write-Subtle "  Public Repo"
     Write-Host "   1. release      Release a new version (commit, tag, push)"
@@ -1290,7 +1491,7 @@ function Show-Menu {
     Write-Host "  17. private sync     Pull latest private config"
     Write-Host "  18. private save     Commit private config changes"
     Write-Host "  19. private push     Push private config to remote"
-    Write-Host "  20. syncall          Sync BOTH repos at once"
+    Write-Host "  20. syncall          Pull + push BOTH repos"
     Write-Host "  21. private setup    First-time setup on a new PC"
     Write-Info "═══════════════════════════════════════════════════════════════"
     Write-Host "   0. Exit         help. Command reference"
@@ -1492,7 +1693,7 @@ switch ($Command.ToLower()) {
     "syncall"   { Invoke-SyncAll }
     default {
         Write-Error "Unknown command: $Command"
-        Write-Subtle "Use 'git-helper help' to see all commands."
+        Write-Subtle 'Use "git-helper help" to see all commands.'
         exit 1
     }
 }
