@@ -1,9 +1,10 @@
-import type { IExecuteFunctions, IGetNodeParameterOptions } from 'n8n-workflow';
+import type { IExecuteFunctions, IGetNodeParameterOptions, ILoadOptionsFunctions } from 'n8n-workflow';
 import { executeToolOperation } from '../resources/tool/execute';
 import type { FieldMeta } from '../helpers/aiHelper';
+import { describeResource, listPicklistValues, type DescribeResourceResponse } from '../helpers/aiHelper';
 import { mapFilterOp } from './schema-generator';
 import { validateEntityId, validateReadFields, validateWriteFields } from './field-validator';
-import { formatApiError, formatFilterConstraintError } from './error-formatter';
+import { formatApiError, formatFilterConstraintError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES } from './error-formatter';
 
 export interface ToolExecutorParams {
     resource: string;
@@ -357,7 +358,24 @@ const N8N_METADATA_FIELDS = new Set([
     'sessionId', 'action', 'chatInput',
     'root',
     'tool', 'toolName', 'toolCallId',
+    'operation',
 ]);
+
+function compactDescribeResponse(response: DescribeResourceResponse): Record<string, unknown> {
+    return {
+        resource: response.resource,
+        mode: response.mode,
+        timezone: response.timezone,
+        fields: response.fields.map((field) => ({
+            id: field.id,
+            type: field.type,
+            required: field.required,
+            isPickList: field.isPickList,
+            isReference: field.isReference,
+        })),
+        notes: response.notes ?? [],
+    };
+}
 
 /**
  * Execute an Autotask operation by routing to the existing tool executor
@@ -386,6 +404,34 @@ export async function executeAiTool(
     const selectedSlaTicketColumns = parseFieldsParam(params.ticketFields);
     const effectiveLimit = getEffectiveLimit(params.limit);
     const normalisedOperation = normaliseOperation(operation);
+
+    // Handle helper operations that bypass the standard executor
+    if (normalisedOperation === 'describeFields') {
+        try {
+            const mode = (params.mode as 'read' | 'write') ?? 'read';
+            const result = await describeResource(context as unknown as ILoadOptionsFunctions, resource, mode);
+            return JSON.stringify(wrapSuccess(resource, 'describeFields', compactDescribeResponse(result)));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return JSON.stringify(formatApiError(message, resource, 'describeFields'));
+        }
+    }
+    if (normalisedOperation === 'listPicklistValues') {
+        try {
+            const result = await listPicklistValues(
+                context as unknown as ILoadOptionsFunctions,
+                resource,
+                params.fieldId as string,
+                params.query as string | undefined,
+                (params.limit as number) ?? 50,
+                (params.page as number) ?? 1,
+            );
+            return JSON.stringify(wrapSuccess(resource, 'listPicklistValues', result));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return JSON.stringify(formatApiError(message, resource, 'listPicklistValues'));
+        }
+    }
 
     // Build recency filters BEFORE determining effectiveOperation so that
     // recency-only queries (no explicit filter_field) correctly upgrade
@@ -427,7 +473,7 @@ export async function executeAiTool(
                     resource,
                     effectiveOperation,
                     `Only one UDF filter is supported per query for ${resource}.${effectiveOperation}.`,
-                    `Retry with a single UDF filter, or call autotask_${resource}_describeFields to use standard fields where possible.`,
+                    `Retry with a single UDF filter, or use autotask_${resource} with operation 'describeFields' to use standard fields where possible.`,
                 ),
             );
         }
@@ -579,7 +625,7 @@ export async function executeAiTool(
         };
 
         // Build structured response per operation type
-        return formatToolResponse(effectiveOperation, records, params, responseContext);
+        return formatToolResponse(resource, effectiveOperation, records, params, responseContext);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return JSON.stringify(formatApiError(message, resource, effectiveOperation));
@@ -592,6 +638,7 @@ export async function executeAiTool(
  * Format the raw execution result into a consistent, structured JSON response.
  */
 function formatToolResponse(
+    resource: string,
     operation: string,
     records: Record<string, unknown>[],
     params: ToolExecutorParams,
@@ -610,23 +657,48 @@ function formatToolResponse(
     switch (operation) {
         case 'get': {
             const entity = firstRecord;
-            return JSON.stringify({ result: entity });
+            if (
+                entity === null ||
+                entity === undefined ||
+                (Array.isArray(entity) && entity.length === 0) ||
+                (typeof entity === 'object' && !Array.isArray(entity) && Object.keys(entity).length === 0)
+            ) {
+                const id = params.id ?? 'unknown';
+                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, entity));
         }
 
         case 'getMany':
         case 'getPosted':
         case 'getUnposted': {
+            const hasFilters = !!(
+                params.filter_field ||
+                params.filter_field_2 ||
+                params.recency ||
+                params.since ||
+                params.until
+            );
+            if (hasFilters && records.length === 0) {
+                const filtersUsed = {
+                    filter_field: params.filter_field,
+                    filter_value: params.filter_value,
+                    filter_field_2: params.filter_field_2,
+                    recency: params.recency,
+                };
+                return JSON.stringify(formatNoResultsFound(resource, operation, filtersUsed));
+            }
             const total = records.length;
             const truncated = total > MAX_RESPONSE_RECORDS;
-            const results = truncated ? records.slice(0, MAX_RESPONSE_RECORDS) : records;
-            const response: Record<string, unknown> = {
-                results,
-                count: results.length,
+            const items = truncated ? records.slice(0, MAX_RESPONSE_RECORDS) : records;
+            const resultPayload: Record<string, unknown> = {
+                items,
+                count: items.length,
             };
             const notes: string[] = [];
             if (truncated) {
-                response.truncated = true;
-                response.totalAvailable = total;
+                resultPayload.truncated = true;
+                resultPayload.totalAvailable = total;
                 notes.push(
                     `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use a narrower filter or lower limit to see specific records.`,
                 );
@@ -640,83 +712,101 @@ function formatToolResponse(
                 notes.push(context.recencyNote);
             }
             if (notes.length === 1) {
-                response.note = notes[0];
+                resultPayload.note = notes[0];
             } else if (notes.length > 1) {
-                response.notes = notes;
-                response.note = notes.join(' ');
+                resultPayload.notes = notes;
+                resultPayload.note = notes.join(' ');
             }
-            return JSON.stringify(response);
+            return JSON.stringify(wrapSuccess(resource, operation, resultPayload));
         }
 
         case 'whoAmI': {
-            const result = firstRecord;
-            return JSON.stringify({ result });
+            if (firstRecord === null || firstRecord === undefined) {
+                return JSON.stringify(formatNotFoundError(resource, operation, 'authenticated user'));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
         }
 
         case 'searchByDomain': {
-            const result = firstRecord ?? null;
-            return JSON.stringify({ result });
+            if (firstRecord === null || firstRecord === undefined) {
+                return JSON.stringify(wrapError(
+                    resource, operation, ERROR_TYPES.ENTITY_NOT_FOUND,
+                    'No company found matching the supplied domain.',
+                    `Verify the domain and retry, or use autotask_${resource} with operation 'getMany' with a filter.`,
+                ));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
         }
 
         case 'slaHealthCheck': {
-            const result = firstRecord ?? null;
-            return JSON.stringify({ result });
+            if (firstRecord === null || firstRecord === undefined) {
+                const identifier = params.ticketNumber ?? params.id ?? 'unknown';
+                return JSON.stringify(formatNotFoundError(resource, operation, identifier as number | string));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
         }
 
         case 'moveConfigurationItem': {
-            const result = firstRecord ?? null;
-            return JSON.stringify({ result });
+            if (firstRecord === null || firstRecord === undefined) {
+                const id = params.id ?? 'unknown';
+                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
         }
 
         case 'moveToCompany': {
-            const result = firstRecord ?? null;
-            return JSON.stringify({ result });
+            if (firstRecord === null || firstRecord === undefined) {
+                const id = params.id ?? 'unknown';
+                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
         }
 
         case 'transferOwnership': {
-            const result = firstRecord ?? null;
-            return JSON.stringify({ result });
+            if (firstRecord === null || firstRecord === undefined) {
+                return JSON.stringify(wrapError(
+                    resource, operation, ERROR_TYPES.ENTITY_NOT_FOUND,
+                    'Transfer ownership returned no result.',
+                    `Verify source and destination resource IDs, then retry.`,
+                ));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
         }
 
         case 'count': {
-            // Count operations return items with a count property
             const countValue = records[0]?.count ?? records.length;
-            return JSON.stringify({ count: countValue });
+            return JSON.stringify(wrapSuccess(resource, operation, { count: countValue }));
         }
 
         case 'create': {
             const operationId = extractOperationId(firstRecord);
-            return JSON.stringify({
-                success: true,
-                operation: 'create',
+            return JSON.stringify(wrapSuccess(resource, operation, {
                 itemId: operationId,
-                result: firstRecord,
-            });
+                entity: firstRecord,
+            }));
         }
 
         case 'update': {
             const operationId = extractOperationId(firstRecord);
-            return JSON.stringify({
-                success: true,
-                operation: 'update',
+            return JSON.stringify(wrapSuccess(resource, operation, {
                 itemId: operationId,
-                result: firstRecord,
-            });
+                entity: firstRecord,
+            }));
         }
 
         case 'delete': {
             const id = params.id;
-            return JSON.stringify({
-                success: true,
-                operation: 'delete',
-                result: {
-                    id,
-                    deleted: true,
-                },
-            });
+            return JSON.stringify(wrapSuccess(resource, operation, {
+                id,
+                deleted: true,
+            }));
         }
 
         default:
-            return JSON.stringify(records);
+            return JSON.stringify(wrapError(
+                resource, operation, ERROR_TYPES.INVALID_OPERATION,
+                `Unknown operation '${operation}'.`,
+                `Use a supported operation for autotask_${resource}.`,
+            ));
     }
 }

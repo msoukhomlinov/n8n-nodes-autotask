@@ -2,6 +2,51 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.4.0] - 2026-03-13
+
+### Changed
+
+- **AI Tools — Result Envelope Standard:** All tool responses now use `SuccessEnvelope` / `ErrorEnvelope` with `schemaVersion: "1"`, enabling MCP clients and LLMs to reliably distinguish success from error and detect schema version changes. New `wrapSuccess()` / `wrapError()` factories and `ERROR_TYPES` named constants in `error-formatter.ts`.
+- **AI Tools — `getMany` uses `items` instead of `results`:** List responses now return `{ items, count }` per envelope standard (was `{ results, count }`).
+- **AI Tools — runtime.ts fail-fast:** `getRuntimeRequire()` now tries an `ANCHOR_CANDIDATES` array (`@langchain/classic/agents`, `langchain/agents`) and throws a diagnostic error listing all failed candidates instead of silently falling back to bundled `require`. This prevents hard-to-diagnose `instanceof` failures.
+
+### Fixed
+
+- **AI Tools — Write safety in execute() path:** The `execute()` method (Test Step / direct execution) now returns an explicit `WRITE_OPERATION_BLOCKED` error when a write operation is requested but not permitted, instead of silently falling back to a different operation.
+- **AI Tools — Write safety in func() path:** The `func()` closure now checks for blocked write operations before returning `INVALID_OPERATION`, giving a specific `WRITE_OPERATION_BLOCKED` error with guidance.
+- **AI Tools — Null guards for single-record operations:** `whoAmI`, `searchByDomain`, `slaHealthCheck`, `moveConfigurationItem`, `moveToCompany`, and `transferOwnership` now return `ENTITY_NOT_FOUND` errors instead of `{ result: null }`, preventing LLM data fabrication.
+- **AI Tools — Default case in formatToolResponse:** Unknown operations now return a structured `INVALID_OPERATION` error instead of a bare array.
+- **AI Tools — Delete description safety:** Added "ONLY on explicit user intent. Do not infer from context. Confirm ID is correct before proceeding." to delete operation descriptions.
+- **AI Tools — Create/update description safety:** Added "Confirm field values with user before executing when acting autonomously." to create and update operation descriptions.
+
+## [2.3.2] - 2026-03-13
+
+### Fixed
+
+- **Duplicate operations in Operation dropdown:** 'Get Entity Info', 'Get Field Info', and 'Get Many (Advanced)' appeared 4–7× for most resources, and 'Custom API Call' appeared 3×. Root cause: `addOperationsToResource` mutated shared module-level `*Fields` objects — `[...baseFields]` shallow-copies the array but shares the same property object references, so each `new Autotask()` call accumulated duplicate options into the original constants. Fixed by (a) cloning the operation property (index + spread) before mutating in `addOperationsToResource`, and (b) moving the node description to a module-level constant so `consolidateProperties` + all `addOperationsToResource` calls run exactly once per module load. The 'Custom API Call' ×3 issue is auto-fixed as a downstream consequence.
+
+## [2.3.1] - 2026-03-13
+
+### Fixed
+
+- **AI Tools — field labels discarded in FieldMeta:** `aiHelper.ts` was setting `name: field.id` (camelCase) instead of `name: originalField?.label || field.id`. The Autotask API returns a human-readable `label` for every field (e.g. "Mobile Phone" for `mobilePhone`), but this was silently dropped. Now `FieldMeta.name` carries the label, which flows into every Zod `.describe()` call in the schema, giving the LLM semantic context for each field.
+- **AI Tools — LLM omits optional fields it already has data for:** The `create` operation description in `buildUnifiedDescription` now includes: *"Populate every optional field for which you already have data — do not omit known information."* This addresses the pattern where the LLM only populates required fields despite having additional context.
+
+## [2.3.0] - 2026-03-13
+
+### Changed
+
+- **AI Tools — unified single-tool-per-resource architecture (MCP queue-mode fix):** Each configured resource now exposes a single `DynamicStructuredTool` named `autotask_<resource>` (e.g. `autotask_ticket`) instead of N separate per-operation tools. The required `operation` field in the tool's schema routes to the correct handler. This fixes silent failures in n8n queue-mode MCP Trigger execution where the worker could not identify which sub-tool to invoke.
+- **AI Tools — helper operations folded into unified tool (⚠️ breaking):** `describeFields` and `listPicklistValues` are now operations within the unified `autotask_<resource>` tool rather than separately-named tools (`autotask_<resource>_describeFields` / `autotask_<resource>_listPicklistValues`). They are always available regardless of the configured operations list. Update any hardcoded tool name references in MCP tool lists or saved workflows.
+- **AI Tools — raw Zod schemas replace JSON schema normalisation:** Tool schemas are now passed as raw Zod instances to `DynamicStructuredTool`, fixing MCP Trigger's `schema.parseAsync()` path which previously silently failed when receiving a plain JSON object. `schema-normalizer.ts` has been removed.
+- **AI Tools — `runtime.ts` for `instanceof` compatibility:** `DynamicStructuredTool` and Zod are now resolved from n8n's module tree via `createRequire`, anchored to `@langchain/classic/agents`. This ensures `instanceof` checks for both classes pass across bundled module copies in all n8n versions.
+
+### Fixed
+
+- **AI Tools — `operation` field leaked into API request bodies:** The `operation` parameter is now included in `N8N_METADATA_FIELDS` and stripped before routing to the executor. Previously, `operation: "create"` could reach API request bodies via the `execute()` code path.
+- **AI Tools — `get` null response causes LLM hallucination:** A null/empty guard is now applied to `get` results. When the API returns HTTP 200 with a null or empty body (instead of 404), the tool returns a structured `ENTITY_NOT_FOUND` error rather than `{ result: null }`, which the LLM would otherwise interpret as success.
+- **AI Tools — filtered `getMany` empty results trigger data fabrication:** When `getMany` with filters returns zero records, the tool now returns a structured `NO_RESULTS_FOUND` error with the filters used as context. Unfiltered empty results continue to return `{ results: [], count: 0 }`.
+
 ## [2.2.1] - 2026-03-09
 
 ### Fixed

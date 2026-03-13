@@ -27,10 +27,10 @@ export function buildGetDescription(resourceLabel: string, resourceName: string)
     return (
         `Retrieve a single ${resourceLabel} record by numeric ID. ` +
         `ONLY call this when you already have a numeric ID — never pass a name or text. ` +
-        `If you only have a name or description, call autotask_${resourceName}_getMany with a filter first, extract the 'id' from results, then call this. ` +
+        `If you only have a name or description, call autotask_${resourceName} with operation 'getMany' with a filter first, extract the 'id' from results, then call this. ` +
         `Optionally use 'fields' to return only selected columns. ` +
         `If a record should exist but response is empty, verify API user permissions (including line-of-business access). ` +
-        `Do not guess field names. Call autotask_${resourceName}_describeFields (mode 'read') first when unsure.`
+        `Do not guess field names. Call autotask_${resourceName} with operation 'describeFields' (mode 'read') first when unsure.`
     );
 }
 
@@ -55,7 +55,7 @@ export function buildGetManyDescription(
         `When recency or since is used, the tool automatically filters by date, fetches a wide window, and returns the newest records first, trimmed to limit. ` +
         `If results are unexpectedly empty, check API user security permissions before retrying. ` +
         `Always provide at least one filter when possible. ` +
-        `If you are unsure about field names, call autotask_${resourceName}_describeFields first.`
+        `If you are unsure about field names, call autotask_${resourceName} with operation 'describeFields' first.`
     );
 }
 
@@ -102,8 +102,9 @@ export function buildCreateDescription(
         `Required fields: ${requiredList}.${picklistNote}${parentHint} ` +
         `Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
         `Successful creates typically return an itemId to use in follow-up operations. ` +
-        `Call autotask_${resourceName}_describeFields (mode 'write') before create if field requirements are unclear. ` +
-        `If picklist values fail validation, call autotask_${resourceName}_listPicklistValues.` +
+        `Confirm field values with user before executing when acting autonomously. ` +
+        `Call autotask_${resourceName} with operation 'describeFields' (mode 'write') before create if field requirements are unclear. ` +
+        `If picklist values fail validation, call autotask_${resourceName} with operation 'listPicklistValues'.` +
 		impersonationNote
     );
 }
@@ -121,12 +122,13 @@ export function buildUpdateDescription(
     return (
         ref +
         `Update an existing ${resourceLabel} record by numeric ID. ` +
-        `PREREQUISITE: you need the numeric ID. If you only have a name or text, call autotask_${resourceName}_getMany with a filter to find the record and get its 'id' first. ` +
+        `PREREQUISITE: you need the numeric ID. If you only have a name or text, call autotask_${resourceName} with operation 'getMany' with a filter to find the record and get its 'id' first. ` +
         `Only provide fields to change (PATCH-style behaviour). ` +
         `Do not assume PUT-style replacement where omitted fields become null. ` +
         `Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
-        `Call autotask_${resourceName}_describeFields (mode 'write') to verify valid field names and required value types. ` +
-        `Use autotask_${resourceName}_listPicklistValues for picklist fields.` +
+        `Confirm field values with user before executing when acting autonomously. ` +
+        `Call autotask_${resourceName} with operation 'describeFields' (mode 'write') to verify valid field names and required value types. ` +
+        `Use autotask_${resourceName} with operation 'listPicklistValues' for picklist fields.` +
 		impersonationNote
     );
 }
@@ -134,8 +136,9 @@ export function buildUpdateDescription(
 export function buildDeleteDescription(resourceLabel: string, resourceName: string): string {
     return (
         `Delete a ${resourceLabel} record by numeric ID. ` +
+        `ONLY on explicit user intent. Do not infer delete intent from context. Confirm ID is correct before proceeding. ` +
         `Operational delete responses may be minimal, so treat non-200 outcomes as failures. ` +
-        `Use autotask_${resourceName}_getMany or autotask_${resourceName}_getById first to confirm the correct ID before deletion.`
+        `Use autotask_${resourceName} with operation 'getMany' or autotask_${resourceName} with operation 'get' first to confirm the correct ID before deletion.`
     );
 }
 
@@ -156,7 +159,7 @@ export function buildPostedTimeEntriesDescription(resourceName: string, referenc
         `IMPORTANT: The Autotask API returns records oldest first (ascending ID). Without recency or since, limit=1 returns the OLDEST entry, not the newest. ` +
         `To get the most recent posted entries, you MUST use recency (for example 'last_24h' or 'last_7d'), or provide since/until in ISO-8601 UTC format. ` +
         `For date-range and advanced posting filters, use the standard Time Entry node operation if needed. ` +
-        `If field names are uncertain, call autotask_${resourceName}_describeFields first.`
+        `If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
     );
 }
 
@@ -169,7 +172,7 @@ export function buildUnpostedTimeEntriesDescription(resourceName: string, refere
         `IMPORTANT: The Autotask API returns records oldest first (ascending ID). Without recency or since, limit=1 returns the OLDEST entry, not the newest. ` +
         `To get the most recent unposted entries, you MUST use recency (for example 'last_24h' or 'last_7d'), or provide since/until in ISO-8601 UTC format. ` +
         `For date-range and advanced posting filters, use the standard Time Entry node operation if needed. ` +
-        `If field names are uncertain, call autotask_${resourceName}_describeFields first.`
+        `If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
     );
 }
 
@@ -181,7 +184,7 @@ export function buildCompanySearchByDomainDescription(resourceName: string): str
         "To avoid false negatives, eq/like semantics are handled safely for website matching. " +
         "When searchContactEmails is true (default), if no company website matches exist, the tool searches Contact.emailAddress by domain and resolves the most common canonical company name from companyID references. " +
         "Use the 'fields' parameter to limit which company fields are returned per result (comma-separated); omit to receive the full company entity. matchedField and matchedValue are always included to indicate which website field matched and its value. " +
-        `If field names are uncertain, call autotask_${resourceName}_describeFields first.`
+        `If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
     );
 }
 
@@ -192,7 +195,7 @@ export function buildTicketSlaHealthCheckDescription(resourceName: string): stri
         "Use 'ticketFields' to limit which ticket fields are returned in the ticket section. " +
         'Includes wallClockRemainingHours, where negative values indicate overdue milestones. ' +
         'This operation combines data from Ticket and ServiceLevelAgreementResults entities. ' +
-        `If field names are uncertain, call autotask_${resourceName}_describeFields first.`
+        `If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
     );
 }
 
@@ -204,7 +207,7 @@ export function buildConfigurationItemMoveConfigurationItemDescription(resourceN
         'Optionally provide impersonationResourceId so created records (CI, notes, attachments) are attributed to that resource. ' +
         'Optionally set proceedWithoutImpersonationIfDenied (default on); this only applies when impersonationResourceId is set and retries without impersonation if write permissions are denied for the impersonated resource. ' +
         'This operation does not migrate tickets, tasks, projects, contracts, related items, DNS records, or billing-product associations. ' +
-        `If field names or expected behaviour are uncertain, call autotask_${resourceName}_describeFields first.`
+        `If field names or expected behaviour are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
     );
 }
 
@@ -214,7 +217,7 @@ export function buildContactMoveToCompanyDescription(resourceName: string): stri
         'Supports duplicate email safeguards, optional company note and attachment copy, contact group copy, and configurable source/destination audit notes. ' +
         'Supports dry run planning which returns source contact details, the destination payload, location resolution, duplicate check result, and planned counts without writing. ' +
         'Supports optional impersonation for write attribution with optional fallback when impersonation is denied. ' +
-        `If field names or expected behaviour are uncertain, call autotask_${resourceName}_describeFields first.`
+        `If field names or expected behaviour are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
     );
 }
 
@@ -226,7 +229,7 @@ export function buildResourceTransferOwnershipDescription(resourceName: string):
         'Dry run returns full item lists per entity type with key identifying fields (e.g. id, title, status) plus source/destination resource context. ' +
         "Use dueWindowPreset for convenient date ranges, or dueWindowPreset='custom' with dueBeforeCustom for exact cut-offs. " +
         "By default, only open/active-style work is targeted by excluding terminal statuses. " +
-        `If field names or expected behaviour are uncertain, call autotask_${resourceName}_describeFields first.`
+        `If field names or expected behaviour are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
     );
 }
 
@@ -242,4 +245,83 @@ export function buildListPicklistValuesDescription(resourceLabel: string): strin
         `List picklist values for a specific ${resourceLabel} field. ` +
         `Use this when create or update fails due to invalid picklist values.`
     );
+}
+
+export function buildUnifiedDescription(
+    resourceLabel: string,
+    resource: string,
+    operations: string[],
+    readFields: FieldMeta[],
+    writeFields: FieldMeta[],
+    referenceUtc: string,
+    supportsImpersonation: boolean,
+): string {
+    const allOps = [...new Set([...operations, 'describeFields', 'listPicklistValues'])];
+    const sections: string[] = [
+        `Perform operations on Autotask ${resourceLabel} records.`,
+        `Required: 'operation' field — one of: ${allOps.join(', ')}.`,
+        dateTimeReferenceSnippet(referenceUtc),
+    ];
+
+    for (const op of operations) {
+        let summary: string;
+        switch (op) {
+            case 'get':
+                summary = `operation '${op}': Retrieve a single record by numeric 'id'.`;
+                break;
+            case 'whoAmI':
+                summary = `operation '${op}': Resolve the authenticated ${resourceLabel} record.`;
+                break;
+            case 'getMany':
+                summary = `operation '${op}': Search records with up to two AND filters. Use filter_field/filter_value.`;
+                break;
+            case 'count':
+                summary = `operation '${op}': Count records matching optional filters.`;
+                break;
+            case 'searchByDomain':
+                summary = `operation '${op}': Search companies by domain string.`;
+                break;
+            case 'slaHealthCheck':
+                summary = `operation '${op}': Run SLA health check for a ticket using 'id' or 'ticketNumber'.`;
+                break;
+            case 'getPosted':
+                summary = `operation '${op}': Get posted time entries with optional filters.`;
+                break;
+            case 'getUnposted':
+                summary = `operation '${op}': Get unposted time entries with optional filters.`;
+                break;
+            case 'create': {
+                const required = writeFields.filter(f => f.required).map(f => f.id);
+                summary = `operation '${op}': Create a new record. Required fields: ${required.length > 0 ? required.join(', ') : 'none'}. Populate every optional field for which you already have data — do not omit known information.`;
+                break;
+            }
+            case 'update':
+                summary = `operation '${op}': Update a record by numeric 'id'. Provide only fields to change.`;
+                break;
+            case 'delete':
+                summary = `operation '${op}': Delete a record by numeric 'id'.`;
+                break;
+            case 'moveToCompany':
+                summary = `operation '${op}': Move a contact to another company.`;
+                break;
+            case 'moveConfigurationItem':
+                summary = `operation '${op}': Clone a configuration item to a different company.`;
+                break;
+            case 'transferOwnership':
+                summary = `operation '${op}': Transfer ownership from source resource to destination resource.`;
+                break;
+            default:
+                summary = `operation '${op}': Perform ${op} on ${resourceLabel}.`;
+        }
+        sections.push(summary);
+    }
+
+    sections.push(`operation 'describeFields': List all field IDs, types, and metadata. Use mode 'read' or 'write'.`);
+    sections.push(`operation 'listPicklistValues': Get valid values for a picklist field. Use 'fieldId' parameter.`);
+
+    if (supportsImpersonation) {
+        sections.push(`Impersonation supported: pass 'impersonationResourceId' for write attribution.`);
+    }
+
+    return sections.join(' ').slice(0, 2000);
 }

@@ -276,7 +276,7 @@ export async function describeResource(
 
             const fieldMeta: FieldMeta = {
                 id: field.id,
-                name: field.id, // Use id as name for consistency
+                name: originalField?.label || field.id,
                 type: field.type || 'string',
                 required: field.required || false,
                 udf: field.id.startsWith('UDF') || Boolean((field as unknown as { isUdf?: boolean }).isUdf),
