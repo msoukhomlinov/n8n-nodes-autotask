@@ -169,14 +169,14 @@ const baseFields: INodeProperties[] = [
 			minValue: 1,
 			numberPrecision: 0,
 		},
-		default: 25,
+		default: 50,
 		displayOptions: {
 			show: {
 				resource: ['company'],
 				operation: ['searchByDomain'],
 			},
 		},
-		description: 'Maximum number of matching companies to include in the results array of the returned object',
+		description: 'Max number of results to return',
 	},
 ];
 

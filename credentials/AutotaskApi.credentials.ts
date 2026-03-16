@@ -11,6 +11,7 @@ import { CacheService } from '../nodes/Autotask/helpers/cache';
 export class AutotaskApi implements ICredentialType {
 	name = 'autotaskApi';
 	displayName = 'Autotask API';
+	icon = 'file:../nodes/Autotask/autotask.svg' as const;
 	documentationUrl = 'https://ww6.autotask.net/help/developerhelp/Content/APIs/REST/REST_API_Home.htm';
 	properties: INodeProperties[] = [
 		{

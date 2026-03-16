@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import type { DynamicStructuredTool } from '@langchain/core/tools';
 import type { z as ZodNamespace } from 'zod';
 
@@ -36,7 +35,6 @@ function getRuntimeRequire(): NodeRequire {
 }
 
 const runtimeRequire = getRuntimeRequire();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const coreTools = runtimeRequire('@langchain/core/tools') as Record<string, any>;
 export const RuntimeDynamicStructuredTool = coreTools['DynamicStructuredTool'] as DynamicStructuredToolCtor;
 export const runtimeZod = runtimeRequire('zod') as RuntimeZod;
