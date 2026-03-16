@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.5.1] - 2026-03-16
+
+### Fixed
+
+- Removed unnecessary `index.ts` from tsconfig include; dropped `DOM` lib; target lowered to `es2019` to match `@n8n/node-cli` template
+
 ## [2.5.0] - 2026-03-16
 
 ### Infrastructure
