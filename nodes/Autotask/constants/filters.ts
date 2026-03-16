@@ -35,4 +35,6 @@ export const FilterOperators: { [key: string]: FilterOperator } = {
 	notIn: 'notIn',
 	/** Combines multiple conditions with AND logic */
 	and: 'and',
+	/** Combines multiple conditions with OR logic */
+	or: 'or',
 } as const;

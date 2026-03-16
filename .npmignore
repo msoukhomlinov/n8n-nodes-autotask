@@ -14,15 +14,12 @@ coverage/
 .cursorrules
 .cursorignore
 .editorconfig
-.eslintrc.js
-.eslintrc.prepublish.js
+eslint.config.mjs
 .gitattributes
 .gitignore
 .prettierrc.js
-gulpfile.js
 jest.config.js
 tsconfig.json
-tslint.json
 *.map
 
 # misc

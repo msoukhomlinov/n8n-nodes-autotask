@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-autotask",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "n8n node for Autotask PSA integration",
   "keywords": [
     "n8n-community-node-package",
@@ -26,19 +26,27 @@
   "packageManager": "pnpm@9.1.4",
   "main": "dist/nodes/Autotask/Autotask.node.js",
   "scripts": {
-    "clean": "rimraf dist",
-    "build": "pnpm clean && tsc && gulp build:icons",
-    "dev": "gulp build:icons && tsc --watch",
-    "format": "prettier nodes credentials --write",
-    "lint": "eslint nodes credentials package.json",
-    "lintfix": "eslint nodes credentials package.json --fix",
-    "prepublishOnly": "pnpm build"
+    "build": "n8n-node build",
+    "build:watch": "tsc --watch",
+    "dev": "n8n-node dev",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "lint": "n8n-node lint",
+    "lintfix": "n8n-node lint --fix",
+    "lint:fix": "n8n-node lint --fix",
+    "typecheck": "tsc --noEmit",
+    "release": "n8n-node release",
+    "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm build"
   },
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "n8n": {
     "n8nNodesApiVersion": 1,
+    "strict": false,
     "credentials": [
       "dist/credentials/AutotaskApi.credentials.js"
     ],
@@ -49,23 +57,17 @@
     ]
   },
   "devDependencies": {
-    "@langchain/classic": "^0.0.3",
+    "@langchain/classic": "^1.0.23",
     "@langchain/core": "^0.3.43",
-    "zod": "^3.23.0",
-    "@eslint/js": "^8.57.0",
+    "@n8n/node-cli": ">=0.17.0",
     "@types/moment-timezone": "^0.5.30",
     "@types/node": "^20.11.17",
     "@types/pluralize": "^0.0.33",
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
-    "eslint": "^8.57.0",
-    "eslint-plugin-n8n-nodes-base": "^1.16.1",
-    "globals": "^14.0.0",
-    "gulp": "^5.0.0",
+    "eslint": "9.32.0",
     "n8n-workflow": "^1.70.0",
     "prettier": "^3.3.2",
-    "rimraf": "^6.0.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.6.3",
+    "zod": "^3.23.0"
   },
   "dependencies": {
     "change-case": "^4.1.2",

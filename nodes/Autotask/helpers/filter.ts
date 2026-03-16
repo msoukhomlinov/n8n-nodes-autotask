@@ -98,8 +98,11 @@ async function convertFieldsToFilters<T extends IAutotaskEntity>(
 }
 
 /**
- * Finalize resource mapper filters by combining multiple fields with AND logic
- * If no filters exist, applies the default filter
+ * Finalize resource mapper filters by wrapping multiple filters with AND logic.
+ * Pre-built OR groups arrive as a single nested item (from the AI tool executor's
+ * combinedFilters construction) and pass through unchanged inside the AND wrapper.
+ * Internal markers (e.g. _logic from prior versions) are stripped defensively.
+ * If no filters exist, applies the default filter.
  */
 function finalizeResourceMapperFilters<T extends IAutotaskEntity>(
 	filters: IAutotaskQueryInput<T>['filter'],
@@ -107,15 +110,26 @@ function finalizeResourceMapperFilters<T extends IAutotaskEntity>(
 ): IAutotaskQueryInput<T>['filter'] {
 	// If we have multiple filters, combine them with AND logic
 	if (filters.length > 1) {
+		// Shallow-copy each filter to avoid mutating the caller's objects, and strip any
+		// internal markers (e.g. _logic) that should never reach the API.
+		const cleanFilters = filters.map((f) => {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const copy = { ...(f as any) };
+			delete copy._logic;
+			return copy;
+		});
 		return [{
 			op: FilterOperators.and,
-			items: filters,
+			items: cleanFilters,
 		}];
 	}
 
-	// If we have exactly one filter, return it as is
+	// If we have exactly one filter, return it (shallow-copy to strip internal markers)
 	if (filters.length === 1) {
-		return filters;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const copy = { ...(filters[0] as any) };
+		delete copy._logic;
+		return [copy];
 	}
 
 	// No filters - use default filter

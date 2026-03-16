@@ -57,6 +57,22 @@ export class AutotaskAiTools implements INodeType {
         group: ['output'],
         version: 1,
         description: 'Expose Autotask operations as individual AI tools for the AI Agent',
+        codex: {
+            categories: ['AI'],
+            subcategories: {
+                AI: ['Tools'],
+            },
+            resources: {
+                primaryDocumentation: [
+                    {
+                        url: 'https://github.com/msoukhomlinov/n8n-nodes-autotask',
+                    },
+                    {
+                        url: 'https://ww6.autotask.net/help/developerhelp/Content/APIs/REST/REST_API_Home.htm',
+                    },
+                ],
+            },
+        },
         defaults: {
             name: 'Autotask AI Tools',
         },

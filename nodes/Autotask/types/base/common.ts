@@ -11,7 +11,7 @@ export interface IPaginationOptions {
 	maxItems?: number;
 }
 
-export type FilterOperator = 'eq' | 'noteq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'beginsWith' | 'endsWith' | 'exist' | 'notExist' | 'in' | 'notIn' | 'and';
+export type FilterOperator = 'eq' | 'noteq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'beginsWith' | 'endsWith' | 'exist' | 'notExist' | 'in' | 'notIn' | 'and' | 'or';
 
 export interface IFilterOptions {
 	field: string;
