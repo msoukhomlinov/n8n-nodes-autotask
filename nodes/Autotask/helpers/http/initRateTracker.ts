@@ -33,7 +33,6 @@ export async function initializeRateTracker(
 			} catch (error) {
 				// Import sanitization function to mask credentials in error logs
 				const { sanitizeErrorForLogging } = await import('../security/credential-masking');
-				// eslint-disable-next-line no-console
 				console.error('[RateTracker] Error in threshold fetcher:', sanitizeErrorForLogging(error));
 				return null;
 			}
@@ -42,7 +41,6 @@ export async function initializeRateTracker(
 		// Trigger an initial sync
 		await rateTracker.syncWithApi();
 	} catch (error) {
-		// eslint-disable-next-line no-console
 		console.error('[RateTracker] Failed to initialize rate tracker:', error);
 	}
 }

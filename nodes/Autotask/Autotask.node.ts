@@ -721,7 +721,6 @@ export class Autotask implements INodeType {
 			},
 		},
 		loadOptions: {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			async getSelectColumns(this: ILoadOptionsFunctions) {
 				const resource = this.getNodeParameter('resource', 0) as string;
 
@@ -748,23 +747,18 @@ export class Autotask implements INodeType {
 					const { fields } = await getResourceMapperFields.call(this, resource);
 
 					// Strip heavy picklist arrays to minimise payload held in memory/UI
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 					for (const f of fields as any[]) {
-						// eslint-disable-next-line @typescript-eslint/no-explicit-any
 						if ((f as any).picklistValues !== undefined) {
 							delete (f as any).picklistValues;
 						}
 					}
 
 					// Diagnostic counts (optional)
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 					const udfFields = (fields as any[]).filter(f => (f as any).isUdf === true || String(f.id).startsWith('UDF'));
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 					const picklistFields = (fields as any[]).filter(f => (f as any).isPickList === true);
 
 					console.debug(`[getSelectColumns] Stats for ${resource} – total:${fields.length}, udf:${udfFields.length}, picklist:${picklistFields.length}`);
 
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 					const formattedOptions: INodePropertyOptions[] = (fields as any[]).map((field: any) => ({
 						name: field.displayName || field.label || field.name || field.id,
 						value: field.id,

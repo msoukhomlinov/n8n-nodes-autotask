@@ -22,7 +22,6 @@ export async function executeWithRetry<T>(
 	let attempt = 0;
 	let totalWaitTime = 0;
 
-	// eslint-disable-next-line no-constant-condition
 	while (true) {
 		try {
 			return await requestFn();
@@ -77,7 +76,6 @@ export async function executeWithRetry<T>(
 			}
 
 			// Log and wait before retry
-			// eslint-disable-next-line no-console
 			console.warn(
 				`[429 Retry] Attempt ${attempt}, waiting ${(waitMs / 1_000).toFixed(
 					1,

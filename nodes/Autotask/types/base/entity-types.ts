@@ -25,8 +25,8 @@ export enum OperationType {
 export type OperationContext = 'parent' | 'self';
 
 // Constants for API limits
-const MAX_OR_CONDITIONS = 500;
-const MAX_UDF_PER_QUERY = 1;
+export const MAX_OR_CONDITIONS = 500;
+export const MAX_UDF_PER_QUERY = 1;
 
 /**
  * Base interface for all Autotask entities

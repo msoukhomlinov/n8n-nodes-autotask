@@ -55,6 +55,7 @@ export class AutotaskAiTools implements INodeType {
         name: 'autotaskAiTools',
         icon: 'file:autotask.svg',
         group: ['output'],
+        usableAsTool: true,
         version: 1,
         description: 'Expose Autotask operations as individual AI tools for the AI Agent',
         codex: {

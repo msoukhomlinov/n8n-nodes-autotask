@@ -58,7 +58,6 @@ export function createDateWrapper(
 export async function processResponseDates<T>(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	response: T,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_context: string,
 ): Promise<T> {
 	if (!response) {
