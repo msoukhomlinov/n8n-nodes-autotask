@@ -45,7 +45,7 @@ export function buildGetManyDescription(
 
     return (
         ref +
-        `Search ${resourceLabel} records with up to two AND filters. ` +
+        `Search ${resourceLabel} records with up to two filters (AND by default; set filter_logic='or' for either-match). ` +
         `Example: filter_field='companyName', filter_op='contains', filter_value='Acme'. ` +
         `Use filter_value as true/false for boolean fields, and use arrays (or comma-separated values) for in/notIn operators. ` +
         `UDF filtering supports one UDF field per query. ` +
@@ -54,6 +54,8 @@ export function buildGetManyDescription(
         `To get the most recent or latest records, you MUST use recency (for example 'last_7d') or provide since/until in ISO-8601 UTC format (for example 2026-01-01T00:00:00Z). ` +
         `When recency or since is used, the tool automatically filters by date, fetches a wide window, and returns the newest records first, trimmed to limit. ` +
         `If results are unexpectedly empty, check API user security permissions before retrying. ` +
+        `Pagination: use 'offset' to skip records (response includes hasMore and nextOffset). ` +
+        `Name-based filter resolution: for reference and picklist filter fields, you can pass a human-readable name as filter_value (e.g. filter_field='companyID', filter_value='Contoso') — the tool auto-resolves names to IDs. ` +
         `Always provide at least one filter when possible. ` +
         `If you are unsure about field names, call autotask_${resourceName} with operation 'describeFields' first.`
     );
@@ -69,6 +71,38 @@ export function buildCountDescription(resourceLabel: string, referenceUtc?: stri
     );
 }
 
+/** Max number of picklist values to inline in the required-fields summary */
+const MAX_INLINE_REQUIRED_PICKLIST = 10;
+
+/**
+ * Build a compact required-fields summary for create/update descriptions.
+ * For each required field, shows type info (reference target, picklist values, or data type).
+ */
+function buildRequiredFieldsSummary(writeFields: FieldMeta[]): string {
+    const required = writeFields.filter((field) => field.required);
+    if (required.length === 0) return 'Required fields: none.';
+
+    const parts = required.map((field) => {
+        let info = field.id;
+        if (field.isReference && field.referencesEntity) {
+            info += ` (ref→${field.referencesEntity})`;
+        } else if (field.isPickList && field.allowedValues?.length) {
+            if (field.allowedValues.length <= MAX_INLINE_REQUIRED_PICKLIST) {
+                const vals = field.allowedValues.map((v) => v.label).join('|');
+                info += ` (picklist: ${vals})`;
+            } else {
+                info += ` (picklist, ${field.allowedValues.length} values — use listPicklistValues)`;
+            }
+        } else if (field.isPickList) {
+            info += ` (picklist — use listPicklistValues for options)`;
+        } else {
+            info += ` (${field.type})`;
+        }
+        return info;
+    });
+    return `Required fields: ${parts.join(', ')}.`;
+}
+
 export function buildCreateDescription(
     resourceLabel: string,
     resourceName: string,
@@ -76,34 +110,24 @@ export function buildCreateDescription(
     supportsImpersonation = false,
     referenceUtc?: string,
 ): string {
-    const required = writeFields
-        .filter((field) => field.required)
-        .map((field) => field.id);
-    const requiredList = required.length > 0 ? required.join(', ') : 'none';
-    const picklists = writeFields
-        .filter((field) => field.isPickList)
-        .slice(0, 6)
-        .map((field) => field.id);
-    const picklistNote = picklists.length > 0
-        ? ` Picklist fields (use valid IDs): ${picklists.join(', ')}.`
-        : '';
+    const requiredSummary = buildRequiredFieldsSummary(writeFields);
     const parentField = getParentRequirement(resourceName);
     const parentHint = parentField
         ? ` Parent relation required: include ${parentField}.`
         : '';
     const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
     const impersonationNote = supportsImpersonation
-		? ' Optional impersonation is supported with impersonationResourceId. Impersonation is off by default unless that value is set. If proceedWithoutImpersonationIfDenied is true, denied impersonated writes retry once without impersonation.'
+		? ' Optional impersonation is supported with impersonationResourceId (accepts name or ID). Impersonation is off by default unless that value is set. If proceedWithoutImpersonationIfDenied is true, denied impersonated writes retry once without impersonation.'
 		: '';
 
     return (
         ref +
         `Create a new ${resourceLabel} record. ` +
-        `Required fields: ${requiredList}.${picklistNote}${parentHint} ` +
+        `${requiredSummary}${parentHint} ` +
+        `Name-based resolution: you can pass human-readable names instead of numeric IDs for picklist and reference fields (e.g. resourceName "Will Spence" instead of resourceID 29683, or category name "Internal Meeting" instead of numeric billingCodeID). The tool auto-resolves names to IDs. ` +
         `Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
-        `Successful creates typically return an itemId to use in follow-up operations. ` +
+        `Successful creates typically return an itemId and any resolvedLabels showing name→ID mappings. ` +
         `Confirm field values with user before executing when acting autonomously. ` +
-        `Call autotask_${resourceName} with operation 'describeFields' (mode 'write') before create if field requirements are unclear. ` +
         `If picklist values fail validation, call autotask_${resourceName} with operation 'listPicklistValues'.` +
 		impersonationNote
     );
@@ -117,7 +141,7 @@ export function buildUpdateDescription(
 ): string {
     const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
     const impersonationNote = supportsImpersonation
-		? ' Optional impersonation is supported with impersonationResourceId. Impersonation is off by default unless that value is set. If proceedWithoutImpersonationIfDenied is true, denied impersonated writes retry once without impersonation.'
+		? ' Optional impersonation is supported with impersonationResourceId (accepts name or ID). Impersonation is off by default unless that value is set. If proceedWithoutImpersonationIfDenied is true, denied impersonated writes retry once without impersonation.'
 		: '';
     return (
         ref +
@@ -125,6 +149,7 @@ export function buildUpdateDescription(
         `PREREQUISITE: you need the numeric ID. If you only have a name or text, call autotask_${resourceName} with operation 'getMany' with a filter to find the record and get its 'id' first. ` +
         `Only provide fields to change (PATCH-style behaviour). ` +
         `Do not assume PUT-style replacement where omitted fields become null. ` +
+        `Name-based resolution: you can pass human-readable names instead of numeric IDs for picklist and reference fields. The tool auto-resolves names to IDs. ` +
         `Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
         `Confirm field values with user before executing when acting autonomously. ` +
         `Call autotask_${resourceName} with operation 'describeFields' (mode 'write') to verify valid field names and required value types. ` +
@@ -155,7 +180,7 @@ export function buildPostedTimeEntriesDescription(resourceName: string, referenc
     return (
         ref +
         `Get posted time entries (entries with matching Billing Items). ` +
-        `Supports the same optional filters as getMany (up to two AND filters), plus 'limit' and 'fields'. ` +
+        `Supports the same optional filters as getMany (up to two filters, AND by default; set filter_logic='or' for either-match), plus 'limit', 'offset', and 'fields'. ` +
         `IMPORTANT: The Autotask API returns records oldest first (ascending ID). Without recency or since, limit=1 returns the OLDEST entry, not the newest. ` +
         `To get the most recent posted entries, you MUST use recency (for example 'last_24h' or 'last_7d'), or provide since/until in ISO-8601 UTC format. ` +
         `For date-range and advanced posting filters, use the standard Time Entry node operation if needed. ` +
@@ -168,7 +193,7 @@ export function buildUnpostedTimeEntriesDescription(resourceName: string, refere
     return (
         ref +
         `Get unposted time entries (entries without matching Billing Items). ` +
-        `Supports the same optional filters as getMany (up to two AND filters), plus 'limit' and 'fields'. ` +
+        `Supports the same optional filters as getMany (up to two filters, AND by default; set filter_logic='or' for either-match), plus 'limit', 'offset', and 'fields'. ` +
         `IMPORTANT: The Autotask API returns records oldest first (ascending ID). Without recency or since, limit=1 returns the OLDEST entry, not the newest. ` +
         `To get the most recent unposted entries, you MUST use recency (for example 'last_24h' or 'last_7d'), or provide since/until in ISO-8601 UTC format. ` +
         `For date-range and advanced posting filters, use the standard Time Entry node operation if needed. ` +
@@ -273,7 +298,7 @@ export function buildUnifiedDescription(
                 summary = `operation '${op}': Resolve the authenticated ${resourceLabel} record.`;
                 break;
             case 'getMany':
-                summary = `operation '${op}': Search records with up to two AND filters. Use filter_field/filter_value.`;
+                summary = `operation '${op}': Search records with up to two filters (AND/OR via filter_logic). Use filter_field/filter_value. Supports name-based resolution for reference/picklist filter values.`;
                 break;
             case 'count':
                 summary = `operation '${op}': Count records matching optional filters.`;
@@ -291,12 +316,11 @@ export function buildUnifiedDescription(
                 summary = `operation '${op}': Get unposted time entries with optional filters.`;
                 break;
             case 'create': {
-                const required = writeFields.filter(f => f.required).map(f => f.id);
-                summary = `operation '${op}': Create a new record. Required fields: ${required.length > 0 ? required.join(', ') : 'none'}. Populate every optional field for which you already have data — do not omit known information.`;
+                summary = `operation '${op}': Create a new record. ${buildRequiredFieldsSummary(writeFields)} Populate every optional field for which you already have data — do not omit known information. Supports name-based resolution for picklist/reference fields.`;
                 break;
             }
             case 'update':
-                summary = `operation '${op}': Update a record by numeric 'id'. Provide only fields to change.`;
+                summary = `operation '${op}': Update a record by numeric 'id'. Provide only fields to change. Supports name-based resolution for picklist/reference fields.`;
                 break;
             case 'delete':
                 summary = `operation '${op}': Delete a record by numeric 'id'.`;

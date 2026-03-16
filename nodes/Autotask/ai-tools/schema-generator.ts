@@ -34,7 +34,7 @@ function buildFieldDescription(field: FieldMeta, prefix?: string): string {
         }
     }
     if (field.isReference && field.referencesEntity) {
-        parts.push(`(references ${field.referencesEntity})`);
+        parts.push(`(references ${field.referencesEntity} — accepts ID or name)`);
     }
     return parts.join(' ');
 }
@@ -47,7 +47,11 @@ export function mapFilterOp(op: string): string {
     if (lower === 'like') {
         return FilterOperators.contains;
     }
-    const validKeys = Object.keys(FilterOperators) as string[];
+    // 'and'/'or' are grouping operators, not field-level comparison operators
+    if (lower === 'and' || lower === 'or') {
+        throw new Error(`'${op}' is a grouping operator and cannot be used as a filter_op. Use filter_logic='or' for OR queries between filter pairs.`);
+    }
+    const validKeys = (Object.keys(FilterOperators) as string[]).filter(k => k !== 'and' && k !== 'or');
     const matchedKey = validKeys.find(k => k.toLowerCase() === lower);
     if (!matchedKey) {
         throw new Error(`Unsupported filter operator: '${op}'. Valid operators are: ${validKeys.join(', ')}`);
@@ -138,7 +142,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
                 : rz.string().optional().describe('Second field to filter on (optional)');
             shape.filter_op_2 = rFilterOpEnum.optional().describe('Second filter operator');
             shape.filter_value_2 = rFilterValueSchema.optional().describe('Second filter value');
+            shape.filter_logic = rz.enum(['and', 'or']).optional().describe(
+                "Logic between filter pairs. Default 'and' (both must match). Use 'or' for either-match queries (e.g. status='Open' OR status='In Progress').",
+            );
             shape.limit = rz.number().int().min(1).max(100).optional().describe('Max results (1-100, default 10)');
+            shape.offset = rz.number().int().min(0).optional().describe('Skip first N records (for pagination, max 99). Use with limit. Response includes hasMore and nextOffset. Limited to first 100 total records — use narrower filters for larger datasets.');
             shape.recency = rRecencySchema;
             shape.since = rz.string().optional().describe('Range start in ISO-8601 UTC format (e.g. 2026-01-01T00:00:00Z). When set, recency is ignored.');
             shape.until = rz.string().optional().describe('Range end in ISO-8601 UTC format (e.g. 2026-01-31T23:59:59Z). Requires since or recency.');
@@ -147,7 +155,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         // searchByDomain fields
         if (hasSearchByDomain) {
             shape.domain = rz.string().min(1).optional().describe('Domain to search, e.g. autotask.net or https://www.autotask.net/');
-            shape.domainOperator = rz.enum(['eq', 'beginsWith', 'endsWith', 'contains', 'like']).optional()
+            shape.domainOperator = rz.enum(['eq', 'beginsWith', 'endsWith', 'contains']).optional()
                 .describe("Domain comparison operator (default 'contains').");
             shape.searchContactEmails = rz.boolean().optional()
                 .describe('When true (default), fall back to contact email search if no website match.');
@@ -165,14 +173,18 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
                 if (field.id === 'id') continue;
                 if (shape[field.id]) continue;
                 const desc = buildFieldDescription(field);
-                const base = field.type === 'number' ? rz.number()
+                // Picklist and reference fields accept string|number so the LLM can pass
+                // human-readable labels (e.g. "Will Spence") which the executor auto-resolves to IDs.
+                const needsLabelResolution = field.isPickList || field.isReference;
+                const base = needsLabelResolution ? rz.union([rz.number(), rz.string()])
+                    : field.type === 'number' ? rz.number()
                     : field.type === 'boolean' ? rz.boolean()
                     : rz.string();
                 shape[field.id] = base.optional().describe(desc);
             }
             if (!shape.impersonationResourceId) {
-                shape.impersonationResourceId = rz.number().int().positive().optional()
-                    .describe('Optional resource ID to impersonate for write attribution.');
+                shape.impersonationResourceId = rz.union([rz.number(), rz.string()]).optional()
+                    .describe('Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name (e.g. "Bob Smith"), or email address — names and emails are auto-resolved to resource IDs.');
                 shape.proceedWithoutImpersonationIfDenied = rz.boolean().optional()
                     .describe('When true and impersonation is set, retry without impersonation if denied (default true).');
             }
@@ -204,7 +216,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
             shape.throttleMaxBytesPer5Min = rz.number().int().min(1).optional().describe('Upload throughput limit in bytes per 5 minutes (default 10000000).');
             shape.throttleMaxSingleFileBytes = rz.number().int().min(1).optional().describe('Maximum attachment size per file in bytes (default 6291456).');
             if (!shape.impersonationResourceId) {
-                shape.impersonationResourceId = rz.number().int().positive().optional().describe('Optional resource ID to impersonate for write attribution.');
+                shape.impersonationResourceId = rz.union([rz.number(), rz.string()]).optional().describe('Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name, or email — auto-resolved.');
                 shape.proceedWithoutImpersonationIfDenied = rz.boolean().optional().describe('When true and impersonation is set, retry without impersonation if denied (default true).');
             }
         }
@@ -225,7 +237,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
             shape.sourceAuditNote = rz.string().optional().describe('Optional audit note written to the source company context.');
             shape.destinationAuditNote = rz.string().optional().describe('Optional audit note written to the destination company context.');
             if (!shape.impersonationResourceId) {
-                shape.impersonationResourceId = rz.number().int().positive().optional().describe('Optional resource ID to impersonate for write attribution.');
+                shape.impersonationResourceId = rz.union([rz.number(), rz.string()]).optional().describe('Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name, or email — auto-resolved.');
                 shape.proceedWithoutImpersonationIfDenied = rz.boolean().optional().describe('When true and impersonation is set, retry without impersonation if denied (default true).');
             }
         }
@@ -261,7 +273,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
             shape.auditNoteTemplate = rz.string().optional()
                 .describe('Audit note template with placeholders: {sourceResourceName}, {sourceResourceId}, {destinationResourceName}, {destinationResourceId}, {date}, {entityType}, {entityId}.');
             if (!shape.impersonationResourceId) {
-                shape.impersonationResourceId = rz.number().int().positive().optional().describe('Optional resource ID to impersonate for write attribution.');
+                shape.impersonationResourceId = rz.union([rz.number(), rz.string()]).optional().describe('Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name, or email — auto-resolved.');
                 shape.proceedWithoutImpersonationIfDenied = rz.boolean().optional().describe('When true and impersonation is set, retry without impersonation if denied (default true).');
             }
         }
