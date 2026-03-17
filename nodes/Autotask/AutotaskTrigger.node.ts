@@ -42,7 +42,6 @@ export class AutotaskTrigger implements INodeType {
 		name: 'autotaskTrigger',
 		icon: 'file:autotask.svg',
 		group: ['trigger'],
-		usableAsTool: true,
 		version: 1,
 		subtitle: '={{$parameter["entityType"] + ": " + ($parameter["eventTypes"].length > 0 ? $parameter["eventTypes"].join(", ") : "all events")}}',
 		description: 'Handle Autotask Webhook events',
