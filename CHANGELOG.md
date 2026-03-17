@@ -6,7 +6,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Fixed
 
-- Removed `usableAsTool: true` from AutotaskTrigger node — trigger nodes don't support tool wrapping, causing n8n to fail with "Unrecognized node type" at startup
+- Set `usableAsTool: false` on AutotaskTrigger node — trigger nodes don't support tool wrapping, `true` caused n8n to fail with "Unrecognized node type" at startup
 
 ## [2.5.1] - 2026-03-16
 
