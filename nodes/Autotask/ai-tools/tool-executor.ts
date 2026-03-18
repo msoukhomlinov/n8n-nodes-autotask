@@ -313,6 +313,8 @@ function buildFieldValues(
         'searchContactEmails',
 				'impersonationResourceId',
 				'proceedWithoutImpersonationIfDenied',
+				'dedupFields',
+				'errorOnDuplicate',
     ]);
     for (const [key, value] of Object.entries(params)) {
         if (value !== undefined && value !== '' && !exclude.has(key)) {
@@ -358,6 +360,8 @@ function normaliseOperation(operation: string): string {
             return 'moveToCompany';
         case 'transferownership':
             return 'transferOwnership';
+        case 'createifnotexists':
+            return 'createIfNotExists';
         default:
             return key;
     }
@@ -562,7 +566,7 @@ export async function executeAiTool(
         }
     }
 
-    if (['create', 'update'].includes(effectiveOperation)) {
+    if (['create', 'update', 'createIfNotExists'].includes(effectiveOperation)) {
         const writeValidation = validateWriteFields(fieldValues, writeFields, resource, effectiveOperation);
         if (!writeValidation.valid) {
             return JSON.stringify(writeValidation.error);
@@ -574,7 +578,7 @@ export async function executeAiTool(
     let labelResolutions: LabelResolution[] = [];
     let labelWarnings: string[] = [];
     let labelPendingConfirmations: PendingLabelConfirmation[] = [];
-    if (['create', 'update'].includes(effectiveOperation) && Object.keys(fieldValues).length > 0) {
+    if (['create', 'update', 'createIfNotExists'].includes(effectiveOperation) && Object.keys(fieldValues).length > 0) {
         try {
             const resolution = await resolveLabelsToIds(context, resource, fieldValues as IDataObject);
             // Replace fieldValues entries with resolved IDs in-place
@@ -592,7 +596,7 @@ export async function executeAiTool(
 
     // Resolve impersonationResourceId name/email → numeric ID for write operations only.
     // Gated to write ops to avoid unnecessary Resource entity list fetch on reads.
-    const isWriteOperation = ['create', 'update', 'moveConfigurationItem', 'moveToCompany', 'transferOwnership'].includes(effectiveOperation);
+    const isWriteOperation = ['create', 'createIfNotExists', 'update', 'moveConfigurationItem', 'moveToCompany', 'transferOwnership'].includes(effectiveOperation);
     let resolvedImpersonationId: number | undefined;
     const rawImpersonation = params.impersonationResourceId;
     if (isWriteOperation && rawImpersonation !== undefined && rawImpersonation !== null && rawImpersonation !== '') {
@@ -774,6 +778,61 @@ export async function executeAiTool(
     }) as typeof context.getNodeParameter;
 
     try {
+        // Compound operation short-circuit: createIfNotExists bypasses the standard executor
+        if (effectiveOperation === 'createIfNotExists') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let compoundResult: any;
+
+            // createFields comes from fieldValues (already validated + label-resolved above)
+            const createFields: Record<string, unknown> = { ...fieldValues };
+            const dedupFields = (params.dedupFields as string[]) ?? ['name', 'datePurchased'];
+            const errorOnDuplicate = params.errorOnDuplicate === true;
+
+            const compoundOptions = {
+                createFields,
+                dedupFields,
+                errorOnDuplicate,
+                impersonationResourceId: resolvedImpersonationId,
+                proceedWithoutImpersonationIfDenied: params.proceedWithoutImpersonationIfDenied !== false,
+            };
+
+            if (resource === 'contractCharge') {
+                const { createContractChargeIfNotExists } = await import('../helpers/contract-charge-creator');
+                compoundResult = await createContractChargeIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'ticketCharge') {
+                const { createTicketChargeIfNotExists } = await import('../helpers/ticket-charge-creator');
+                compoundResult = await createTicketChargeIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'projectCharge') {
+                const { createProjectChargeIfNotExists } = await import('../helpers/project-charge-creator');
+                compoundResult = await createProjectChargeIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'configurationItems') {
+                const { createConfigurationItemIfNotExists } = await import('../helpers/configuration-item-creator');
+                compoundResult = await createConfigurationItemIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'timeEntry') {
+                const { createTimeEntryIfNotExists } = await import('../helpers/time-entry-creator');
+                compoundResult = await createTimeEntryIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'contractService') {
+                const { createContractServiceIfNotExists } = await import('../helpers/contract-service-creator');
+                compoundResult = await createContractServiceIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'contract') {
+                const { createContractIfNotExists } = await import('../helpers/contract-creator');
+                compoundResult = await createContractIfNotExists(context, 0, compoundOptions);
+            }
+
+            if (compoundResult) {
+                if (labelResolutions.length > 0) {
+                    (compoundResult as Record<string, unknown>).resolvedLabels = labelResolutions;
+                }
+                if (labelWarnings.length > 0) {
+                    const warnings = (compoundResult as Record<string, unknown>).warnings;
+                    if (Array.isArray(warnings)) {
+                        warnings.push(...labelWarnings);
+                    }
+                }
+                return JSON.stringify(wrapSuccess(resource, `${resource}.createIfNotExists`, compoundResult));
+            }
+        }
+
         const result = await executeToolOperation.call(context);
         const items = result[0] ?? [];
         const fetchedRecords = items.map((item) => item.json);
