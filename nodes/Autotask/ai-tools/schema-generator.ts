@@ -278,6 +278,39 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
             }
         }
 
+        // createIfNotExists — reuse dynamic writeFields + add dedup/error fields
+        const hasCreateIfNotExists = operations.includes('createIfNotExists');
+        if (hasCreateIfNotExists) {
+            // If create/update already ran, writeFields are already in shape.
+            // Otherwise, populate them now using the same dynamic loop.
+            if (!hasCreate && !hasUpdate) {
+                for (const field of writeFields) {
+                    if (field.id === 'id') continue;
+                    if (shape[field.id]) continue;
+                    const desc = buildFieldDescription(field);
+                    const needsLabelResolution = field.isPickList || field.isReference;
+                    const base = needsLabelResolution ? rz.union([rz.number(), rz.string()])
+                        : field.type === 'number' ? rz.number()
+                        : field.type === 'boolean' ? rz.boolean()
+                        : rz.string();
+                    shape[field.id] = base.optional().describe(desc);
+                }
+            }
+            // createIfNotExists-specific fields
+            if (!shape.dedupFields)
+                shape.dedupFields = rz.array(rz.string()).optional()
+                    .describe('Field names for duplicate detection. Use describeFields to discover available field names. Empty = skip dedup, always create.');
+            if (!shape.errorOnDuplicate)
+                shape.errorOnDuplicate = rz.boolean().optional()
+                    .describe('When true, throw an error if a duplicate is found instead of returning a skipped outcome. Default false.');
+            if (!shape.impersonationResourceId) {
+                shape.impersonationResourceId = rz.union([rz.number(), rz.string()]).optional()
+                    .describe('Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name, or email — auto-resolved.');
+                shape.proceedWithoutImpersonationIfDenied = rz.boolean().optional()
+                    .describe('When true and impersonation is set, retry without impersonation if denied (default true).');
+            }
+        }
+
         // describeFields fields
         shape.mode = rz.enum(['read', 'write']).optional()
             .describe("Field mode for describeFields. Use 'read' for get/getMany fields; 'write' for create/update fields.");
