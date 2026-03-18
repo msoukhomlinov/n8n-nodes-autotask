@@ -258,6 +258,13 @@ export function buildResourceTransferOwnershipDescription(resourceName: string):
     );
 }
 
+function buildCreateIfNotExistsDescription(resource: string): string {
+	return `Idempotent creation for ${resource}. Checks for duplicates using configurable dedupFields before creating. ` +
+		`Pass the same fields as the create operation, plus dedupFields (array of API field names for duplicate detection) ` +
+		`and errorOnDuplicate (boolean, default false). Use describeFields first to discover available field names. ` +
+		`Returns outcome: created, skipped, or not_found.`;
+}
+
 export function buildDescribeFieldsDescription(resourceLabel: string): string {
     return (
         `Describe available ${resourceLabel} fields for AI usage. ` +
@@ -333,6 +340,9 @@ export function buildUnifiedDescription(
                 break;
             case 'transferOwnership':
                 summary = `operation '${op}': Transfer ownership from source resource to destination resource.`;
+                break;
+            case 'createIfNotExists':
+                summary = buildCreateIfNotExistsDescription(resource);
                 break;
             default:
                 summary = `operation '${op}': Perform ${op} on ${resourceLabel}.`;
