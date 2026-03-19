@@ -21,6 +21,12 @@ export const ticketChargeFields: INodeProperties[] = [
 				action: 'Create a ticket charge',
 			},
 			{
+				name: 'Create If Not Exists',
+				value: 'createIfNotExists',
+				description: 'Find ticket by ID or number, check for duplicates, create charge only if none found',
+				action: 'Create a ticket charge if not exists',
+			},
+			{
 				name: 'Update',
 				value: 'update',
 				description: 'Update a ticket charge (only when isBilled = false)',
@@ -79,8 +85,30 @@ export const ticketChargeFields: INodeProperties[] = [
 				operation: ['delete'],
 			},
 		},
-		description: 'ID of the ticket that the charge belongs to',
+		description: 'ID of the ticket (numeric) or ticket number (e.g. T20240615.0674)',
 	},
+	// ─── createIfNotExists fields ────────────────────────────────────────
+	{
+		displayName: 'Dedup Fields Names or IDs',
+		name: 'dedupFields',
+		type: 'multiOptions',
+		default: [],
+		displayOptions: { show: { resource: ['ticketCharge'], operation: ['createIfNotExists'] } },
+		typeOptions: {
+			loadOptionsMethod: 'getSelectColumns',
+			loadOptionsDependsOn: ['resource'],
+		},
+		description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>. Fields used for duplicate detection. Empty = skip dedup, always create.',
+	},
+	{
+		displayName: 'Error on Duplicate',
+		name: 'errorOnDuplicate',
+		type: 'boolean',
+		default: false,
+		displayOptions: { show: { resource: ['ticketCharge'], operation: ['createIfNotExists'] } },
+		description: 'Whether to throw an error when a duplicate is found',
+	},
+	// ─── Standard CRUD fields ────────────────────────────────────────────
 	{
 		displayName: 'Fields',
 		name: 'fieldsToMap',
@@ -105,7 +133,7 @@ export const ticketChargeFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['ticketCharge'],
-				operation: ['create', 'update', 'getMany', 'count'],
+				operation: ['create', 'createIfNotExists', 'update', 'getMany', 'count'],
 			},
 		},
 		description: 'Map the fields to be used in the operation',

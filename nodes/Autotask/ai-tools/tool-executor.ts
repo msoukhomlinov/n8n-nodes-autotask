@@ -785,7 +785,16 @@ export async function executeAiTool(
 
             // createFields comes from fieldValues (already validated + label-resolved above)
             const createFields: Record<string, unknown> = { ...fieldValues };
-            const dedupFields = (params.dedupFields as string[]) ?? ['name', 'datePurchased'];
+            const DEFAULT_DEDUP_FIELDS: Record<string, string[]> = {
+                contractCharge: ['name', 'datePurchased'],
+                ticketCharge: ['name', 'datePurchased'],
+                projectCharge: ['name', 'datePurchased'],
+                configurationItems: ['serialNumber'],
+                timeEntry: ['dateWorked', 'hoursWorked'],
+                contractService: ['serviceID'],
+                contract: ['contractName'],
+            };
+            const dedupFields = (params.dedupFields as string[]) ?? DEFAULT_DEDUP_FIELDS[resource] ?? [];
             const errorOnDuplicate = params.errorOnDuplicate === true;
 
             const compoundOptions = {
@@ -828,6 +837,9 @@ export async function executeAiTool(
                     if (Array.isArray(warnings)) {
                         warnings.push(...labelWarnings);
                     }
+                }
+                if (labelPendingConfirmations.length > 0) {
+                    (compoundResult as Record<string, unknown>).pendingConfirmations = labelPendingConfirmations;
                 }
                 return JSON.stringify(wrapSuccess(resource, `${resource}.createIfNotExists`, compoundResult));
             }

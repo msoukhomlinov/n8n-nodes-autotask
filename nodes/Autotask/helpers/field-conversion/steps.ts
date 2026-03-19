@@ -60,10 +60,10 @@ export const conversionSteps: ConversionStep[] = [
 							return false;
 						}
 
-						const isCreateOperation = context.operation === 'create';
+						const isCreateOperation = context.operation === 'create' || context.operation === 'createIfNotExists';
 						const isUpdateOperation = context.operation === 'update';
 
-						// For create operations, parent ID fields are always required
+						// For create/createIfNotExists operations, parent ID fields are always required
 						if (isCreateOperation && isParentIdField) {
 							return true;
 						}
@@ -73,7 +73,7 @@ export const conversionSteps: ConversionStep[] = [
 							return isParentIdField;
 						}
 
-						// For create operations, check if field is required by definition
+						// For create/createIfNotExists operations, check if field is required by definition
 						return isCreateOperation && context.field.isRequired;
 					})(),
 					display: true, // Always show in UI by default
@@ -91,8 +91,8 @@ export const conversionSteps: ConversionStep[] = [
 					result.defaultMatch = false;
 				}
 
-				// For parent ID fields in create operations, ensure they're displayed but not auto-matched
-				if (isParentIdField && context.operation === 'create') {
+				// For parent ID fields in create/createIfNotExists operations, ensure they're displayed but not auto-matched
+				if (isParentIdField && (context.operation === 'create' || context.operation === 'createIfNotExists')) {
 					result.display = true;
 					result.defaultMatch = false; // Changed to false to prevent auto-matching
 				}

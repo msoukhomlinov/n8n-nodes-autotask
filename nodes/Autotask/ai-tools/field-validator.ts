@@ -92,7 +92,7 @@ export function validateWriteFields(
         };
     }
 
-    if (operation === 'create') {
+    if (operation === 'create' || operation === 'createIfNotExists') {
         const missingRequiredFields = writeFields
             .filter((field) => field.required)
             .map((field) => field.id)
@@ -121,6 +121,7 @@ export function validateEntityId(
         'getUnposted',
         'count',
         'create',
+        'createIfNotExists',
         'moveToCompany',
         'moveConfigurationItem',
         'transferOwnership',

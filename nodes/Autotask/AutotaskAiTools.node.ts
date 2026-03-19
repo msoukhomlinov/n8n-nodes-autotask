@@ -22,7 +22,7 @@ import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
 
 const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
 
-const WRITE_OPERATIONS = ['create', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'];
+const WRITE_OPERATIONS = ['create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'];
 const SUPPORTED_TOOL_OPERATIONS = [
     'get',
     'getMany',
@@ -38,6 +38,7 @@ const SUPPORTED_TOOL_OPERATIONS = [
     'delete',
     'whoAmI',
     'slaHealthCheck',
+    'createIfNotExists',
 ];
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
 
@@ -108,7 +109,7 @@ export class AutotaskAiTools implements INodeType {
                 name: 'allowWriteOperations',
                 type: 'boolean',
                 default: false,
-                description: 'Whether to enable mutating tools (create, moveToCompany, moveConfigurationItem, transferOwnership, update, delete). Disabled = read-only.',
+                description: 'Whether to enable mutating tools (create, createIfNotExists, moveToCompany, moveConfigurationItem, transferOwnership, update, delete). Disabled = read-only.',
             },
         ],
     };
@@ -161,7 +162,7 @@ export class AutotaskAiTools implements INodeType {
         const needsReadFields = effectiveOps.some((op) =>
             ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(op),
         );
-        const needsWriteFields = effectiveOps.some((op) => ['create', 'update'].includes(op));
+        const needsWriteFields = effectiveOps.some((op) => ['create', 'createIfNotExists', 'update'].includes(op));
 
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const supplyDataContext = this;
@@ -381,6 +382,7 @@ async function getToolResourceOperations(this: ILoadOptionsFunctions): Promise<I
         transferOwnership: 'Transfer ownership',
         update: 'Update',
         delete: 'Delete',
+        createIfNotExists: 'Create If Not Exists (idempotent)',
     };
 
     for (const op of ops) {

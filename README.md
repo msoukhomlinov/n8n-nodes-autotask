@@ -1,6 +1,6 @@
 # n8n-nodes-autotask
 
-![n8n-nodes-autotask](https://img.shields.io/badge/n8n--nodes--autotask-2.2.0-blue)
+![n8n-nodes-autotask](https://img.shields.io/npm/v/n8n-nodes-autotask?label=n8n-nodes-autotask&color=blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-yellow.svg)](https://buymeacoffee.com/msoukhomlinov)
@@ -62,7 +62,16 @@ To use this node, you need to have API access to your Autotask instance. Follow 
 
 ### Autotask AI Tools
 
-The **Autotask AI Tools** node exposes Autotask operations as individual tools for the AI Agent. Add one node per resource (e.g. ticket, company, contact), select the operations to expose (get, getMany, count, create, update, delete; plus whoAmI and transferOwnership for Resource, getPosted/getUnposted for Time Entry, searchByDomain for Company, slaHealthCheck for Ticket, moveConfigurationItem for Configuration Items), and connect to an AI Agent. Each operation becomes a separate tool with a flat, typed schema that LLMs handle reliably. Available resources and operations are derived from the same entity metadata as the main Autotask node. Requires `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` in your n8n environment.
+The **Autotask AI Tools** node exposes Autotask operations as individual tools for the AI Agent. Add one node per resource (e.g. ticket, company, contact), select the operations to expose (get, getMany, count, create, createIfNotExists, update, delete; plus whoAmI and transferOwnership for Resource, getPosted/getUnposted for Time Entry, searchByDomain for Company, slaHealthCheck for Ticket, moveConfigurationItem for Configuration Items), and connect to an AI Agent. Each configured resource becomes a single unified tool (`autotask_<resource>`) with an `operation` enum that routes to the correct handler. Available resources and operations are derived from the same entity metadata as the main Autotask node. Requires `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` in your n8n environment.
+
+Key AI Tools capabilities:
+
+- **Name-based label resolution**: The LLM can pass human-readable names for picklist and reference fields (e.g. `resourceID: "Will Spence"` instead of `resourceID: 29683`). Resolution is transparent — successful responses include a `resolvedLabels` array showing each mapping. Ambiguous matches produce `pendingConfirmations` for user confirmation. Works for both write operations and read filter values.
+- **Required fields in descriptions**: Create operation descriptions embed a compact required-fields summary with type info, eliminating the `describeFields` prerequisite for most create workflows.
+- **OR filter logic**: List operations accept a `filter_logic` parameter (`'and'` or `'or'`) to control how filter pairs are combined.
+- **Offset pagination**: List operations accept an `offset` parameter for paginating through results (up to 100 records). Responses include `hasMore` and `nextOffset` for continuation.
+- **Impersonation name resolution**: The `impersonationResourceId` parameter accepts a name or email in addition to numeric IDs.
+- **Idempotent creation**: `createIfNotExists` operations (see below) provide find-or-create semantics with configurable dedup fields.
 
 ### Supported Resources
 
@@ -83,7 +92,7 @@ The node supports the following Autotask resources:
 | Company Note | Manage notes attached to companies |
 | Company Site Configuration | Manage company site configurations and user-defined fields for customer companies |
 | Company Webhook | Manage webhooks for company events |
-| Configuration Item | Manage configuration items (CIs) for companies. Includes Move Configuration Item for cross-company CI cloning with optional notes and attachments copy. |
+| Configuration Item | Manage configuration items (CIs) for companies. Includes Move Configuration Item for cross-company CI cloning with optional notes and attachments copy. Includes Create If Not Exists for idempotent CI creation scoped by company. |
 | Configuration Item Billing Product Association | Manage product associations for configuration items |
 | Configuration Item Category | Manage categories for configuration items |
 | Configuration Item Category UDF Association | Manage UDF associations for CI categories |
@@ -97,11 +106,11 @@ The node supports the following Autotask resources:
 | Contact Groups | Manage contact groups |
 | Contact Group Contacts | Manage contacts within contact groups |
 | Contact Webhook | Manage webhooks for contact events |
-| Contract | Manage contracts for companies |
+| Contract | Manage contracts for companies. Includes Create If Not Exists for idempotent contract creation scoped by company. |
 | Contract Billing Rules | Manage billing rules for contracts |
 | Contract Block | Manage block hour contracts |
 | Contract Block Hour Factor | Manage hour factors for block hour contracts |
-| Contract Charge | Manage charges associated with contracts |
+| Contract Charge | Manage charges associated with contracts. Includes Create If Not Exists for idempotent charge creation. |
 | Contract Exclusion Billing Codes | Manage excluded billing codes for contracts |
 | Contract Exclusion Roles | Manage excluded roles for contracts |
 | Contract Exclusion Set Excluded Roles | Manage excluded roles within exclusion sets |
@@ -112,7 +121,7 @@ The node supports the following Autotask resources:
 | Contract Rate | Manage rates for contract services |
 | Contract Retainers | Manage retainers for contracts |
 | Contract Role Costs | Manage role costs for contracts |
-| Contract Service | Manage services within contracts |
+| Contract Service | Manage services within contracts. Includes Create If Not Exists for idempotent service assignment. |
 | Contract Service Adjustments | Manage adjustments for contract services |
 | Contract Service Bundle Adjustments | Manage adjustments for service bundles |
 | Contract Service Bundles | Manage service bundles within contracts |
@@ -129,7 +138,7 @@ The node supports the following Autotask resources:
 | Product | Manage products in the catalogue |
 | Product Vendors | Manage vendor associations for products |
 | Project | Manage projects |
-| Project Charge | Manage charges associated with projects |
+| Project Charge | Manage charges associated with projects. Includes Create If Not Exists for idempotent charge creation. |
 | Project Note | Manage notes attached to projects |
 | Project Phase | Manage phases within projects |
 | Project Task | Manage tasks within projects |
@@ -162,7 +171,7 @@ The node supports the following Autotask resources:
 | Ticket Category | Manage ticket categories with display colors and default field values |
 | Ticket Category Field Default | Query default field values for ticket categories |
 | Ticket Change Request Approval | Manage ticket change request approvals using root and ticket child endpoint scopes |
-| Ticket Charge | Manage charges associated with tickets |
+| Ticket Charge | Manage charges associated with tickets. Includes Create If Not Exists for idempotent charge creation. |
 | Ticket Checklist Item | Manage checklist items on tickets |
 | Ticket Checklist Library | Add all items from a checklist library to a ticket |
 | Ticket History | View historical changes to tickets |
@@ -171,7 +180,7 @@ The node supports the following Autotask resources:
 | Ticket Note Webhook | Manage webhooks for ticket note events |
 | Ticket Secondary Resource | Manage secondary resource assignments on tickets |
 | Ticket Webhook | Manage webhooks for ticket events |
-| Time Entry | Manage time entries for billing. Includes Get Posted and Get Unposted operations for listing labour entries by posting status with cross-entity filters |
+| Time Entry | Manage time entries for billing. Includes Get Posted and Get Unposted operations for listing labour entries by posting status with cross-entity filters. Includes Create If Not Exists for idempotent time entry creation scoped by resource. |
 | Time Entry Attachment | Manage files attached to time entries |
 
 ### Operations
@@ -203,6 +212,11 @@ For most resources, the following operations are available:
   - Add human-readable labels for picklist and reference fields
   - Flatten User-Defined Fields for easier access in workflows
   - Date-based filtering with automatic timezone handling
+- **Create If Not Exists**: Idempotent creation — checks for an existing record matching configurable dedup fields before creating. Available for Contract Charge, Ticket Charge, Project Charge, Configuration Item, Time Entry, Contract Service, and Contract. Supports:
+  - Configurable dedup fields (choose which fields to match on)
+  - `errorOnDuplicate` option to fail instead of silently skipping when a duplicate is found
+  - Same dynamic field loading as the Create operation (resourceMapper)
+  - Outcomes: `created` (new record), `skipped` (duplicate found), or scope-entity-not-found error
 - **Count**: Get the number of matching records
 - **Get Entity Info**: Retrieve metadata about the entity
 - **Get Field Info**: Retrieve field definitions for the selected entity

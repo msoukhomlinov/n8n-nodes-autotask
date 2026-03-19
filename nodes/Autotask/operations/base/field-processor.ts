@@ -613,8 +613,8 @@ export class FieldProcessor {
 				console.debug(`[FieldProcessor] ✓ Field ${field.name} is the parent ID field (${parentIdField})`);
 			}
 
-			// Always include parent ID field for create operations if this is a child entity
-			if (operation === 'create' && isParentField) {
+			// Always include parent ID field for create/createIfNotExists operations if this is a child entity
+			if ((operation === 'create' || (operation as string) === 'createIfNotExists') && isParentField) {
 				console.debug(`[FieldProcessor] Including parent ID field ${field.name} as required`);
 				field.isRequired = true; // Set parent ID field as required for create operations
 				field.isReadOnly = false; // Override read-only for parent ID fields in create operations
@@ -627,8 +627,8 @@ export class FieldProcessor {
 				return false;
 			}
 
-			// For create operations, exclude read-only fields with special conditions
-			if (operation === 'create' && field.isReadOnly) {
+			// For create/createIfNotExists operations, exclude read-only fields with special conditions
+			if ((operation === 'create' || (operation as string) === 'createIfNotExists') && field.isReadOnly) {
 				// Always exclude 'id' field for create operations, even if it's marked as required
 				if (field.name === 'id') {
 					console.debug(`[FieldProcessor] Excluding read-only field ${field.name} for create`);

@@ -37,6 +37,12 @@ const operationOptions = [
     description: 'Clone a configuration item to another company with optional notes and attachments copy',
     action: 'Move a configuration item to another company',
   },
+  {
+    name: 'Create If Not Exists',
+    value: 'createIfNotExists',
+    description: 'Check for duplicate CIs within company scope, create only if none found',
+    action: 'Create a configuration item if not exists',
+  },
 ];
 
 const baseFields: INodeProperties[] = [
@@ -386,6 +392,36 @@ const baseFields: INodeProperties[] = [
     description: 'Maximum single attachment size in bytes',
   },
   {
+    displayName: 'Dedup Fields Names or IDs',
+    name: 'dedupFields',
+    type: 'multiOptions',
+    default: [],
+    displayOptions: {
+      show: {
+        resource: ['configurationItems'],
+        operation: ['createIfNotExists'],
+      },
+    },
+    typeOptions: {
+      loadOptionsMethod: 'getSelectColumns',
+      loadOptionsDependsOn: ['resource'],
+    },
+    description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>. Fields used for duplicate detection. Empty = skip dedup, always create.',
+  },
+  {
+    displayName: 'Error On Duplicate',
+    name: 'errorOnDuplicate',
+    type: 'boolean',
+    default: false,
+    displayOptions: {
+      show: {
+        resource: ['configurationItems'],
+        operation: ['createIfNotExists'],
+      },
+    },
+    description: 'Whether to throw an error when a duplicate is found instead of returning it',
+  },
+  {
     displayName: 'Fields',
     name: 'fieldsToMap',
     type: 'resourceMapper',
@@ -397,7 +433,7 @@ const baseFields: INodeProperties[] = [
     displayOptions: {
       show: {
         resource: ['configurationItems'],
-        operation: ['create', 'update', 'getMany', 'count'],
+        operation: ['create', 'createIfNotExists', 'update', 'getMany', 'count'],
       },
     },
     typeOptions: {

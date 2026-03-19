@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	CreateOperation,
@@ -82,6 +82,22 @@ export async function executeContractServiceOperation(
 					});
 					break;
 				}
+				case 'createIfNotExists': {
+					const { createContractServiceIfNotExists } = await import('../../helpers/contract-service-creator');
+					let createFields: Record<string, unknown> = {};
+					try {
+						const fieldsToMap = this.getNodeParameter('fieldsToMap', i, { value: {} }) as { value: Record<string, unknown> | null };
+						createFields = fieldsToMap?.value ?? {};
+					} catch { /* fieldsToMap may not be available */ }
+					const result = await createContractServiceIfNotExists(this, i, {
+						createFields,
+						dedupFields: this.getNodeParameter('dedupFields', i, []) as string[],
+						errorOnDuplicate: this.getNodeParameter('errorOnDuplicate', i, false) as boolean,
+					});
+					returnData.push({ json: result as unknown as IDataObject });
+					break;
+				}
+
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}
