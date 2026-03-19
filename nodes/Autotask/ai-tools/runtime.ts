@@ -34,7 +34,32 @@ function getRuntimeRequire(): NodeRequire {
     );
 }
 
-const runtimeRequire = getRuntimeRequire();
-const coreTools = runtimeRequire('@langchain/core/tools') as Record<string, any>;
-export const RuntimeDynamicStructuredTool = coreTools['DynamicStructuredTool'] as DynamicStructuredToolCtor;
-export const runtimeZod = runtimeRequire('zod') as RuntimeZod;
+// ---------------------------------------------------------------------------
+// Lazy initialisation — deferred until first call so that importing this
+// module at n8n startup does NOT throw when LangChain is unavailable.
+// This prevents the entire node *package* (including the standard Autotask
+// and AutotaskTrigger nodes) from being marked as errored.
+// ---------------------------------------------------------------------------
+
+let _runtimeRequire: NodeRequire | null = null;
+let _RuntimeDST: DynamicStructuredToolCtor | null = null;
+let _runtimeZod: RuntimeZod | null = null;
+
+function ensureRuntime(): void {
+    if (!_runtimeRequire) {
+        _runtimeRequire = getRuntimeRequire();
+        const coreTools = _runtimeRequire('@langchain/core/tools') as Record<string, any>;
+        _RuntimeDST = coreTools['DynamicStructuredTool'] as DynamicStructuredToolCtor;
+        _runtimeZod = _runtimeRequire('zod') as RuntimeZod;
+    }
+}
+
+export function getLazyRuntimeDST(): DynamicStructuredToolCtor {
+    ensureRuntime();
+    return _RuntimeDST!;
+}
+
+export function getLazyRuntimeZod(): RuntimeZod {
+    ensureRuntime();
+    return _runtimeZod!;
+}

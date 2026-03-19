@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.6.1] - 2026-03-19
+
+### Fixed
+
+- **Lazy LangChain runtime initialisation**: Deferred `DynamicStructuredTool` and `zod` resolution from module load time to first `supplyData()` call. Previously, importing `runtime.ts` eagerly resolved `@langchain/classic/agents` at startup — if LangChain was unavailable (older n8n, missing AI features), the entire node package (including the standard Autotask and AutotaskTrigger nodes) was marked as errored in the n8n UI. Now only the AI Tools node fails gracefully when LangChain is absent.
+
 ## [2.6.0] - 2026-03-19
 
 ### Changed
