@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
   CreateOperation,
@@ -66,6 +66,22 @@ export async function executeConfigurationItemOperation(
         case 'moveConfigurationItem': {
           const response = await executeMoveConfigurationItem(this, i);
           returnData.push({ json: response });
+          break;
+        }
+
+        case 'createIfNotExists': {
+          const { createConfigurationItemIfNotExists } = await import('../../helpers/configuration-item-creator');
+          let createFields: Record<string, unknown> = {};
+          try {
+            const fieldsToMap = this.getNodeParameter('fieldsToMap', i, { value: {} }) as { value: Record<string, unknown> | null };
+            createFields = fieldsToMap?.value ?? {};
+          } catch { /* fieldsToMap may not be available */ }
+          const result = await createConfigurationItemIfNotExists(this, i, {
+            createFields,
+            dedupFields: this.getNodeParameter('dedupFields', i, []) as string[],
+            errorOnDuplicate: this.getNodeParameter('errorOnDuplicate', i, false) as boolean,
+          });
+          returnData.push({ json: result as unknown as IDataObject });
           break;
         }
 

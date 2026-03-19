@@ -114,6 +114,22 @@ export async function executeTicketChargeOperation(
 					});
 					break;
 				}
+				case 'createIfNotExists': {
+					const { createTicketChargeIfNotExists } = await import('../../helpers/ticket-charge-creator');
+					let createFields: Record<string, unknown> = {};
+					try {
+						const fieldsToMap = this.getNodeParameter('fieldsToMap', i, { value: {} }) as { value: Record<string, unknown> | null };
+						createFields = fieldsToMap?.value ?? {};
+					} catch { /* fieldsToMap may not be available */ }
+					const result = await createTicketChargeIfNotExists(this, i, {
+						createFields,
+						dedupFields: this.getNodeParameter('dedupFields', i, []) as string[],
+						errorOnDuplicate: this.getNodeParameter('errorOnDuplicate', i, false) as boolean,
+					});
+					returnData.push({ json: result as unknown as IDataObject });
+					break;
+				}
+
 				default:
 					throw new NodeOperationError(this.getNode(), `The operation "${operation}" is not supported!`);
 			}

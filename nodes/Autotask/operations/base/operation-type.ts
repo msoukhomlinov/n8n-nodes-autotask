@@ -30,6 +30,6 @@ export class OperationTypeValidator {
 	 * Check if operation is a write operation
 	 */
 	isWriteOperation(operation: string): boolean {
-		return WRITE_OPERATIONS.includes(operation as WriteOperation);
+		return WRITE_OPERATIONS.includes(operation as WriteOperation) || operation === 'createIfNotExists';
 	}
 }

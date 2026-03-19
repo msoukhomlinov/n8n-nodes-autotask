@@ -522,7 +522,7 @@ async function validateToolRequestData(
 		}
 
 		// Determine validation mode
-		const mode = resourceOperation === 'create' ? 'create' : 'update';
+		const mode = (resourceOperation === 'create' || resourceOperation === 'createIfNotExists') ? 'create' : 'update';
 
 		// Validate using aiHelper
 		const validation = await validateParameters(this, targetResource, mode, fieldValues);
@@ -565,7 +565,7 @@ async function validateToolRequestData(
 			`Request data validation failed: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
 			`For help:\n` +
 			`• Use aiHelper.describeResource("${targetResource}", "write") to see field requirements\n` +
-			`• Use aiHelper.validateParameters("${targetResource}", "${resourceOperation === 'create' ? 'create' : 'update'}", requestData) for detailed validation`;
+			`• Use aiHelper.validateParameters("${targetResource}", "${(resourceOperation === 'create' || resourceOperation === 'createIfNotExists') ? 'create' : 'update'}", requestData) for detailed validation`;
 
 		throw new NodeOperationError(this.getNode(), errorMessage);
 	}
@@ -624,7 +624,7 @@ async function applySafetyGates(
 		}
 
 		// Check write operation restrictions
-		const isWriteOperation = ['create', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'].includes(resourceOperation);
+		const isWriteOperation = ['create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'].includes(resourceOperation);
 
 		if (isWriteOperation && !allowWriteOperations) {
 			if (isDryRun && allowDryRunForWrites) {

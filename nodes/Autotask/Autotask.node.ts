@@ -1,5 +1,5 @@
 import {
-	NodeConnectionType,
+	NodeConnectionTypes,
 	type ResourceMapperFields,
 	NodeOperationError,
 } from 'n8n-workflow';
@@ -267,8 +267,8 @@ const autotaskDescription: INodeTypeDescription = {
 		defaults: {
 			name: 'Autotask',
 		},
-		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main],
+		inputs: [NodeConnectionTypes.Main],
+		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
 				name: 'autotaskApi',

@@ -62,6 +62,12 @@ export const timeEntryFields: INodeProperties[] = [
 				description: 'Count number of time entries',
 				action: 'Count time entries',
 			},
+			{
+				name: 'Create If Not Exists',
+				value: 'createIfNotExists',
+				description: 'Check for duplicate time entries by resource + context, create only if none found',
+				action: 'Create a time entry if not exists',
+			},
 		],
 		default: 'get',
 	},
@@ -84,6 +90,36 @@ export const timeEntryFields: INodeProperties[] = [
 			},
 		},
 		description: 'The ID of the time entry to operate on',
+	},
+	{
+		displayName: 'Dedup Fields Names or IDs',
+		name: 'dedupFields',
+		type: 'multiOptions',
+		default: [],
+		displayOptions: {
+			show: {
+				resource: ['timeEntry'],
+				operation: ['createIfNotExists'],
+			},
+		},
+		typeOptions: {
+			loadOptionsMethod: 'getSelectColumns',
+			loadOptionsDependsOn: ['resource'],
+		},
+		description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>. Fields used for duplicate detection. Empty = skip dedup, always create.',
+	},
+	{
+		displayName: 'Error On Duplicate',
+		name: 'errorOnDuplicate',
+		type: 'boolean',
+		default: false,
+		displayOptions: {
+			show: {
+				resource: ['timeEntry'],
+				operation: ['createIfNotExists'],
+			},
+		},
+		description: 'Whether to throw an error when a duplicate is found instead of returning it',
 	},
 	{
 		displayName: 'Filters',
@@ -276,6 +312,7 @@ export const timeEntryFields: INodeProperties[] = [
 				],
 				operation: [
 					'create',
+					'createIfNotExists',
 					'update',
 					'getMany',
 					'count',

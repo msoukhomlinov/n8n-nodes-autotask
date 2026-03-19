@@ -94,6 +94,21 @@ export async function executeContractChargeOperation(
 					});
 					break;
 				}
+				case 'createIfNotExists': {
+					const { createContractChargeIfNotExists } = await import('../../helpers/contract-charge-creator');
+					let createFields: Record<string, unknown> = {};
+					try {
+						const fieldsToMap = this.getNodeParameter('fieldsToMap', i, { value: {} }) as { value: Record<string, unknown> | null };
+						createFields = fieldsToMap?.value ?? {};
+					} catch { /* fieldsToMap may not be available */ }
+					const result = await createContractChargeIfNotExists(this, i, {
+						createFields,
+						dedupFields: this.getNodeParameter('dedupFields', i, []) as string[],
+						errorOnDuplicate: this.getNodeParameter('errorOnDuplicate', i, false) as boolean,
+					});
+					returnData.push({ json: result as unknown as IDataObject });
+					break;
+				}
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

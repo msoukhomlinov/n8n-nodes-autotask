@@ -17,7 +17,7 @@ export async function getResourceMapperFields(
 ): Promise<ResourceMapperFields> {
 	return await handleErrors(this as unknown as IExecuteFunctions, async () => {
 		const operation = this.getNodeParameter('operation', 0) as ResourceOperation;
-		const mode = WRITE_OPERATIONS.includes(operation as OperationType.CREATE | OperationType.UPDATE | OperationType.DELETE) ? 'write' : 'read';
+		const mode = WRITE_OPERATIONS.includes(operation as OperationType.CREATE | OperationType.UPDATE | OperationType.DELETE) || (operation as string) === 'createIfNotExists' ? 'write' : 'read';
 
 		console.debug(`[getResourceMapperFields] Starting to fetch fields for ${entityType} (mode: ${mode})`);
 

@@ -2,20 +2,17 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [2.6.0] - 2026-03-19
+## [2.7.0] - 2026-03-19
 
 ### Changed
 
-- **Compound operations — `createIfNotExists`**: Added idempotent create-if-not-exists operations to 7 entities: `contractCharge`, `ticketCharge`, `projectCharge`, `configurationItems`, `timeEntry`, `contractService`, and `contract`. Each follows the find-parent → check-duplicates → resolve-references → create pattern with configurable dedup fields and `errorOnDuplicate` control. Outcomes: `created`, `skipped` (duplicate found), or entity-specific not-found (e.g. `contract_not_found`, `ticket_not_found`, `company_not_found`)
+- **Compound operations expanded**: Added `createIfNotExists` to 5 new entities: `ticketCharge`, `projectCharge`, `configurationItems`, `timeEntry`, `contractService`, and `contract` — all following the idempotent find-dedup-create pattern established by `contractCharge.createIfNotExists` in v2.6.0
 - **Charge family refactoring**: Extracted shared charge creation logic into `helpers/charge-creator-base.ts` — `contractCharge`, `ticketCharge`, and `projectCharge` now share ~90% of code via parameterised config
-- **Dynamic dedup fields**: All `createIfNotExists` operations accept dynamic dedup field names via `rz.array(rz.string())` (AI tools) or multiOptions dropdown (standard node). Users call `describeFields` to discover valid field names.
+- **Dynamic dedup fields**: All `createIfNotExists` operations now accept dynamic dedup field names via `rz.array(rz.string())` (AI tools) or comma-separated string (standard node), replacing the hardcoded 3-field enum. Users call `describeFields` to discover valid field names.
 - **Shared dedup utilities**: New `helpers/dedup-utils.ts` provides field-type-aware comparison (`compareDedupField`), date normalisation, quantity rounding, and response extraction helpers
-- **New helper files**: `contract-charge-creator.ts` (refactored to shared base), `ticket-charge-creator.ts`, `project-charge-creator.ts`, `configuration-item-creator.ts`, `time-entry-creator.ts`, `contract-service-creator.ts`, `contract-creator.ts`
-- **createIfNotExists aligned with create pattern**: All 7 `createIfNotExists` operations now use the same dynamic resourceMapper/entity-metadata for fields as the `create` operation — no hardcoded field definitions. Only `dedupFields` and `errorOnDuplicate` remain as operation-specific additions. Helper interfaces simplified to `{ createFields: Record<string, unknown>, dedupFields, errorOnDuplicate }` with `createFields` keys being API field names.
-- **AI tools createIfNotExists schema**: Uses dynamic `writeFields` loop (same as create/update) instead of per-entity hardcoded Zod fields. Gains field validation (`validateWriteFields`) and label resolution (`resolveLabelsToIds`) — LLM can now pass human-readable names for picklist/reference fields.
-- **AI tools field name change**: createIfNotExists schema now shows API field names (e.g., `name` instead of `chargeName`, `isBillableToCompany` instead of `isBillable`). This is consistent with the `create` operation schema.
-- Removed `fieldNameToApiName` from `ChargeCreatorConfig` — no longer needed since `createFields` uses API field names directly
-- Replaced 7 per-entity AI description functions with single generic `buildCreateIfNotExistsDescription`
+- **New helper files**: `ticket-charge-creator.ts`, `project-charge-creator.ts`, `configuration-item-creator.ts`, `time-entry-creator.ts`, `contract-service-creator.ts`, `contract-creator.ts`
+- **Schema generator**: Resource-conditional `createIfNotExists` schema blocks for all 7 entities (contractCharge + 5 new + contract), each with entity-specific parent lookup and scope fields
+- **Description builders**: Per-entity `createIfNotExists` description functions with entity-specific guidance
 
 ### Fixed
 

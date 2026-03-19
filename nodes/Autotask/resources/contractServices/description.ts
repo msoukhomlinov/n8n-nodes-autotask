@@ -44,6 +44,12 @@ export const contractServiceFields: INodeProperties[] = [
 				description: 'Count number of contract services',
 				action: 'Count contract services',
 			},
+			{
+				name: 'Create If Not Exists',
+				value: 'createIfNotExists',
+				description: 'Find contract, check if service already attached, create only if not',
+				action: 'Create a contract service if not exists',
+			},
 		],
 		default: 'get',
 	},
@@ -62,6 +68,36 @@ export const contractServiceFields: INodeProperties[] = [
 		description: 'The ID of the service to operate on',
 	},
 	{
+		displayName: 'Dedup Fields Names or IDs',
+		name: 'dedupFields',
+		type: 'multiOptions',
+		default: [],
+		displayOptions: {
+			show: {
+				resource: ['contractService'],
+				operation: ['createIfNotExists'],
+			},
+		},
+		typeOptions: {
+			loadOptionsMethod: 'getSelectColumns',
+			loadOptionsDependsOn: ['resource'],
+		},
+		description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>. Fields used for duplicate detection. Empty = skip dedup, always create.',
+	},
+	{
+		displayName: 'Error On Duplicate',
+		name: 'errorOnDuplicate',
+		type: 'boolean',
+		default: false,
+		displayOptions: {
+			show: {
+				resource: ['contractService'],
+				operation: ['createIfNotExists'],
+			},
+		},
+		description: 'Whether to throw an error when a duplicate is found instead of returning it',
+	},
+	{
 		displayName: 'Fields',
 		name: 'fieldsToMap',
 		type: 'resourceMapper',
@@ -73,7 +109,7 @@ export const contractServiceFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['contractService'],
-				operation: ['create', 'update', 'getMany', 'count'],
+				operation: ['create', 'createIfNotExists', 'update', 'getMany', 'count'],
 			},
 		},
 		typeOptions: {

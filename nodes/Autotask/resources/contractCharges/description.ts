@@ -21,6 +21,12 @@ export const contractChargeFields: INodeProperties[] = [
 				action: 'Create a contract charge',
 			},
 			{
+				name: 'Create If Not Exists',
+				value: 'createIfNotExists',
+				description: 'Find contract by external ID, check for duplicates, create charge only if none found',
+				action: 'Create a contract charge if not exists',
+			},
+			{
 				name: 'Update',
 				value: 'update',
 				description: 'Update a contract charge',
@@ -81,6 +87,38 @@ export const contractChargeFields: INodeProperties[] = [
 		},
 		description: 'The ID of the contract that the charge belongs to',
 	},
+	// ─── createIfNotExists fields ────────────────────────────────────────
+	{
+		displayName: 'Dedup Fields Names or IDs',
+		name: 'dedupFields',
+		type: 'multiOptions',
+		default: [],
+		displayOptions: {
+			show: {
+				resource: ['contractCharge'],
+				operation: ['createIfNotExists'],
+			},
+		},
+		typeOptions: {
+			loadOptionsMethod: 'getSelectColumns',
+			loadOptionsDependsOn: ['resource'],
+		},
+		description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>. Fields used for duplicate detection. Empty = skip dedup, always create.',
+	},
+	{
+		displayName: 'Error on Duplicate',
+		name: 'errorOnDuplicate',
+		type: 'boolean',
+		default: false,
+		displayOptions: {
+			show: {
+				resource: ['contractCharge'],
+				operation: ['createIfNotExists'],
+			},
+		},
+		description: 'Whether to throw an error when a duplicate is found instead of returning a soft "skipped" outcome',
+	},
+	// ─── Standard CRUD fields ────────────────────────────────────────────
 	{
 		displayName: 'Fields',
 		name: 'fieldsToMap',
@@ -93,7 +131,7 @@ export const contractChargeFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['contractCharge'],
-				operation: ['create', 'update', 'getMany', 'count'],
+				operation: ['create', 'createIfNotExists', 'update', 'getMany', 'count'],
 			},
 		},
 		typeOptions: {

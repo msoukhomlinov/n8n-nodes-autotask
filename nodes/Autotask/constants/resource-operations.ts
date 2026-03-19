@@ -1,7 +1,7 @@
 import { AUTOTASK_ENTITIES } from './entities';
 import { OperationType } from '../types/base/entity-types';
 
-const AI_OPERATION_ORDER = ['get', 'whoAmI', 'getMany', 'searchByDomain', 'slaHealthCheck', 'getPosted', 'getUnposted', 'count', 'create', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'] as const;
+const AI_OPERATION_ORDER = ['get', 'whoAmI', 'getMany', 'searchByDomain', 'slaHealthCheck', 'getPosted', 'getUnposted', 'count', 'create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'] as const;
 const EXCLUDED_TOP_LEVEL_RESOURCES = new Set(['tool', 'searchFilter']);
 
 const OP_TYPE_TO_AI_OPS: Record<OperationType, string[]> = {
@@ -20,8 +20,13 @@ const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
     contact: ['moveToCompany'],
     company: ['searchByDomain'],
     ticket: ['slaHealthCheck'],
-    configurationItems: ['moveConfigurationItem'],
-    timeEntry: ['getPosted', 'getUnposted'],
+    configurationItems: ['moveConfigurationItem', 'createIfNotExists'],
+    contractCharge: ['createIfNotExists'],
+    ticketCharge: ['createIfNotExists'],
+    projectCharge: ['createIfNotExists'],
+    contract: ['createIfNotExists'],
+    contractService: ['createIfNotExists'],
+    timeEntry: ['getPosted', 'getUnposted', 'createIfNotExists'],
     aiHelper: ['describeResource', 'listPicklistValues', 'validateParameters'],
     apiThreshold: ['get'],
 };
