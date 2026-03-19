@@ -82,7 +82,8 @@ export const contractServiceFields: INodeProperties[] = [
 			loadOptionsMethod: 'getSelectColumns',
 			loadOptionsDependsOn: ['resource'],
 		},
-		description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>. Fields used for duplicate detection. Empty = skip dedup, always create.',
+		description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+		hint: 'Fields used for duplicate detection. Empty = skip dedup, always create.',
 	},
 	{
 		displayName: 'Error On Duplicate',
