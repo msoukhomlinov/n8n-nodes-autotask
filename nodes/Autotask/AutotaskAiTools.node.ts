@@ -15,12 +15,10 @@ import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/reso
 import { describeResource } from './helpers/aiHelper';
 import { executeAiTool, type ToolExecutorParams } from './ai-tools/tool-executor';
 import { buildUnifiedDescription } from './ai-tools/description-builders';
-import { RuntimeDynamicStructuredTool, runtimeZod } from './ai-tools/runtime';
+import { getLazyRuntimeDST, getLazyRuntimeZod } from './ai-tools/runtime';
 import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
 import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
 import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
-
-const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
 
 const WRITE_OPERATIONS = ['create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'];
 const SUPPORTED_TOOL_OPERATIONS = [
@@ -122,6 +120,9 @@ export class AutotaskAiTools implements INodeType {
     };
 
     async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
+        const RuntimeDynamicStructuredTool = getLazyRuntimeDST();
+        const { buildUnifiedSchema } = getRuntimeSchemaBuilders(getLazyRuntimeZod());
+
         const resource = this.getNodeParameter('resource', itemIndex) as string;
         const operations = this.getNodeParameter('operations', itemIndex) as string[];
         const allowWriteOperations = this.getNodeParameter('allowWriteOperations', itemIndex, false) as boolean;
