@@ -63,3 +63,42 @@ export function getLazyRuntimeZod(): RuntimeZod {
     ensureRuntime();
     return _runtimeZod!;
 }
+
+// ---------------------------------------------------------------------------
+// Proxy-based top-level exports — provide [[Construct]] / property access
+// without eagerly resolving the runtime.  If resolution fails at module load,
+// the node still *registers* in n8n; the error surfaces only when the Proxy
+// traps fire (i.e. inside supplyData()).
+//
+// CRITICAL: RuntimeDynamicStructuredTool's Proxy target MUST be a function,
+// not a plain object.  Per ECMAScript §10.5.13 a Proxy only has a
+// [[Construct]] internal method when its target does.  Plain objects lack
+// [[Construct]], so `new Proxy({}, { construct… })` throws
+// "TypeError: … is not a constructor" before the construct trap ever fires.
+// Using `function () {}` as the target provides [[Construct]] so the trap
+// delegates correctly to n8n's resolved DynamicStructuredTool class.
+// ---------------------------------------------------------------------------
+
+export const RuntimeDynamicStructuredTool: DynamicStructuredToolCtor = new Proxy(
+    function () {} as unknown as DynamicStructuredToolCtor,
+    {
+        construct(_target, args) {
+            const Ctor = getLazyRuntimeDST();
+            return new (Ctor as any)(...args) as object;
+        },
+        get(_target, prop, receiver) {
+            const Ctor = getLazyRuntimeDST();
+            return Reflect.get(Ctor, prop, receiver);
+        },
+    },
+) as DynamicStructuredToolCtor;
+
+export const runtimeZod: RuntimeZod = new Proxy(
+    {} as RuntimeZod,
+    {
+        get(_target, prop, receiver) {
+            const z = getLazyRuntimeZod();
+            return Reflect.get(z, prop, receiver);
+        },
+    },
+) as RuntimeZod;

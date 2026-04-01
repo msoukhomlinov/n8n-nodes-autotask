@@ -1,9 +1,9 @@
+import { NodeConnectionType } from 'n8n-workflow';
 import type {
 	INodeType,
 	INodeTypeDescription,
 	IWebhookFunctions,
 	IWebhookResponseData,
-	NodeConnectionType,
 	IHookFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
@@ -65,7 +65,7 @@ export class AutotaskTrigger implements INodeType {
 			name: 'Autotask Trigger',
 		},
 		inputs: [],
-		outputs: ['main'] as NodeConnectionType[],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'autotaskApi',

@@ -1,6 +1,5 @@
-import { NodeOperationError } from 'n8n-workflow';
+import { NodeOperationError, NodeConnectionType } from 'n8n-workflow';
 import type {
-    NodeConnectionType,
     IDataObject,
     IExecuteFunctions,
     ILoadOptionsFunctions,
@@ -15,7 +14,7 @@ import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/reso
 import { describeResource } from './helpers/aiHelper';
 import { executeAiTool, type ToolExecutorParams } from './ai-tools/tool-executor';
 import { buildUnifiedDescription } from './ai-tools/description-builders';
-import { getLazyRuntimeDST, getLazyRuntimeZod } from './ai-tools/runtime';
+import { RuntimeDynamicStructuredTool, runtimeZod } from './ai-tools/runtime';
 import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
 import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
 import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
@@ -77,7 +76,7 @@ export class AutotaskAiTools implements INodeType {
             name: 'Autotask AI Tools',
         },
         inputs: [],
-        outputs: [{ type: 'ai_tool' as NodeConnectionType, displayName: 'Tools' }],
+        outputs: [{ type: NodeConnectionType.AiTool, displayName: 'Tools' }],
         credentials: [{ name: 'autotaskApi', required: true }],
         properties: [
             {
@@ -120,8 +119,7 @@ export class AutotaskAiTools implements INodeType {
     };
 
     async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
-        const RuntimeDynamicStructuredTool = getLazyRuntimeDST();
-        const { buildUnifiedSchema } = getRuntimeSchemaBuilders(getLazyRuntimeZod());
+        const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
 
         const resource = this.getNodeParameter('resource', itemIndex) as string;
         const operations = this.getNodeParameter('operations', itemIndex) as string[];
