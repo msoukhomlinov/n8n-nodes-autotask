@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.7.1] - 2026-04-02
+
+### Fixed
+
+- **n8n 2.14.x AI tool execution compatibility**: Tool invocations through `execute()` were returning "This is an AI Tool node. Connect it to an AI Agent node to use it." instead of executing the operation. n8n 2.14.x routes AI tool calls through `execute()` with params in `item.json` (including `operation`) but without the `tool` field that older versions injected. The guard now detects tool calls via `operation` OR `tool` presence. Additionally, `execute()` now fetches field metadata for label resolution parity with `supplyData()`, includes `describeFields`/`listPicklistValues` in allowed operations, and passes field metadata to `executeAiTool()`
+
 ## [2.7.0] - 2026-04-02
 
 ### Changed

@@ -266,9 +266,13 @@ export class AutotaskAiTools implements INodeType {
             );
         }
 
-        // When run via "Test step" in the editor there is no tool field — return a friendly stub.
-        const firstItemTool = items[0]?.json?.['tool'] as string | undefined;
-        if (!firstItemTool) {
+        // Detect real tool invocation vs "Test step" in the editor.
+        // n8n 2.14+ routes tool calls through execute() with params in item.json
+        // (including 'operation'). Older versions set a 'tool' field. If neither
+        // is present, this is an editor test step — return a friendly stub.
+        const firstItem = items[0]?.json ?? {};
+        const hasToolCall = !!(firstItem['tool'] || firstItem['operation']);
+        if (!hasToolCall) {
             return [[{
                 json: {
                     message: 'This is an AI Tool node. Connect it to an AI Agent node to use it.',
@@ -278,6 +282,24 @@ export class AutotaskAiTools implements INodeType {
             }]];
         }
 
+        // describeFields and listPicklistValues are always available (same as supplyData path)
+        const allAllowedOps = [...new Set([...effectiveOps, 'describeFields', 'listPicklistValues'])];
+
+        // Fetch field metadata for label resolution and field validation (mirrors supplyData)
+        const needsReadFields = effectiveOps.some((op) =>
+            ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(op),
+        );
+        const needsWriteFields = effectiveOps.some((op) => ['create', 'createIfNotExists', 'update'].includes(op));
+
+        const [readDescribe, writeDescribe] = await Promise.all([
+            needsReadFields
+                ? describeResource(this as unknown as ILoadOptionsFunctions, resource, 'read')
+                : Promise.resolve(undefined),
+            needsWriteFields
+                ? describeResource(this as unknown as ILoadOptionsFunctions, resource, 'write')
+                : Promise.resolve(undefined),
+        ]);
+
         const response: INodeExecutionData[] = [];
 
         for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
@@ -285,7 +307,7 @@ export class AutotaskAiTools implements INodeType {
             if (!item) continue;
 
             const requestedOp = (item.json.operation as string) || effectiveOps[0];
-            if (requestedOp && !effectiveOps.includes(requestedOp)) {
+            if (requestedOp && !allAllowedOps.includes(requestedOp)) {
                 if (WRITE_OPERATIONS.includes(requestedOp) && !allowWriteOperations) {
                     response.push({
                         json: { ...wrapError(
@@ -301,7 +323,7 @@ export class AutotaskAiTools implements INodeType {
                     json: { ...wrapError(
                         resource, requestedOp, ERROR_TYPES.INVALID_OPERATION,
                         `Operation '${requestedOp}' is not configured for this node.`,
-                        `Use one of: ${effectiveOps.join(', ')}`,
+                        `Use one of: ${allAllowedOps.join(', ')}`,
                     ) },
                     pairedItem: { item: itemIndex },
                 });
@@ -316,7 +338,10 @@ export class AutotaskAiTools implements INodeType {
                     operation,
                 } as unknown as ToolExecutorParams;
 
-                const resultJson = await executeAiTool(this, resource, operation, params);
+                const resultJson = await executeAiTool(this, resource, operation, params, {
+                    readFields: readDescribe?.fields ?? [],
+                    writeFields: writeDescribe?.fields ?? [],
+                });
                 let parsed: IDataObject;
                 if (typeof resultJson === 'string') {
                     try {
