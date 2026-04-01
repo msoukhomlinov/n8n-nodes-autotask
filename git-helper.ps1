@@ -21,9 +21,13 @@
 
 .NOTES
     Author: Max Soukhomlinov
-    Version: 2.5.0
+    Version: 2.5.1
 
     Changelog:
+    2.5.1 - fix: Invoke-Release now pushes only the newly created tag instead of --tags (all tags).
+            Previously, stale local tags that had diverged from remote caused 'already exists'
+            rejections, which made git push exit non-zero and report the release as failed even
+            though the branch and new tag were pushed successfully.
     2.5.0 - feat: Added force-push and force-pull commands for both public and private repos.
             force-push: forces local changes to override remote (git push --force-with-lease).
             force-pull: forces remote changes to override local (git fetch + reset --hard).
@@ -330,7 +334,7 @@ function Invoke-Release {
 
     $branch = Get-CurrentBranch
     Write-Info "Pushing to origin/$branch with tags..."
-    git push origin $branch --tags
+    git push origin $branch $Version
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host ""

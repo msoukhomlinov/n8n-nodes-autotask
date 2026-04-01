@@ -2,6 +2,17 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.7.0] - 2026-04-02
+
+### Changed
+
+- **Proxy-based top-level runtime exports**: `runtime.ts` now exports `RuntimeDynamicStructuredTool` and `runtimeZod` as Proxy-wrapped top-level constants alongside the existing `getLazyRuntimeDST()` / `getLazyRuntimeZod()` lazy getters. The Proxy approach defers resolution identically (errors surface at invocation, not module load) but provides a cleaner import API — consumers use `new RuntimeDynamicStructuredTool(...)` directly instead of `new (getLazyRuntimeDST())(...)`
+
+### Fixed
+
+- **Proxy [[Construct]] compatibility**: The `RuntimeDynamicStructuredTool` Proxy target is `function () {}` (not `{}`). Per ECMAScript §10.5.13, a Proxy only has a `[[Construct]]` internal method if its target does — plain objects lack `[[Construct]]`, so `new Proxy({}, { construct… })` throws `TypeError: RuntimeDynamicStructuredTool is not a constructor` before the construct trap ever fires. The function target provides `[[Construct]]` so the Proxy's construct trap delegates correctly to n8n's resolved `DynamicStructuredTool` class
+- **`NodeConnectionTypes` → `NodeConnectionType` enum**: Fixed build compatibility with n8n-workflow 1.70.0 — the old `NodeConnectionTypes` enum was removed. All three node files (`Autotask.node.ts`, `AutotaskAiTools.node.ts`, `AutotaskTrigger.node.ts`) now use the `NodeConnectionType` enum value import (e.g. `NodeConnectionType.Main`, `NodeConnectionType.AiTool`) instead of string literals with casts
+
 ## [2.6.1] - 2026-03-19
 
 ### Fixed
