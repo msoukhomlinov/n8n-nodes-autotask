@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.7.2] - 2026-04-02
+
+### Fixed
+
+- **Strip `Prompt__*` framework fields from execute() path**: Agent Tool Node v3 injects `$fromAI()`-generated keys like `Prompt__User_Message_` into `item.json`. The `supplyData()` → `func()` path was unaffected (Zod strips unknown keys), but the `execute()` path (Agent V3) passed raw `item.json` to the executor, causing `INVALID_WRITE_FIELDS` errors on write operations. Added `N8N_METADATA_PREFIXES = ['Prompt__']` with prefix-based stripping alongside the existing exact-match `N8N_METADATA_FIELDS`
+
 ## [2.7.1] - 2026-04-02
 
 ### Fixed
