@@ -232,15 +232,21 @@ export class AutotaskAiTools implements INodeType {
     }
 
     /**
-     * execute() is required so that n8n 2.8+ does not fall through to the
-     * declarative RoutingNode test path (which causes ERR_INVALID_URL because
-     * there is no requestDefaults / routing config on this node).
+     * execute() serves two purposes:
      *
-     * When the AI Agent invokes a tool at runtime the call goes through
-     * supplyData → DynamicStructuredTool.func — it never hits execute().
-     * This method only runs when the node is executed directly (e.g. "Test
-     * step" in the editor) or via the internal executeDeclarativeNodeInTest
-     * code path.
+     * 1. Prevents n8n 2.8+ from falling through to the declarative RoutingNode
+     *    test path (which causes ERR_INVALID_URL — no requestDefaults/routing).
+     *
+     * 2. Handles Agent V3 (n8n ~1.116+) EngineRequest-based tool execution.
+     *    Agent V3 routes ALL tool calls through execute() with params in
+     *    item.json (including 'operation'), bypassing supplyData() → func().
+     *    The supplyData() → func() path is still used by Agent V2 and
+     *    MCP Trigger queue-mode workers.
+     *
+     * Because tool construction is expensive (API calls to describeResource),
+     * we process item.json directly here rather than rebuilding the tool.
+     * Framework-injected fields (Prompt__*, sessionId, etc.) are stripped
+     * by N8N_METADATA_FIELDS / N8N_METADATA_PREFIXES in executeAiTool().
      */
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
         const items = this.getInputData();

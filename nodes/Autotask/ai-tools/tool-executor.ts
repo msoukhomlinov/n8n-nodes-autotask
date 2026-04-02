@@ -375,6 +375,9 @@ const N8N_METADATA_FIELDS = new Set([
     'operation',
 ]);
 
+/** Key prefixes injected by n8n that must be stripped regardless of suffix */
+const N8N_METADATA_PREFIXES = ['Prompt__'];
+
 function compactDescribeResponse(response: DescribeResourceResponse): Record<string, unknown> {
     return {
         resource: response.resource,
@@ -405,7 +408,9 @@ export async function executeAiTool(
     // Strip n8n framework metadata injected into every tool call
     const params = {} as ToolExecutorParams;
     for (const [key, value] of Object.entries(rawParams)) {
-        if (!N8N_METADATA_FIELDS.has(key)) (params as Record<string, unknown>)[key] = value;
+        if (N8N_METADATA_FIELDS.has(key)) continue;
+        if (N8N_METADATA_PREFIXES.some((p) => key.startsWith(p))) continue;
+        (params as Record<string, unknown>)[key] = value;
     }
 
     const originalGetNodeParameter = context.getNodeParameter.bind(context);
