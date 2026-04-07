@@ -92,6 +92,7 @@ import { executeTagOperation } from '../tags/execute';
 import { executeTagAliasOperation } from '../tagAliases/execute';
 import { executeTagGroupOperation } from '../tagGroups/execute';
 import { executeTicketOperation } from '../tickets/execute';
+import { executeTicketAdditionalConfigurationItemOperation } from '../ticketAdditionalConfigurationItems/execute';
 import { executeTicketAttachmentOperation } from '../ticketAttachments/execute';
 import { executeTicketCategoryOperation } from '../ticketCategories/execute';
 import { executeTicketCategoryFieldDefaultOperation } from '../ticketCategoryFieldDefaults/execute';
@@ -207,6 +208,7 @@ const RESOURCE_EXECUTORS: Record<
 	tagAlias: executeTagAliasOperation,
 	tagGroup: executeTagGroupOperation,
 	ticket: executeTicketOperation,
+	ticketAdditionalConfigurationItem: executeTicketAdditionalConfigurationItemOperation,
 	ticketAttachment: executeTicketAttachmentOperation,
 	ticketCategory: executeTicketCategoryOperation,
 	ticketCategoryFieldDefault: executeTicketCategoryFieldDefaultOperation,
