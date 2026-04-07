@@ -801,6 +801,7 @@ export async function executeAiTool(
                 contract: ['contractName'],
                 expenseItem: ['expenseReportID', 'expenseDate', 'description'],
                 ticketAdditionalConfigurationItem: ['configurationItemID'],
+                ticketAdditionalContact: ['contactID'],
             };
             const dedupFields = (params.dedupFields as string[]) ?? DEFAULT_DEDUP_FIELDS[resource] ?? [];
             const errorOnDuplicate = params.errorOnDuplicate === true;
