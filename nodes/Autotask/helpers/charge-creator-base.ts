@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
 import { compareDedupField, extractId, extractItems } from './dedup-utils';
+import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -287,14 +288,16 @@ export async function createChargeIfNotExists(
 
 		const { updateFields } = options;
 		if (updateFields && updateFields.length > 0) {
-			const { computeFieldDiffs, applyDuplicateUpdate } = await import('./update-fields-on-duplicate');
 			const fieldTypeMap = config.fieldTypeMap ?? {};
-			const { patch, compared, skipped: _skipped, warnings: diffWarnings } = computeFieldDiffs(
+			const { patch, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
 				duplicate as Record<string, unknown>,
 				options.createFields,
 				updateFields,
 				fieldTypeMap,
 			);
+			if (skipped.length > 0) {
+				diffWarnings.push(`updateFields requested for ${skipped.length} field(s) not present in createFields: ${skipped.join(', ')}`);
+			}
 			if (Object.keys(patch).length > 0) {
 				const { updatedEntity, warnings: updateWarnings } = await applyDuplicateUpdate(ctx, {
 					resource: config.entityName,
