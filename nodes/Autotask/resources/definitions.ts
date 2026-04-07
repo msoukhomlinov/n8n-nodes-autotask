@@ -265,6 +265,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Query Countries, which are used in address information for companies, contacts, and resources',
 	},
 	{
+		name: 'Department',
+		value: 'department',
+		description: 'Manage Departments, which are organisational units that resources can be assigned to.',
+	},
+	{
 		name: 'Domain Registrar',
 		value: 'DomainRegistrar',
 		description: 'Manage Domain Registrars, which contain WHOIS details for Domain assets',
