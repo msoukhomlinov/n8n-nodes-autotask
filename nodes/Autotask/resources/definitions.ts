@@ -267,7 +267,7 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 	{
 		name: 'Department',
 		value: 'department',
-		description: 'Manage Departments, which are organisational units that resources can be assigned to.',
+		description: 'Manage Departments, which are organisational units that resources can be assigned to',
 	},
 	{
 		name: 'Domain Registrar',
