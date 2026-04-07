@@ -7,6 +7,10 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 ### Changed
 
 - **New resource: Resource Role Queue**: Added `resourceRoleQueue` resource exposing get, getMany, count, create, and update operations. Represents assignments of Resources (technicians) to service desk queues. Read operations use the top-level `/V1.0/ResourceRoleQueues/query` path; write operations use the child path `/V1.0/Resources/{resourceID}/RoleQueues`. Available in both the standard Autotask node and the AI tools node
+- **New resource: Expense Report**: Added `expenseReport` resource exposing get, getMany, count, create, and update operations. Represents expense reports submitted by resources for approval and reimbursement. Available in both the standard Autotask node and the AI tools node with label resolution for approverID, submitterID, status, and other picklist/reference fields
+- **New resource: Expense Item**: Added `expenseItem` resource exposing get, getMany, count, create, update, and createIfNotExists operations. Represents individual line items on an expense report. Available in both the standard Autotask node and the AI tools node with label resolution for companyID, projectID, taskID, ticketID, expenseCategory, paymentType, workType, and other picklist/reference fields. createIfNotExists supports dedup by expenseReportID + expenseDate + description by default
+- **New resource: Expense Item Attachment**: Added `expenseItemAttachment` resource exposing getMany, count, create, download, and delete operations. Represents receipt files and other documents attached to expense items. Standard node only (excluded from AI tools per attachment convention)
+- **Infrastructure: parentUrlSegment**: Added optional `parentUrlSegment` field to `IEntityMetadata` for child entities whose parent API URL segment differs from the pluralized parent entity name. Used by ExpenseItem (API uses `/Expenses/` not `/ExpenseReports/`)
 
 ## [2.7.2] - 2026-04-02
 
