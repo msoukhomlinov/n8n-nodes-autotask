@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	CreateOperation,
@@ -24,6 +24,22 @@ export async function executeOpportunityOperation(
 					const createOp = new CreateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const response = await createOp.execute(i);
 					returnData.push({ json: response });
+					break;
+				}
+				case 'createIfNotExists': {
+					const { createOpportunityIfNotExists } = await import('../../helpers/opportunity-creator');
+					let createFields: Record<string, unknown> = {};
+					try {
+						const fieldsToMap = this.getNodeParameter('fieldsToMap', i, { value: {} }) as { value: Record<string, unknown> | null };
+						createFields = fieldsToMap?.value ?? {};
+					} catch { /* fieldsToMap may not be available */ }
+					const result = await createOpportunityIfNotExists(this, i, {
+						createFields,
+						dedupFields: this.getNodeParameter('dedupFields', i, []) as string[],
+						updateFields: this.getNodeParameter('updateFields', i, []) as string[],
+						errorOnDuplicate: this.getNodeParameter('errorOnDuplicate', i, false) as boolean,
+					});
+					returnData.push({ json: result as unknown as IDataObject });
 					break;
 				}
 				case 'update': {
@@ -62,7 +78,7 @@ export async function executeOpportunityOperation(
 			}
 		} catch (error) {
 			if (this.continueOnFail()) {
-				returnData.push({ json: { error: error.message } });
+				returnData.push({ json: { error: (error as Error).message } });
 				continue;
 			}
 			throw error;

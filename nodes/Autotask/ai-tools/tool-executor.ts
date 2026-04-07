@@ -800,6 +800,7 @@ export async function executeAiTool(
                 contractService: ['serviceID'],
                 contract: ['contractName'],
                 expenseItem: ['expenseReportID', 'expenseDate', 'description'],
+                opportunity: ['title', 'companyID'],
                 ticketAdditionalConfigurationItem: ['configurationItemID'],
                 ticketAdditionalContact: ['contactID'],
             };
@@ -837,6 +838,9 @@ export async function executeAiTool(
             } else if (resource === 'contract') {
                 const { createContractIfNotExists } = await import('../helpers/contract-creator');
                 compoundResult = await createContractIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'opportunity') {
+                const { createOpportunityIfNotExists } = await import('../helpers/opportunity-creator');
+                compoundResult = await createOpportunityIfNotExists(context, 0, compoundOptions);
             } else if (resource === 'expenseItem') {
                 const { createExpenseItemIfNotExists } = await import('../helpers/expense-item-creator');
                 compoundResult = await createExpenseItemIfNotExists(context, 0, compoundOptions);
