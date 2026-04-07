@@ -209,6 +209,8 @@ import { contractRetainersFields } from './resources/contractRetainers/descripti
 import { executeContractTicketPurchasesOperation } from './resources/contractTicketPurchases/execute';
 import { contractTicketPurchasesFields } from './resources/contractTicketPurchases/description';
 import { executeCountryOperation } from './resources/countries/execute';
+import { executeDepartmentOperation } from './resources/departments/execute';
+import { departmentFields } from './resources/departments/description';
 import { executeDomainRegistrarOperation } from './resources/domainRegistrar/execute';
 import { domainRegistrarFields } from './resources/domainRegistrar/description';
 import { executeExpenseItemOperation } from './resources/expenseItems/execute';
@@ -360,6 +362,7 @@ const autotaskDescription: INodeTypeDescription = {
 				resourceName: 'country',
 				excludeOperations: ['getManyAdvanced']
 			}),
+			...addOperationsToResource(departmentFields, { resourceName: 'department' }),
 			...addOperationsToResource(domainRegistrarFields, { resourceName: 'DomainRegistrar' }),
 			...addOperationsToResource(expenseItemFields, { resourceName: 'expenseItem' }),
 			...addOperationsToResource(expenseItemAttachmentFields, { resourceName: 'expenseItemAttachment' }),
@@ -553,6 +556,8 @@ export class Autotask implements INodeType {
 				return executeContractTicketPurchasesOperation.call(this);
 			case 'country':
 				return executeCountryOperation.call(this);
+			case 'department':
+				return executeDepartmentOperation.call(this);
 			case 'DomainRegistrar':
 				return executeDomainRegistrarOperation.call(this);
 			case 'expenseItem':
