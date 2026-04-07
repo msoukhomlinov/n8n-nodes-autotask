@@ -1,6 +1,5 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
-import { autotaskApiRequest } from './http';
-import { buildEntityUrl, buildChildEntityUrl } from './http';
+import { autotaskApiRequest, buildEntityUrl, buildChildEntityUrl } from './http';
 import { compareDedupField } from './dedup-utils';
 import { getEntityMetadata } from '../constants/entities';
 import { OperationType } from '../types/base/entity-types';
@@ -23,7 +22,8 @@ export interface IFieldDiffResult {
  * and return only the fields that differ.
  *
  * @param duplicateRow   - The existing record returned by the API
- * @param desiredFields  - The caller's intended field values (e.g. from createFields)
+ * @param desiredFields  - The caller's intended field values (e.g. from createFields);
+ *                         null values are treated as deliberate field clears and will appear in the patch.
  * @param updateFields   - The subset of field names to compare and potentially patch
  * @param fieldTypeMap   - Maps field name → data type for type-aware comparison
  */
@@ -112,6 +112,13 @@ export async function applyDuplicateUpdate(
 		proceedWithoutImpersonationIfDenied,
 	} = options;
 
+	// Guard: nothing to do if patch is empty
+	if (Object.keys(patch).length === 0) {
+		return { updatedEntity: {}, warnings: ['applyDuplicateUpdate called with empty patch — skipped'] };
+	}
+
+	// Resolve entity metadata first so we can branch on it without calling buildEntityUrl
+	// (which throws for unknown entities) before we have a chance to fall back.
 	const metadata = getEntityMetadata(resource);
 
 	// Build PATCH body — always include `id`
@@ -123,22 +130,23 @@ export async function applyDuplicateUpdate(
 	// Determine the endpoint
 	let endpoint: string;
 
-	if (
-		metadata?.childOf &&
-		metadata.operations?.[OperationType.UPDATE] === 'parent' &&
-		parentId !== undefined
-	) {
+	if (metadata?.childOf && metadata.operations?.[OperationType.UPDATE] === 'parent') {
 		// Parent-mode update: POST/PATCH to parent/{parentId}/{child} with id in body
+		if (!parentId) {
+			throw new Error(
+				`applyDuplicateUpdate: parentId is required for child entity '${resource}' but was not provided`,
+			);
+		}
 		endpoint = buildChildEntityUrl(metadata.childOf, resource, parentId);
 	} else if (metadata) {
 		// Direct update: PATCH to {entity}/{duplicateId}
 		endpoint = buildEntityUrl(resource, { entityId: duplicateId });
 	} else {
-		// Fallback for unknown entities — use a simple path and warn
+		// Fallback for unknown entities — construct URL manually and warn rather than throw
 		warnings.push(
-			`Entity metadata not found for '${resource}'. Using direct URL pattern as fallback.`,
+			`applyDuplicateUpdate: unknown entity '${resource}' — metadata not found, constructing PATCH URL manually.`,
 		);
-		endpoint = `${resource}/${duplicateId}`;
+		endpoint = `/atservicesrest/v1.0/${resource}/${duplicateId}`;
 	}
 
 	const response = await autotaskApiRequest.call(
