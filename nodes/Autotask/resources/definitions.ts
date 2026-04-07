@@ -475,6 +475,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Tickets, which define service requests that track client issues, support needs, and work to be performed across different modules',
 	},
 	{
+		name: 'Ticket Additional Configuration Item',
+		value: 'ticketAdditionalConfigurationItem',
+		description: 'Associates additional configuration items with a ticket beyond the primary CI',
+	},
+	{
 		name: 'Ticket Attachment',
 		value: 'ticketAttachment',
 		description: 'Manage Ticket Attachments, which are files attached to service desk tickets for documentation and reference',
