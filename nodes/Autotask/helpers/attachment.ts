@@ -29,6 +29,7 @@ export interface IAttachmentPayload extends IDataObject {
 	ticketID?: number;
 	ticketNoteID?: number;
 	timeEntryID?: number;
+	expenseItemID?: number;
 	parentAttachmentID?: number;
 }
 
