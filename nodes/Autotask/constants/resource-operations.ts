@@ -27,6 +27,7 @@ const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
     contract: ['createIfNotExists'],
     contractService: ['createIfNotExists'],
     expenseItem: ['createIfNotExists'],
+    opportunity: ['createIfNotExists'],
     ticketAdditionalConfigurationItem: ['createIfNotExists'],
     ticketAdditionalContact: ['createIfNotExists'],
     timeEntry: ['getPosted', 'getUnposted', 'createIfNotExists'],

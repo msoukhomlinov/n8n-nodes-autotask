@@ -8,6 +8,12 @@ export const operationOptions = [
 		action: 'Create an opportunity',
 	},
 	{
+		name: 'Create If Not Exists',
+		value: 'createIfNotExists',
+		description: 'Check for a duplicate opportunity within company scope, create only if none found',
+		action: 'Create an opportunity if not exists',
+	},
+	{
 		name: 'Update',
 		value: 'update',
 		description: 'Update an opportunity',
@@ -16,7 +22,7 @@ export const operationOptions = [
 	{
 		name: 'Get',
 		value: 'get',
-		description: 'Get an opportunity',
+		description: 'Get an opportunity by ID',
 		action: 'Get an opportunity',
 	},
 	{
@@ -61,6 +67,57 @@ export const baseFields: INodeProperties[] = [
 		},
 		description: 'The ID of the opportunity to operate on',
 	},
+	// ─── createIfNotExists fields ─────────────────────────────────────────
+	{
+		displayName: 'Dedup Fields Names or IDs',
+		name: 'dedupFields',
+		type: 'multiOptions',
+		default: [],
+		displayOptions: {
+			show: {
+				resource: ['opportunity'],
+				operation: ['createIfNotExists'],
+			},
+		},
+		typeOptions: {
+			loadOptionsMethod: 'getSelectColumns',
+			loadOptionsDependsOn: ['resource'],
+		},
+		description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+		hint: 'Fields used for duplicate detection. Empty = skip dedup, always create.',
+	},
+	{
+		displayName: 'Update Fields Names or IDs',
+		name: 'updateFields',
+		type: 'multiOptions',
+		default: [],
+		displayOptions: {
+			show: {
+				resource: ['opportunity'],
+				operation: ['createIfNotExists'],
+			},
+		},
+		typeOptions: {
+			loadOptionsMethod: 'getSelectColumns',
+			loadOptionsDependsOn: ['resource'],
+		},
+		description: 'Choose from the list, or specify IDs using an expression',
+		hint: 'Fields to compare against the duplicate. If values differ, the duplicate will be updated. Ignored when "Error on Duplicate" is enabled.',
+	},
+	{
+		displayName: 'Error On Duplicate',
+		name: 'errorOnDuplicate',
+		type: 'boolean',
+		default: false,
+		displayOptions: {
+			show: {
+				resource: ['opportunity'],
+				operation: ['createIfNotExists'],
+			},
+		},
+		description: 'Whether to throw an error when a duplicate is found instead of returning it',
+	},
+	// ─── Standard CRUD fields ─────────────────────────────────────────────
 	{
 		displayName: 'Fields',
 		name: 'fieldsToMap',
@@ -73,7 +130,7 @@ export const baseFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['opportunity'],
-				operation: ['create', 'update', 'getMany', 'count'],
+				operation: ['create', 'createIfNotExists', 'update', 'getMany', 'count'],
 			},
 		},
 		typeOptions: {
