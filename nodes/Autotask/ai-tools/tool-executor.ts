@@ -842,6 +842,9 @@ export async function executeAiTool(
             } else if (resource === 'ticketAdditionalConfigurationItem') {
                 const { createTicketAdditionalCIIfNotExists } = await import('../helpers/ticket-additional-ci-creator');
                 compoundResult = await createTicketAdditionalCIIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'ticketAdditionalContact') {
+                const { createTicketAdditionalContactIfNotExists } = await import('../helpers/ticket-additional-contact-creator');
+                compoundResult = await createTicketAdditionalContactIfNotExists(context, 0, compoundOptions);
             }
 
             if (compoundResult) {
