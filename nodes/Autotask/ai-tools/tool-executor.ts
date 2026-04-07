@@ -799,6 +799,7 @@ export async function executeAiTool(
                 contractService: ['serviceID'],
                 contract: ['contractName'],
                 expenseItem: ['expenseReportID', 'expenseDate', 'description'],
+                ticketAdditionalConfigurationItem: ['configurationItemID'],
             };
             const dedupFields = (params.dedupFields as string[]) ?? DEFAULT_DEDUP_FIELDS[resource] ?? [];
             const errorOnDuplicate = params.errorOnDuplicate === true;
@@ -835,6 +836,9 @@ export async function executeAiTool(
             } else if (resource === 'expenseItem') {
                 const { createExpenseItemIfNotExists } = await import('../helpers/expense-item-creator');
                 compoundResult = await createExpenseItemIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'ticketAdditionalConfigurationItem') {
+                const { createTicketAdditionalCIIfNotExists } = await import('../helpers/ticket-additional-ci-creator');
+                compoundResult = await createTicketAdditionalCIIfNotExists(context, 0, compoundOptions);
             }
 
             if (compoundResult) {
