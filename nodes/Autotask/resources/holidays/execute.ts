@@ -22,12 +22,8 @@ export async function executeHolidayOperation(
 		try {
 			switch (operation) {
 				case 'create': {
-					console.log('Debug: Starting create operation');
 					const createOp = new CreateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-					console.log('Debug: Created operation instance');
-
 					const response = await createOp.execute(i);
-					console.log('Debug: Operation response:', response);
 					returnData.push({ json: response as unknown as IDataObject });
 					break;
 				}
@@ -54,6 +50,7 @@ export async function executeHolidayOperation(
 					returnData.push(...getManyOp.processReturnData(response));
 					break;
 				}
+
 				case 'count': {
 					const countOp = new CountOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const count = await countOp.execute(i);
@@ -67,24 +64,12 @@ export async function executeHolidayOperation(
 				}
 
 				case 'delete': {
-					console.log('Debug: Starting delete operation');
 					const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
-					console.log('Debug: Created DeleteOperation instance');
-
 					const response = await deleteOp.execute(i);
-					console.log('Debug: Delete operation completed');
-					if (response && typeof response === 'object' && 'dryRun' in response) {
-						returnData.push({ json: response as unknown as IDataObject });
-					} else {
-						returnData.push({
-							json: {
-								success: true,
-								message: `Holiday with ID ${this.getNodeParameter('id', i)} was deleted successfully`,
-							}
-						});
-					}
+					returnData.push({ json: (response || { success: true }) as IDataObject });
 					break;
 				}
+
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}
