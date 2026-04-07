@@ -365,6 +365,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Query Resource Roles, which represent associations between Resources and Department/Role relationships, service desk queues, and service desk roles (note: only active roles are returned)',
 	},
 	{
+		name: 'Resource Role Queue',
+		value: 'resourceRoleQueue',
+		description: 'Manage Resource Role Queues, which represent assignments of Resources (technicians) to service desk queues for ticket routing and workload management',
+	},
+	{
 		name: 'Role',
 		value: 'role',
 		description: 'Manage Roles, which are associated with departments and have standard billing rates used for resource time tracking and billing',
