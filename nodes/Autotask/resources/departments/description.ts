@@ -13,6 +13,12 @@ export const departmentFields: INodeProperties[] = [
 		},
 		options: [
 			{
+				name: 'Count',
+				value: 'count',
+				description: 'Count departments',
+				action: 'Count departments',
+			},
+			{
 				name: 'Create',
 				value: 'create',
 				description: 'Create a department',
@@ -59,45 +65,7 @@ export const departmentFields: INodeProperties[] = [
 		type: 'resourceMapper',
 		default: { mappingMode: 'defineBelow', value: null },
 		required: true,
-		displayOptions: { show: { resource: ['department'], operation: ['create'] } },
-		typeOptions: {
-			loadOptionsDependsOn: ['resource', 'operation'],
-			resourceMapper: {
-				resourceMapperMethod: 'getFields',
-				mode: 'add',
-				fieldWords: { singular: 'field', plural: 'fields' },
-				addAllFields: false,
-				multiKeyMatch: true,
-				supportAutoMap: true,
-			},
-		},
-	},
-	{
-		displayName: 'Update Fields',
-		name: 'updateFields',
-		type: 'resourceMapper',
-		default: { mappingMode: 'defineBelow', value: null },
-		required: true,
-		displayOptions: { show: { resource: ['department'], operation: ['update'] } },
-		typeOptions: {
-			loadOptionsDependsOn: ['resource', 'operation'],
-			resourceMapper: {
-				resourceMapperMethod: 'getFields',
-				mode: 'update',
-				fieldWords: { singular: 'field', plural: 'fields' },
-				addAllFields: false,
-				multiKeyMatch: true,
-				supportAutoMap: true,
-			},
-		},
-	},
-	{
-		displayName: 'Fields',
-		name: 'fieldsToMap',
-		type: 'resourceMapper',
-		default: { mappingMode: 'defineBelow', value: null },
-		required: true,
-		displayOptions: { show: { resource: ['department'], operation: ['getMany'] } },
+		displayOptions: { show: { resource: ['department'], operation: ['create', 'update', 'getMany', 'count'] } },
 		typeOptions: {
 			loadOptionsDependsOn: ['resource', 'operation'],
 			resourceMapper: {

@@ -74,6 +74,20 @@ export const holidayFields: INodeProperties[] = [
 		description: 'The ID of the holiday to operate on',
 	},
 	{
+		displayName: 'Holiday Set ID',
+		name: 'holidaySetID',
+		type: 'string',
+		required: true,
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['holiday'],
+				operation: ['delete'],
+			},
+		},
+		description: 'The ID of the parent holiday set — required to build the delete URL',
+	},
+	{
 		displayName: 'Dedup Fields Names or IDs',
 		name: 'dedupFields',
 		type: 'multiOptions',
