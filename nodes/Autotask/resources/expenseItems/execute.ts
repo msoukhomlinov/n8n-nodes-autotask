@@ -67,6 +67,7 @@ export async function executeExpenseItemOperation(
 					const result = await createExpenseItemIfNotExists(this, i, {
 						createFields,
 						dedupFields: this.getNodeParameter('dedupFields', i, []) as string[],
+						updateFields: this.getNodeParameter('updateFields', i, []) as string[],
 						errorOnDuplicate: this.getNodeParameter('errorOnDuplicate', i, false) as boolean,
 					});
 					returnData.push({ json: result as unknown as IDataObject });
