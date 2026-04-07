@@ -86,6 +86,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'QuoteTemplate', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Resource', operations: { [OperationType.QUERY]: 'self', [OperationType.READ]: 'self', [OperationType.COUNT]: 'self', [OperationType.UPDATE]: 'self' } },
 	{ name: 'ResourceRole', childOf: 'Resource', subname: 'Roles', parentIdField: 'resourceID', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'ResourceRoleQueue', childOf: 'Resource', subname: 'RoleQueues', parentIdField: 'resourceID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Role', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Service', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
 	{ name: 'ServiceCall', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
