@@ -10,7 +10,7 @@ import {
 
 export type IProjectChargeCreateIfNotExistsOptions = IChargeCreateIfNotExistsOptions;
 
-export type ProjectChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'project_not_found';
+export type ProjectChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'updated' | 'project_not_found';
 
 export interface IProjectChargeCreateIfNotExistsResult {
 	outcome: ProjectChargeCreateIfNotExistsOutcome;
@@ -24,6 +24,8 @@ export interface IProjectChargeCreateIfNotExistsResult {
 	unitPrice?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
+	fieldsUpdated?: string[];
+	fieldsCompared?: string[];
 	warnings: string[];
 }
 
@@ -36,6 +38,7 @@ const PROJECT_CHARGE_CONFIG_BY_ID: ChargeCreatorConfig = {
 	chargeQueryEndpoint: 'ProjectCharges/query',
 	chargeParentIdField: 'projectID',
 	chargeCreateEndpointTemplate: 'Projects/{parentId}/Charges',
+	entityName: 'ProjectCharge',
 	fieldTypeMap: {
 		name: 'string',
 		datePurchased: 'datetime',
@@ -106,6 +109,8 @@ function mapToProjectChargeResult(
 		unitPrice: result.unitPrice,
 		reason: result.reason,
 		matchedDedupFields: result.matchedDedupFields,
+		fieldsUpdated: result.fieldsUpdated,
+		fieldsCompared: result.fieldsCompared,
 		warnings: result.warnings,
 	};
 }

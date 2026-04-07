@@ -10,9 +10,10 @@ export interface IExpenseItemCreateIfNotExistsOptions {
 	errorOnDuplicate: boolean;
 	impersonationResourceId?: number;
 	proceedWithoutImpersonationIfDenied?: boolean;
+	updateFields?: string[];
 }
 
-export type ExpenseItemCreateOutcome = 'created' | 'skipped';
+export type ExpenseItemCreateOutcome = 'created' | 'skipped' | 'updated';
 
 export interface IExpenseItemCreateResult {
 	outcome: ExpenseItemCreateOutcome;
@@ -21,6 +22,8 @@ export interface IExpenseItemCreateResult {
 	existingExpenseItemId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
+	fieldsUpdated?: string[];
+	fieldsCompared?: string[];
 	warnings: string[];
 }
 
@@ -113,6 +116,46 @@ export async function createExpenseItemIfNotExists(
 					`Matched dedup fields: ${matched.join(', ')}. ` +
 					`Set errorOnDuplicate=false to skip instead of error.`,
 				);
+			}
+
+			const { updateFields } = options;
+			if (updateFields && updateFields.length > 0) {
+				const { computeFieldDiffs, applyDuplicateUpdate } = await import('./update-fields-on-duplicate');
+				const { patch, compared, skipped: _skipped, warnings: diffWarnings } = computeFieldDiffs(
+					entry as Record<string, unknown>,
+					createFields,
+					updateFields,
+					FIELD_TYPE_MAP,
+				);
+				if (Object.keys(patch).length > 0) {
+					const { warnings: updateWarnings } = await applyDuplicateUpdate(ctx, {
+						resource: 'ExpenseItem',
+						duplicateId: entry.id as number,
+						parentId: Number(expenseReportID),
+						patch,
+						impersonationResourceId: options.impersonationResourceId,
+						proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied,
+					});
+					return {
+						outcome: 'updated',
+						expenseReportID,
+						existingExpenseItemId: entry.id as number,
+						matchedDedupFields: matched,
+						fieldsUpdated: Object.keys(patch),
+						fieldsCompared: compared,
+						warnings: [...warnings, ...diffWarnings, ...updateWarnings],
+					};
+				} else {
+					return {
+						outcome: 'skipped',
+						reason: 'duplicate_no_changes',
+						expenseReportID,
+						existingExpenseItemId: entry.id as number,
+						matchedDedupFields: matched,
+						fieldsCompared: compared,
+						warnings: [...warnings, ...diffWarnings],
+					};
+				}
 			}
 
 			return {

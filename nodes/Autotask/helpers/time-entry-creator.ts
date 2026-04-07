@@ -10,9 +10,10 @@ export interface ITimeEntryCreateIfNotExistsOptions {
 	errorOnDuplicate: boolean;
 	impersonationResourceId?: number;
 	proceedWithoutImpersonationIfDenied?: boolean;
+	updateFields?: string[];
 }
 
-export type TimeEntryCreateOutcome = 'created' | 'skipped';
+export type TimeEntryCreateOutcome = 'created' | 'skipped' | 'updated';
 
 export interface ITimeEntryCreateResult {
 	outcome: TimeEntryCreateOutcome;
@@ -23,6 +24,8 @@ export interface ITimeEntryCreateResult {
 	existingTimeEntryId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
+	fieldsUpdated?: string[];
+	fieldsCompared?: string[];
 	warnings: string[];
 }
 
@@ -115,6 +118,49 @@ export async function createTimeEntryIfNotExists(
 					`Matched dedup fields: ${matched.join(', ')}. ` +
 					`Set errorOnDuplicate=false to skip instead of error.`,
 				);
+			}
+
+			const { updateFields } = options;
+			if (updateFields && updateFields.length > 0) {
+				const { computeFieldDiffs, applyDuplicateUpdate } = await import('./update-fields-on-duplicate');
+				const { patch, compared, skipped: _skipped, warnings: diffWarnings } = computeFieldDiffs(
+					entry as Record<string, unknown>,
+					createFields,
+					updateFields,
+					FIELD_TYPE_MAP,
+				);
+				if (Object.keys(patch).length > 0) {
+					const { warnings: updateWarnings } = await applyDuplicateUpdate(ctx, {
+						resource: 'TimeEntry',
+						duplicateId: entry.id as number,
+						patch,
+						impersonationResourceId: options.impersonationResourceId,
+						proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied,
+					});
+					return {
+						outcome: 'updated',
+						resourceID,
+						ticketID,
+						taskID,
+						existingTimeEntryId: entry.id as number,
+						matchedDedupFields: matched,
+						fieldsUpdated: Object.keys(patch),
+						fieldsCompared: compared,
+						warnings: [...warnings, ...diffWarnings, ...updateWarnings],
+					};
+				} else {
+					return {
+						outcome: 'skipped',
+						reason: 'duplicate_no_changes',
+						resourceID,
+						ticketID,
+						taskID,
+						existingTimeEntryId: entry.id as number,
+						matchedDedupFields: matched,
+						fieldsCompared: compared,
+						warnings: [...warnings, ...diffWarnings],
+					};
+				}
 			}
 
 			return {

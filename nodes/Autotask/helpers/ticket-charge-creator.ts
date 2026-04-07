@@ -10,7 +10,7 @@ import {
 
 export type ITicketChargeCreateIfNotExistsOptions = IChargeCreateIfNotExistsOptions;
 
-export type TicketChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'ticket_not_found';
+export type TicketChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'updated' | 'ticket_not_found';
 
 export interface ITicketChargeCreateIfNotExistsResult {
 	outcome: TicketChargeCreateIfNotExistsOutcome;
@@ -24,6 +24,8 @@ export interface ITicketChargeCreateIfNotExistsResult {
 	unitPrice?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
+	fieldsUpdated?: string[];
+	fieldsCompared?: string[];
 	warnings: string[];
 }
 
@@ -36,6 +38,7 @@ const TICKET_CHARGE_CONFIG_BY_ID: ChargeCreatorConfig = {
 	chargeQueryEndpoint: 'TicketCharges/query',
 	chargeParentIdField: 'ticketID',
 	chargeCreateEndpointTemplate: 'Tickets/{parentId}/Charges',
+	entityName: 'TicketCharge',
 	fieldTypeMap: {
 		name: 'string',
 		datePurchased: 'datetime',
@@ -106,6 +109,8 @@ function mapToTicketChargeResult(
 		unitPrice: result.unitPrice,
 		reason: result.reason,
 		matchedDedupFields: result.matchedDedupFields,
+		fieldsUpdated: result.fieldsUpdated,
+		fieldsCompared: result.fieldsCompared,
 		warnings: result.warnings,
 	};
 }

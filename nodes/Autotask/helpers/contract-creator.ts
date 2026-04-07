@@ -10,9 +10,10 @@ export interface IContractCreateIfNotExistsOptions {
 	errorOnDuplicate: boolean;
 	impersonationResourceId?: number;
 	proceedWithoutImpersonationIfDenied?: boolean;
+	updateFields?: string[];
 }
 
-export type ContractCreateOutcome = 'created' | 'skipped' | 'company_not_found';
+export type ContractCreateOutcome = 'created' | 'skipped' | 'updated' | 'company_not_found';
 
 export interface IContractCreateResult {
 	outcome: ContractCreateOutcome;
@@ -21,6 +22,8 @@ export interface IContractCreateResult {
 	existingContractId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
+	fieldsUpdated?: string[];
+	fieldsCompared?: string[];
 	warnings: string[];
 }
 
@@ -179,6 +182,46 @@ export async function createContractIfNotExists(
 				`Set errorOnDuplicate=false to skip instead of error.`,
 			);
 		}
+
+		const { updateFields } = options;
+		if (updateFields && updateFields.length > 0) {
+			const { computeFieldDiffs, applyDuplicateUpdate } = await import('./update-fields-on-duplicate');
+			const { patch, compared, skipped: _skipped, warnings: diffWarnings } = computeFieldDiffs(
+				duplicate as Record<string, unknown>,
+				createFields,
+				updateFields,
+				CONTRACT_FIELD_TYPE_MAP,
+			);
+			if (Object.keys(patch).length > 0) {
+				const { warnings: updateWarnings } = await applyDuplicateUpdate(ctx, {
+					resource: 'Contract',
+					duplicateId: duplicate.id as number,
+					patch,
+					impersonationResourceId: options.impersonationResourceId,
+					proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied,
+				});
+				return {
+					outcome: 'updated',
+					companyID,
+					existingContractId: duplicate.id as number,
+					matchedDedupFields: matchedFields,
+					fieldsUpdated: Object.keys(patch),
+					fieldsCompared: compared,
+					warnings: [...warnings, ...diffWarnings, ...updateWarnings],
+				};
+			} else {
+				return {
+					outcome: 'skipped',
+					reason: 'duplicate_no_changes',
+					companyID,
+					existingContractId: duplicate.id as number,
+					matchedDedupFields: matchedFields,
+					fieldsCompared: compared,
+					warnings: [...warnings, ...diffWarnings],
+				};
+			}
+		}
+
 		return {
 			outcome: 'skipped',
 			companyID,
