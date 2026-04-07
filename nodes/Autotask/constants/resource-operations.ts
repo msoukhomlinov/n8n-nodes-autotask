@@ -26,6 +26,7 @@ const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
     projectCharge: ['createIfNotExists'],
     contract: ['createIfNotExists'],
     contractService: ['createIfNotExists'],
+    expenseItem: ['createIfNotExists'],
     timeEntry: ['getPosted', 'getUnposted', 'createIfNotExists'],
     aiHelper: ['describeResource', 'listPicklistValues', 'validateParameters'],
     apiThreshold: ['get'],
