@@ -23,6 +23,7 @@ import { executeContactGroupsOperation } from './resources/contactGroups/execute
 import { executeCompanyLocationOperation } from './resources/companyLocations/execute';
 import { executeResourceOperation } from './resources/resources/execute';
 import { executeResourceRoleOperation } from './resources/resourceRoles/execute';
+import { executeResourceRoleQueueOperation } from './resources/resourceRoleQueues/execute';
 import { executeRoleOperation } from './resources/roles/execute';
 import { executeCompanyNoteOperation } from './resources/companyNotes/execute';
 import { executeCompanySiteConfigurationOperation } from './resources/companySiteConfigurations/execute';
@@ -101,6 +102,7 @@ import { contactFields } from './resources/contacts/description';
 import { companyLocationFields } from './resources/companyLocations/description';
 import { resourceFields } from './resources/resources/description';
 import { resourceRoleFields } from './resources/resourceRoles/description';
+import { resourceRoleQueueFields } from './resources/resourceRoleQueues/description';
 import { roleFields } from './resources/roles/description';
 import { companyNoteFields } from './resources/companyNotes/description';
 import { companySiteConfigurationFields } from './resources/companySiteConfigurations/description';
@@ -369,6 +371,7 @@ const autotaskDescription: INodeTypeDescription = {
 			...addOperationsToResource(quoteTemplateFields, { resourceName: 'quoteTemplate' }),
 			...addOperationsToResource(resourceFields, { resourceName: 'resource' }),
 			...addOperationsToResource(resourceRoleFields, { resourceName: 'resourceRole' }),
+			...addOperationsToResource(resourceRoleQueueFields, { resourceName: 'resourceRoleQueue' }),
 			...addOperationsToResource(roleFields, { resourceName: 'role' }),
 			...addOperationsToResource(serviceFields, { resourceName: 'service' }),
 			...addOperationsToResource(serviceCallFields, { resourceName: 'serviceCall' }),
@@ -590,6 +593,8 @@ export class Autotask implements INodeType {
 				return executeResourceOperation.call(this);
 			case 'resourceRole':
 				return executeResourceRoleOperation.call(this);
+			case 'resourceRoleQueue':
+				return executeResourceRoleQueueOperation.call(this);
 			case 'role':
 				return executeRoleOperation.call(this);
 			case 'searchFilter':
