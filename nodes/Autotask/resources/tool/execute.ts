@@ -58,6 +58,7 @@ import { executeContractExclusionSetsOperation } from '../contractExclusionSets/
 import { executeContractExclusionSetExcludedRolesOperation } from '../contractExclusionSetExcludedRoles/execute';
 import { executeContractExclusionSetExcludedWorkTypesOperation } from '../contractExclusionSetExcludedWorkTypes/execute';
 import { executeCountryOperation } from '../countries/execute';
+import { executeDepartmentOperation } from '../departments/execute';
 import { executeDomainRegistrarOperation } from '../domainRegistrar/execute';
 import { executeHolidaySetOperation } from '../holidaySets/execute';
 import { executeHolidayOperation } from '../holidays/execute';
@@ -171,6 +172,7 @@ const RESOURCE_EXECUTORS: Record<
 	contractExclusionSetExcludedRole: executeContractExclusionSetExcludedRolesOperation,
 	contractExclusionSetExcludedWorkType: executeContractExclusionSetExcludedWorkTypesOperation,
 	country: executeCountryOperation,
+	department: executeDepartmentOperation,
 	DomainRegistrar: executeDomainRegistrarOperation,
 	holidaySet: executeHolidaySetOperation,
 	holiday: executeHolidayOperation,
