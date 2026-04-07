@@ -37,6 +37,12 @@ const operationOptions = [
 		description: 'Count number of holiday sets',
 		action: 'Count holiday sets',
 	},
+	{
+		name: 'Create If Not Exists',
+		value: 'createIfNotExists',
+		description: 'Create a holiday set only if one with matching fields does not already exist',
+		action: 'Create a holiday set if not exists',
+	},
 ];
 
 const baseFields: INodeProperties[] = [
@@ -81,7 +87,7 @@ const baseFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['holidaySet'],
-				operation: ['create', 'update', 'getMany', 'count'],
+				operation: ['create', 'update', 'getMany', 'count', 'createIfNotExists'],
 			},
 		},
 		typeOptions: {

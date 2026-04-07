@@ -50,6 +50,12 @@ export const holidayFields: INodeProperties[] = [
 				description: 'Delete a holiday',
 				action: 'Delete a holiday',
 			},
+			{
+				name: 'Create If Not Exists',
+				value: 'createIfNotExists',
+				description: 'Create a holiday only if one with matching fields does not already exist in the holiday set',
+				action: 'Create a holiday if not exists',
+			},
 		],
 		default: 'get',
 	},
@@ -79,7 +85,7 @@ export const holidayFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['holiday'],
-				operation: ['create', 'update', 'getMany', 'count'],
+				operation: ['create', 'update', 'getMany', 'count', 'createIfNotExists'],
 			},
 		},
 		typeOptions: {
