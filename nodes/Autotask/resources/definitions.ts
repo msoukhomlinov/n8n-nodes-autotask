@@ -270,6 +270,21 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Domain Registrars, which contain WHOIS details for Domain assets',
 	},
 	{
+		name: 'Expense Item',
+		value: 'expenseItem',
+		description: 'Manage Expense Items, which are individual line items on an Expense Report representing specific expenses incurred',
+	},
+	{
+		name: 'Expense Item Attachment',
+		value: 'expenseItemAttachment',
+		description: 'Manage Expense Item Attachments, which are files such as receipts attached to individual expense items for documentation',
+	},
+	{
+		name: 'Expense Report',
+		value: 'expenseReport',
+		description: 'Manage Expense Reports, which group individual expense items submitted by resources for approval and reimbursement',
+	},
+	{
 		name: 'Holiday',
 		value: 'holiday',
 		description: 'Manage Holidays, which specify non-working days included in Holiday Sets for time off tracking and scheduling calculations',
