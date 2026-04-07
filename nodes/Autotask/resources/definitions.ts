@@ -315,6 +315,16 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Opportunities, which track potential sales with forecasted revenue, probability, due dates, and progress for sales forecasting',
 	},
 	{
+		name: 'Opportunity Attachment',
+		value: 'opportunityAttachment',
+		description: 'Manage Opportunity Attachments, which are files attached to opportunities for supporting documentation and reference',
+	},
+	{
+		name: 'Opportunity Category',
+		value: 'opportunityCategory',
+		description: 'Manage Opportunity Categories, which classify opportunities into pipeline stages or business segments for reporting',
+	},
+	{
 		name: 'Product',
 		value: 'product',
 		description: 'Manage Products, which represent hardware, software, or material items that companies sell or support for customers',

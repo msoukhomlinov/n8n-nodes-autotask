@@ -65,6 +65,8 @@ import { executeHolidayOperation } from '../holidays/execute';
 import { executeInvoiceOperation } from '../invoices/execute';
 import { executeNotificationHistoryOperation } from '../notificationHistory/execute';
 import { executeOpportunityOperation } from '../opportunities/execute';
+import { executeOpportunityAttachmentOperation } from '../opportunityAttachments/execute';
+import { executeOpportunityCategoryOperation } from '../opportunityCategories/execute';
 import { executeProductOperation } from '../products/execute';
 import { executeProductVendorOperation } from '../productVendors/execute';
 import { executeProjectOperation } from '../projects/execute';
@@ -180,6 +182,8 @@ const RESOURCE_EXECUTORS: Record<
 	invoice: executeInvoiceOperation,
 	notificationHistory: executeNotificationHistoryOperation,
 	opportunity: executeOpportunityOperation,
+	opportunityAttachment: executeOpportunityAttachmentOperation,
+	opportunityCategory: executeOpportunityCategoryOperation,
 	product: executeProductOperation,
 	productVendor: executeProductVendorOperation,
 	project: executeProjectOperation,

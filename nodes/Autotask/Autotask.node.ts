@@ -90,6 +90,8 @@ import { executeContractExclusionSetsOperation } from './resources/contractExclu
 import { executeContractExclusionSetExcludedRolesOperation } from './resources/contractExclusionSetExcludedRoles/execute';
 import { executeContractExclusionSetExcludedWorkTypesOperation } from './resources/contractExclusionSetExcludedWorkTypes/execute';
 import { executeOpportunityOperation } from './resources/opportunities/execute';
+import { executeOpportunityAttachmentOperation } from './resources/opportunityAttachments/execute';
+import { executeOpportunityCategoryOperation } from './resources/opportunityCategories/execute';
 import { searchFilterDescription, searchFilterOperations, build as executeSearchFilterOperation, dynamicBuild as executeDynamicSearchFilterOperation } from './resources/searchFilter';
 import { getResourceMapperFields } from './helpers/resourceMapper';
 import { getEntityMetadata } from './constants/entities';
@@ -169,6 +171,8 @@ import { contractExclusionSetsFields } from './resources/contractExclusionSets/d
 import { contractExclusionSetExcludedRolesFields } from './resources/contractExclusionSetExcludedRoles/description';
 import { contractExclusionSetExcludedWorkTypesFields } from './resources/contractExclusionSetExcludedWorkTypes/description';
 import { opportunityFields } from './resources/opportunities/description';
+import { opportunityAttachmentFields } from './resources/opportunityAttachments/description';
+import { opportunityCategoryFields } from './resources/opportunityCategories/description';
 import { addOperationsToResource } from './helpers/resource-operations.helper';
 import { consolidateProperties } from './helpers/consolidate-properties';
 import { isCommonOperation, getCommonOpContext } from './helpers/common-operations-context';
@@ -375,6 +379,8 @@ const autotaskDescription: INodeTypeDescription = {
 			...addOperationsToResource(invoiceFields, { resourceName: 'invoice' }),
 			...addOperationsToResource(notificationHistoryFields, { resourceName: 'notificationHistory' }),
 			...addOperationsToResource(opportunityFields, { resourceName: 'opportunity' }),
+		...addOperationsToResource(opportunityAttachmentFields, { resourceName: 'opportunityAttachment' }),
+		...addOperationsToResource(opportunityCategoryFields, { resourceName: 'opportunityCategory' }),
 			...addOperationsToResource(projectPhaseFields, { resourceName: 'phase' }),
 			...addOperationsToResource(productFields, { resourceName: 'product' }),
 			...addOperationsToResource(productVendorFields, { resourceName: 'productVendor' }),
@@ -591,6 +597,10 @@ export class Autotask implements INodeType {
 				return executeNotificationHistoryOperation.call(this);
 			case 'opportunity':
 				return executeOpportunityOperation.call(this);
+			case 'opportunityAttachment':
+				return executeOpportunityAttachmentOperation.call(this);
+			case 'opportunityCategory':
+				return executeOpportunityCategoryOperation.call(this);
 			case 'product':
 				return executeProductOperation.call(this);
 			case 'productVendor':
