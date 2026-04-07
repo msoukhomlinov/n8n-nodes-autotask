@@ -800,6 +800,8 @@ export async function executeAiTool(
                 contractService: ['serviceID'],
                 contract: ['contractName'],
                 expenseItem: ['expenseReportID', 'expenseDate', 'description'],
+                holiday: ['holidayDate'],
+                holidaySet: ['holidaySetName'],
                 opportunity: ['title'],
                 ticketAdditionalConfigurationItem: ['configurationItemID'],
                 ticketAdditionalContact: ['contactID'],
@@ -850,6 +852,12 @@ export async function executeAiTool(
             } else if (resource === 'ticketAdditionalContact') {
                 const { createTicketAdditionalContactIfNotExists } = await import('../helpers/ticket-additional-contact-creator');
                 compoundResult = await createTicketAdditionalContactIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'holidaySet') {
+                const { createHolidaySetIfNotExists } = await import('../helpers/holiday-set-creator');
+                compoundResult = await createHolidaySetIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'holiday') {
+                const { createHolidayIfNotExists } = await import('../helpers/holiday-creator');
+                compoundResult = await createHolidayIfNotExists(context, 0, compoundOptions);
             }
 
             if (compoundResult) {
