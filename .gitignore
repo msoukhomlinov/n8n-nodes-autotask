@@ -68,6 +68,9 @@ credentials.json
 
 /cache/
 
+# git worktrees
+/.worktrees/
+
 # Private config — managed via separate private repo (.private-git/)
 /.claude/
 /.cursor/
