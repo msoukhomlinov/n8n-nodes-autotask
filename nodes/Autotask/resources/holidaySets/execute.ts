@@ -8,6 +8,7 @@ import {
 	DeleteOperation,
 	CountOperation,
 } from '../../operations/base';
+import { createHolidaySetIfNotExists } from '../../helpers/holiday-set-creator';
 
 const ENTITY_TYPE = 'holidaySet';
 
@@ -69,6 +70,30 @@ export async function executeHolidaySetOperation(
 					});
 					break;
 				}
+
+				case 'createIfNotExists': {
+					const fieldsToMap = this.getNodeParameter('fieldsToMap', i, {}) as { value?: Record<string, unknown> };
+					const createFields: Record<string, unknown> = {};
+					if (fieldsToMap?.value) {
+						for (const [key, value] of Object.entries(fieldsToMap.value)) {
+							if (value !== undefined && value !== null && value !== '') {
+								createFields[key] = value;
+							}
+						}
+					}
+					const dedupFields = (this.getNodeParameter('dedupFields', i, []) as string[]);
+					const errorOnDuplicate = this.getNodeParameter('errorOnDuplicate', i, false) as boolean;
+					const updateFields = (this.getNodeParameter('updateFields', i, []) as string[]);
+					const result = await createHolidaySetIfNotExists(this, i, {
+						createFields,
+						dedupFields,
+						errorOnDuplicate,
+						updateFields,
+					});
+					returnData.push({ json: result as unknown as IDataObject });
+					break;
+				}
+
 				default:
 					throw new Error(`Operation ${operation} is not supported`);
 			}

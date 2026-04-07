@@ -8,6 +8,7 @@ import {
 	CountOperation,
 	DeleteOperation,
 } from '../../operations/base';
+import { createHolidayIfNotExists } from '../../helpers/holiday-creator';
 
 const ENTITY_TYPE = 'holiday';
 
@@ -67,6 +68,29 @@ export async function executeHolidayOperation(
 					const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const response = await deleteOp.execute(i);
 					returnData.push({ json: (response || { success: true }) as IDataObject });
+					break;
+				}
+
+				case 'createIfNotExists': {
+					const fieldsToMap = this.getNodeParameter('fieldsToMap', i, {}) as { value?: Record<string, unknown> };
+					const createFields: Record<string, unknown> = {};
+					if (fieldsToMap?.value) {
+						for (const [key, value] of Object.entries(fieldsToMap.value)) {
+							if (value !== undefined && value !== null && value !== '') {
+								createFields[key] = value;
+							}
+						}
+					}
+					const dedupFields = (this.getNodeParameter('dedupFields', i, []) as string[]);
+					const errorOnDuplicate = this.getNodeParameter('errorOnDuplicate', i, false) as boolean;
+					const updateFields = (this.getNodeParameter('updateFields', i, []) as string[]);
+					const result = await createHolidayIfNotExists(this, i, {
+						createFields,
+						dedupFields,
+						errorOnDuplicate,
+						updateFields,
+					});
+					returnData.push({ json: result as unknown as IDataObject });
 					break;
 				}
 
