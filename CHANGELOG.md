@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.8.0] - 2026-04-07
+
+### Changed
+
+- **New resource: Resource Role Queue**: Added `resourceRoleQueue` resource exposing get, getMany, count, create, and update operations. Represents assignments of Resources (technicians) to service desk queues. Read operations use the top-level `/V1.0/ResourceRoleQueues/query` path; write operations use the child path `/V1.0/Resources/{resourceID}/RoleQueues`. Available in both the standard Autotask node and the AI tools node
+
 ## [2.7.2] - 2026-04-02
 
 ### Fixed
