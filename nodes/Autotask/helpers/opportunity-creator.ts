@@ -71,11 +71,17 @@ async function findDuplicateOpportunity(
 		return { duplicate: null, matchedFields: [] };
 	}
 
-	// Always filter server-side by companyID to narrow the result set
+	// Always filter server-side by companyID to narrow the result set;
+	// also push the first dedup field for additional server-side narrowing
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const apiFilter: any[] = [
 		{ field: 'companyID', op: 'eq', value: companyId },
 	];
+
+	const firstDedupField = dedupFields[0];
+	if (firstDedupField && firstDedupField !== 'companyID' && createFields[firstDedupField] !== undefined) {
+		apiFilter.push({ field: firstDedupField, op: 'eq', value: createFields[firstDedupField] });
+	}
 
 	const response = await autotaskApiRequest.call(
 		ctx,
@@ -157,7 +163,7 @@ export async function createOpportunityIfNotExists(
 	// Step 0: Verify company exists
 	const companyExists = await verifyCompanyExists(ctx, companyId);
 	if (!companyExists) {
-		return { outcome: 'company_not_found', companyId, title, warnings };
+		return { outcome: 'company_not_found', companyId, title, reason: `Company with ID ${companyId} not found.`, warnings };
 	}
 
 	// Step 1: Check for duplicate

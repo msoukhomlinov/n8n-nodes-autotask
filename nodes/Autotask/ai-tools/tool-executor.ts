@@ -800,7 +800,7 @@ export async function executeAiTool(
                 contractService: ['serviceID'],
                 contract: ['contractName'],
                 expenseItem: ['expenseReportID', 'expenseDate', 'description'],
-                opportunity: ['title', 'companyID'],
+                opportunity: ['title'],
                 ticketAdditionalConfigurationItem: ['configurationItemID'],
                 ticketAdditionalContact: ['contactID'],
             };
