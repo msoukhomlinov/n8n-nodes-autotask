@@ -798,6 +798,7 @@ export async function executeAiTool(
                 timeEntry: ['dateWorked', 'hoursWorked'],
                 contractService: ['serviceID'],
                 contract: ['contractName'],
+                expenseItem: ['expenseReportID', 'expenseDate', 'description'],
             };
             const dedupFields = (params.dedupFields as string[]) ?? DEFAULT_DEDUP_FIELDS[resource] ?? [];
             const errorOnDuplicate = params.errorOnDuplicate === true;
@@ -831,6 +832,9 @@ export async function executeAiTool(
             } else if (resource === 'contract') {
                 const { createContractIfNotExists } = await import('../helpers/contract-creator');
                 compoundResult = await createContractIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'expenseItem') {
+                const { createExpenseItemIfNotExists } = await import('../helpers/expense-item-creator');
+                compoundResult = await createExpenseItemIfNotExists(context, 0, compoundOptions);
             }
 
             if (compoundResult) {
