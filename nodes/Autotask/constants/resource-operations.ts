@@ -28,6 +28,7 @@ const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
     contractService: ['createIfNotExists'],
     expenseItem: ['createIfNotExists'],
     ticketAdditionalConfigurationItem: ['createIfNotExists'],
+    ticketAdditionalContact: ['createIfNotExists'],
     timeEntry: ['getPosted', 'getUnposted', 'createIfNotExists'],
     aiHelper: ['describeResource', 'listPicklistValues', 'validateParameters'],
     apiThreshold: ['get'],

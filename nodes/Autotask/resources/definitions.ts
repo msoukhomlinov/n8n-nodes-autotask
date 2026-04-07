@@ -485,6 +485,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Associates additional configuration items with a ticket beyond the primary CI',
 	},
 	{
+		name: 'Ticket Additional Contact',
+		value: 'ticketAdditionalContact',
+		description: 'Associates additional contacts with a ticket beyond the primary contact',
+	},
+	{
 		name: 'Ticket Attachment',
 		value: 'ticketAttachment',
 		description: 'Manage Ticket Attachments, which are files attached to service desk tickets for documentation and reference',
