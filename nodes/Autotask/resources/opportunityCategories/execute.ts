@@ -1,0 +1,65 @@
+import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import type { IAutotaskEntity } from '../../types';
+import {
+	UpdateOperation,
+	GetOperation,
+	GetManyOperation,
+	CountOperation,
+} from '../../operations/base';
+
+const ENTITY_TYPE = 'opportunityCategory';
+
+export async function executeOpportunityCategoryOperation(
+	this: IExecuteFunctions,
+): Promise<INodeExecutionData[][]> {
+	const items = this.getInputData();
+	const returnData: INodeExecutionData[] = [];
+	const operation = this.getNodeParameter('operation', 0) as string;
+
+	for (let i = 0; i < items.length; i++) {
+		try {
+			switch (operation) {
+				case 'get': {
+					const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					const response = await getOp.execute(i);
+					returnData.push({ json: response });
+					break;
+				}
+				case 'getMany': {
+					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					const filters = await getManyOp.buildFiltersFromResourceMapper(i);
+					const response = await getManyOp.execute({ filter: filters }, i);
+					returnData.push(...getManyOp.processReturnData(response));
+					break;
+				}
+				case 'count': {
+					const countOp = new CountOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					const count = await countOp.execute(i);
+					returnData.push({
+						json: {
+							count,
+							entityType: ENTITY_TYPE,
+						},
+					});
+					break;
+				}
+				case 'update': {
+					const entityId = this.getNodeParameter('id', i) as string;
+					const updateOp = new UpdateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					const response = await updateOp.execute(i, entityId);
+					returnData.push({ json: response });
+					break;
+				}
+				default:
+					throw new Error(`Operation ${operation} is not supported`);
+			}
+		} catch (error) {
+			if (this.continueOnFail()) {
+				returnData.push({ json: { error: (error as Error).message } });
+				continue;
+			}
+			throw error;
+		}
+	}
+	return [returnData];
+}
