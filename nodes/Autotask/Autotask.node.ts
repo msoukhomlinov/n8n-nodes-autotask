@@ -209,6 +209,12 @@ import { contractTicketPurchasesFields } from './resources/contractTicketPurchas
 import { executeCountryOperation } from './resources/countries/execute';
 import { executeDomainRegistrarOperation } from './resources/domainRegistrar/execute';
 import { domainRegistrarFields } from './resources/domainRegistrar/description';
+import { executeExpenseItemOperation } from './resources/expenseItems/execute';
+import { executeExpenseItemAttachmentOperation } from './resources/expenseItemAttachments/execute';
+import { executeExpenseReportOperation } from './resources/expenseReports/execute';
+import { expenseItemFields } from './resources/expenseItems/description';
+import { expenseItemAttachmentFields } from './resources/expenseItemAttachments/description';
+import { expenseReportFields } from './resources/expenseReports/description';
 import { executeSkillOperation } from './resources/skills/execute';
 import { skillFields } from './resources/skills/description';
 import { contactGroupsFields } from './resources/contactGroups/description';
@@ -353,6 +359,9 @@ const autotaskDescription: INodeTypeDescription = {
 				excludeOperations: ['getManyAdvanced']
 			}),
 			...addOperationsToResource(domainRegistrarFields, { resourceName: 'DomainRegistrar' }),
+			...addOperationsToResource(expenseItemFields, { resourceName: 'expenseItem' }),
+			...addOperationsToResource(expenseItemAttachmentFields, { resourceName: 'expenseItemAttachment' }),
+			...addOperationsToResource(expenseReportFields, { resourceName: 'expenseReport' }),
 			...addOperationsToResource(appointmentFields, { resourceName: 'appointment' }),
 			...addOperationsToResource(holidayFields, { resourceName: 'holiday' }),
 			...addOperationsToResource(holidaySetFields, { resourceName: 'holidaySet' }),
@@ -543,6 +552,12 @@ export class Autotask implements INodeType {
 				return executeCountryOperation.call(this);
 			case 'DomainRegistrar':
 				return executeDomainRegistrarOperation.call(this);
+			case 'expenseItem':
+				return executeExpenseItemOperation.call(this);
+			case 'expenseItemAttachment':
+				return executeExpenseItemAttachmentOperation.call(this);
+			case 'expenseReport':
+				return executeExpenseReportOperation.call(this);
 			case 'appointment':
 				return executeAppointmentOperation.call(this);
 			case 'contractExclusionBillingCode':
