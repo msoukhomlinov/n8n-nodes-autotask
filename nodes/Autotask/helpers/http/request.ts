@@ -249,6 +249,7 @@ function buildChildEntityUrl(
 	validateParentChain(options.parentChain);
 
 	const subname = childMetadata.subname || child;
+	const effectiveParent = childMetadata.parentUrlSegment || parent;
 
 	// Handle nested resources with parent chain
 	if (options.parentChain?.length) {
@@ -259,11 +260,11 @@ function buildChildEntityUrl(
 
 	// Handle attachment child entities
 	if (childMetadata.isAttachment && options.entityId) {
-		const endpoint = `${parent}/${parentId}/${subname}/${options.entityId}`;
+		const endpoint = `${effectiveParent}/${parentId}/${subname}/${options.entityId}`;
 		return processEndpointPath(endpoint, { ...options, isAttachment: true });
 	}
 
-	const endpoint = `${parent}/${parentId}/${subname}${options.entityId ? `/${options.entityId}` : ''}`;
+	const endpoint = `${effectiveParent}/${parentId}/${subname}${options.entityId ? `/${options.entityId}` : ''}`;
 	return processEndpointPath(endpoint, options);
 }
 

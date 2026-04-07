@@ -41,6 +41,8 @@ export interface IEntityMetadata {
 	subname?: string;
 	/** Parent ID field name (e.g., 'companyID' for Company parent) */
 	parentIdField?: string;
+	/** Override the URL segment used for child entity paths (e.g., 'Expenses' instead of derived 'ExpenseReports') */
+	parentUrlSegment?: string;
 	/** Operation contexts for different operation types */
 	operations: {
 		[key in OperationType]?: OperationContext;
