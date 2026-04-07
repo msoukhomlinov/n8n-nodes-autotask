@@ -37,6 +37,7 @@ import { executeProductOperation } from './resources/products/execute';
 import { executeProductVendorOperation } from './resources/productVendors/execute';
 import { executeTicketOperation } from './resources/tickets/execute';
 import { executeTicketAdditionalConfigurationItemOperation } from './resources/ticketAdditionalConfigurationItems/execute';
+import { executeTicketAdditionalContactOperation } from './resources/ticketAdditionalContacts/execute';
 import { executeTicketChangeRequestApprovalOperation } from './resources/ticketChangeRequestApprovals/execute';
 import { executeTicketChargeOperation } from './resources/ticketCharges/execute';
 import { executeTicketChecklistItemOperation } from './resources/ticketChecklistItems/execute';
@@ -114,6 +115,7 @@ import { productFields } from './resources/products/description';
 import { productVendorFields } from './resources/productVendors/description';
 import { ticketFields } from './resources/tickets/description';
 import { ticketAdditionalConfigurationItemFields } from './resources/ticketAdditionalConfigurationItems/description';
+import { ticketAdditionalContactFields } from './resources/ticketAdditionalContacts/description';
 import { ticketChangeRequestApprovalFields } from './resources/ticketChangeRequestApprovals/description';
 import { ticketChargeFields } from './resources/ticketCharges/description';
 import { ticketChecklistItemFields } from './resources/ticketChecklistItems/description';
@@ -406,6 +408,7 @@ const autotaskDescription: INodeTypeDescription = {
 			...addOperationsToResource(taskSecondaryResourceFields, { resourceName: 'taskSecondaryResource' }),
 			...addOperationsToResource(ticketFields, { resourceName: 'ticket' }),
 			...addOperationsToResource(ticketAdditionalConfigurationItemFields, { resourceName: 'ticketAdditionalConfigurationItem' }),
+			...addOperationsToResource(ticketAdditionalContactFields, { resourceName: 'ticketAdditionalContact' }),
 			...addOperationsToResource(ticketAttachmentFields, { resourceName: 'ticketAttachment' }),
 			...addOperationsToResource(ticketCategoryFields, { resourceName: 'ticketCategory' }),
 			...addOperationsToResource(ticketCategoryFieldDefaultFields, { resourceName: 'ticketCategoryFieldDefault' }),
@@ -653,6 +656,8 @@ export class Autotask implements INodeType {
 				return executeTicketOperation.call(this);
 			case 'ticketAdditionalConfigurationItem':
 				return executeTicketAdditionalConfigurationItemOperation.call(this);
+			case 'ticketAdditionalContact':
+				return executeTicketAdditionalContactOperation.call(this);
 			case 'ticketChangeRequestApproval':
 				return executeTicketChangeRequestApprovalOperation.call(this);
 			case 'ticketCharge':

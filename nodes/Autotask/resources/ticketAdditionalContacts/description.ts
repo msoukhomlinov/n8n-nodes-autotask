@@ -1,6 +1,6 @@
 import type { INodeProperties } from 'n8n-workflow';
 
-export const contractChargeFields: INodeProperties[] = [
+export const ticketAdditionalContactFields: INodeProperties[] = [
 	{
 		displayName: 'Operation',
 		name: 'operation',
@@ -8,86 +8,78 @@ export const contractChargeFields: INodeProperties[] = [
 		noDataExpression: true,
 		displayOptions: {
 			show: {
-				resource: [
-					'contractCharge',
-				],
+				resource: ['ticketAdditionalContact'],
 			},
 		},
 		options: [
 			{
 				name: 'Create',
 				value: 'create',
-				description: 'Create a contract charge',
-				action: 'Create a contract charge',
+				description: 'Associate an additional contact with a ticket',
+				action: 'Create a ticket additional contact',
 			},
 			{
 				name: 'Create If Not Exists',
 				value: 'createIfNotExists',
-				description: 'Find contract by external ID, check for duplicates, create charge only if none found',
-				action: 'Create a contract charge if not exists',
-			},
-			{
-				name: 'Update',
-				value: 'update',
-				description: 'Update a contract charge',
-				action: 'Update a contract charge',
+				description: 'Check if the contact is already linked to the ticket, create only if not',
+				action: 'Create a ticket additional contact if not exists',
 			},
 			{
 				name: 'Delete',
 				value: 'delete',
-				description: 'Delete a contract charge',
-				action: 'Delete a contract charge',
+				description: 'Remove an additional contact association from a ticket',
+				action: 'Delete a ticket additional contact',
 			},
 			{
 				name: 'Get',
 				value: 'get',
-				description: 'Get a contract charge by ID',
-				action: 'Get a contract charge',
+				description: 'Get a ticket additional contact by ID',
+				action: 'Get a ticket additional contact',
 			},
 			{
 				name: 'Get Many',
 				value: 'getMany',
-				description: 'Get multiple contract charges',
-				action: 'Get multiple contract charges',
+				description: 'Get multiple ticket additional contacts',
+				action: 'Get multiple ticket additional contacts',
 			},
 			{
 				name: 'Count',
 				value: 'count',
-				description: 'Count number of contract charges',
-				action: 'Count contract charges',
+				description: 'Count ticket additional contacts',
+				action: 'Count ticket additional contacts',
 			},
 		],
 		default: 'get',
 	},
 	{
-		displayName: 'Charge ID',
+		displayName: 'Association ID',
 		name: 'id',
 		type: 'string',
 		required: true,
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['contractCharge'],
-				operation: ['update', 'get', 'delete'],
+				resource: ['ticketAdditionalContact'],
+				operation: ['get', 'delete'],
 			},
 		},
-		description: 'The ID of the charge to operate on',
+		description: 'The ID of the ticket additional contact association to operate on',
 	},
 	{
-		displayName: 'Contract ID',
-		name: 'contractID',
+		displayName: 'Ticket ID',
+		name: 'ticketID',
 		type: 'string',
 		required: true,
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['contractCharge'],
+				resource: ['ticketAdditionalContact'],
 				operation: ['delete'],
 			},
 		},
-		description: 'The ID of the contract that the charge belongs to',
+		description: 'The numeric ID of the parent ticket',
 	},
-	// ─── createIfNotExists fields ────────────────────────────────────────
+	// ─── createIfNotExists fields ─────────────────────────────────────────
 	{
 		displayName: 'Dedup Fields Names or IDs',
 		name: 'dedupFields',
@@ -95,7 +87,7 @@ export const contractChargeFields: INodeProperties[] = [
 		default: [],
 		displayOptions: {
 			show: {
-				resource: ['contractCharge'],
+				resource: ['ticketAdditionalContact'],
 				operation: ['createIfNotExists'],
 			},
 		},
@@ -113,7 +105,7 @@ export const contractChargeFields: INodeProperties[] = [
 		default: [],
 		displayOptions: {
 			show: {
-				resource: ['contractCharge'],
+				resource: ['ticketAdditionalContact'],
 				operation: ['createIfNotExists'],
 			},
 		},
@@ -131,28 +123,20 @@ export const contractChargeFields: INodeProperties[] = [
 		default: false,
 		displayOptions: {
 			show: {
-				resource: ['contractCharge'],
+				resource: ['ticketAdditionalContact'],
 				operation: ['createIfNotExists'],
 			},
 		},
-		description: 'Whether to throw an error when a duplicate is found instead of returning a soft "skipped" outcome',
+		description: 'Whether to throw an error when a duplicate is found',
 	},
-	// ─── Standard CRUD fields ────────────────────────────────────────────
+	// ─── Standard CRUD fields ─────────────────────────────────────────────
 	{
 		displayName: 'Fields',
 		name: 'fieldsToMap',
 		type: 'resourceMapper',
-		default: {
-			mappingMode: 'defineBelow',
-			value: null,
-		},
+		noDataExpression: true,
+		default: {},
 		required: true,
-		displayOptions: {
-			show: {
-				resource: ['contractCharge'],
-				operation: ['create', 'createIfNotExists', 'update', 'getMany', 'count'],
-			},
-		},
 		typeOptions: {
 			loadOptionsDependsOn: ['resource', 'operation'],
 			resourceMapper: {
@@ -167,5 +151,12 @@ export const contractChargeFields: INodeProperties[] = [
 				supportAutoMap: true,
 			},
 		},
+		displayOptions: {
+			show: {
+				resource: ['ticketAdditionalContact'],
+				operation: ['create', 'createIfNotExists', 'getMany', 'count'],
+			},
+		},
+		description: 'Map the fields to be used in the operation',
 	},
 ];

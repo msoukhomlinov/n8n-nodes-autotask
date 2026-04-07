@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
 import { compareDedupField, extractId, extractItems } from './dedup-utils';
+import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -10,9 +11,10 @@ export interface IChargeCreateIfNotExistsOptions {
 	errorOnDuplicate: boolean;
 	impersonationResourceId?: number;
 	proceedWithoutImpersonationIfDenied?: boolean;
+	updateFields?: string[];
 }
 
-export type ChargeCreateOutcome = 'created' | 'skipped' | 'parent_not_found';
+export type ChargeCreateOutcome = 'created' | 'skipped' | 'updated' | 'parent_not_found';
 
 export interface IChargeCreateResult {
 	outcome: ChargeCreateOutcome;
@@ -26,6 +28,8 @@ export interface IChargeCreateResult {
 	unitPrice?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
+	fieldsUpdated?: string[];
+	fieldsCompared?: string[];
 	warnings: string[];
 }
 
@@ -48,6 +52,8 @@ export interface ChargeCreatorConfig {
 	chargeCreateEndpointTemplate: string;
 	/** Maps API field name to its data type for dedup comparison */
 	fieldTypeMap?: Record<string, string>;
+	/** Entity name as registered in constants/entities.ts (e.g. 'ContractCharge') — used for update-on-drift */
+	entityName: string;
 }
 
 // ─── Shared Step Implementations ─────────────────────────────────────────────
@@ -279,6 +285,58 @@ export async function createChargeIfNotExists(
 				`Set errorOnDuplicate=false to skip instead of error.`,
 			);
 		}
+
+		const { updateFields } = options;
+		if (updateFields && updateFields.length > 0) {
+			const fieldTypeMap = config.fieldTypeMap ?? {};
+			const { patch, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
+				duplicate as Record<string, unknown>,
+				options.createFields,
+				updateFields,
+				fieldTypeMap,
+			);
+			if (skipped.length > 0) {
+				diffWarnings.push(`updateFields requested for ${skipped.length} field(s) not present in createFields: ${skipped.join(', ')}`);
+			}
+			if (Object.keys(patch).length > 0) {
+				const { updatedEntity, warnings: updateWarnings } = await applyDuplicateUpdate(ctx, {
+					resource: config.entityName,
+					duplicateId: duplicate.id as number,
+					parentId,
+					patch,
+					impersonationResourceId: options.impersonationResourceId,
+					proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied,
+				});
+				return {
+					outcome: 'updated',
+					existingChargeId: duplicate.id as number,
+					parentId,
+					parentLookupValue,
+					chargeName: (options.createFields.name as string) ?? (updatedEntity.name as string) ?? '',
+					datePurchased: (options.createFields.datePurchased as string) ?? '',
+					unitQuantity: options.createFields.unitQuantity as number | undefined,
+					unitPrice: options.createFields.unitPrice as number | undefined,
+					matchedDedupFields: matchedFields,
+					fieldsUpdated: Object.keys(patch),
+					fieldsCompared: compared,
+					warnings: [...warnings, ...diffWarnings, ...updateWarnings],
+				};
+			} else {
+				return {
+					outcome: 'skipped',
+					reason: 'duplicate_no_changes',
+					existingChargeId: duplicate.id as number,
+					parentId,
+					parentLookupValue,
+					chargeName: (options.createFields.name as string) ?? '',
+					datePurchased: (options.createFields.datePurchased as string) ?? '',
+					matchedDedupFields: matchedFields,
+					fieldsCompared: compared,
+					warnings: [...warnings, ...diffWarnings],
+				};
+			}
+		}
+
 		return {
 			outcome: 'skipped',
 			reason: 'duplicate_charge',

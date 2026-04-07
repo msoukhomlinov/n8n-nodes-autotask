@@ -262,7 +262,8 @@ function buildCreateIfNotExistsDescription(resource: string): string {
 	return `Idempotent creation for ${resource}. Checks for duplicates using configurable dedupFields before creating. ` +
 		`Pass the same fields as the create operation, plus dedupFields (array of API field names for duplicate detection) ` +
 		`and errorOnDuplicate (boolean, default false). Use describeFields first to discover available field names. ` +
-		`Returns outcome: created, skipped, or not_found.`;
+		`Use updateFields to specify fields to compare against the duplicate — when values differ the duplicate will be updated (outcome: updated). Requires errorOnDuplicate to be false. ` +
+		`Returns outcome: created, skipped, updated, or a resource-specific not_found variant.`;
 }
 
 export function buildDescribeFieldsDescription(resourceLabel: string): string {

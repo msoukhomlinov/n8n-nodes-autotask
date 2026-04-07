@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
 import { extractId, extractItems, compareDedupField } from './dedup-utils';
+import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -10,9 +11,10 @@ export interface IContractServiceCreateIfNotExistsOptions {
 	errorOnDuplicate: boolean;
 	impersonationResourceId?: number;
 	proceedWithoutImpersonationIfDenied?: boolean;
+	updateFields?: string[];
 }
 
-export type ContractServiceCreateOutcome = 'created' | 'skipped' | 'contract_not_found';
+export type ContractServiceCreateOutcome = 'created' | 'skipped' | 'updated' | 'contract_not_found';
 
 export interface IContractServiceCreateResult {
 	outcome: ContractServiceCreateOutcome;
@@ -22,8 +24,16 @@ export interface IContractServiceCreateResult {
 	serviceID?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
+	fieldsUpdated?: string[];
+	fieldsCompared?: string[];
 	warnings: string[];
 }
+
+// ─── Field type map ──────────────────────────────────────────────────────────
+
+const CONTRACT_SERVICE_FIELD_TYPE_MAP: Record<string, string> = {
+	serviceID: 'integer',
+};
 
 // ─── Step 0: Verify contract exists ─────────────────────────────────────────
 
@@ -230,6 +240,51 @@ export async function createContractServiceIfNotExists(
 				`Set errorOnDuplicate=false to skip instead of error.`,
 			);
 		}
+
+		const { updateFields } = options;
+		if (updateFields && updateFields.length > 0) {
+			const { patch, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
+				duplicate as Record<string, unknown>,
+				createFields,
+				updateFields,
+				CONTRACT_SERVICE_FIELD_TYPE_MAP,
+			);
+			if (skipped.length > 0) {
+				diffWarnings.push(`updateFields requested for ${skipped.length} field(s) not present in createFields: ${skipped.join(', ')}`);
+			}
+			if (Object.keys(patch).length > 0) {
+				const { warnings: updateWarnings } = await applyDuplicateUpdate(ctx, {
+					resource: 'ContractService',
+					duplicateId: duplicate.id as number,
+					parentId: contractId,
+					patch,
+					impersonationResourceId: options.impersonationResourceId,
+					proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied,
+				});
+				return {
+					outcome: 'updated',
+					contractId,
+					existingContractServiceId: duplicate.id as number,
+					serviceID,
+					matchedDedupFields: matchedFields,
+					fieldsUpdated: Object.keys(patch),
+					fieldsCompared: compared,
+					warnings: [...warnings, ...diffWarnings, ...updateWarnings],
+				};
+			} else {
+				return {
+					outcome: 'skipped',
+					reason: 'duplicate_no_changes',
+					contractId,
+					existingContractServiceId: duplicate.id as number,
+					serviceID,
+					matchedDedupFields: matchedFields,
+					fieldsCompared: compared,
+					warnings: [...warnings, ...diffWarnings],
+				};
+			}
+		}
+
 		return {
 			outcome: 'skipped',
 			reason: 'duplicate_contract_service',

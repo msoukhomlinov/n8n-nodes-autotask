@@ -315,6 +315,7 @@ function buildFieldValues(
 				'proceedWithoutImpersonationIfDenied',
 				'dedupFields',
 				'errorOnDuplicate',
+				'updateFields',
     ]);
     for (const [key, value] of Object.entries(params)) {
         if (value !== undefined && value !== '' && !exclude.has(key)) {
@@ -800,14 +801,17 @@ export async function executeAiTool(
                 contract: ['contractName'],
                 expenseItem: ['expenseReportID', 'expenseDate', 'description'],
                 ticketAdditionalConfigurationItem: ['configurationItemID'],
+                ticketAdditionalContact: ['contactID'],
             };
             const dedupFields = (params.dedupFields as string[]) ?? DEFAULT_DEDUP_FIELDS[resource] ?? [];
             const errorOnDuplicate = params.errorOnDuplicate === true;
+            const updateFields = (params.updateFields as string[] | undefined) ?? [];
 
             const compoundOptions = {
                 createFields,
                 dedupFields,
                 errorOnDuplicate,
+                updateFields,
                 impersonationResourceId: resolvedImpersonationId,
                 proceedWithoutImpersonationIfDenied: params.proceedWithoutImpersonationIfDenied !== false,
             };
@@ -839,6 +843,9 @@ export async function executeAiTool(
             } else if (resource === 'ticketAdditionalConfigurationItem') {
                 const { createTicketAdditionalCIIfNotExists } = await import('../helpers/ticket-additional-ci-creator');
                 compoundResult = await createTicketAdditionalCIIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'ticketAdditionalContact') {
+                const { createTicketAdditionalContactIfNotExists } = await import('../helpers/ticket-additional-contact-creator');
+                compoundResult = await createTicketAdditionalContactIfNotExists(context, 0, compoundOptions);
             }
 
             if (compoundResult) {

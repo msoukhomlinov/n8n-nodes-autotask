@@ -10,7 +10,7 @@ import {
 
 export type IContractChargeCreateIfNotExistsOptions = IChargeCreateIfNotExistsOptions;
 
-export type ContractChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'contract_not_found';
+export type ContractChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'updated' | 'contract_not_found';
 
 export interface IContractChargeCreateIfNotExistsResult {
 	outcome: ContractChargeCreateIfNotExistsOutcome;
@@ -24,6 +24,8 @@ export interface IContractChargeCreateIfNotExistsResult {
 	unitPrice?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
+	fieldsUpdated?: string[];
+	fieldsCompared?: string[];
 	warnings: string[];
 }
 
@@ -36,6 +38,7 @@ const CONTRACT_CHARGE_CONFIG: ChargeCreatorConfig = {
 	chargeQueryEndpoint: 'ContractCharges/query',
 	chargeParentIdField: 'contractID',
 	chargeCreateEndpointTemplate: 'Contracts/{parentId}/Charges',
+	entityName: 'ContractCharge',
 	fieldTypeMap: {
 		name: 'string',
 		datePurchased: 'datetime',
@@ -89,6 +92,8 @@ function mapToContractChargeResult(
 		unitPrice: result.unitPrice,
 		reason: result.reason,
 		matchedDedupFields: result.matchedDedupFields,
+		fieldsUpdated: result.fieldsUpdated,
+		fieldsCompared: result.fieldsCompared,
 		warnings: result.warnings,
 	};
 }

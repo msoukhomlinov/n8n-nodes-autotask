@@ -5,7 +5,7 @@ import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-dupl
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
-export interface ITicketAdditionalCICreateIfNotExistsOptions {
+export interface ITicketAdditionalContactCreateIfNotExistsOptions {
 	createFields: Record<string, unknown>;
 	dedupFields: string[];
 	errorOnDuplicate: boolean;
@@ -14,14 +14,14 @@ export interface ITicketAdditionalCICreateIfNotExistsOptions {
 	updateFields?: string[];
 }
 
-export type TicketAdditionalCICreateOutcome = 'created' | 'skipped' | 'updated' | 'ticket_not_found';
+export type TicketAdditionalContactCreateOutcome = 'created' | 'skipped' | 'updated' | 'ticket_not_found';
 
-export interface ITicketAdditionalCICreateResult {
-	outcome: TicketAdditionalCICreateOutcome;
+export interface ITicketAdditionalContactCreateResult {
+	outcome: TicketAdditionalContactCreateOutcome;
 	ticketId?: number;
-	ticketAdditionalConfigurationItemId?: number;
+	ticketAdditionalContactId?: number;
 	existingId?: number;
-	configurationItemID?: number;
+	contactID?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
 	fieldsUpdated?: string[];
@@ -32,7 +32,7 @@ export interface ITicketAdditionalCICreateResult {
 // ─── Field type map for dedup comparison ─────────────────────────────────────
 
 const FIELD_TYPE_MAP: Record<string, string> = {
-	configurationItemID: 'integer',
+	contactID: 'integer',
 };
 
 // ─── Step 0: Verify ticket exists ────────────────────────────────────────────
@@ -63,20 +63,20 @@ async function findDuplicateAssociation(
 		return { duplicate: null, matchedFields: [] };
 	}
 
-	// Always filter by ticketID; add configurationItemID server-side when in dedupFields
+	// Always filter by ticketID; add contactID server-side when in dedupFields
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const apiFilter: any[] = [
 		{ field: 'ticketID', op: 'eq', value: ticketId },
 	];
 
-	if (dedupFields.includes('configurationItemID') && createFields.configurationItemID !== undefined) {
-		apiFilter.push({ field: 'configurationItemID', op: 'eq', value: createFields.configurationItemID });
+	if (dedupFields.includes('contactID') && createFields.contactID !== undefined) {
+		apiFilter.push({ field: 'contactID', op: 'eq', value: createFields.contactID });
 	}
 
 	const response = await autotaskApiRequest.call(
 		ctx,
 		'POST',
-		'TicketAdditionalConfigurationItems/query',
+		'TicketAdditionalContacts/query',
 		{ filter: apiFilter },
 	);
 
@@ -112,16 +112,16 @@ async function findDuplicateAssociation(
 async function createAssociation(
 	ctx: IExecuteFunctions,
 	ticketId: number,
-	configurationItemID: number,
+	contactID: number,
 	impersonationResourceId?: number,
 	proceedWithoutImpersonationIfDenied?: boolean,
 ): Promise<number> {
-	const body: IDataObject = { configurationItemID };
+	const body: IDataObject = { contactID };
 
 	const response = await autotaskApiRequest.call(
 		ctx,
 		'POST',
-		`Tickets/${ticketId}/AdditionalConfigurationItems`,
+		`Tickets/${ticketId}/AdditionalContacts`,
 		body,
 		{},
 		impersonationResourceId,
@@ -130,33 +130,33 @@ async function createAssociation(
 
 	const newId = extractId(response as IDataObject);
 	if (!newId) {
-		throw new Error('TicketAdditionalConfigurationItem creation succeeded but returned no ID.');
+		throw new Error('TicketAdditionalContact creation succeeded but returned no ID.');
 	}
 	return newId;
 }
 
 // ─── Main orchestrator ────────────────────────────────────────────────────────
 
-export async function createTicketAdditionalCIIfNotExists(
+export async function createTicketAdditionalContactIfNotExists(
 	ctx: IExecuteFunctions,
 	_itemIndex: number,
-	options: ITicketAdditionalCICreateIfNotExistsOptions,
-): Promise<ITicketAdditionalCICreateResult> {
+	options: ITicketAdditionalContactCreateIfNotExistsOptions,
+): Promise<ITicketAdditionalContactCreateResult> {
 	const warnings: string[] = [];
 	const { createFields, dedupFields, errorOnDuplicate } = options;
 
 	const rawTicketID = createFields.ticketID as string | number | undefined;
 	if (rawTicketID === undefined || rawTicketID === null || rawTicketID === '') {
-		throw new Error('createFields.ticketID is required for ticketAdditionalConfigurationItem.createIfNotExists');
+		throw new Error('createFields.ticketID is required for ticketAdditionalContact.createIfNotExists');
 	}
 
 	const ticketId = Number(rawTicketID);
-	const configurationItemID = createFields.configurationItemID as number | undefined;
+	const contactID = createFields.contactID as number | undefined;
 
 	// Step 0: Verify ticket exists
 	const ticketExists = await verifyTicketExists(ctx, ticketId);
 	if (!ticketExists) {
-		return { outcome: 'ticket_not_found', ticketId, configurationItemID, warnings };
+		return { outcome: 'ticket_not_found', ticketId, contactID, warnings };
 	}
 
 	// Step 1: Check for duplicate
@@ -167,7 +167,7 @@ export async function createTicketAdditionalCIIfNotExists(
 	if (duplicate) {
 		if (errorOnDuplicate) {
 			throw new Error(
-				`Duplicate TicketAdditionalConfigurationItem found (ID: ${duplicate.id}) on Ticket ${ticketId}. ` +
+				`Duplicate TicketAdditionalContact found (ID: ${duplicate.id}) on Ticket ${ticketId}. ` +
 				`Matched dedup fields: ${matchedFields.join(', ')}. ` +
 				`Set errorOnDuplicate=false to skip instead of error.`,
 			);
@@ -186,7 +186,7 @@ export async function createTicketAdditionalCIIfNotExists(
 			}
 			if (Object.keys(patch).length > 0) {
 				const { warnings: updateWarnings } = await applyDuplicateUpdate(ctx, {
-					resource: 'TicketAdditionalConfigurationItem',
+					resource: 'TicketAdditionalContact',
 					duplicateId: duplicate.id as number,
 					parentId: ticketId,
 					patch,
@@ -197,7 +197,7 @@ export async function createTicketAdditionalCIIfNotExists(
 					outcome: 'updated',
 					ticketId,
 					existingId: duplicate.id as number,
-					configurationItemID,
+					contactID,
 					matchedDedupFields: matchedFields,
 					fieldsUpdated: Object.keys(patch),
 					fieldsCompared: compared,
@@ -209,7 +209,7 @@ export async function createTicketAdditionalCIIfNotExists(
 					reason: 'duplicate_no_changes',
 					ticketId,
 					existingId: duplicate.id as number,
-					configurationItemID,
+					contactID,
 					matchedDedupFields: matchedFields,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings],
@@ -222,21 +222,21 @@ export async function createTicketAdditionalCIIfNotExists(
 			reason: 'duplicate_association',
 			ticketId,
 			existingId: duplicate.id as number,
-			configurationItemID,
+			contactID,
 			matchedDedupFields: matchedFields,
 			warnings,
 		};
 	}
 
 	// Step 2: Create association
-	if (configurationItemID === undefined || configurationItemID === null) {
-		throw new Error('createFields.configurationItemID is required to create the association.');
+	if (contactID === undefined || contactID === null) {
+		throw new Error('createFields.contactID is required to create the association.');
 	}
 
 	const newId = await createAssociation(
 		ctx,
 		ticketId,
-		configurationItemID,
+		contactID,
 		options.impersonationResourceId,
 		options.proceedWithoutImpersonationIfDenied,
 	);
@@ -244,8 +244,8 @@ export async function createTicketAdditionalCIIfNotExists(
 	return {
 		outcome: 'created',
 		ticketId,
-		ticketAdditionalConfigurationItemId: newId,
-		configurationItemID,
+		ticketAdditionalContactId: newId,
+		contactID,
 		warnings,
 	};
 }

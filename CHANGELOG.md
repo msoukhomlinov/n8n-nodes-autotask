@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.9.0] - 2026-04-07
+
+### Changed
+
+- **createIfNotExists: update-on-drift via updateFields**: All 10 `createIfNotExists` compound operations now accept an optional `updateFields` parameter (multiOptions, same pattern as `dedupFields`). When a duplicate is found and `errorOnDuplicate` is false, each field listed in `updateFields` is compared against the existing record using the same type-aware comparison as dedup (date normalisation, decimal rounding, case-insensitive string matching). If any field value has drifted, a PATCH is issued using the existing update pipeline and the operation returns `outcome: 'updated'` with `fieldsUpdated` and `fieldsCompared`. If all compared values already match, returns `outcome: 'skipped'` with `reason: 'duplicate_no_changes'`. If `updateFields` is empty or omitted, behaviour is unchanged (returns `outcome: 'skipped'`). `errorOnDuplicate: true` always throws regardless of `updateFields`. Fields listed in `updateFields` that are absent from the input payload are skipped with a warning. Available in both the standard node (UI multiOptions) and AI tools node (Zod `array(string)` schema field).
+
 ## [2.8.0] - 2026-04-07
 
 ### Changed

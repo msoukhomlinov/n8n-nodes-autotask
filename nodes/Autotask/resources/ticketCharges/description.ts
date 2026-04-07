@@ -102,6 +102,19 @@ export const ticketChargeFields: INodeProperties[] = [
 		hint: 'Fields used for duplicate detection. Empty = skip dedup, always create.',
 	},
 	{
+		displayName: 'Update Fields Names or IDs',
+		name: 'updateFields',
+		type: 'multiOptions',
+		default: [],
+		displayOptions: { show: { resource: ['ticketCharge'], operation: ['createIfNotExists'] } },
+		typeOptions: {
+			loadOptionsMethod: 'getSelectColumns',
+			loadOptionsDependsOn: ['resource'],
+		},
+		description: 'Choose from the list, or specify IDs using an expression',
+		hint: 'Fields to compare against the duplicate. If values differ, the duplicate will be updated. Ignored when "Error on Duplicate" is enabled.',
+	},
+	{
 		displayName: 'Error on Duplicate',
 		name: 'errorOnDuplicate',
 		type: 'boolean',
