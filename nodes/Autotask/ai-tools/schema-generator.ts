@@ -300,6 +300,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
             if (!shape.dedupFields)
                 shape.dedupFields = rz.array(rz.string()).optional()
                     .describe('Field names for duplicate detection. Use describeFields to discover available field names. Empty = skip dedup, always create.');
+            if (!shape.updateFields)
+                shape.updateFields = rz.array(rz.string()).optional()
+                    .describe('Field names to compare against the duplicate record. If a value differs from the desired value, the duplicate will be updated. Leave empty to skip update comparison. Ignored when errorOnDuplicate is true.');
             if (!shape.errorOnDuplicate)
                 shape.errorOnDuplicate = rz.boolean().optional()
                     .describe('When true, throw an error if a duplicate is found instead of returning a skipped outcome. Default false.');

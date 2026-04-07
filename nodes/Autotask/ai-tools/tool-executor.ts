@@ -315,6 +315,7 @@ function buildFieldValues(
 				'proceedWithoutImpersonationIfDenied',
 				'dedupFields',
 				'errorOnDuplicate',
+				'updateFields',
     ]);
     for (const [key, value] of Object.entries(params)) {
         if (value !== undefined && value !== '' && !exclude.has(key)) {
@@ -803,11 +804,13 @@ export async function executeAiTool(
             };
             const dedupFields = (params.dedupFields as string[]) ?? DEFAULT_DEDUP_FIELDS[resource] ?? [];
             const errorOnDuplicate = params.errorOnDuplicate === true;
+            const updateFields = (params.updateFields as string[] | undefined) ?? [];
 
             const compoundOptions = {
                 createFields,
                 dedupFields,
                 errorOnDuplicate,
+                updateFields,
                 impersonationResourceId: resolvedImpersonationId,
                 proceedWithoutImpersonationIfDenied: params.proceedWithoutImpersonationIfDenied !== false,
             };
