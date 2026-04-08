@@ -24,6 +24,10 @@ import { executeCompanyLocationOperation } from './resources/companyLocations/ex
 import { executeResourceOperation } from './resources/resources/execute';
 import { executeResourceRoleOperation } from './resources/resourceRoles/execute';
 import { executeResourceRoleQueueOperation } from './resources/resourceRoleQueues/execute';
+import { executeResourceSkillOperation } from './resources/resourceSkills/execute';
+import { executeResourceTimeOffAdditionalOperation } from './resources/resourceTimeOffAdditional/execute';
+import { executeResourceTimeOffApproverOperation } from './resources/resourceTimeOffApprovers/execute';
+import { executeResourceTimeOffBalanceOperation } from './resources/resourceTimeOffBalances/execute';
 import { executeRoleOperation } from './resources/roles/execute';
 import { executeCompanyNoteOperation } from './resources/companyNotes/execute';
 import { executeCompanySiteConfigurationOperation } from './resources/companySiteConfigurations/execute';
@@ -51,6 +55,7 @@ import { executeTicketSecondaryResourceOperation } from './resources/ticketSecon
 import { executeTicketHistoryOperation } from './resources/ticketHistories/execute';
 import { executeTimeEntryOperation } from './resources/timeEntries/execute';
 import { executeTimeEntryAttachmentOperation } from './resources/timeEntryAttachments/execute';
+import { executeTimeOffRequestOperation } from './resources/timeOffRequests/execute';
 import { executeBillingCodeOperation } from './resources/billingCodes/execute';
 import { executeBillingItemsOperation } from './resources/billingItems/execute';
 import { executeChecklistLibraryOperation } from './resources/checklistLibraries/execute';
@@ -107,6 +112,10 @@ import { companyLocationFields } from './resources/companyLocations/description'
 import { resourceFields } from './resources/resources/description';
 import { resourceRoleFields } from './resources/resourceRoles/description';
 import { resourceRoleQueueFields } from './resources/resourceRoleQueues/description';
+import { resourceSkillFields } from './resources/resourceSkills/description';
+import { resourceTimeOffAdditionalFields } from './resources/resourceTimeOffAdditional/description';
+import { resourceTimeOffApproverFields } from './resources/resourceTimeOffApprovers/description';
+import { resourceTimeOffBalanceFields } from './resources/resourceTimeOffBalances/description';
 import { roleFields } from './resources/roles/description';
 import { companyNoteFields } from './resources/companyNotes/description';
 import { companySiteConfigurationFields } from './resources/companySiteConfigurations/description';
@@ -131,6 +140,7 @@ import { ticketNoteAttachmentFields } from './resources/ticketNoteAttachments/de
 import { ticketAttachmentFields } from './resources/ticketAttachments/description';
 import { timeEntryFields } from './resources/timeEntries/description';
 import { timeEntryAttachmentFields } from './resources/timeEntryAttachments/description';
+import { timeOffRequestFields } from './resources/timeOffRequests/description';
 import { billingCodeFields } from './resources/billingCodes/description';
 import { billingItemsFields } from './resources/billingItems/description';
 import { checklistLibraryFields } from './resources/checklistLibraries/description';
@@ -394,6 +404,10 @@ const autotaskDescription: INodeTypeDescription = {
 			...addOperationsToResource(resourceFields, { resourceName: 'resource' }),
 			...addOperationsToResource(resourceRoleFields, { resourceName: 'resourceRole' }),
 			...addOperationsToResource(resourceRoleQueueFields, { resourceName: 'resourceRoleQueue' }),
+			...addOperationsToResource(resourceSkillFields, { resourceName: 'resourceSkill' }),
+			...addOperationsToResource(resourceTimeOffAdditionalFields, { resourceName: 'resourceTimeOffAdditional' }),
+			...addOperationsToResource(resourceTimeOffApproverFields, { resourceName: 'resourceTimeOffApprover' }),
+			...addOperationsToResource(resourceTimeOffBalanceFields, { resourceName: 'resourceTimeOffBalance' }),
 			...addOperationsToResource(roleFields, { resourceName: 'role' }),
 			...addOperationsToResource(serviceFields, { resourceName: 'service' }),
 			...addOperationsToResource(serviceCallFields, { resourceName: 'serviceCall' }),
@@ -430,6 +444,7 @@ const autotaskDescription: INodeTypeDescription = {
 			...addOperationsToResource(ticketWebhookFields, { resourceName: 'ticketWebhook' }),
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(timeEntryAttachmentFields, { resourceName: 'timeEntryAttachment' }),
+			...addOperationsToResource(timeOffRequestFields, { resourceName: 'timeOffRequest' }),
 			...searchFilterDescription,
 			...searchFilterOperations,
 		]),
@@ -631,6 +646,14 @@ export class Autotask implements INodeType {
 				return executeResourceRoleOperation.call(this);
 			case 'resourceRoleQueue':
 				return executeResourceRoleQueueOperation.call(this);
+			case 'resourceSkill':
+				return executeResourceSkillOperation.call(this);
+			case 'resourceTimeOffAdditional':
+				return executeResourceTimeOffAdditionalOperation.call(this);
+			case 'resourceTimeOffApprover':
+				return executeResourceTimeOffApproverOperation.call(this);
+			case 'resourceTimeOffBalance':
+				return executeResourceTimeOffBalanceOperation.call(this);
 			case 'role':
 				return executeRoleOperation.call(this);
 			case 'searchFilter':
@@ -698,6 +721,8 @@ export class Autotask implements INodeType {
 				return executeTimeEntryOperation.call(this);
 			case 'timeEntryAttachment':
 				return executeTimeEntryAttachmentOperation.call(this);
+			case 'timeOffRequest':
+				return executeTimeOffRequestOperation.call(this);
 			case 'survey':
 				return executeSurveyOperation.call(this);
 			case 'surveyResults':

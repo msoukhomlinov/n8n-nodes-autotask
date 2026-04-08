@@ -112,9 +112,14 @@ import { executeTicketWebhookOperation } from '../ticketWebhooks/execute';
 import { executeTicketHistoryOperation } from '../ticketHistories/execute';
 import { executeTimeEntryOperation } from '../timeEntries/execute';
 import { executeTimeEntryAttachmentOperation } from '../timeEntryAttachments/execute';
+import { executeTimeOffRequestOperation } from '../timeOffRequests/execute';
 import { executeSurveyOperation } from '../surveys/execute';
 import { executeSurveyResultsOperation } from '../surveyResults/execute';
 import { executeSkillOperation } from '../skills/execute';
+import { executeResourceSkillOperation } from '../resourceSkills/execute';
+import { executeResourceTimeOffAdditionalOperation } from '../resourceTimeOffAdditional/execute';
+import { executeResourceTimeOffApproverOperation } from '../resourceTimeOffApprovers/execute';
+import { executeResourceTimeOffBalanceOperation } from '../resourceTimeOffBalances/execute';
 
 /**
  * Resource executor mapping for dynamic execution
@@ -198,6 +203,10 @@ const RESOURCE_EXECUTORS: Record<
 	quoteTemplate: executeQuoteTemplateOperation,
 	resource: executeResourceOperation,
 	resourceRole: executeResourceRoleOperation,
+	resourceSkill: executeResourceSkillOperation,
+	resourceTimeOffAdditional: executeResourceTimeOffAdditionalOperation,
+	resourceTimeOffApprover: executeResourceTimeOffApproverOperation,
+	resourceTimeOffBalance: executeResourceTimeOffBalanceOperation,
 	role: executeRoleOperation,
 	serviceCall: executeServiceCallOperation,
 	serviceCallTicket: executeServiceCallTicketOperation,
@@ -232,6 +241,7 @@ const RESOURCE_EXECUTORS: Record<
 	TicketHistory: executeTicketHistoryOperation,
 	timeEntry: executeTimeEntryOperation,
 	timeEntryAttachment: executeTimeEntryAttachmentOperation,
+	timeOffRequest: executeTimeOffRequestOperation,
 };
 
 /**
@@ -634,7 +644,7 @@ async function applySafetyGates(
 		}
 
 		// Check write operation restrictions
-		const isWriteOperation = ['create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'].includes(resourceOperation);
+		const isWriteOperation = ['create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'approve', 'reject', 'delete'].includes(resourceOperation);
 
 		if (isWriteOperation && !allowWriteOperations) {
 			if (isDryRun && allowDryRunForWrites) {
