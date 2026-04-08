@@ -84,3 +84,7 @@ CLAUDE.md
 /docs
 /AGENT.md
 /.agent*
+
+# Claude plugin + skills — managed by private repo
+/.claude-plugin/
+/skills/
