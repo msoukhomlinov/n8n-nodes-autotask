@@ -400,6 +400,26 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Resource Role Queues, which represent assignments of Resources (technicians) to service desk queues for ticket routing and workload management',
 	},
 	{
+		name: 'Resource Skill',
+		value: 'resourceSkill',
+		description: 'Manage Resource Skills, which represent skill proficiency assignments linking Resources to Skills with an associated skill level',
+	},
+	{
+		name: 'Resource Time Off Additional',
+		value: 'resourceTimeOffAdditional',
+		description: 'Manage Resource Time Off Additional records, which define annual and extra time-off hour quotas (vacation, personal, sick, floating holiday) per resource per year',
+	},
+	{
+		name: 'Resource Time Off Approver',
+		value: 'resourceTimeOffApprover',
+		description: 'Query Resource Time Off Approvers, which define who is authorised to approve time off requests for each resource',
+	},
+	{
+		name: 'Resource Time Off Balance',
+		value: 'resourceTimeOffBalance',
+		description: 'Query Resource Time Off Balances, which show accrued, used, planned, and waiting-approval hours across vacation, personal, sick, and floating holiday categories per resource per year',
+	},
+	{
 		name: 'Role',
 		value: 'role',
 		description: 'Manage Roles, which are associated with departments and have standard billing rates used for resource time tracking and billing',
@@ -573,6 +593,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		name: 'Time Entry Attachment',
 		value: 'timeEntryAttachment',
 		description: 'Manage Time Entry Attachments, which are files attached to time entries for documentation and reference',
+	},
+	{
+		name: 'Time Off Request',
+		value: 'timeOffRequest',
+		description: 'Query and manage Time Off Requests, including approving or rejecting pending requests submitted by resources',
 	},
 ];
 

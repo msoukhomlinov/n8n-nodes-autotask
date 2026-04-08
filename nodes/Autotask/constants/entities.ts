@@ -93,6 +93,10 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'Resource', operations: { [OperationType.QUERY]: 'self', [OperationType.READ]: 'self', [OperationType.COUNT]: 'self', [OperationType.UPDATE]: 'self' } },
 	{ name: 'ResourceRole', childOf: 'Resource', subname: 'Roles', parentIdField: 'resourceID', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'ResourceRoleQueue', childOf: 'Resource', subname: 'RoleQueues', parentIdField: 'resourceID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'ResourceSkill', childOf: 'Resource', subname: 'Skills', parentIdField: 'resourceID', operations: { [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'ResourceTimeOffAdditional', childOf: 'Resource', subname: 'TimeOffAdditional', parentIdField: 'resourceID', operations: {} },
+	{ name: 'ResourceTimeOffApprover', childOf: 'Resource', subname: 'TimeOffApprovers', parentIdField: 'resourceID', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'ResourceTimeOffBalance', childOf: 'Resource', subname: 'TimeOffBalances', parentIdField: 'resourceID', operations: {} },
 	{ name: 'Role', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'Service', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
 	{ name: 'ServiceCall', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
@@ -137,6 +141,8 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	{ name: 'Tag', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'TagAlias', childOf: 'Tag', subname: 'Aliases', parentIdField: 'tagID', operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'TagGroup', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
+	// TimeOffRequest — query and action operations only (no create/update/delete)
+	{ name: 'TimeOffRequest', operations: { [OperationType.READ]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	// TimeEntry entity and its attachment
 	{ name: 'TimeEntry', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' }, hasUserDefinedFields: true },
 	{ name: 'TimeEntryAttachment', childOf: 'TimeEntry', subname: 'Attachments', parentIdField: 'timeEntryID', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.DELETE]: 'parent' } },
