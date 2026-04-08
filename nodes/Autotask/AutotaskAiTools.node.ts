@@ -19,13 +19,15 @@ import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
 import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
 import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
 
-const WRITE_OPERATIONS = ['create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'delete'];
+const WRITE_OPERATIONS = ['create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'approve', 'reject', 'delete'];
 const SUPPORTED_TOOL_OPERATIONS = [
     'get',
     'getMany',
     'searchByDomain',
     'getPosted',
     'getUnposted',
+    'getByResource',
+    'getByYear',
     'count',
     'create',
     'moveToCompany',
@@ -36,6 +38,8 @@ const SUPPORTED_TOOL_OPERATIONS = [
     'whoAmI',
     'slaHealthCheck',
     'createIfNotExists',
+    'approve',
+    'reject',
 ];
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
 
@@ -413,6 +417,10 @@ async function getToolResourceOperations(this: ILoadOptionsFunctions): Promise<I
         update: 'Update',
         delete: 'Delete',
         createIfNotExists: 'Create If Not Exists (idempotent)',
+        getByResource: 'Get by resource',
+        getByYear: 'Get by resource and year',
+        approve: 'Approve time off request',
+        reject: 'Reject time off request',
     };
 
     for (const op of ops) {
