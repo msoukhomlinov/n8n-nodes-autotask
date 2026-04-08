@@ -363,6 +363,10 @@ function normaliseOperation(operation: string): string {
             return 'transferOwnership';
         case 'createifnotexists':
             return 'createIfNotExists';
+        case 'getbyresource':
+            return 'getByResource';
+        case 'getbyyear':
+            return 'getByYear';
         default:
             return key;
     }
@@ -1108,6 +1112,22 @@ function formatToolResponse(
             return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
         }
 
+        case 'approve': {
+            if (firstRecord === null || firstRecord === undefined) {
+                const id = params.id ?? 'unknown';
+                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+        }
+
+        case 'reject': {
+            if (firstRecord === null || firstRecord === undefined) {
+                const id = params.id ?? 'unknown';
+                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+        }
+
         case 'transferOwnership': {
             if (firstRecord === null || firstRecord === undefined) {
                 return JSON.stringify(wrapError(
@@ -1166,6 +1186,34 @@ function formatToolResponse(
                 id,
                 deleted: true,
             }));
+        }
+
+        case 'getByResource': {
+            const entity = firstRecord;
+            if (
+                entity === null ||
+                entity === undefined ||
+                (Array.isArray(entity) && entity.length === 0) ||
+                (typeof entity === 'object' && !Array.isArray(entity) && Object.keys(entity as object).length === 0)
+            ) {
+                const rid = params.resourceID ?? 'unknown';
+                return JSON.stringify(formatNotFoundError(resource, operation, rid as number | string));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, entity));
+        }
+
+        case 'getByYear': {
+            const entity = firstRecord;
+            if (
+                entity === null ||
+                entity === undefined ||
+                (typeof entity === 'object' && !Array.isArray(entity) && Object.keys(entity as object).length === 0)
+            ) {
+                const rid = params.resourceID ?? 'unknown';
+                const yr = params.year ?? 'unknown';
+                return JSON.stringify(formatNotFoundError(resource, operation, `resource ${rid}, year ${yr}`));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, entity));
         }
 
         default:
