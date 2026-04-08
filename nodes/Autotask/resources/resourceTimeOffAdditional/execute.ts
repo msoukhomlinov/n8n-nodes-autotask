@@ -30,7 +30,14 @@ export async function executeResourceTimeOffAdditionalOperation(
 						'GET',
 						`Resources/${resourceId}/TimeOffAdditional`,
 					);
-					returnData.push({ json: ((response as IDataObject)?.item ?? response) as IDataObject });
+					// API returns QueryActionResult with .items array; fall back to .item or raw response
+					const items_result = (response as IDataObject)?.items;
+					const item_result = (response as IDataObject)?.item;
+					if (Array.isArray(items_result)) {
+						returnData.push({ json: { items: items_result, resourceID: resourceId } as IDataObject });
+					} else {
+						returnData.push({ json: (item_result ?? response) as IDataObject });
+					}
 					break;
 				}
 
