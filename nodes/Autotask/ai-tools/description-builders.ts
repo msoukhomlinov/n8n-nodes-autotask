@@ -328,7 +328,11 @@ export function buildUnifiedDescription(
                 break;
             }
             case 'update':
-                summary = `operation '${op}': Update a record by numeric 'id'. Provide only fields to change. Supports name-based resolution for picklist/reference fields.`;
+                if (resource === 'resourceTimeOffAdditional') {
+                    summary = `operation '${op}': Update time-off additional quotas for a resource. Provide 'resourceID' (name or numeric ID, auto-resolved) and the fields to change (annual/additional hours per category). Supports name-based resolution.`;
+                } else {
+                    summary = `operation '${op}': Update a record by numeric 'id'. Provide only fields to change. Supports name-based resolution for picklist/reference fields.`;
+                }
                 break;
             case 'delete':
                 summary = `operation '${op}': Delete a record by numeric 'id'.`;
@@ -344,6 +348,18 @@ export function buildUnifiedDescription(
                 break;
             case 'createIfNotExists':
                 summary = buildCreateIfNotExistsDescription(resource);
+                break;
+            case 'getByResource':
+                summary = `operation '${op}': Get record(s) for a specific resource. Provide 'resourceID' as a name or numeric ID (auto-resolved). Use for operations that are scoped to a parent resource rather than queried by their own ID.`;
+                break;
+            case 'getByYear':
+                summary = `operation '${op}': Get the time-off balance for a specific calendar year. Provide 'resourceID' (name or numeric ID, auto-resolved) and 'year' as an integer (e.g. 2024).`;
+                break;
+            case 'approve':
+                summary = `operation '${op}': Approve a pending time off request by numeric 'id'. Changes the request status to approved.`;
+                break;
+            case 'reject':
+                summary = `operation '${op}': Reject a pending time off request by numeric 'id'. Provide an optional 'rejectReason' string to record the reason for rejection.`;
                 break;
             default:
                 summary = `operation '${op}': Perform ${op} on ${resourceLabel}.`;
