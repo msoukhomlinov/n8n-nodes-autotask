@@ -6,12 +6,15 @@ import { buildEntityUrl } from '../../helpers/http/request';
 import { AUTOTASK_ENTITIES } from '../../constants/entities';
 import { isCommonOperation, getCommonOpContext } from '../../helpers/common-operations-context';
 import { executeCommonOperation } from '../../operations/common/common-operations-handler';
+import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../../helpers/change-info-aliases';
+import type { IAutotaskCredentials } from '../../types/base/auth';
 
 // Import all existing resource executors
 import { executeAiHelperOperation } from '../aiHelper/execute';
 import { executeApiThresholdOperation } from '../apiThreshold/execute';
 import { executeBillingCodeOperation } from '../billingCodes/execute';
 import { executeBillingItemsOperation } from '../billingItems/execute';
+import { executeChangeRequestLinkOperation } from '../changeRequestLinks/execute';
 import { executeChecklistLibraryOperation } from '../checklistLibraries/execute';
 import { executeChecklistLibraryChecklistItemOperation } from '../checklistLibraryChecklistItems/execute';
 import { executeClassificationIconOperation } from '../classificationIcons/execute';
@@ -136,6 +139,7 @@ const RESOURCE_EXECUTORS: Record<
 	apiThreshold: executeApiThresholdOperation,
 	billingCode: executeBillingCodeOperation,
 	billingItems: executeBillingItemsOperation,
+	changeRequestLink: executeChangeRequestLinkOperation,
 	checklistLibrary: executeChecklistLibraryOperation,
 	checklistLibraryChecklistItem: executeChecklistLibraryChecklistItemOperation,
 	classificationIcon: executeClassificationIconOperation,
@@ -514,6 +518,16 @@ export async function executeToolOperation(
 					0,
 				);
 				if (result !== null) {
+					// Apply Change Info Field aliases to getManyAdvanced ticket results
+					if (canonicalResource === 'ticket' && resourceOperation === 'getManyAdvanced') {
+						const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+						if (shouldApplyAliases(creds)) {
+							const aliasMap = buildAliasMap(creds);
+							for (const row of result[0] ?? []) {
+								applyChangeInfoAliases(row.json as Record<string, unknown>, aliasMap);
+							}
+						}
+					}
 					return result;
 				}
 			}

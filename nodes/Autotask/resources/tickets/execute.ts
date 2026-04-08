@@ -1,5 +1,6 @@
 import type { IDataObject, IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
+import type { IAutotaskCredentials } from '../../types/base/auth';
 import {
     CreateOperation,
     UpdateOperation,
@@ -10,7 +11,10 @@ import {
 import { autotaskApiRequest } from '../../helpers/http';
 import { FilterOperators } from '../../constants/filters';
 import { processOutputMode } from '../../helpers/output-mode';
+import { flattenUdfs } from '../../helpers/udf/flatten';
 import { filterEntityBySelectedColumns } from '../../operations/common/select-columns/filter-entity';
+import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../../helpers/change-info-aliases';
+import { buildTicketSummary, fetchTicketChildCounts } from '../../helpers/ticket-summary';
 
 const ENTITY_TYPE = 'ticket';
 const DEFAULT_SLA_TICKET_FIELDS = ['id', 'ticketNumber', 'title', 'status', 'companyID'];
@@ -334,12 +338,106 @@ async function executeSlaHealthCheck(
     return { json: response };
 }
 
+async function executeTicketSummary(
+    context: IExecuteFunctions,
+    itemIndex: number,
+): Promise<INodeExecutionData> {
+    const identifierType = context.getNodeParameter(
+        'ticketIdentifierType',
+        itemIndex,
+        'id',
+    ) as 'id' | 'ticketNumber';
+
+    const ticketId = identifierType === 'ticketNumber'
+        ? await resolveTicketIdByTicketNumber(context, itemIndex)
+        : String(context.getNodeParameter('id', itemIndex));
+
+    if (!ticketId || ticketId.trim() === '') {
+        throw new Error('Ticket ID is required for summary');
+    }
+
+    let includeRaw = false;
+    try {
+        includeRaw = Boolean(context.getNodeParameter('includeRaw', itemIndex, false));
+    } catch {
+        includeRaw = false;
+    }
+
+    let summaryTextLimit = 500;
+    try {
+        summaryTextLimit = Number(context.getNodeParameter('summaryTextLimit', itemIndex, 500));
+        if (!Number.isFinite(summaryTextLimit) || summaryTextLimit < 0) {
+            summaryTextLimit = 500;
+        }
+    } catch {
+        summaryTextLimit = 500;
+    }
+
+    const ticketResponse = await autotaskApiRequest.call(
+        context,
+        'GET',
+        `Tickets/${ticketId}`,
+    ) as { item?: IAutotaskEntity };
+
+    const rawTicket = ticketResponse.item;
+    if (!rawTicket || typeof rawTicket !== 'object') {
+        throw new Error(`Ticket with ID ${ticketId} was not found`);
+    }
+
+    // Always enrich with reference and picklist labels, and flatten UDFs — no UI toggles needed.
+    const enrichedTicket = await processOutputMode(rawTicket, ENTITY_TYPE, context, itemIndex, {
+        addPicklistLabels: true,
+        addReferenceLabels: true,
+    }) as IAutotaskEntity;
+    const ticket = flattenUdfs(enrichedTicket as unknown as IDataObject) as unknown as IAutotaskEntity;
+
+    const credentials = await context.getCredentials('autotaskApi') as IAutotaskCredentials;
+    const aliasMap = shouldApplyAliases(credentials) ? buildAliasMap(credentials) : null;
+
+    const now = new Date();
+    const ticketRecord = ticket as unknown as Record<string, unknown>;
+
+    // Detect ticket type early (needed for conditional changeRequestLinks count fetch).
+    // Mirrors detectTicketType() in ticket-summary.ts — keep in sync.
+    const earlyType = String(ticketRecord.ticketType_label ?? '').toLowerCase();
+    let earlyDetectedType = 'Unknown';
+    if (earlyType.includes('change request')) earlyDetectedType = 'Change Request';
+    else if (earlyType.includes('incident')) earlyDetectedType = 'Incident';
+    else if (earlyType.includes('problem')) earlyDetectedType = 'Problem';
+    else if (earlyType.includes('service request')) earlyDetectedType = 'Service Request';
+    else if (earlyType.includes('alert')) earlyDetectedType = 'Alert';
+    else {
+        const numType = Number(ticketRecord.ticketType);
+        if (numType === 4) earlyDetectedType = 'Change Request';
+        else if (numType === 2) earlyDetectedType = 'Incident';
+        else if (numType === 3) earlyDetectedType = 'Problem';
+        else if (numType === 1) earlyDetectedType = 'Service Request';
+        else if (numType === 5) earlyDetectedType = 'Alert';
+    }
+
+    const { counts: childCounts } = await fetchTicketChildCounts(context, ticketId, earlyDetectedType);
+
+    const summaryResult = await buildTicketSummary(
+        context,
+        ticketRecord,
+        childCounts,
+        { includeRaw, summaryTextLimit },
+        aliasMap,
+        now,
+    );
+
+    return { json: summaryResult as unknown as IDataObject };
+}
+
 export async function executeTicketOperation(
     this: IExecuteFunctions,
 ): Promise<INodeExecutionData[][]> {
     const items = this.getInputData();
     const returnData: INodeExecutionData[] = [];
     const operation = this.getNodeParameter('operation', 0) as string;
+
+    const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+    const aliasMap = shouldApplyAliases(credentials) ? buildAliasMap(credentials) : null;
 
     for (let i = 0; i < items.length; i++) {
         try {
@@ -362,6 +460,7 @@ export async function executeTicketOperation(
                 case 'get': {
                     const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this);
                     const response = await getOp.execute(i);
+                    if (aliasMap) applyChangeInfoAliases(response as Record<string, unknown>, aliasMap);
                     returnData.push({ json: response });
                     break;
                 }
@@ -370,11 +469,29 @@ export async function executeTicketOperation(
                     const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this);
                     const filters = await getManyOp.buildFiltersFromResourceMapper(i);
                     const response = await getManyOp.execute({ filter: filters }, i);
+                    if (aliasMap) {
+                        for (const item of response) {
+                            applyChangeInfoAliases(item as Record<string, unknown>, aliasMap);
+                        }
+                    }
                     returnData.push(...getManyOp.processReturnData(response));
                     break;
                 }
+
                 case 'slaHealthCheck': {
                     const response = await executeSlaHealthCheck(this, i);
+                    if (aliasMap && (response.json as Record<string, unknown>).ticket) {
+                        applyChangeInfoAliases(
+                            (response.json as Record<string, unknown>).ticket as Record<string, unknown>,
+                            aliasMap,
+                        );
+                    }
+                    returnData.push(response);
+                    break;
+                }
+
+                case 'summary': {
+                    const response = await executeTicketSummary(this, i);
                     returnData.push(response);
                     break;
                 }

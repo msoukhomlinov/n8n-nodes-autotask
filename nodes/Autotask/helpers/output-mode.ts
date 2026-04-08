@@ -70,15 +70,20 @@ export function getOutputModeConfig(context: IExecuteFunctions, itemIndex: numbe
 }
 
 /**
- * Process entities according to output mode configuration
+ * Process entities according to output mode configuration.
+ * Pass `overrides` to bypass node-parameter reading and force specific settings
+ * (used by operations that always apply enrichment without exposing UI toggles).
  */
 export async function processOutputMode<T extends IAutotaskEntity>(
     entities: T | T[],
     entityType: string,
     context: IExecuteFunctions,
-    itemIndex: number = 0
+    itemIndex: number = 0,
+    overrides?: OutputModeOptions,
 ): Promise<T | T[]> {
-    const config = getOutputModeConfig(context, itemIndex);
+    const config = overrides
+        ? { outputMode: 'idsAndLabels' as OutputMode, addPicklistLabels: false, addReferenceLabels: false, ...overrides }
+        : getOutputModeConfig(context, itemIndex);
 
     // Handle single entity case
     const entitiesArray = Array.isArray(entities) ? entities : [entities];

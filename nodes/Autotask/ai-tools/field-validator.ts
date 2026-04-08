@@ -127,6 +127,7 @@ export function validateEntityId(
         'transferOwnership',
         'whoAmI',
         'slaHealthCheck',
+        'summary',
         'getByResource',
         'getByYear',
     ];

@@ -299,6 +299,79 @@ export class AutotaskApi implements ICredentialType {
 				},
 			},
 		},
+		// Change Info Field Aliases
+		{
+			displayName: 'Enrich Ticket Output with Change Info Field Aliases',
+			name: 'includeChangeInfoAliasesInOutput',
+			type: 'boolean',
+			default: false,
+			description: 'Whether to append alias-named copies of changeInfoField1..5 to Ticket read outputs. Aliases are configured below and reflect tenant-defined field labels in Autotask.',
+		},
+		{
+			displayName: 'Change Info Field 1 Alias',
+			name: 'changeInfoField1Alias',
+			type: 'string',
+			default: 'issueBusinessImpact',
+			placeholder: 'issueBusinessImpact',
+			description: 'Alias for changeInfoField1. Appended as changeInfoField1_{alias} in ticket output.',
+			displayOptions: {
+				show: {
+					includeChangeInfoAliasesInOutput: [true],
+				},
+			},
+		},
+		{
+			displayName: 'Change Info Field 2 Alias',
+			name: 'changeInfoField2Alias',
+			type: 'string',
+			default: 'changesToBeMade',
+			placeholder: 'changesToBeMade',
+			description: 'Alias for changeInfoField2. Appended as changeInfoField2_{alias} in ticket output.',
+			displayOptions: {
+				show: {
+					includeChangeInfoAliasesInOutput: [true],
+				},
+			},
+		},
+		{
+			displayName: 'Change Info Field 3 Alias',
+			name: 'changeInfoField3Alias',
+			type: 'string',
+			default: 'implementationPlan',
+			placeholder: 'implementationPlan',
+			description: 'Alias for changeInfoField3. Appended as changeInfoField3_{alias} in ticket output.',
+			displayOptions: {
+				show: {
+					includeChangeInfoAliasesInOutput: [true],
+				},
+			},
+		},
+		{
+			displayName: 'Change Info Field 4 Alias',
+			name: 'changeInfoField4Alias',
+			type: 'string',
+			default: 'reversionPlan',
+			placeholder: 'reversionPlan',
+			description: 'Alias for changeInfoField4. Appended as changeInfoField4_{alias} in ticket output.',
+			displayOptions: {
+				show: {
+					includeChangeInfoAliasesInOutput: [true],
+				},
+			},
+		},
+		{
+			displayName: 'Change Info Field 5 Alias',
+			name: 'changeInfoField5Alias',
+			type: 'string',
+			default: 'risksInvolved',
+			placeholder: 'risksInvolved',
+			description: 'Alias for changeInfoField5. Appended as changeInfoField5_{alias} in ticket output.',
+			displayOptions: {
+				show: {
+					includeChangeInfoAliasesInOutput: [true],
+				},
+			},
+		},
 	];
 
 	authenticate: IAuthenticateGeneric = {

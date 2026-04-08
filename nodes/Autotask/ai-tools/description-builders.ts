@@ -213,6 +213,22 @@ export function buildCompanySearchByDomainDescription(resourceName: string): str
     );
 }
 
+export function buildTicketSummaryDescription(resourceName: string): string {
+    return (
+        'Get a compact, type-aware summary of any Autotask ticket. ' +
+        'Automatically detects ticket type (Service Request, Incident, Problem, Change Request, Alert) and prioritises the most relevant fields. ' +
+        'Filters out null and empty fields to reduce noise. ' +
+        "Includes a 'computed' block with pre-calculated values: ageHours, daysSinceLastActivity, isAssigned, isOverdue, hoursUntilDue, slaStatus, slaNextDueHours. " +
+        "Includes a 'childCounts' block with counts of: notes, timeEntries, attachments, additionalConfigurationItems, additionalContacts, checklistItems (with completed/remaining breakdown), and changeRequestLinks (Change Request tickets only). " +
+        "Includes a 'relationships' block when the ticket is linked to a project, problem ticket, or opportunity. " +
+        "Use 'summaryTextLimit' to cap description/resolution length (default 500 chars). " +
+        "Set 'includeRaw=true' to also receive the full original ticket payload. " +
+        "For full SLA milestone timing and elapsed hours, use slaHealthCheck instead. " +
+        `Identify the ticket with 'id' (numeric) or 'ticketNumber' (e.g. T20240615.0001). ` +
+        `If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
+    );
+}
+
 export function buildTicketSlaHealthCheckDescription(resourceName: string): string {
     return (
         'Run an SLA health check for a ticket using either numeric id or ticketNumber. ' +
@@ -316,6 +332,9 @@ export function buildUnifiedDescription(
                 break;
             case 'slaHealthCheck':
                 summary = `operation '${op}': Run SLA health check for a ticket using 'id' or 'ticketNumber'.`;
+                break;
+            case 'summary':
+                summary = `operation '${op}': Get a compact type-aware ticket summary with computed values, child counts, and relationships.`;
                 break;
             case 'getPosted':
                 summary = `operation '${op}': Get posted time entries with optional filters.`;

@@ -111,6 +111,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         const hasUpdate = operations.includes('update');
         const hasCreate = operations.includes('create');
         const hasSlaHealthCheck = operations.includes('slaHealthCheck');
+        const hasSummary = operations.includes('summary');
         const hasSearchByDomain = operations.includes('searchByDomain');
         const hasMoveConfigItem = operations.includes('moveConfigurationItem');
         const hasMoveToCompany = operations.includes('moveToCompany');
@@ -120,8 +121,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         const hasGetByResource = operations.includes('getByResource');
         const hasGetByYear = operations.includes('getByYear');
 
-        // id — used by get, delete, update, slaHealthCheck, approve, reject
-        if (hasGetOrDelete || hasUpdate || hasSlaHealthCheck || hasApproveOrReject) {
+        // id — used by get, delete, update, slaHealthCheck, summary, approve, reject
+        if (hasGetOrDelete || hasUpdate || hasSlaHealthCheck || hasSummary || hasApproveOrReject) {
             shape.id = rz.number().optional().describe('Entity ID. Required for get, delete, update, approve, and reject operations.');
         }
 
@@ -188,6 +189,16 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         if (hasSlaHealthCheck) {
             shape.ticketNumber = rz.string().optional().describe('Ticket number (e.g. T20240615.0674). Provide this or id.');
             shape.ticketFields = rz.string().optional().describe('Optional comma-separated ticket fields to return.');
+        }
+
+        // summary fields
+        if (hasSummary) {
+            // ticketNumber may already be added by hasSlaHealthCheck block
+            if (!shape.ticketNumber) {
+                shape.ticketNumber = rz.string().optional().describe('Ticket number (e.g. T20240615.0674). Provide this or id.');
+            }
+            shape.includeRaw = rz.boolean().optional().describe('When true, includes the full unfiltered ticket payload under a raw key.');
+            shape.summaryTextLimit = rz.number().optional().describe('Maximum characters for description and resolution fields in the summary. Default 500. Pass 0 for no limit.');
         }
 
         // create / update fields from metadata

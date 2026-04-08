@@ -10,6 +10,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 	// BillingCode entity (read-only)
 	{ name: 'BillingCode', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'BillingItems', operations: { [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'ChangeRequestLink', resourceKey: 'changeRequestLinks', operations: { [OperationType.CREATE]: 'self', [OperationType.DELETE]: 'self', [OperationType.READ]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'ChecklistLibrary', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'ChecklistLibraryChecklistItem', childOf: 'ChecklistLibrary', subname: 'ChecklistItems', parentIdField: 'checklistLibraryID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'ClassificationIcon', operations: { [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },

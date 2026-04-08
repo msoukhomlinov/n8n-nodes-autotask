@@ -14,7 +14,7 @@ import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/reso
 import { describeResource } from './helpers/aiHelper';
 import { executeAiTool, type ToolExecutorParams } from './ai-tools/tool-executor';
 import { buildUnifiedDescription } from './ai-tools/description-builders';
-import { RuntimeDynamicStructuredTool, runtimeZod } from './ai-tools/runtime';
+import { RuntimeDynamicStructuredTool, runtimeZod, getLazyLogWrapper } from './ai-tools/runtime';
 import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
 import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
 import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
@@ -37,6 +37,7 @@ const SUPPORTED_TOOL_OPERATIONS = [
     'delete',
     'whoAmI',
     'slaHealthCheck',
+    'summary',
     'createIfNotExists',
     'approve',
     'reject',
@@ -57,7 +58,6 @@ export class AutotaskAiTools implements INodeType {
         name: 'autotaskAiTools',
         icon: 'file:autotask.svg',
         group: ['output'],
-        usableAsTool: true,
         version: 1,
         description: 'Expose Autotask operations as individual AI tools for the AI Agent',
         codex: {
@@ -232,7 +232,14 @@ export class AutotaskAiTools implements INodeType {
             },
         });
 
-        return { response: unifiedTool };
+        // Wrap with logWrapper for n8n execution view visibility.
+        // getLazyLogWrapper() returns null if @n8n/ai-utilities is unavailable
+        // (graceful degradation — tool works without it).
+        // ensureRuntime() was already called above via runtimeZod/RuntimeDynamicStructuredTool.
+        const logWrapFn = getLazyLogWrapper();
+        const wrappedTool = logWrapFn ? logWrapFn(unifiedTool, this) : unifiedTool;
+
+        return { response: wrappedTool };
     }
 
     /**
@@ -407,6 +414,7 @@ async function getToolResourceOperations(this: ILoadOptionsFunctions): Promise<I
         getMany: 'Get many (with filters)',
         searchByDomain: 'Search by domain',
         slaHealthCheck: 'SLA health check',
+        summary: 'Ticket summary',
         getPosted: 'Get posted time entries',
         getUnposted: 'Get unposted time entries',
         count: 'Count',

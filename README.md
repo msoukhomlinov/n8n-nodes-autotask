@@ -83,6 +83,7 @@ The node supports the following Autotask resources:
 | Appointment | Manage appointments (scheduled calendar work assigned to resources) |
 | Billing Code | Manage billing codes for time entries and charges |
 | Billing Items | Manage Autotask Billing Items, which represent billable items that have been approved and posted for potential invoicing |
+| Change Request Link | Manage links between Change Request tickets and Problem/Incident tickets. Includes Create If Not Exists for idempotent link creation. |
 | Checklist Library | Manage modular checklist components that can be applied to tickets or tasks |
 | Checklist Library Checklist Item | Manage individual checklist items within checklist library templates |
 | Classification Icon | Query classification icons used for categorising and visually identifying items |
@@ -166,7 +167,7 @@ The node supports the following Autotask resources:
 | Tag | Manage ticket and article tags with unique label requirements |
 | Tag Alias | Manage alternative names for tags to improve searchability |
 | Tag Group | Organise tags into categories with display colours and system group protections |
-| Ticket | Manage service tickets |
+| Ticket | Manage service tickets. Includes SLA Health Check (SLA milestone timing and status) and Summary (compact type-aware summary with filtered fields, computed values, child entity counts, and relationships). |
 | Ticket Attachment | Manage files attached directly to tickets |
 | Ticket Category | Manage ticket categories with display colors and default field values |
 | Ticket Category Field Default | Query default field values for ticket categories |
@@ -688,6 +689,17 @@ The node includes an enhanced file-based caching system to improve performance b
 - **Cache Directory**: Optional path to a directory where cache files will be stored
 
 > **IMPORTANT**: This node uses dynamic picklists and field enrichers to convert numerical values into human-readable labels through dynamic lookups. It's strongly recommended to keep caching enabled to avoid excessive API calls. Without caching, each picklist and reference field lookup requires separate API calls, which can quickly consume your API rate limits, especially in workflows with many operations or large data sets.
+
+### Change Info Field Aliases
+
+Autotask exposes five tenant-defined text fields on the Ticket entity (`changeInfoField1`..`changeInfoField5`) used on Change Request tickets to capture sections such as business impact, change steps, implementation plan, rollback plan, and risks. The labels for these fields are configured per-tenant in the Autotask UI.
+
+To make these fields easier to work with in workflows and AI agents, the credential supports optional alias enrichment:
+
+- **Enrich Ticket Output with Change Info Field Aliases**: When enabled, all Ticket read operations (`get`, `getMany`, `getManyAdvanced`, `slaHealthCheck`, `summary`) append alias-named copies of these fields alongside the originals.
+- **Change Info Field 1–5 Alias**: Alias names appended as `changeInfoField{N}_{alias}` (e.g. `changeInfoField1_issueBusinessImpact`). Defaults: `issueBusinessImpact`, `changesToBeMade`, `implementationPlan`, `reversionPlan`, `risksInvolved`.
+
+Original `changeInfoField1..5` fields are always preserved. Aliases are normalised to safe property-name tokens; blank aliases fall back to `field1`..`field5`; duplicate tokens are suffixed deterministically.
 
 ### Label Enrichment and Field Processing
 

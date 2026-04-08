@@ -57,6 +57,7 @@ import { executeTimeEntryAttachmentOperation } from './resources/timeEntryAttach
 import { executeTimeOffRequestOperation } from './resources/timeOffRequests/execute';
 import { executeBillingCodeOperation } from './resources/billingCodes/execute';
 import { executeBillingItemsOperation } from './resources/billingItems/execute';
+import { executeChangeRequestLinkOperation } from './resources/changeRequestLinks/execute';
 import { executeChecklistLibraryOperation } from './resources/checklistLibraries/execute';
 import { executeChecklistLibraryChecklistItemOperation } from './resources/checklistLibraryChecklistItems/execute';
 import { executeClassificationIconOperation } from './resources/classificationIcons/execute';
@@ -142,6 +143,7 @@ import { timeEntryAttachmentFields } from './resources/timeEntryAttachments/desc
 import { timeOffRequestFields } from './resources/timeOffRequests/description';
 import { billingCodeFields } from './resources/billingCodes/description';
 import { billingItemsFields } from './resources/billingItems/description';
+import { changeRequestLinkFields } from './resources/changeRequestLinks/description';
 import { checklistLibraryFields } from './resources/checklistLibraries/description';
 import { checklistLibraryChecklistItemFields } from './resources/checklistLibraryChecklistItems/description';
 import { classificationIconFields } from './resources/classificationIcons/description';
@@ -328,6 +330,7 @@ const autotaskDescription: INodeTypeDescription = {
 			}),
 			...addOperationsToResource(billingCodeFields, { resourceName: 'billingCode' }),
 			...addOperationsToResource(billingItemsFields, { resourceName: 'billingItems' }),
+			...addOperationsToResource(changeRequestLinkFields, { resourceName: 'changeRequestLink' }),
 			...addOperationsToResource(checklistLibraryFields, { resourceName: 'checklistLibrary' }),
 			...addOperationsToResource(checklistLibraryChecklistItemFields, { resourceName: 'checklistLibraryChecklistItem' }),
 			...addOperationsToResource(classificationIconFields, { resourceName: 'classificationIcon' }),
@@ -497,6 +500,8 @@ export class Autotask implements INodeType {
 				return executeBillingCodeOperation.call(this);
 			case 'billingItems':
 				return executeBillingItemsOperation.call(this);
+			case 'changeRequestLink':
+				return executeChangeRequestLinkOperation.call(this);
 			case 'checklistLibrary':
 				return executeChecklistLibraryOperation.call(this);
 			case 'checklistLibraryChecklistItem':

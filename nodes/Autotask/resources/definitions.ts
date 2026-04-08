@@ -35,6 +35,11 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Autotask Billing Items, which represent billable items that have been approved and posted for potential invoicing',
 	},
 	{
+		name: 'Change Request Link',
+		value: 'changeRequestLink',
+		description: 'Link Change Request tickets to related Problem or Incident tickets in Autotask',
+	},
+	{
 		name: 'Checklist Library',
 		value: 'checklistLibrary',
 		description: 'Manage Checklist Libraries, which define modular checklist components that can be applied to tickets or tasks',

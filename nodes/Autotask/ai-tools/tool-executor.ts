@@ -6,6 +6,8 @@ import { mapFilterOp } from './schema-generator';
 import { validateEntityId, validateReadFields, validateWriteFields } from './field-validator';
 import { formatApiError, formatFilterConstraintError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES } from './error-formatter';
 import { resolveLabelsToIds, resolveFilterLabelsToIds, type LabelResolution, type PendingLabelConfirmation } from '../helpers/label-resolution';
+import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../helpers/change-info-aliases';
+import type { IAutotaskCredentials } from '../types/base/auth';
 
 export interface ToolExecutorParams {
     resource: string;
@@ -744,10 +746,29 @@ export async function executeAiTool(
                     }
                     return 'id';
                 }
+                if (effectiveOperation === 'summary') {
+                    if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim() !== '') {
+                        return 'ticketNumber';
+                    }
+                    return 'id';
+                }
                 return fallbackValue;
             case 'ticketNumber':
                 if (effectiveOperation === 'slaHealthCheck') {
                     return typeof params.ticketNumber === 'string' ? params.ticketNumber.trim() : fallbackValue;
+                }
+                if (effectiveOperation === 'summary') {
+                    return typeof params.ticketNumber === 'string' ? params.ticketNumber.trim() : fallbackValue;
+                }
+                return fallbackValue;
+            case 'includeRaw':
+                if (effectiveOperation === 'summary') {
+                    return typeof params.includeRaw === 'boolean' ? params.includeRaw : false;
+                }
+                return fallbackValue;
+            case 'summaryTextLimit':
+                if (effectiveOperation === 'summary') {
+                    return typeof params.summaryTextLimit === 'number' ? params.summaryTextLimit : 500;
                 }
                 return fallbackValue;
             case 'slaTicketFields':
@@ -809,6 +830,7 @@ export async function executeAiTool(
                 opportunity: ['title'],
                 ticketAdditionalConfigurationItem: ['configurationItemID'],
                 ticketAdditionalContact: ['contactID'],
+                changeRequestLink: ['changeRequestTicketID', 'problemOrIncidentTicketID'],
             };
             const dedupFields = (params.dedupFields as string[]) ?? DEFAULT_DEDUP_FIELDS[resource] ?? [];
             const errorOnDuplicate = params.errorOnDuplicate === true;
@@ -856,6 +878,9 @@ export async function executeAiTool(
             } else if (resource === 'ticketAdditionalContact') {
                 const { createTicketAdditionalContactIfNotExists } = await import('../helpers/ticket-additional-contact-creator');
                 compoundResult = await createTicketAdditionalContactIfNotExists(context, 0, compoundOptions);
+            } else if (resource === 'changeRequestLink') {
+                const { createChangeRequestLinkIfNotExists } = await import('../helpers/change-request-link-creator');
+                compoundResult = await createChangeRequestLinkIfNotExists(context, 0, compoundOptions);
             } else if (resource === 'holidaySet') {
                 const { createHolidaySetIfNotExists } = await import('../helpers/holiday-set-creator');
                 compoundResult = await createHolidaySetIfNotExists(context, 0, compoundOptions);
@@ -927,6 +952,23 @@ export async function executeAiTool(
             pendingConfirmations: allPendingConfirmations.length > 0 ? allPendingConfirmations : undefined,
             effectiveOffset: recencyResult.isActive ? 0 : effectiveOffset,
         };
+
+        // Apply Change Info Field aliases to ticket read results.
+        // Note: 'summary' applies aliases internally via buildTicketSummary — do not apply here.
+        if (resource === 'ticket' && effectiveOperation !== 'summary') {
+            const creds = await context.getCredentials('autotaskApi') as IAutotaskCredentials;
+            if (shouldApplyAliases(creds)) {
+                const aliasMap = buildAliasMap(creds);
+                if (effectiveOperation === 'slaHealthCheck') {
+                    const ticketData = (records[0] as Record<string, unknown>)?.ticket;
+                    if (ticketData) applyChangeInfoAliases(ticketData as Record<string, unknown>, aliasMap);
+                } else {
+                    for (const rec of records) {
+                        applyChangeInfoAliases(rec as Record<string, unknown>, aliasMap);
+                    }
+                }
+            }
+        }
 
         // Build structured response per operation type
         return formatToolResponse(resource, effectiveOperation, records, params, responseContext);
@@ -1094,6 +1136,14 @@ function formatToolResponse(
         }
 
         case 'slaHealthCheck': {
+            if (firstRecord === null || firstRecord === undefined) {
+                const identifier = params.ticketNumber ?? params.id ?? 'unknown';
+                return JSON.stringify(formatNotFoundError(resource, operation, identifier as number | string));
+            }
+            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+        }
+
+        case 'summary': {
             if (firstRecord === null || firstRecord === undefined) {
                 const identifier = params.ticketNumber ?? params.id ?? 'unknown';
                 return JSON.stringify(formatNotFoundError(resource, operation, identifier as number | string));

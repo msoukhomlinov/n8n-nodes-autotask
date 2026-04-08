@@ -37,6 +37,12 @@ export const ticketFields: INodeProperties[] = [
                 action: 'Run SLA health check for a ticket',
             },
             {
+                name: 'Summary',
+                value: 'summary',
+                description: 'Get a compact, type-aware summary of a ticket with child entity counts',
+                action: 'Get ticket summary',
+            },
+            {
                 name: 'Update',
                 value: 'update',
                 description: 'Update a ticket',
@@ -69,10 +75,10 @@ export const ticketFields: INodeProperties[] = [
         displayOptions: {
             show: {
                 resource: ['ticket'],
-                operation: ['slaHealthCheck'],
+                operation: ['slaHealthCheck', 'summary'],
             },
         },
-        description: 'How to identify the ticket for SLA health checks',
+        description: 'How to identify the ticket for SLA health checks or summary',
     },
     {
         displayName: 'Ticket ID',
@@ -97,7 +103,7 @@ export const ticketFields: INodeProperties[] = [
         displayOptions: {
             show: {
                 resource: ['ticket'],
-                operation: ['slaHealthCheck'],
+                operation: ['slaHealthCheck', 'summary'],
                 ticketIdentifierType: ['id'],
             },
         },
@@ -113,7 +119,7 @@ export const ticketFields: INodeProperties[] = [
         displayOptions: {
             show: {
                 resource: ['ticket'],
-                operation: ['slaHealthCheck'],
+                operation: ['slaHealthCheck', 'summary'],
                 ticketIdentifierType: ['ticketNumber'],
             },
         },
@@ -138,6 +144,22 @@ export const ticketFields: INodeProperties[] = [
             showOnlySelected: true,
             searchable: true,
         },
+    },
+    {
+        displayName: 'Include Raw Ticket',
+        name: 'includeRaw',
+        type: 'boolean',
+        default: false,
+        displayOptions: { show: { resource: ['ticket'], operation: ['summary'] } },
+        description: 'Whether to include the full unfiltered ticket payload in the response',
+    },
+    {
+        displayName: 'Summary Text Limit',
+        name: 'summaryTextLimit',
+        type: 'number',
+        default: 500,
+        displayOptions: { show: { resource: ['ticket'], operation: ['summary'] } },
+        description: 'Maximum characters for description and resolution fields (0 = no limit)',
     },
     {
         displayName: 'Fields',

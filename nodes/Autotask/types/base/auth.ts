@@ -5,6 +5,12 @@ export interface IAutotaskCredentials {
 	zone: string;
 	customZoneUrl?: string;
 	timezone: string;
+	includeChangeInfoAliasesInOutput?: boolean;
+	changeInfoField1Alias?: string;
+	changeInfoField2Alias?: string;
+	changeInfoField3Alias?: string;
+	changeInfoField4Alias?: string;
+	changeInfoField5Alias?: string;
 }
 
 export interface ICredentialsConfig {

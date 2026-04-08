@@ -4,8 +4,22 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [2.9.0] - 2026-04-08
 
+### Added
+
+- **Change Info Field aliases (credential-level)**: Ticket read operations (`get`, `getMany`, `getManyAdvanced`, `slaHealthCheck`, AI tool reads) can now append stable alias fields alongside the canonical `changeInfoField1..5`. Enable `Enrich Ticket Output with Change Info Field Aliases` in the credential and configure up to 5 alias names (defaults: `issueBusinessImpact`, `changesToBeMade`, `implementationPlan`, `reversionPlan`, `risksInvolved`). Output fields are named `changeInfoField{N}_{alias}`. Original fields are preserved unchanged. Aliases are normalised to safe property-name tokens; blank aliases fall back to `field1`..`field5`; duplicate tokens are suffixed deterministically (`_2`, `_3`, …).
+- **New resource: Change Request Link**: `get`, `getMany`, `count`, `create`, `delete`, `createIfNotExists`. Idempotent link between a Change Request ticket and a Problem/Incident ticket (dedup: `changeRequestTicketID` + `problemOrIncidentTicketID`).
+- **Ticket: Summary**: New operation (`ticket.summary`) providing a compact, type-aware summary of any Autotask ticket. Accepts `id` or `ticketNumber`. Automatically detects ticket type (Change Request, Incident, Problem, Service Request, Alert) and prioritises the most relevant fields. Filters out null/empty fields; truncates long text fields (`description`, `resolution`) to a configurable `summaryTextLimit` (default 500 chars). Reference label enrichment, picklist label enrichment, and UDF flattening are always applied — no per-operation toggles required. Returns four enrichment blocks alongside the filtered summary: `computed` (ageHours, daysSinceLastActivity, isAssigned, isOverdue, hoursUntilDue, lightweight slaStatus + slaNextDueHours derived from ticket's own fields), `relationships` (linkedProblem, project, opportunity — when present), `childCounts` (notes, timeEntries, attachments, additionalConfigurationItems, additionalContacts, checklistItems with completed/remaining breakdown, changeRequestLinks for CR tickets — fetched in parallel), and `_meta` (detectedTicketType, excludedFieldNames, truncatedFields, countErrors, generatedAt). Set `includeRaw=true` to also receive the full unfiltered ticket payload (post-enrichment). Available in both the standard node and AI Tools.
+
+### Fixed
+
+- **`ticket.summary`: suppress raw `changeInfoField1..5` when aliases are active**: When Change Info Field aliases are enabled, the summary output now omits the original `changeInfoField{N}` keys and retains only the aliased `changeInfoField{N}_{alias}` versions, eliminating redundant duplicate fields.
+- **Remove `usableAsTool: true` from AutotaskAiTools**: Caused n8n to register a phantom `AutotaskAiToolsTool` variant that throws at runtime (n8n PR #13075). Dedicated tool nodes with `supplyData()` must not use this flag.
+- **`runtime.ts` two-strategy module resolution**: `getRuntimeRequire()` now tries `require.main` first, preventing local devDep copies of `@langchain/core` from shadowing n8n's copy (fixes `instanceof` failures).
+- **Resolve `zod` from n8n's top-level `node_modules`**: `@langchain/classic` bundles a nested `zod` copy that differs from n8n's top-level `zod`. `normalizeToolSchema` in `n8n-nodes-langchain` does `instanceof ZodType` against the top-level copy — schemas built with the nested copy fail that check and get corrupted ("object schema missing properties"). Zod is now resolved from `require.main` separately from `DynamicStructuredTool`.
+
 ### Changed
 
+- **Add `logWrapper` from `@n8n/ai-utilities` (best-effort)**: Tool returned from `supplyData()` is now wrapped with `logWrapper` when available, adding input/output logging to n8n's execution view. Gracefully skipped if unavailable.
 - **Dev dependency updates**: `@langchain/core` 0.3→1.x, `@langchain/classic` 1.0.29, `n8n-workflow` 2.x, `@types/node` ^22. Removed `@types/moment-timezone`.
 - **`NodeConnectionType` enum → string literals**: Reverted the v2.7.0 enum imports back to plain string literals (`'main'`, `'ai_tool'`) across all three node files for compatibility with `n8n-workflow` 2.x which changed the enum export.
 - **tsconfig.json `paths` for `@langchain/core` 1.x**: Added subpath mapping for `@langchain/core/tools` — required because `@langchain/core` 1.x uses package.json `exports` which `moduleResolution: "node"` does not resolve.
