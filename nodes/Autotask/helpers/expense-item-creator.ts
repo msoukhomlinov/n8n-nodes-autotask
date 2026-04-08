@@ -38,14 +38,14 @@ const FIELD_TYPE_MAP: Record<string, string> = {
 	odometerStart: 'double',
 	odometerEnd: 'double',
 	description: 'string',
-	expenseReportID: 'id',
-	companyID: 'id',
-	projectID: 'id',
-	taskID: 'id',
-	ticketID: 'id',
-	expenseCategory: 'id',
-	paymentType: 'id',
-	workType: 'id',
+	expenseReportID: 'integer',
+	companyID: 'integer',
+	projectID: 'integer',
+	taskID: 'integer',
+	ticketID: 'integer',
+	expenseCategory: 'integer',
+	paymentType: 'integer',
+	workType: 'integer',
 };
 
 function getFieldType(field: string): string {

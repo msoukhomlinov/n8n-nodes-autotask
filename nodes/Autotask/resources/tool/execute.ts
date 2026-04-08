@@ -60,6 +60,8 @@ import { executeContractExclusionSetExcludedWorkTypesOperation } from '../contra
 import { executeCountryOperation } from '../countries/execute';
 import { executeDepartmentOperation } from '../departments/execute';
 import { executeDomainRegistrarOperation } from '../domainRegistrar/execute';
+import { executeExpenseReportOperation } from '../expenseReports/execute';
+import { executeExpenseItemOperation } from '../expenseItems/execute';
 import { executeHolidaySetOperation } from '../holidaySets/execute';
 import { executeHolidayOperation } from '../holidays/execute';
 import { executeInvoiceOperation } from '../invoices/execute';
@@ -81,6 +83,7 @@ import { executeQuoteLocationOperation } from '../quoteLocations/execute';
 import { executeQuoteTemplateOperation } from '../quoteTemplates/execute';
 import { executeResourceOperation } from '../resources/execute';
 import { executeResourceRoleOperation } from '../resourceRoles/execute';
+import { executeResourceRoleQueueOperation } from '../resourceRoleQueues/execute';
 import { executeRoleOperation } from '../roles/execute';
 import { executeServiceCallOperation } from '../serviceCalls/execute';
 import { executeServiceCallTicketOperation } from '../serviceCallTickets/execute';
@@ -182,6 +185,8 @@ const RESOURCE_EXECUTORS: Record<
 	country: executeCountryOperation,
 	department: executeDepartmentOperation,
 	DomainRegistrar: executeDomainRegistrarOperation,
+	expenseReport: executeExpenseReportOperation,
+	expenseItem: executeExpenseItemOperation,
 	holidaySet: executeHolidaySetOperation,
 	holiday: executeHolidayOperation,
 	invoice: executeInvoiceOperation,
@@ -203,6 +208,7 @@ const RESOURCE_EXECUTORS: Record<
 	quoteTemplate: executeQuoteTemplateOperation,
 	resource: executeResourceOperation,
 	resourceRole: executeResourceRoleOperation,
+	resourceRoleQueue: executeResourceRoleQueueOperation,
 	resourceSkill: executeResourceSkillOperation,
 	resourceTimeOffAdditional: executeResourceTimeOffAdditionalOperation,
 	resourceTimeOffApprover: executeResourceTimeOffApproverOperation,
