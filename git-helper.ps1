@@ -142,7 +142,7 @@ param(
 $PRIVATE_GIT_DIR = ".private-git"
 
 # Paths managed by the private repo -supports exact names and glob patterns (e.g. ".cursor*")
-$PRIVATE_PATHS = @(".claude", ".cursor*", "docs", "CLAUDE.md", "AGENT.md", ".agent*")
+$PRIVATE_PATHS = @(".claude", ".claude-plugin", ".cursor*", "docs", "skills", "CLAUDE.md", "AGENT.md", ".agent*")
 
 # Paths that must always be in .gitignore regardless of $PRIVATE_PATHS.
 # The bare private-git directory must never be staged into the public repo.
