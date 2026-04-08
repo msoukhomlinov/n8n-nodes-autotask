@@ -15,7 +15,16 @@ async function resolveResourceId(
 		const resolution = await resolveLabelsToIds(context, ENTITY_TYPE, { resourceID: rawId });
 		const resolved = resolution.values.resourceID;
 		if (resolved !== undefined) return resolved as number;
-	} catch (_) {}
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		// If the value is non-numeric (a name/label), resolution failure means we can't proceed
+		if (typeof rawId === 'string' && !/^\d+$/.test(rawId)) {
+			throw new Error(
+				`Could not resolve resource name '${rawId}' to a numeric ID: ${msg}. Use a numeric resourceID instead.`,
+			);
+		}
+		console.warn(`[resourceTimeOffBalance] Label resolution failed for resourceID '${rawId}': ${msg}`);
+	}
 	return rawId;
 }
 

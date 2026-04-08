@@ -1,4 +1,3 @@
-import { NodeConnectionType } from 'n8n-workflow';
 import type {
 	INodeType,
 	INodeTypeDescription,
@@ -65,7 +64,7 @@ export class AutotaskTrigger implements INodeType {
 			name: 'Autotask Trigger',
 		},
 		inputs: [],
-		outputs: [NodeConnectionType.Main],
+		outputs: ['main'],
 		credentials: [
 			{
 				name: 'autotaskApi',

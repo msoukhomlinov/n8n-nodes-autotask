@@ -127,8 +127,16 @@ export function validateEntityId(
         'transferOwnership',
         'whoAmI',
         'slaHealthCheck',
+        'getByResource',
+        'getByYear',
     ];
     if (noIdOperations.includes(operation)) {
+        return { valid: true };
+    }
+
+    // resourceTimeOffAdditional.update uses resourceID from fieldsToMap as the path parameter
+    // (PATCH Resources/{resourceID}/TimeOffAdditional) — there is no separate entity-level ID
+    if (resource === 'resourceTimeOffAdditional' && operation === 'update') {
         return { valid: true };
     }
 

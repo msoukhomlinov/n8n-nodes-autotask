@@ -2,11 +2,20 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.9.0] - 2026-04-08
+
+### Changed
+
+- **Dev dependency updates**: `@langchain/core` 0.3→1.x, `@langchain/classic` 1.0.29, `n8n-workflow` 2.x, `@types/node` ^22. Removed `@types/moment-timezone`.
+- **`NodeConnectionType` enum → string literals**: Reverted the v2.7.0 enum imports back to plain string literals (`'main'`, `'ai_tool'`) across all three node files for compatibility with `n8n-workflow` 2.x which changed the enum export.
+- **tsconfig.json `paths` for `@langchain/core` 1.x**: Added subpath mapping for `@langchain/core/tools` — required because `@langchain/core` 1.x uses package.json `exports` which `moduleResolution: "node"` does not resolve.
+- **UI property ordering**: `fieldsToMap` resource mapper now renders after shared getMany options in the standard node UI.
+
 ## [2.8.0] - 2026-04-07
 
 ### Changed
 
-- **`createIfNotExists` drift-update via `updateFields`**: All 10 compound operations accept an optional `updateFields` parameter. When a duplicate is found and `errorOnDuplicate` is false, listed fields are compared against the existing record and any drifted fields are patched. Response includes `outcome: 'updated'` with changed fields, or `outcome: 'skipped'` when nothing changed. Omitting `updateFields` leaves existing behaviour unchanged.
+- **`createIfNotExists` drift-update via `updateFields`**: All 13 compound operations accept an optional `updateFields` parameter. When a duplicate is found and `errorOnDuplicate` is false, listed fields are compared against the existing record and any drifted fields are patched. Response includes `outcome: 'updated'` with changed fields, or `outcome: 'skipped'` when nothing changed. Omitting `updateFields` leaves existing behaviour unchanged.
 - **New resource: Resource Role Queue**: `get`, `getMany`, `count`, `create`, `update`. Resource-to-queue role assignments.
 - **New resource: Expense Report**: `get`, `getMany`, `count`, `create`, `update`. Expense reports submitted by resources for approval and reimbursement.
 - **New resource: Expense Item**: `get`, `getMany`, `count`, `create`, `update`, `createIfNotExists`. Line items on an expense report.
@@ -27,6 +36,25 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - **New resource: Resource Time Off Approver**: `get`, `getMany`, `count`. Authorised approvers per resource for time off requests. Reference fields `resourceID` and `approverResourceID` support name-based resolution in AI tools.
 - **New resource: Resource Time Off Balance**: `get` (all years), `getByYear` (specific year). Accrued, used, planned, and waiting-approval hours per resource per year. AI tools: `getByResource` and `getByYear` with resource name resolution.
 - **New AI operations**: `getByResource` and `getByYear` — two new special operations for parent-path entities where records are accessed by `resourceID` rather than their own record ID.
+
+### Fixed
+
+- **`createIfNotExists` fallback for unimplemented resources**: Previously fell through silently to `executeToolOperation`; now returns explicit `INVALID_OPERATION` error with guidance to use `create` instead.
+- **`getByResource`/`getByYear` empty-array false positive**: Empty array `[]` was incorrectly treated as `ENTITY_NOT_FOUND`; now returns a valid success response (resource exists, no entries).
+- **Label resolution failure for non-numeric resource IDs**: `resourceTimeOffBalances` and `resourceTimeOffAdditional` now throw an actionable error when name→ID resolution fails instead of passing the raw string into the API URL.
+- **Holiday set dedup skip warning**: Logs a warning when dedup fields are configured but values are undefined in `createFields`, instead of silently skipping the dedup check.
+- **Attachment error context**: All 5 attachment handlers now include parent entity ID and filename in the error message when the API response lacks an attachment ID.
+- **Impersonation for approve/reject/delete**: `isWriteOperation` gate now includes `approve`, `reject`, and `delete` operations for impersonation resource ID resolution.
+- **`expenseItem` dedup fields**: Removed redundant `expenseReportID` (already scoped by parent); dedup now uses `['expenseDate', 'description']`.
+- **`isNumericId` tightening**: `contract-service-creator` and `ticket-charge-creator` now reject zero, negative, and zero-padded string IDs.
+- **Silent `catch` blocks**: `resourceTimeOffAdditional` and `resourceTimeOffBalances` now log resolution failures via `console.warn` instead of swallowing silently.
+- **ResourceMapper defaults**: `ticketAdditionalConfigurationItems` and `ticketAdditionalContacts` use `{ mappingMode: 'defineBelow', value: null }` instead of `{}`.
+- **Missing executor registration**: `expenseItemAttachment` added to `RESOURCE_EXECUTORS` in `tool/execute.ts`.
+- **Department UI fixes**: `count` operation was missing from the dropdown; `update` operation referenced the wrong resource mapper name.
+- **Holiday `delete` missing parent ID**: `holidaySetID` was not passed on delete operations.
+- **`resourceTimeOffAdditional` get response shape**: Used `.item` (singular) instead of `.items` array from `QueryActionResult`, returning wrong data shape.
+- **Opportunity `createIfNotExists` dedup**: Server-side dedup filter, `DEFAULT_DEDUP_FIELDS`, and `company_not_found` reason were incorrect.
+- **`parentUrlSegment` entity metadata**: Added override field to `IEntityMetadata` for child entities with non-standard URL segment names (e.g. expense item attachments).
 
 ## [2.7.2] - 2026-04-02
 

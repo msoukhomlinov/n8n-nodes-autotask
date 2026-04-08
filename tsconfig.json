@@ -4,6 +4,12 @@
 		"module": "commonjs",
 		"moduleResolution": "node",
 		"target": "es2019",
+		"baseUrl": ".",
+		// @langchain/core 1.x uses package.json "exports" which moduleResolution:"node" ignores.
+		// Map subpath imports to their actual dist/ locations.
+		"paths": {
+			"@langchain/core/tools": ["node_modules/@langchain/core/dist/tools/index.d.ts"]
+		},
 		"lib": ["es2019", "es2020", "es2022.error"],
 		"declarationMap": true,
 		"useUnknownInCatchVariables": false,

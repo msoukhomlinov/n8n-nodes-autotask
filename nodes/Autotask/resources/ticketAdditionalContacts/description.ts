@@ -135,7 +135,7 @@ export const ticketAdditionalContactFields: INodeProperties[] = [
 		name: 'fieldsToMap',
 		type: 'resourceMapper',
 		noDataExpression: true,
-		default: {},
+		default: { mappingMode: 'defineBelow', value: null },
 		required: true,
 		typeOptions: {
 			loadOptionsDependsOn: ['resource', 'operation'],

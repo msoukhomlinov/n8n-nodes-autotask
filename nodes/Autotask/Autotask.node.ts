@@ -1,7 +1,6 @@
 import {
 	type ResourceMapperFields,
 	NodeOperationError,
-	NodeConnectionType,
 } from 'n8n-workflow';
 import type {
 	IExecuteFunctions,
@@ -295,8 +294,8 @@ const autotaskDescription: INodeTypeDescription = {
 		defaults: {
 			name: 'Autotask',
 		},
-		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main],
+		inputs: ['main'],
+		outputs: ['main'],
 		credentials: [
 			{
 				name: 'autotaskApi',

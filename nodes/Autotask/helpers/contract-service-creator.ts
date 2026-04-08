@@ -65,7 +65,7 @@ async function resolveContractId(
 	contractID: string | number,
 ): Promise<{ contractId: number | null; warnings: string[] }> {
 	const warnings: string[] = [];
-	const isNumericId = typeof contractID === 'number' || /^\d+$/.test(String(contractID));
+	const isNumericId = typeof contractID === 'number' || (typeof contractID === 'string' && /^\d+$/.test(contractID) && parseInt(contractID, 10) > 0);
 
 	if (isNumericId) {
 		const numericId = Number(contractID);

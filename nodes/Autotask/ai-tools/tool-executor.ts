@@ -606,7 +606,7 @@ export async function executeAiTool(
 
     // Resolve impersonationResourceId name/email → numeric ID for write operations only.
     // Gated to write ops to avoid unnecessary Resource entity list fetch on reads.
-    const isWriteOperation = ['create', 'createIfNotExists', 'update', 'moveConfigurationItem', 'moveToCompany', 'transferOwnership'].includes(effectiveOperation);
+    const isWriteOperation = ['create', 'createIfNotExists', 'update', 'moveConfigurationItem', 'moveToCompany', 'transferOwnership', 'approve', 'reject', 'delete'].includes(effectiveOperation);
     let resolvedImpersonationId: number | undefined;
     const rawImpersonation = params.impersonationResourceId;
     if (isWriteOperation && rawImpersonation !== undefined && rawImpersonation !== null && rawImpersonation !== '') {
@@ -803,7 +803,7 @@ export async function executeAiTool(
                 timeEntry: ['dateWorked', 'hoursWorked'],
                 contractService: ['serviceID'],
                 contract: ['contractName'],
-                expenseItem: ['expenseReportID', 'expenseDate', 'description'],
+                expenseItem: ['expenseDate', 'description'],
                 holiday: ['holidayDate'],
                 holidaySet: ['holidaySetName'],
                 opportunity: ['title'],
@@ -862,6 +862,11 @@ export async function executeAiTool(
             } else if (resource === 'holiday') {
                 const { createHolidayIfNotExists } = await import('../helpers/holiday-creator');
                 compoundResult = await createHolidayIfNotExists(context, 0, compoundOptions);
+            } else {
+                return JSON.stringify(wrapError(resource, `${resource}.createIfNotExists`, ERROR_TYPES.INVALID_OPERATION,
+                    `createIfNotExists is not implemented for resource '${resource}'.`,
+                    `Use autotask_${resource} with operation 'create' instead.`,
+                ));
             }
 
             if (compoundResult) {
@@ -1193,7 +1198,6 @@ function formatToolResponse(
             if (
                 entity === null ||
                 entity === undefined ||
-                (Array.isArray(entity) && entity.length === 0) ||
                 (typeof entity === 'object' && !Array.isArray(entity) && Object.keys(entity as object).length === 0)
             ) {
                 const rid = params.resourceID ?? 'unknown';

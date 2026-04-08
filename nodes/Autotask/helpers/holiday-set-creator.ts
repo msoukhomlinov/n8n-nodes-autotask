@@ -58,9 +58,14 @@ async function findDuplicateHolidaySet(
 		});
 	}
 
+	if (apiFilter.length === 0) {
+		console.warn(`[holidaySetCreator] Dedup fields [${dedupFields.join(', ')}] configured but no matching values in createFields — skipping dedup check`);
+		return { duplicate: null, matchedFields: [] };
+	}
+
 	const response = await autotaskApiRequest.call(
 		ctx, 'POST', 'HolidaySets/query',
-		{ filter: apiFilter.length > 0 ? apiFilter : [{ field: 'id', op: 'gt', value: 0 }] },
+		{ filter: apiFilter },
 	);
 
 	const items = extractItems(response as IDataObject);

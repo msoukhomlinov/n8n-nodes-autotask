@@ -312,6 +312,13 @@ export function addOperationsToResource(
 				}
 			}
 
+			// Move fieldsToMap (resource mapper) to end so it appears after shared getMany options in the UI
+			const fieldsToMapIndex = updatedProperties.findIndex(prop => prop.name === 'fieldsToMap');
+			if (fieldsToMapIndex !== -1) {
+				const [fieldsToMapProp] = updatedProperties.splice(fieldsToMapIndex, 1);
+				updatedProperties.push(fieldsToMapProp);
+			}
+
 			return updatedProperties;
 		}
 	}

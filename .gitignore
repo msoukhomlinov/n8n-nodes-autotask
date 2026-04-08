@@ -85,6 +85,7 @@ CLAUDE.md
 /AGENT.md
 /.agent*
 
-# Claude plugin + skills — managed by private repo
+# Claude plugin + skills + plans — managed by private repo
 /.claude-plugin/
 /skills/
+/plans/

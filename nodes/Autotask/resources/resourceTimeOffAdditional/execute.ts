@@ -23,7 +23,15 @@ export async function executeResourceTimeOffAdditionalOperation(
 							const resolution = await resolveLabelsToIds(this, ENTITY_TYPE, { resourceID: resourceId });
 							const resolved = resolution.values.resourceID;
 							if (resolved !== undefined) resourceId = resolved as number;
-						} catch (_) {}
+						} catch (err) {
+							const msg = err instanceof Error ? err.message : String(err);
+							if (typeof resourceId === 'string' && !/^\d+$/.test(resourceId)) {
+								throw new Error(
+									`Could not resolve resource name '${resourceId}' to a numeric ID: ${msg}. Use a numeric resourceID instead.`,
+								);
+							}
+							console.warn(`[resourceTimeOffAdditional] Label resolution failed for resourceID '${resourceId}': ${msg}`);
+						}
 					}
 					const response = await autotaskApiRequest.call(
 						this,

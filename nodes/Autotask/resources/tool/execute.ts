@@ -62,6 +62,7 @@ import { executeDepartmentOperation } from '../departments/execute';
 import { executeDomainRegistrarOperation } from '../domainRegistrar/execute';
 import { executeExpenseReportOperation } from '../expenseReports/execute';
 import { executeExpenseItemOperation } from '../expenseItems/execute';
+import { executeExpenseItemAttachmentOperation } from '../expenseItemAttachments/execute';
 import { executeHolidaySetOperation } from '../holidaySets/execute';
 import { executeHolidayOperation } from '../holidays/execute';
 import { executeInvoiceOperation } from '../invoices/execute';
@@ -187,6 +188,7 @@ const RESOURCE_EXECUTORS: Record<
 	DomainRegistrar: executeDomainRegistrarOperation,
 	expenseReport: executeExpenseReportOperation,
 	expenseItem: executeExpenseItemOperation,
+	expenseItemAttachment: executeExpenseItemAttachmentOperation,
 	holidaySet: executeHolidaySetOperation,
 	holiday: executeHolidayOperation,
 	invoice: executeInvoiceOperation,

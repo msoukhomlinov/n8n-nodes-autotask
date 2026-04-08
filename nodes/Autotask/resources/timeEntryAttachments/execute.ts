@@ -53,10 +53,14 @@ export async function executeTimeEntryAttachmentOperation(
 						timeEntryID: Number(timeEntryId),
 					};
 
-					const response = await autotaskApiRequest.call(this, 'POST', endpoint, payload as IDataObject) as { item: { itemId: number } };
+					const response = await autotaskApiRequest.call(this, 'POST', endpoint, payload as IDataObject) as { item?: { itemId?: number } };
+					const attachmentId = response?.item?.itemId;
+					if (attachmentId === undefined || attachmentId === null) {
+						throw new Error(`Attachment '${fileName}' for time entry ${timeEntryId} created but API response did not contain an attachment ID`);
+					}
 					returnData.push({
 						json: {
-							id: response.item?.itemId,
+							id: attachmentId,
 							timeEntryId: Number(timeEntryId),
 							title: title,
 							fileName: fileName,

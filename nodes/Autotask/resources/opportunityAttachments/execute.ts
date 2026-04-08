@@ -52,10 +52,14 @@ export async function executeOpportunityAttachmentOperation(
 						publish: publish,
 					};
 
-					const response = await autotaskApiRequest.call(this, 'POST', endpoint, payload as IDataObject) as { item: { itemId: number } };
+					const response = await autotaskApiRequest.call(this, 'POST', endpoint, payload as IDataObject) as { item?: { itemId?: number } };
+					const attachmentId = response?.item?.itemId;
+					if (attachmentId === undefined || attachmentId === null) {
+						throw new Error(`Attachment '${fileName}' for opportunity ${opportunityId} created but API response did not contain an attachment ID`);
+					}
 					returnData.push({
 						json: {
-							id: response.item?.itemId,
+							id: attachmentId,
 							opportunityId: Number(opportunityId),
 							title: title,
 							fileName: fileName,

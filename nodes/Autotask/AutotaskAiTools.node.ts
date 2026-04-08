@@ -1,4 +1,4 @@
-import { NodeOperationError, NodeConnectionType } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type {
     IDataObject,
     IExecuteFunctions,
@@ -80,7 +80,7 @@ export class AutotaskAiTools implements INodeType {
             name: 'Autotask AI Tools',
         },
         inputs: [],
-        outputs: [{ type: NodeConnectionType.AiTool, displayName: 'Tools' }],
+        outputs: [{ type: 'ai_tool', displayName: 'Tools' }],
         credentials: [{ name: 'autotaskApi', required: true }],
         properties: [
             {
@@ -163,7 +163,7 @@ export class AutotaskAiTools implements INodeType {
 
         // Fetch field metadata once — reused by schema + description + executor
         const needsReadFields = effectiveOps.some((op) =>
-            ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(op),
+            ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain', 'getByResource', 'getByYear'].includes(op),
         );
         const needsWriteFields = effectiveOps.some((op) => ['create', 'createIfNotExists', 'update'].includes(op));
 
@@ -297,7 +297,7 @@ export class AutotaskAiTools implements INodeType {
 
         // Fetch field metadata for label resolution and field validation (mirrors supplyData)
         const needsReadFields = effectiveOps.some((op) =>
-            ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(op),
+            ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain', 'getByResource', 'getByYear'].includes(op),
         );
         const needsWriteFields = effectiveOps.some((op) => ['create', 'createIfNotExists', 'update'].includes(op));
 

@@ -69,7 +69,7 @@ export async function createTicketChargeIfNotExists(
 	// - Numeric value → look up by id field
 	// - String containing non-digit characters → look up by ticketNumber
 	// - String of only digits → treat as numeric ID
-	const isNumericId = typeof ticketID === 'number' || /^\d+$/.test(String(ticketID));
+	const isNumericId = typeof ticketID === 'number' || (typeof ticketID === 'string' && /^\d+$/.test(ticketID) && parseInt(ticketID, 10) > 0);
 
 	const config = isNumericId
 		? TICKET_CHARGE_CONFIG_BY_ID
