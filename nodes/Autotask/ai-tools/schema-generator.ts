@@ -115,10 +115,33 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         const hasMoveConfigItem = operations.includes('moveConfigurationItem');
         const hasMoveToCompany = operations.includes('moveToCompany');
         const hasTransferOwnership = operations.includes('transferOwnership');
+        const hasApproveOrReject = operations.includes('approve') || operations.includes('reject');
+        const hasReject = operations.includes('reject');
+        const hasGetByResource = operations.includes('getByResource');
+        const hasGetByYear = operations.includes('getByYear');
 
-        // id — used by get, delete, update, slaHealthCheck
-        if (hasGetOrDelete || hasUpdate || hasSlaHealthCheck) {
-            shape.id = rz.number().optional().describe('Entity ID. Required for get, delete, update operations.');
+        // id — used by get, delete, update, slaHealthCheck, approve, reject
+        if (hasGetOrDelete || hasUpdate || hasSlaHealthCheck || hasApproveOrReject) {
+            shape.id = rz.number().optional().describe('Entity ID. Required for get, delete, update, approve, and reject operations.');
+        }
+
+        // resourceID — used by getByResource and getByYear (parent-path operations)
+        if (hasGetByResource || hasGetByYear) {
+            shape.resourceID = rz.union([rz.number(), rz.string()]).optional().describe(
+                'Resource ID or name. Required for getByResource and getByYear operations. Accepts a numeric ID or a human-readable name (auto-resolved).',
+            );
+        }
+
+        // year — used by getByYear
+        if (hasGetByYear) {
+            shape.year = rz.number().int().optional().describe(
+                'Calendar year (e.g. 2024). Required for getByYear operation.',
+            );
+        }
+
+        // rejectReason — used only by reject
+        if (hasReject) {
+            shape.rejectReason = rz.string().optional().describe('Reason for rejecting the time off request. Recommended for audit trail.');
         }
 
         // fields — column selection
