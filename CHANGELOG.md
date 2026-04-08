@@ -6,21 +6,27 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Changed
 
-- **`createIfNotExists` drift-update via `updateFields`**: All 10 compound operations accept an optional `updateFields` parameter. When a duplicate is found and `errorOnDuplicate` is false, listed fields are compared against the existing record using type-aware logic (date normalisation, decimal rounding, case-insensitive strings). Drifted fields trigger a PATCH returning `outcome: 'updated'` with `fieldsUpdated`/`fieldsCompared`; no drift returns `outcome: 'skipped'` with `reason: 'duplicate_no_changes'`. Omitting `updateFields` leaves behaviour unchanged. Available as multiOptions (standard node) and `array(string)` (AI tools).
-- **New resource: Resource Role Queue**: `get`, `getMany`, `count`, `create`, `update`. Resource-to-queue assignments. Write path: `/V1.0/Resources/{resourceID}/RoleQueues`.
+- **`createIfNotExists` drift-update via `updateFields`**: All 10 compound operations accept an optional `updateFields` parameter. When a duplicate is found and `errorOnDuplicate` is false, listed fields are compared against the existing record and any drifted fields are patched. Response includes `outcome: 'updated'` with changed fields, or `outcome: 'skipped'` when nothing changed. Omitting `updateFields` leaves existing behaviour unchanged.
+- **New resource: Resource Role Queue**: `get`, `getMany`, `count`, `create`, `update`. Resource-to-queue role assignments.
 - **New resource: Expense Report**: `get`, `getMany`, `count`, `create`, `update`. Expense reports submitted by resources for approval and reimbursement.
-- **New resource: Expense Item**: `get`, `getMany`, `count`, `create`, `update`, `createIfNotExists`. Line items on an expense report. Default dedup by `expenseReportID` + `expenseDate` + `description`.
+- **New resource: Expense Item**: `get`, `getMany`, `count`, `create`, `update`, `createIfNotExists`. Line items on an expense report.
 - **New resource: Expense Item Attachment**: `getMany`, `count`, `create`, `download`, `delete`. Receipt files attached to expense items. Standard node only.
-- **New resource: Ticket Additional Contact**: `get`, `getMany`, `count`, `create`, `delete`, `createIfNotExists`. Additional contact associations on tickets; write path `/V1.0/Tickets/{parentId}/AdditionalContacts`. Default dedup by `contactID`.
-- **New resource: Ticket Additional Configuration Item**: `get`, `getMany`, `count`, `create`, `delete`, `createIfNotExists`. Additional CI associations on tickets; write path `/V1.0/Tickets/{parentId}/AdditionalConfigurationItems`. Default dedup by `configurationItemID`.
-- **Infrastructure: `parentUrlSegment`**: Optional field on `IEntityMetadata` for child entities whose parent URL segment differs from the pluralised entity name (e.g. `ExpenseItem` uses `/Expenses/` not `/ExpenseReports/`).
-- **New resource: Department**: `get`, `getMany`, `count`, `create`, `update`. Organisational units for resource assignment. No delete (API constraint).
-- **Opportunity**: Added `createIfNotExists` (default dedup by `title` + `companyID`, supports `updateFields`); fixed `get` unavailability in AI tools by adding `READ: 'self'` to entity metadata.
-- **New resource: Opportunity Attachment**: `create` (binary upload), `download`, `getMany`, `count`, `delete` for files attached to Opportunities; child endpoint `/Opportunities/{parentId}/Attachments/`.
-- **New resource: Opportunity Category**: `get`, `getMany`, `count`, `update` for pipeline category records; no create/delete (API constraint).
+- **New resource: Ticket Additional Contact**: `get`, `getMany`, `count`, `create`, `delete`, `createIfNotExists`. Additional contact associations on a ticket.
+- **New resource: Ticket Additional Configuration Item**: `get`, `getMany`, `count`, `create`, `delete`, `createIfNotExists`. Additional configuration item associations on a ticket.
+- **New resource: Department**: `get`, `getMany`, `count`, `create`, `update`. Organisational units for resource assignment.
+- **Opportunity**: Added `createIfNotExists`; fixed `get` not being available in the AI tools node.
+- **New resource: Opportunity Attachment**: `getMany`, `count`, `create`, `download`, `delete`. Files attached to opportunities.
+- **New resource: Opportunity Category**: `get`, `getMany`, `count`, `update`. Pipeline category records.
 - **Credential zone label**: Renamed `Australia / New Zealand` (webservices6) to `Old Australian zone (webservices6)`.
-- **New resource: Holiday Set**: `get`, `getMany`, `count`, `create`, `update`, `delete`, `createIfNotExists`. Named groups of holidays used for scheduling. Default dedup by `holidaySetName`.
-- **New resource: Holiday**: `get`, `getMany`, `count`, `create`, `update`, `delete`, `createIfNotExists`. Individual holiday dates within a holiday set; write path `/V1.0/HolidaySets/{holidaySetID}/Holidays`. Default dedup by `holidayDate` scoped to `holidaySetID`. Validates parent holiday set exists before creating.
+- **New resource: Holiday Set**: `get`, `getMany`, `count`, `create`, `update`, `delete`, `createIfNotExists`. Named groups of holidays used for scheduling.
+- **New resource: Holiday**: `get`, `getMany`, `count`, `create`, `update`, `delete`, `createIfNotExists`. Individual holiday dates within a holiday set.
+- **Skill**: `get`, `getMany`, `count` now available in the AI tools node. Skills are read-only system-defined proficiency categories.
+- **New resource: Resource Skill**: `get`, `getMany`, `count`, `update`. Skill proficiency assignments linking a resource to a skill with an associated level.
+- **New resource: Time Off Request**: `get`, `getMany`, `count`, `approve`, `reject`. Read and action time off requests submitted by resources.
+- **New resource: Resource Time Off Additional**: `get`, `update`. Annual and additional time-off hour quotas (vacation, personal, sick, floating holiday) per resource per year. AI tools: `getByResource` and `update` with resource name resolution.
+- **New resource: Resource Time Off Approver**: `get`, `getMany`, `count`. Authorised approvers per resource for time off requests. Reference fields `resourceID` and `approverResourceID` support name-based resolution in AI tools.
+- **New resource: Resource Time Off Balance**: `get` (all years), `getByYear` (specific year). Accrued, used, planned, and waiting-approval hours per resource per year. AI tools: `getByResource` and `getByYear` with resource name resolution.
+- **New AI operations**: `getByResource` and `getByYear` — two new special operations for parent-path entities where records are accessed by `resourceID` rather than their own record ID.
 
 ## [2.7.2] - 2026-04-02
 
