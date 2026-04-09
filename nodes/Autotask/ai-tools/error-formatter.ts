@@ -1,3 +1,5 @@
+import type { LabelResolution, PendingLabelConfirmation } from '../helpers/label-resolution';
+
 // ---------------------------------------------------------------------------
 // Result Envelope Standard (v1)
 // ---------------------------------------------------------------------------
@@ -8,6 +10,54 @@ export interface SuccessEnvelope {
 	resource: string;
 	operation: string;
 	result: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Result Envelope Standard v2 — ResultPayload
+// ---------------------------------------------------------------------------
+
+export type ResultKind =
+	| 'item'      // get, whoAmI, slaHealthCheck, getByResource, getByYear
+	| 'list'      // getMany, getPosted, getUnposted, searchByDomain
+	| 'count'
+	| 'mutation'  // create, update, delete, approve, reject, moveConfigurationItem, moveToCompany, transferOwnership
+	| 'compound'  // createIfNotExists
+	| 'summary'   // ticket.summary
+	| 'metadata'; // describeFields, listPicklistValues
+
+export interface ResultFlags {
+	mutated: boolean;
+	/** Safe to retry with the same parameters without unintended side effects. False for create. */
+	retryable: boolean;
+	/** Completed but a resolution failure may have affected written data. */
+	partial: boolean;
+	truncated: boolean;
+	needsUserConfirmation: boolean;
+	/** !needsUserConfirmation && !partial. False = stop and present to user before continuing. */
+	safeToContinue: boolean;
+}
+
+export interface PaginationInfo {
+	offset: number;
+	hasMore: boolean;
+	nextOffset?: number;
+	totalAvailable?: number;
+}
+
+export interface ResultPayload {
+	kind: ResultKind;
+	data: unknown;
+	flags: ResultFlags;
+	/** Actionable: resolution failures, data correctness concerns, recency window overflow. */
+	warnings: string[];
+	/** Always present. Non-empty means LLM must confirm before proceeding. */
+	pendingConfirmations: PendingLabelConfirmation[];
+	/** Always present. Labels auto-resolved to IDs for this operation. */
+	appliedResolutions: LabelResolution[];
+	/** Present only for list kind. */
+	pagination?: PaginationInfo;
+	/** Informational only: pagination hints, recency context, query behaviour notes. */
+	notes?: string[];
 }
 
 export interface ErrorEnvelope {
