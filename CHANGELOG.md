@@ -6,6 +6,13 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Changed
 
+- **`describeOperation` operation**: New always-available metadata helper (alongside `describeFields`/`listPicklistValues`). Pass `targetOperation='<op>'` to get full documentation — purpose, parameters, and usage notes.
+- **`getMany`/`getPosted`/`getUnposted`: `filtersJson` parameter**: Accepts a JSON array of Autotask `IFilterCondition` objects for complex filters (3+ conditions, nested OR/IN). Mutually exclusive with flat `filter_field` triplets. Recency/since/until always AND-appended on top.
+- **`getMany`/`getPosted`/`getUnposted`: `returnAll` parameter**: When true, fetches ALL matching records via API-native pagination; response still subject to 100-record truncation safety valve.
+- **`MAX_QUERY_LIMIT` raised 100 → 500; `MAX_RESPONSE_RECORDS` raised 25 → 100**: Reduces truncation noise for realistic result sets.
+- **Tool description truncation suffix** now directs LLM to `describeOperation` for operation-specific detail.
+- **`getMany` description updated**: Offset pagination de-emphasised; `filtersJson`/`returnAll`/ordering notes added.
+
 - **Enforceable write resolution blocking**: Write operations (create, update, delete, approve, reject, move, transfer, createIfNotExists) are now blocked before execution when label/reference resolution fails. New `WRITE_RESOLUTION_INCOMPLETE` error type with structured context: `pendingConfirmations` (ambiguous matches with candidates), `unresolvedFields` (no-match fields), `infraErrors` (infrastructure failures during resolution), `impersonationFailed` (unresolvable impersonationResourceId). Previously, writes executed with raw unresolved values and returned advisory `safeToContinue: false` after the mutation. Read operations are unaffected — filter label resolution continues to degrade gracefully.
 - **Description safety header + visible truncation**: `buildUnifiedDescription()` now places a write-safety header as the first section (guaranteed to survive truncation) when write operations are configured. Silent `.slice(0, 2000)` replaced with `truncateDescription()` that cuts at word boundary and appends a visible `...[description truncated — call with operation='describeFields' for full field detail]` suffix.
 
