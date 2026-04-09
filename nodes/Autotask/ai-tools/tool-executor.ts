@@ -405,6 +405,69 @@ function isResolutionFailureWarning(w: string): boolean {
 }
 
 /**
+ * Pre-execution write guard. Returns a serialised ErrorEnvelope JSON string if any
+ * resolution failure condition blocks the write, or null to allow execution to proceed.
+ *
+ * Blocking conditions:
+ *  - pendingConfirmations.length > 0       (partial/ambiguous field matches)
+ *  - warning matches isResolutionFailureWarning() but is not [INFRASTRUCTURE]  (no-match fields)
+ *  - warning starts with [INFRASTRUCTURE]  (infra error during resolution)
+ *  - impersonationFailed === true          (unresolvable impersonationResourceId string)
+ */
+function buildWriteResolutionBlocker(
+    resource: string,
+    operation: string,
+    pendingConfirmations: import('../helpers/label-resolution').PendingLabelConfirmation[],
+    warnings: string[],
+    impersonationFailed: boolean,
+): string | null {
+    const unresolvedFields = warnings
+        .filter(w => isResolutionFailureWarning(w) && !w.startsWith('[INFRASTRUCTURE]') && !w.includes('Impersonation'))
+        .map(w => {
+            const fieldMatch = w.match(/for field '([^']+)'/);
+            return fieldMatch ? fieldMatch[1] : w;
+        });
+    const infraErrors = warnings.filter(w => w.startsWith('[INFRASTRUCTURE]'));
+
+    const hasBlock = pendingConfirmations.length > 0
+        || unresolvedFields.length > 0
+        || infraErrors.length > 0
+        || impersonationFailed;
+
+    if (!hasBlock) return null;
+
+    const parts: string[] = [];
+    if (pendingConfirmations.length > 0) {
+        const fields = pendingConfirmations.map(p => `'${p.field}'`).join(', ');
+        parts.push(`Ambiguous matches for field(s) ${fields} — multiple candidates found.`);
+    }
+    if (unresolvedFields.length > 0) {
+        parts.push(`No match found for field(s): ${unresolvedFields.map(f => `'${f}'`).join(', ')}.`);
+    }
+    if (infraErrors.length > 0) {
+        parts.push(`Resolution infrastructure error(s) prevented field lookup.`);
+    }
+    if (impersonationFailed) {
+        parts.push(`'impersonationResourceId' could not be resolved to a numeric resource ID.`);
+    }
+
+    const ctx: Record<string, unknown> = {};
+    if (pendingConfirmations.length > 0) ctx.pendingConfirmations = pendingConfirmations;
+    if (unresolvedFields.length > 0) ctx.unresolvedFields = unresolvedFields;
+    if (infraErrors.length > 0) ctx.infraErrors = infraErrors;
+    if (impersonationFailed) ctx.impersonationFailed = true;
+
+    return JSON.stringify(wrapError(
+        resource,
+        operation,
+        ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
+        `Write blocked: ${parts.join(' ')} Resolve all field references before retrying.`,
+        `Call autotask_${resource} with operation 'describeFields' to inspect field metadata, then retry with exact IDs or unambiguous labels.`,
+        ctx,
+    ));
+}
+
+/**
  * Construct a ResultPayload. Derives needsUserConfirmation and safeToContinue automatically.
  * Callers never set those two flags directly.
  */
@@ -854,6 +917,18 @@ export async function executeAiTool(
         }
     }
 
+    // Pre-execution write guard: block if any resolution failure condition exists.
+    if (isWriteOperation) {
+        const blocker = buildWriteResolutionBlocker(
+            resource,
+            effectiveOperation,
+            labelPendingConfirmations,
+            labelWarnings,
+            labelImpersonationFailed,
+        );
+        if (blocker !== null) return blocker;
+    }
+
     context.getNodeParameter = ((
         name: string,
         index: number,
@@ -1163,8 +1238,6 @@ export async function executeAiTool(
         const allResolutions = [...labelResolutions, ...filterResolutions];
         const allWarnings = [...labelWarnings, ...filterWarnings];
         const allPendingConfirmations = [...labelPendingConfirmations, ...filterPendingConfirmations];
-        // Reserve labelImpersonationFailed for write-safety guard in Task 4
-        void labelImpersonationFailed;
         // When recency is active, offset-based pagination is not supported — add a note
         const recencyOffsetNote = recencyResult.isActive && effectiveOffset > 0
             ? 'Offset is ignored when recency or since/until is active (recency re-sorts results by date).'
