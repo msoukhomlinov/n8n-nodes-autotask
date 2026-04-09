@@ -1080,7 +1080,7 @@ export async function executeAiTool(
                 const { createHolidayIfNotExists } = await import('../helpers/holiday-creator');
                 compoundResult = await createHolidayIfNotExists(context, 0, compoundOptions);
             } else {
-                return JSON.stringify(wrapError(resource, `${resource}.createIfNotExists`, ERROR_TYPES.INVALID_OPERATION,
+                return JSON.stringify(wrapError(resource, 'createIfNotExists', ERROR_TYPES.INVALID_OPERATION,
                     `createIfNotExists is not implemented for resource '${resource}'.`,
                     `Use autotask_${resource} with operation 'create' instead.`,
                 ));
@@ -1092,7 +1092,7 @@ export async function executeAiTool(
                     const parentRef = compoundResult.parentLookupValue ?? compoundResult.companyID ?? compoundResult.ticketID ?? 'unknown';
                     return JSON.stringify(wrapError(
                         resource,
-                        `${resource}.createIfNotExists`,
+                        'createIfNotExists',
                         ERROR_TYPES.ENTITY_NOT_FOUND,
                         `Parent entity not found: ${parentRef}`,
                         `Verify the parent entity identifier and retry.`,
@@ -1119,7 +1119,7 @@ export async function executeAiTool(
                 if (compoundResult.fieldsCompared !== undefined) compoundData.fieldsCompared = compoundResult.fieldsCompared;
                 if (compoundContext !== undefined) compoundData.context = compoundContext;
 
-                return JSON.stringify(wrapSuccess(resource, `${resource}.createIfNotExists`,
+                return JSON.stringify(wrapSuccess(resource, 'createIfNotExists',
                     buildResultPayload('compound', compoundData,
                         {
                             mutated: compoundResult.outcome !== 'skipped',
@@ -1399,6 +1399,10 @@ function formatToolResponse(
                     retryable: true,
                     partial: summaryRecord._meta?.countsPartial === true,
                     truncated: summaryRecord._meta?.truncationApplied === true,
+                }, {
+                    warnings: context.resolutionWarnings ?? [],
+                    pendingConfirmations: context.pendingConfirmations ?? [],
+                    appliedResolutions: context.resolutions ?? [],
                 }),
             ));
         }
