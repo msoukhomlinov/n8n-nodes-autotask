@@ -387,7 +387,7 @@ const N8N_METADATA_FIELDS = new Set([
 const N8N_METADATA_PREFIXES = ['Prompt__'];
 
 /** Compound operation outcomes that indicate a parent entity was not found — become ErrorEnvelope */
-export const PARENT_NOT_FOUND_OUTCOMES = new Set([
+const PARENT_NOT_FOUND_OUTCOMES = new Set([
 	'parent_not_found',      // defensive — remapped by thin wrappers but kept for safety
 	'company_not_found',     // contract, configurationItems, opportunity
 	'contract_not_found',    // contractCharge, contractService
@@ -396,18 +396,25 @@ export const PARENT_NOT_FOUND_OUTCOMES = new Set([
 	'holiday_set_not_found', // holiday
 ]);
 
+// TODO: Use in task #8 (update metadata early-return sites)
+void PARENT_NOT_FOUND_OUTCOMES;
+
 /** Returns true for warnings that indicate a resolution failure affecting written data. */
-export function isResolutionFailureWarning(w: string): boolean {
+// TODO: Use in task #8 (update metadata early-return sites)
+function isResolutionFailureWarning(w: string): boolean {
 	return w.startsWith('[INFRASTRUCTURE]')
 		|| w.includes('resolution failed')
 		|| w.includes('Proceeding with raw values');
 }
 
+void isResolutionFailureWarning;
+
 /**
  * Construct a ResultPayload. Derives needsUserConfirmation and safeToContinue automatically.
  * Callers never set those two flags directly.
  */
-export function buildResultPayload(
+// TODO: Use in tasks #3-#9
+function buildResultPayload(
 	kind: ResultKind,
 	data: unknown,
 	flags: Partial<Omit<import('./error-formatter').ResultFlags, 'needsUserConfirmation' | 'safeToContinue'>>,
@@ -444,9 +451,11 @@ export function buildResultPayload(
 	};
 }
 
+void buildResultPayload;
+
 /** Extract the canonical created-entity numeric ID from a compound creator result. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function buildCompoundEntityId(resource: string, result: any): number | undefined {
+function buildCompoundEntityId(resource: string, result: any): number | undefined {
 	switch (resource) {
 		case 'contractCharge':
 		case 'ticketCharge':
@@ -479,9 +488,11 @@ export function buildCompoundEntityId(resource: string, result: any): number | u
 	}
 }
 
+void buildCompoundEntityId;
+
 /** Extract the canonical existing-entity numeric ID from a compound creator result (skip/update). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function buildCompoundExistingId(resource: string, result: any): number | undefined {
+function buildCompoundExistingId(resource: string, result: any): number | undefined {
 	switch (resource) {
 		case 'contractCharge':
 		case 'ticketCharge':
@@ -512,9 +523,11 @@ export function buildCompoundExistingId(resource: string, result: any): number |
 	}
 }
 
+void buildCompoundExistingId;
+
 /** Build the context block (parent/scope fields) for a compound creator result. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function buildCompoundContext(resource: string, result: any): Record<string, unknown> | undefined {
+function buildCompoundContext(resource: string, result: any): Record<string, unknown> | undefined {
 	switch (resource) {
 		case 'contractCharge':
 			return result.contractId !== undefined ? { contractId: result.contractId } : undefined;
@@ -556,6 +569,8 @@ export function buildCompoundContext(resource: string, result: any): Record<stri
 			return undefined;
 	}
 }
+
+void buildCompoundContext;
 
 function compactDescribeResponse(response: DescribeResourceResponse): Record<string, unknown> {
     return {
