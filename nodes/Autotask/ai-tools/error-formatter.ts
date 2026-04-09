@@ -1,11 +1,13 @@
 import type { LabelResolution, PendingLabelConfirmation } from '../helpers/label-resolution';
 
 // ---------------------------------------------------------------------------
-// Result Envelope Standard (v1)
+// Result Envelope Standard (v2)
 // ---------------------------------------------------------------------------
 
+export const RESULT_SCHEMA_VERSION = '2' as const;
+
 export interface SuccessEnvelope {
-	schemaVersion: '1';
+	schemaVersion: typeof RESULT_SCHEMA_VERSION;
 	success: true;
 	resource: string;
 	operation: string;
@@ -16,52 +18,40 @@ export interface SuccessEnvelope {
 // Result Envelope Standard v2 — ResultPayload
 // ---------------------------------------------------------------------------
 
-export type ResultKind =
-	| 'item'      // get, whoAmI, slaHealthCheck, getByResource, getByYear
-	| 'list'      // getMany, getPosted, getUnposted, searchByDomain
-	| 'count'
-	| 'mutation'  // create, update, delete, approve, reject, moveConfigurationItem, moveToCompany, transferOwnership
-	| 'compound'  // createIfNotExists
-	| 'summary'   // ticket.summary
-	| 'metadata'; // describeFields, listPicklistValues
-
-export interface ResultFlags {
-	mutated: boolean;
-	/** Safe to retry with the same parameters without unintended side effects. False for create. */
-	retryable: boolean;
-	/** Completed but a resolution failure may have affected written data. */
-	partial: boolean;
-	truncated: boolean;
-	needsUserConfirmation: boolean;
-	/** !needsUserConfirmation && !partial. False = stop and present to user before continuing. */
-	safeToContinue: boolean;
-}
+export type ResultKind = 'entity' | 'collection' | 'mutation' | 'count' | 'action';
 
 export interface PaginationInfo {
-	offset: number;
-	hasMore: boolean;
+	offset?: number;
+	hasMore?: boolean;
 	nextOffset?: number;
+	truncated?: boolean;
 	totalAvailable?: number;
+}
+
+export interface MutationMeta {
+	itemId?: number | string | null;
+	deleted?: boolean;
+	mutated?: boolean;
+}
+
+export interface ResultMeta {
+	count?: number;
+	pagination?: PaginationInfo;
+	mutation?: MutationMeta;
+	notes?: string[];
+	resolvedLabels?: LabelResolution[];
+	resolutionWarnings?: string[];
+	pendingConfirmations?: PendingLabelConfirmation[];
 }
 
 export interface ResultPayload {
 	kind: ResultKind;
 	data: unknown;
-	flags: ResultFlags;
-	/** Actionable: resolution failures, data correctness concerns, recency window overflow. */
-	warnings: string[];
-	/** Always present. Non-empty means LLM must confirm before proceeding. */
-	pendingConfirmations: PendingLabelConfirmation[];
-	/** Always present. Labels auto-resolved to IDs for this operation. */
-	appliedResolutions: LabelResolution[];
-	/** Present only for list kind. */
-	pagination?: PaginationInfo;
-	/** Informational only: pagination hints, recency context, query behaviour notes. */
-	notes?: string[];
+	meta?: ResultMeta;
 }
 
 export interface ErrorEnvelope {
-	schemaVersion: '1';
+	schemaVersion: typeof RESULT_SCHEMA_VERSION;
 	error: true;
 	errorType: string;
 	resource: string;
@@ -106,7 +96,7 @@ function buildOperationString(resource: string, operation: string): string {
 
 export function wrapSuccess(resource: string, operation: string, result: ResultPayload): SuccessEnvelope {
 	return {
-		schemaVersion: '1',
+		schemaVersion: RESULT_SCHEMA_VERSION,
 		success: true,
 		resource,
 		operation: buildOperationString(resource, operation),
@@ -123,7 +113,7 @@ export function wrapError(
 	context?: Record<string, unknown>,
 ): ErrorEnvelope {
 	return {
-		schemaVersion: '1',
+		schemaVersion: RESULT_SCHEMA_VERSION,
 		error: true,
 		errorType,
 		resource,

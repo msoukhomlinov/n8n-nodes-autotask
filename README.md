@@ -66,12 +66,76 @@ The **Autotask AI Tools** node exposes Autotask operations as individual tools f
 
 Key AI Tools capabilities:
 
-- **Name-based label resolution**: The LLM can pass human-readable names for picklist and reference fields (e.g. `resourceID: "Will Spence"` instead of `resourceID: 29683`). Resolution is transparent — successful responses include a `resolvedLabels` array showing each mapping. Ambiguous matches produce `pendingConfirmations` for user confirmation. Works for both write operations and read filter values.
+- **Name-based label resolution**: The LLM can pass human-readable names for picklist and reference fields (e.g. `resourceID: "Will Spence"` instead of `resourceID: 29683`). Resolution is transparent — successful responses include `result.meta.resolvedLabels` showing each mapping. Ambiguous matches produce `result.meta.pendingConfirmations` for user confirmation. Works for both write operations and read filter values.
 - **Required fields in descriptions**: Create operation descriptions embed a compact required-fields summary with type info, eliminating the `describeFields` prerequisite for most create workflows.
 - **OR filter logic**: List operations accept a `filter_logic` parameter (`'and'` or `'or'`) to control how filter pairs are combined.
 - **Offset pagination**: List operations accept an `offset` parameter for paginating through results (up to 100 records). Responses include `hasMore` and `nextOffset` for continuation.
 - **Impersonation name resolution**: The `impersonationResourceId` parameter accepts a name or email in addition to numeric IDs.
 - **Idempotent creation**: `createIfNotExists` operations (see below) provide find-or-create semantics with configurable dedup fields.
+
+#### AI Tools response contract (normalised)
+
+All AI tool successes now share one invariant structure:
+
+- Envelope: `schemaVersion`, `success`, `resource`, `operation`, `result`
+- Result: `result.kind`, `result.data`, optional `result.meta`
+
+```json
+{
+  "schemaVersion": "2",
+  "success": true,
+  "resource": "ticket",
+  "operation": "ticket.get",
+  "result": {
+    "kind": "entity",
+    "data": { "id": 123, "title": "VPN issue" }
+  }
+}
+```
+
+Collection example (`getMany`, `getPosted`, `searchByDomain`):
+
+```json
+{
+  "result": {
+    "kind": "collection",
+    "data": [{ "id": 1 }, { "id": 2 }],
+    "meta": {
+      "count": 2,
+      "pagination": { "offset": 0, "hasMore": false, "truncated": false },
+      "notes": ["Optional info"],
+      "resolvedLabels": [],
+      "resolutionWarnings": [],
+      "pendingConfirmations": []
+    }
+  }
+}
+```
+
+Mutation example (`create`, `update`, `delete`, `createIfNotExists`):
+
+```json
+{
+  "result": {
+    "kind": "mutation",
+    "data": { "id": 456, "title": "Created ticket" },
+    "meta": {
+      "mutation": { "itemId": 456, "mutated": true, "deleted": false }
+    }
+  }
+}
+```
+
+Count example:
+
+```json
+{
+  "result": {
+    "kind": "count",
+    "data": { "count": 17 }
+  }
+}
+```
 
 ### Supported Resources
 

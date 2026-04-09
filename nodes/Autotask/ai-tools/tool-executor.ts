@@ -4,7 +4,7 @@ import type { FieldMeta } from '../helpers/aiHelper';
 import { describeResource, listPicklistValues, type DescribeResourceResponse } from '../helpers/aiHelper';
 import { mapFilterOp } from './schema-generator';
 import { validateEntityId, validateReadFields, validateWriteFields } from './field-validator';
-import { formatApiError, formatFilterConstraintError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES, type ResultKind, type ResultPayload, type PaginationInfo } from './error-formatter';
+import { formatApiError, formatFilterConstraintError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES, type ResultPayload, type ResultMeta, type PaginationInfo } from './error-formatter';
 import { resolveLabelsToIds, resolveFilterLabelsToIds, type LabelResolution, type PendingLabelConfirmation } from '../helpers/label-resolution';
 import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../helpers/change-info-aliases';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
@@ -396,52 +396,40 @@ const PARENT_NOT_FOUND_OUTCOMES = new Set([
 	'holiday_set_not_found', // holiday
 ]);
 
-/** Returns true for warnings that indicate a resolution failure affecting written data. */
-function isResolutionFailureWarning(w: string): boolean {
-	return w.startsWith('[INFRASTRUCTURE]')
-		|| w.includes('resolution failed')
-		|| w.includes('Proceeding with raw values');
+function buildMeta(meta: ResultMeta): ResultMeta | undefined {
+	const next: ResultMeta = {};
+	if (meta.count !== undefined) next.count = meta.count;
+	if (meta.pagination !== undefined) next.pagination = meta.pagination;
+	if (meta.mutation !== undefined) next.mutation = meta.mutation;
+	if (meta.notes && meta.notes.length > 0) next.notes = meta.notes;
+	if (meta.resolvedLabels && meta.resolvedLabels.length > 0) next.resolvedLabels = meta.resolvedLabels;
+	if (meta.resolutionWarnings && meta.resolutionWarnings.length > 0) next.resolutionWarnings = meta.resolutionWarnings;
+	if (meta.pendingConfirmations && meta.pendingConfirmations.length > 0) next.pendingConfirmations = meta.pendingConfirmations;
+	return Object.keys(next).length > 0 ? next : undefined;
 }
 
-/**
- * Construct a ResultPayload. Derives needsUserConfirmation and safeToContinue automatically.
- * Callers never set those two flags directly.
- */
-function buildResultPayload(
-	kind: ResultKind,
-	data: unknown,
-	flags: Partial<Omit<import('./error-formatter').ResultFlags, 'needsUserConfirmation' | 'safeToContinue'>>,
-	extras: {
-		warnings?: string[];
-		pendingConfirmations?: import('../helpers/label-resolution').PendingLabelConfirmation[];
-		appliedResolutions?: import('../helpers/label-resolution').LabelResolution[];
-		pagination?: PaginationInfo;
-		notes?: string[];
-	} = {},
-): ResultPayload {
-	const pendingConfirmations = extras.pendingConfirmations ?? [];
-	const warnings = extras.warnings ?? [];
-	const appliedResolutions = extras.appliedResolutions ?? [];
-	const needsUserConfirmation = pendingConfirmations.length > 0;
-	const partial = flags.partial ?? false;
+function buildEntityResult(data: unknown, meta: ResultMeta = {}): ResultPayload {
+	const nextMeta = buildMeta(meta);
+	return { kind: 'entity', data, ...(nextMeta ? { meta: nextMeta } : {}) };
+}
 
-	return {
-		kind,
-		data,
-		flags: {
-			mutated: flags.mutated ?? false,
-			retryable: flags.retryable ?? true,
-			partial,
-			truncated: flags.truncated ?? false,
-			needsUserConfirmation,
-			safeToContinue: !needsUserConfirmation && !partial,
-		},
-		warnings,
-		pendingConfirmations,
-		appliedResolutions,
-		...(extras.pagination ? { pagination: extras.pagination } : {}),
-		...(extras.notes?.length ? { notes: extras.notes } : {}),
-	};
+function buildActionResult(data: unknown, meta: ResultMeta = {}): ResultPayload {
+	const nextMeta = buildMeta(meta);
+	return { kind: 'action', data, ...(nextMeta ? { meta: nextMeta } : {}) };
+}
+
+function buildCollectionResult(data: unknown[], meta: ResultMeta = {}): ResultPayload {
+	const nextMeta = buildMeta(meta);
+	return { kind: 'collection', data, ...(nextMeta ? { meta: nextMeta } : {}) };
+}
+
+function buildMutationResult(data: unknown, meta: ResultMeta = {}): ResultPayload {
+	const nextMeta = buildMeta(meta);
+	return { kind: 'mutation', data, ...(nextMeta ? { meta: nextMeta } : {}) };
+}
+
+function buildCountResult(count: number): ResultPayload {
+	return { kind: 'count', data: { count } };
 }
 
 /** Extract the canonical created-entity numeric ID from a compound creator result. */
@@ -648,7 +636,7 @@ export async function executeAiTool(
             const mode = (params.mode as 'read' | 'write') ?? 'read';
             const result = await describeResource(context as unknown as ILoadOptionsFunctions, resource, mode);
             return JSON.stringify(wrapSuccess(resource, 'describeFields',
-                buildResultPayload('metadata', compactDescribeResponse(result), { mutated: false, retryable: true }),
+                buildActionResult(compactDescribeResponse(result)),
             ));
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -666,7 +654,7 @@ export async function executeAiTool(
                 (params.page as number) ?? 1,
             );
             return JSON.stringify(wrapSuccess(resource, 'listPicklistValues',
-                buildResultPayload('metadata', result, { mutated: false, retryable: true }),
+                buildActionResult(result),
             ));
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -1080,7 +1068,7 @@ export async function executeAiTool(
                 const { createHolidayIfNotExists } = await import('../helpers/holiday-creator');
                 compoundResult = await createHolidayIfNotExists(context, 0, compoundOptions);
             } else {
-                return JSON.stringify(wrapError(resource, `${resource}.createIfNotExists`, ERROR_TYPES.INVALID_OPERATION,
+                return JSON.stringify(wrapError(resource, 'createIfNotExists', ERROR_TYPES.INVALID_OPERATION,
                     `createIfNotExists is not implemented for resource '${resource}'.`,
                     `Use autotask_${resource} with operation 'create' instead.`,
                 ));
@@ -1092,7 +1080,7 @@ export async function executeAiTool(
                     const parentRef = compoundResult.parentLookupValue ?? compoundResult.companyID ?? compoundResult.ticketID ?? 'unknown';
                     return JSON.stringify(wrapError(
                         resource,
-                        `${resource}.createIfNotExists`,
+                        'createIfNotExists',
                         ERROR_TYPES.ENTITY_NOT_FOUND,
                         `Parent entity not found: ${parentRef}`,
                         `Verify the parent entity identifier and retry.`,
@@ -1103,7 +1091,6 @@ export async function executeAiTool(
                 // Merge compound warnings with label resolution warnings
                 const rawCompoundWarnings: string[] = Array.isArray(compoundResult.warnings) ? compoundResult.warnings : [];
                 const allWarnings = [...rawCompoundWarnings, ...labelWarnings];
-                const partial = allWarnings.some(isResolutionFailureWarning);
 
                 const entityId = buildCompoundEntityId(resource, compoundResult);
                 const existingEntityId = buildCompoundExistingId(resource, compoundResult);
@@ -1119,18 +1106,17 @@ export async function executeAiTool(
                 if (compoundResult.fieldsCompared !== undefined) compoundData.fieldsCompared = compoundResult.fieldsCompared;
                 if (compoundContext !== undefined) compoundData.context = compoundContext;
 
-                return JSON.stringify(wrapSuccess(resource, `${resource}.createIfNotExists`,
-                    buildResultPayload('compound', compoundData,
-                        {
+                return JSON.stringify(wrapSuccess(resource, 'createIfNotExists',
+                    buildMutationResult(compoundData, {
+                        mutation: {
+                            itemId: entityId ?? existingEntityId ?? null,
                             mutated: compoundResult.outcome !== 'skipped',
-                            retryable: compoundResult.outcome !== 'created',
-                            partial,
-                        }, {
-                            warnings: allWarnings,
-                            pendingConfirmations: labelPendingConfirmations,
-                            appliedResolutions: labelResolutions,
+                            deleted: false,
                         },
-                    ),
+                        resolvedLabels: labelResolutions,
+                        resolutionWarnings: allWarnings,
+                        pendingConfirmations: labelPendingConfirmations,
+                    }),
                 ));
             }
         }
@@ -1215,6 +1201,11 @@ function formatToolResponse(
     context: ToolResponseContext = {},
 ): string {
     const firstRecord = records[0] ?? null;
+    const baseMeta = (): ResultMeta => ({
+        resolvedLabels: context.resolutions,
+        resolutionWarnings: context.resolutionWarnings,
+        pendingConfirmations: context.pendingConfirmations,
+    });
     const extractOperationId = (record: Record<string, unknown> | null): number | string | null => {
         if (!record) return null;
         const idCandidate = record.itemId ?? record.id;
@@ -1237,11 +1228,7 @@ function formatToolResponse(
                 return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
             }
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('item', entity, { mutated: false, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
+                buildEntityResult(entity, baseMeta()),
             ));
         }
 
@@ -1305,6 +1292,7 @@ function formatToolResponse(
                 offset: currentOffset,
                 hasMore,
                 ...(nextOffset !== undefined ? { nextOffset } : {}),
+                truncated,
                 ...(totalAvailable !== undefined ? { totalAvailable } : {}),
             };
 
@@ -1319,24 +1307,21 @@ function formatToolResponse(
                 );
             }
 
-            // Warnings — actionable signals
-            const listWarnings: string[] = [...(context.resolutionWarnings ?? [])];
+            const resolutionWarnings: string[] = [...(context.resolutionWarnings ?? [])];
             if (context.recencyWindowLimited) {
-                listWarnings.push(
+                resolutionWarnings.push(
                     '500 records were returned for the current recency window. Narrow recency, or provide since/until, to ensure the newest records are included.',
                 );
             }
 
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('list', { items, count: items.length },
-                    { mutated: false, retryable: true, truncated }, {
-                        warnings: listWarnings,
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                        pagination,
-                        notes: notes.length > 0 ? notes : undefined,
-                    },
-                ),
+                buildCollectionResult(items, {
+                    ...baseMeta(),
+                    count: items.length,
+                    pagination,
+                    notes,
+                    resolutionWarnings,
+                }),
             ));
         }
 
@@ -1345,11 +1330,7 @@ function formatToolResponse(
                 return JSON.stringify(formatNotFoundError(resource, operation, 'authenticated user'));
             }
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('item', firstRecord, { mutated: false, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
+                buildEntityResult(firstRecord, baseMeta()),
             ));
         }
 
@@ -1362,14 +1343,11 @@ function formatToolResponse(
                 ));
             }
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('list', { items: records, count: records.length },
-                    { mutated: false, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                        pagination: { offset: 0, hasMore: false },
-                    },
-                ),
+                buildCollectionResult(records, {
+                    ...baseMeta(),
+                    count: records.length,
+                    pagination: { offset: 0, hasMore: false, truncated: false },
+                }),
             ));
         }
 
@@ -1379,11 +1357,7 @@ function formatToolResponse(
                 return JSON.stringify(formatNotFoundError(resource, operation, identifier as number | string));
             }
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('item', firstRecord, { mutated: false, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
+                buildEntityResult(firstRecord, baseMeta()),
             ));
         }
 
@@ -1392,14 +1366,8 @@ function formatToolResponse(
                 const identifier = params.ticketNumber ?? params.id ?? 'unknown';
                 return JSON.stringify(formatNotFoundError(resource, operation, identifier as number | string));
             }
-            const summaryRecord = firstRecord as { _meta?: { countsPartial?: boolean; truncationApplied?: boolean } };
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('summary', firstRecord, {
-                    mutated: false,
-                    retryable: true,
-                    partial: summaryRecord._meta?.countsPartial === true,
-                    truncated: summaryRecord._meta?.truncationApplied === true,
-                }),
+                buildEntityResult(firstRecord, baseMeta()),
             ));
         }
 
@@ -1409,14 +1377,7 @@ function formatToolResponse(
                 return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
             }
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
+                buildActionResult(firstRecord, baseMeta()),
             ));
         }
 
@@ -1426,14 +1387,7 @@ function formatToolResponse(
                 return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
             }
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
+                buildActionResult(firstRecord, baseMeta()),
             ));
         }
 
@@ -1446,14 +1400,10 @@ function formatToolResponse(
             // Use params.id as canonical id — API may return { success: true } stub without an id field
             const approveId = (params.id as number | undefined) ?? extractOperationId(firstRecord);
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: approveId, entity: firstRecord },
-                    { mutated: true, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
+                buildActionResult(firstRecord, {
+                    ...baseMeta(),
+                    mutation: { itemId: approveId, mutated: true, deleted: false },
+                }),
             ));
         }
 
@@ -1466,56 +1416,42 @@ function formatToolResponse(
                 ));
             }
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
+                buildActionResult(firstRecord, baseMeta()),
             ));
         }
 
         case 'count': {
             const countValue = records[0]?.count ?? records.length;
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('count', { count: countValue }, { mutated: false, retryable: true }),
+                buildCountResult(Number(countValue)),
             ));
         }
 
         case 'create': {
+            const itemId = extractOperationId(firstRecord);
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: false }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
+                buildMutationResult(firstRecord, {
+                    ...baseMeta(),
+                    mutation: { itemId, mutated: true, deleted: false },
+                }),
             ));
         }
 
         case 'update': {
+            const itemId = extractOperationId(firstRecord);
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
+                buildMutationResult(firstRecord, {
+                    ...baseMeta(),
+                    mutation: { itemId, mutated: true, deleted: false },
+                }),
             ));
         }
 
         case 'delete': {
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation', { id: params.id, deleted: true }, { mutated: true, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
+                buildMutationResult(null, {
+                    ...baseMeta(),
+                    mutation: { itemId: params.id ?? null, deleted: true, mutated: true },
                 }),
             ));
         }
@@ -1531,11 +1467,7 @@ function formatToolResponse(
                 return JSON.stringify(formatNotFoundError(resource, operation, rid as number | string));
             }
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('item', entity, { mutated: false, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
+                buildEntityResult(entity, baseMeta()),
             ));
         }
 
@@ -1551,11 +1483,7 @@ function formatToolResponse(
                 return JSON.stringify(formatNotFoundError(resource, operation, `resource ${rid}, year ${yr}`));
             }
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('item', entity, { mutated: false, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
+                buildEntityResult(entity, baseMeta()),
             ));
         }
 
