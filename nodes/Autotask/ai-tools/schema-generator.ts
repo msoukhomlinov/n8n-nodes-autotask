@@ -97,11 +97,6 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const shape: Record<string, any> = {};
 
-        // operation — required enum
-        shape.operation = rz.enum(allOps).describe(
-            `Operation to perform. One of: ${allOps.join(', ')}`,
-        );
-
         const hasGetFamily = operations.some(op =>
             ['get', 'whoAmI', 'getMany', 'count', 'getPosted', 'getUnposted', 'searchByDomain'].includes(op)
         );
@@ -116,6 +111,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         const idPairConfig = IDENTIFIER_PAIR_OPERATIONS[resource];
         const idPairOps = idPairConfig ? idPairConfig.operations.filter(op => operations.includes(op)) : [];
         const hasIdPairOps = idPairOps.length > 0;
+
+        // operation — required enum
+        let operationDesc = `Operation to perform. One of: ${allOps.join(', ')}`;
+        if (hasIdPairOps && idPairConfig) {
+            operationDesc += ` — NOTE: ${idPairOps.join(' and ')} each require either 'id' (numeric) or '${idPairConfig.altIdField}' (${idPairConfig.altIdFormat}); calls with neither identifier are rejected immediately.`;
+        }
+        shape.operation = rz.enum(allOps).describe(operationDesc);
         const hasSearchByDomain = operations.includes('searchByDomain');
         const hasMoveConfigItem = operations.includes('moveConfigurationItem');
         const hasMoveToCompany = operations.includes('moveToCompany');
@@ -133,10 +135,10 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
             if (hasApproveOrReject) strictIdOps.push('approve', 'reject');
             let idDesc = 'Numeric entity ID.';
             if (strictIdOps.length > 0) {
-                idDesc += ` Required for ${strictIdOps.join(', ')}.`;
+                idDesc += ` Required for: ${strictIdOps.join(', ')}.`;
             }
             if (hasIdPairOps && idPairConfig) {
-                idDesc += ` For ${idPairOps.join(', ')}: required when ${idPairConfig.altIdField} is not provided — at least one identifier must be supplied.`;
+                idDesc += ` For ${idPairOps.join(', ')}: provide 'id' OR '${idPairConfig.altIdField}' — exactly one must be present; calls with neither identifier are rejected immediately with INVALID_FILTER_CONSTRAINT.`;
             }
             shape.id = rz.number().optional().describe(idDesc);
         }
@@ -215,7 +217,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         // Identifier-pair altIdField (e.g. ticketNumber for slaHealthCheck + summary)
         if (hasIdPairOps && idPairConfig && !shape[idPairConfig.altIdField]) {
             shape[idPairConfig.altIdField] = rz.string().optional().describe(
-                `${idPairConfig.altIdField} (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}). For ${idPairOps.join(', ')}: required when id is not provided — at least one identifier must be supplied.`,
+                `Alternative identifier for ${idPairOps.join(', ')}. Format: ${idPairConfig.altIdFormat} (e.g. ${idPairConfig.altIdExample}). Provide this OR numeric 'id' — exactly one MUST be present for these operations; calls with neither identifier are rejected immediately.`,
             );
         }
 
