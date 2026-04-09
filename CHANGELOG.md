@@ -2,29 +2,7 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [2.10.0]
-### Changed
-- Result Envelope Standard v2: `SuccessEnvelope.result` is now a typed `ResultPayload`
-  instead of `unknown`. Every success response has a consistent shape: `kind`, `data`,
-  `flags`, `warnings`, `pendingConfirmations`, `appliedResolutions`, plus optional
-  `pagination` (list kind) and `notes`.
-- `kind` discriminator: `item | list | count | mutation | compound | summary | metadata`
-- `flags` block always present: `mutated`, `retryable`, `partial`, `truncated`,
-  `needsUserConfirmation`, `safeToContinue`
-- `warnings[]`, `pendingConfirmations[]`, `appliedResolutions[]` always present (never absent)
-- `searchByDomain` always returns `kind: list` regardless of result count
-- `createIfNotExists` compound data normalised: entity-specific ID fields unified to
-  `id`/`existingId`; parent/scope fields in `context` block
-- `resolvedLabels` renamed to `appliedResolutions`
-- `result.itemId` (create/update) renamed to `result.data.id` under `mutation` kind
-- `recencyWindowLimited` warning now routes to `warnings[]`
-- `safeToContinue` defined as `!needsUserConfirmation && !partial`
-### Fixed
-- `createIfNotExists` not-found outcomes (`company_not_found`, `contract_not_found`,
-  `ticket_not_found`, `project_not_found`, `holiday_set_not_found`) now return
-  `ErrorEnvelope` (ENTITY_NOT_FOUND) instead of a success envelope
-
-## [2.9.0] - 2026-04-08
+## [2.9.0] - 2026-04-09
 
 ### Added
 
@@ -34,6 +12,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Fixed
 
+- **`createIfNotExists` not-found outcomes now return `ErrorEnvelope`**: `company_not_found`, `contract_not_found`, `ticket_not_found`, `project_not_found`, `holiday_set_not_found` outcomes now return `ErrorEnvelope` (ENTITY_NOT_FOUND) instead of a success envelope.
 - **`ticket.summary` `_meta` transformation audit trail**: The `_meta` block now explicitly records how summarisation shaped the result. Added: `typeDetectedBy` (`'label'` / `'numericField'` / `'fallback'` — explains which field drove type detection), `rawIncluded` (boolean — whether the raw enriched payload is included), `transformationsApplied` (ordered string array — e.g. `['aliasExpansion', 'nullFiltering', 'textTruncation', 'typeAwareOrdering']`), `prioritisedFields` (string array — fields placed in the universal or type-specific priority buckets), `truncationApplied` (boolean — true when any field was truncated; complements the existing `truncatedFields` detail), `countsPartial` (boolean — true when at least one count fetch failed; complements `countErrors`). Removed the uninformative `typeAwarePrioritisationApplied: true` flag (superseded by `transformationsApplied`). Field ordering within `_meta` is now stable and grouped by concern: identity → detection → options → transformations → fields → aliases → truncation → counts.
 - **`ticket.summary` pure-transform refactor**: `buildTicketSummary` no longer mutates the `ticket` object passed by the caller. All enrichment (alias injection, canonical key removal, text truncation) now operates on an internal working copy. The input ticket is untouched after the call returns, making the helper safe to reuse across node execution, AI tools, and tests without defensive copying at the call site.
 - **`ticket.summary` `raw` is now truly canonical**: When `includeRaw=true`, the `raw` payload is now captured after label/UDF enrichment but before alias renaming — it contains the original `changeInfoField{N}` keys and is unaffected by Change Info alias settings. Previously `raw` was captured post-alias (after originals were deleted), making it impossible to recover canonical field names from it.
@@ -47,6 +26,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Changed
 
+- **Result Envelope Standard v2**: `SuccessEnvelope.result` is now a typed `ResultPayload` instead of `unknown`. Every success response has a consistent shape: `kind`, `data`, `flags`, `warnings`, `pendingConfirmations`, `appliedResolutions`, plus optional `pagination` (list kind) and `notes`. `kind` discriminator: `item | list | count | mutation | compound | summary | metadata`. `flags` block always present: `mutated`, `retryable`, `partial`, `truncated`, `needsUserConfirmation`, `safeToContinue`. `warnings[]`, `pendingConfirmations[]`, `appliedResolutions[]` always present (never absent). `searchByDomain` always returns `kind: list` regardless of result count. `createIfNotExists` compound data normalised: entity-specific ID fields unified to `id`/`existingId`; parent/scope fields in `context` block. `resolvedLabels` renamed to `appliedResolutions`. `result.itemId` (create/update) renamed to `result.data.id` under `mutation` kind. `recencyWindowLimited` warning now routes to `warnings[]`. `safeToContinue` defined as `!needsUserConfirmation && !partial`.
 - **Tightened identifier-pair schema contract**: `ticket.slaHealthCheck` and `ticket.summary` field descriptions now use imperative, rejection-aware language — `id` and `ticketNumber` descriptions state "exactly one must be present; calls with neither identifier are rejected immediately with INVALID_FILTER_CONSTRAINT." The `operation` enum description is annotated with the identifier requirement when identifier-pair operations are present. The `ticket.summary` operation summary line now states the identifier requirement. Long-form descriptions for both operations lead with the identifier constraint. Runtime pre-flight checks in `tool-executor.ts` remain as the enforcement layer.
 - **`ticket.summary` extended type-aware prioritisation**: Added dedicated field priority profiles for Problem, Service Request, and Alert ticket types. Problem surfaces assignment, role, queue, SLA milestones, and resolution timeline (same set as Incident — root-cause investigations share that operational context). Service Request surfaces assignment, role, queue, due date, estimated hours, and all SLA milestone fields. Alert surfaces assignment, queue, due date, first-response milestone, and SLA. The Unknown/fallback profile is unchanged. Previously all non-Change-Request, non-Incident tickets fell through to a minimal default (assignedResource, queue, dueDateTime, estimatedHours).
 - **Centralised ticket type detection**: Extracted `TicketType`, `TICKET_TYPE_NUMERIC`, and `detectTicketType` into `helpers/ticket-type.ts`; removed duplicated inline logic from `resources/tickets/execute.ts`.
