@@ -1,6 +1,7 @@
 import type { FieldMeta } from '../helpers/aiHelper';
 import { FilterOperators } from '../constants/filters';
 import type { RuntimeZod } from './runtime';
+import { IDENTIFIER_PAIR_OPERATIONS } from '../constants/resource-operations';
 
 /** Maximum number of picklist values to inline in a field description */
 const MAX_INLINE_PICKLIST_VALUES = 8;
@@ -112,6 +113,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         const hasCreate = operations.includes('create');
         const hasSlaHealthCheck = operations.includes('slaHealthCheck');
         const hasSummary = operations.includes('summary');
+        const idPairConfig = IDENTIFIER_PAIR_OPERATIONS[resource];
+        const idPairOps = idPairConfig ? idPairConfig.operations.filter(op => operations.includes(op)) : [];
+        const hasIdPairOps = idPairOps.length > 0;
         const hasSearchByDomain = operations.includes('searchByDomain');
         const hasMoveConfigItem = operations.includes('moveConfigurationItem');
         const hasMoveToCompany = operations.includes('moveToCompany');
@@ -121,9 +125,20 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         const hasGetByResource = operations.includes('getByResource');
         const hasGetByYear = operations.includes('getByYear');
 
-        // id — used by get, delete, update, slaHealthCheck, summary, approve, reject
-        if (hasGetOrDelete || hasUpdate || hasSlaHealthCheck || hasSummary || hasApproveOrReject) {
-            shape.id = rz.number().optional().describe('Entity ID. Required for get, delete, update, approve, and reject operations.');
+        // id — used by get, delete, update, identifier-pair ops (e.g. slaHealthCheck, summary), approve, reject
+        if (hasGetOrDelete || hasUpdate || hasIdPairOps || hasApproveOrReject) {
+            const strictIdOps: string[] = [];
+            if (hasGetOrDelete) strictIdOps.push('get', 'delete');
+            if (hasUpdate) strictIdOps.push('update');
+            if (hasApproveOrReject) strictIdOps.push('approve', 'reject');
+            let idDesc = 'Numeric entity ID.';
+            if (strictIdOps.length > 0) {
+                idDesc += ` Required for ${strictIdOps.join(', ')}.`;
+            }
+            if (hasIdPairOps && idPairConfig) {
+                idDesc += ` For ${idPairOps.join(', ')}: required when ${idPairConfig.altIdField} is not provided — at least one identifier must be supplied.`;
+            }
+            shape.id = rz.number().optional().describe(idDesc);
         }
 
         // resourceID — used by getByResource and getByYear (parent-path operations)
@@ -187,18 +202,21 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 
         // slaHealthCheck fields
         if (hasSlaHealthCheck) {
-            shape.ticketNumber = rz.string().optional().describe('Ticket number (e.g. T20240615.0674). Provide this or id.');
             shape.ticketFields = rz.string().optional().describe('Optional comma-separated ticket fields to return.');
         }
 
         // summary fields
         if (hasSummary) {
-            // ticketNumber may already be added by hasSlaHealthCheck block
-            if (!shape.ticketNumber) {
-                shape.ticketNumber = rz.string().optional().describe('Ticket number (e.g. T20240615.0674). Provide this or id.');
-            }
             shape.includeRaw = rz.boolean().optional().describe('When true, includes the enriched pre-alias-rename payload: label and UDF enrichments intact, original changeInfoField{N} keys (not aliased names), no null filtering or truncation. Use _meta.aliasMap for changeInfo key mapping.');
             shape.summaryTextLimit = rz.number().optional().describe('Maximum characters for description and resolution fields in the summary. Default 500. Pass 0 for no limit.');
+            shape.includeChildCounts = rz.boolean().optional().describe('When true, fetches child entity counts (notes, time entries, attachments, etc.) and includes the childCounts block. Default false. Set true when counts are needed — adds several parallel API calls.');
+        }
+
+        // Identifier-pair altIdField (e.g. ticketNumber for slaHealthCheck + summary)
+        if (hasIdPairOps && idPairConfig && !shape[idPairConfig.altIdField]) {
+            shape[idPairConfig.altIdField] = rz.string().optional().describe(
+                `${idPairConfig.altIdField} (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}). For ${idPairOps.join(', ')}: required when id is not provided — at least one identifier must be supplied.`,
+            );
         }
 
         // create / update fields from metadata

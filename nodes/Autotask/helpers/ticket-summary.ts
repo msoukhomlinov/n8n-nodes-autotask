@@ -1,6 +1,8 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
 import { applyChangeInfoAliases } from './change-info-aliases';
+import { detectTicketTypeDetailed, TicketType } from './ticket-type';
+import { computeMilestoneStatus } from './sla-milestone';
 
 // ---------------------------------------------------------------------------
 // Local helpers (minimal — mirrors private helpers in execute.ts)
@@ -23,26 +25,6 @@ function roundN(value: number, decimals: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Ticket type detection
-// ---------------------------------------------------------------------------
-
-function detectTicketType(ticket: Record<string, unknown>): string {
-    const label = String(ticket.ticketType_label ?? '').toLowerCase();
-    if (label.includes('change request')) return 'Change Request';
-    if (label.includes('incident')) return 'Incident';
-    if (label.includes('problem')) return 'Problem';
-    if (label.includes('service request')) return 'Service Request';
-    if (label.includes('alert')) return 'Alert';
-    const numType = Number(ticket.ticketType);
-    if (numType === 4) return 'Change Request';
-    if (numType === 2) return 'Incident';
-    if (numType === 3) return 'Problem';
-    if (numType === 1) return 'Service Request';
-    if (numType === 5) return 'Alert';
-    return 'Unknown';
-}
-
-// ---------------------------------------------------------------------------
 // Field ordering
 // ---------------------------------------------------------------------------
 
@@ -59,12 +41,35 @@ const TYPE_PRIORITY_FIELDS: Record<string, string[]> = {
         'changeApprovalType', 'changeApprovalType_label',
     ],
     'Incident': [
-        'urgency', 'urgency_label', 'impact', 'impact_label',
         'assignedResourceID', 'assignedResourceID_label',
         'assignedResourceRoleID', 'assignedResourceRoleID_label',
         'queueID', 'queueID_label',
         'firstResponseDueDateTime', 'firstResponseDateTime',
         'resolvedDueDateTime', 'resolvedDateTime',
+        'serviceLevelAgreementID', 'serviceLevelAgreementID_label',
+    ],
+    'Problem': [
+        'assignedResourceID', 'assignedResourceID_label',
+        'assignedResourceRoleID', 'assignedResourceRoleID_label',
+        'queueID', 'queueID_label',
+        'firstResponseDueDateTime', 'firstResponseDateTime',
+        'resolvedDueDateTime', 'resolvedDateTime',
+        'serviceLevelAgreementID', 'serviceLevelAgreementID_label',
+    ],
+    'Service Request': [
+        'assignedResourceID', 'assignedResourceID_label',
+        'assignedResourceRoleID', 'assignedResourceRoleID_label',
+        'queueID', 'queueID_label',
+        'dueDateTime', 'estimatedHours',
+        'serviceLevelAgreementID', 'serviceLevelAgreementID_label',
+        'firstResponseDueDateTime', 'firstResponseDateTime',
+        'resolvedDueDateTime', 'resolvedDateTime',
+    ],
+    'Alert': [
+        'assignedResourceID', 'assignedResourceID_label',
+        'queueID', 'queueID_label',
+        'dueDateTime',
+        'firstResponseDueDateTime', 'firstResponseDateTime',
         'serviceLevelAgreementID', 'serviceLevelAgreementID_label',
     ],
 };
@@ -75,18 +80,25 @@ const DEFAULT_TYPE_PRIORITY_FIELDS = [
     'dueDateTime', 'estimatedHours',
 ];
 
+interface OrderedSummaryResult {
+    ordered: Record<string, unknown>;
+    prioritisedFields: string[];
+}
+
 function buildOrderedSummary(
     filteredTicket: Record<string, unknown>,
-    detectedType: string,
-): Record<string, unknown> {
+    detectedType: TicketType,
+): OrderedSummaryResult {
     const placed = new Set<string>();
     const ordered: Record<string, unknown> = {};
+    const prioritisedFields: string[] = [];
 
     // 1. Universal fields
     for (const key of UNIVERSAL_FIELDS) {
         if (key in filteredTicket) {
             ordered[key] = filteredTicket[key];
             placed.add(key);
+            prioritisedFields.push(key);
         }
     }
 
@@ -104,6 +116,12 @@ function buildOrderedSummary(
         typePriorityFields = [...baseFields, ...changeInfoOriginals, ...changeInfoAliases];
     } else if (detectedType === 'Incident') {
         typePriorityFields = TYPE_PRIORITY_FIELDS['Incident'];
+    } else if (detectedType === 'Problem') {
+        typePriorityFields = TYPE_PRIORITY_FIELDS['Problem'];
+    } else if (detectedType === 'Service Request') {
+        typePriorityFields = TYPE_PRIORITY_FIELDS['Service Request'];
+    } else if (detectedType === 'Alert') {
+        typePriorityFields = TYPE_PRIORITY_FIELDS['Alert'];
     } else {
         typePriorityFields = DEFAULT_TYPE_PRIORITY_FIELDS;
     }
@@ -112,6 +130,7 @@ function buildOrderedSummary(
         if (key in filteredTicket && !placed.has(key)) {
             ordered[key] = filteredTicket[key];
             placed.add(key);
+            prioritisedFields.push(key);
         }
     }
 
@@ -122,7 +141,7 @@ function buildOrderedSummary(
         }
     }
 
-    return ordered;
+    return { ordered, prioritisedFields };
 }
 
 // ---------------------------------------------------------------------------
@@ -153,20 +172,36 @@ function buildComputedBlock(
         computed.isAssigned = resourceId !== '' && resourceId !== 0;
     }
 
-    // isOverdue and hoursUntilDue
+    // isOverdue / hoursUntilDue / hoursOverdue
+    // Only emitted for open (unresolved) tickets. Resolved tickets omit these fields entirely.
+    // hoursUntilDue: positive hours remaining (open, not yet overdue).
+    // hoursOverdue: positive hours past due (open, overdue).
     const dueDate = parseDateValue(ticket.dueDateTime as string | undefined);
     const resolvedDate = parseDateValue(ticket.resolvedDateTime as string | undefined);
-    if (dueDate) {
-        if (!resolvedDate) {
-            // Ticket is open
-            computed.isOverdue = now.getTime() > dueDate.getTime();
-            computed.hoursUntilDue = roundN((dueDate.getTime() - now.getTime()) / 3600000, 2);
+    if (dueDate && !resolvedDate) {
+        const msRelative = dueDate.getTime() - now.getTime();
+        const isOverdue = msRelative < 0;
+        computed.isOverdue = isOverdue;
+        if (isOverdue) {
+            computed.hoursOverdue = roundN(-msRelative / 3600000, 2);
         } else {
-            computed.isOverdue = false;
+            computed.hoursUntilDue = roundN(msRelative / 3600000, 2);
         }
     }
 
-    // slaStatus
+    // slaStatus — derived from per-milestone status using shared computeMilestoneStatus logic.
+    // Ticket-level checks (No SLA, Met, Paused) take precedence over milestone derivation.
+    // 'No SLA': no serviceLevelAgreementID (authoritative).
+    // 'Met': serviceLevelAgreementHasBeenMet === true (API boolean, authoritative).
+    // 'Paused': serviceLevelAgreementPausedNextEventHours > 0 (inferred from API field).
+    // 'Breached': any unmet milestone is past due (inferred from milestone timestamps).
+    // 'At Risk': any milestone is within 1 hour of due and not yet breached.
+    // 'On Track': SLA active, not paused, no breach or risk, at least one milestone due date present.
+    // 'Pending': SLA assigned but no milestone due dates computed yet.
+    //
+    // Note: elapsedHours and isMet are passed as null because ServiceLevelAgreementResults
+    // are not fetched in ticket.summary (unlike slaHealthCheck which queries that entity).
+    // computeMilestoneStatus falls back to wall-clock date comparison in that case.
     const slaId = ticket.serviceLevelAgreementID;
     if (slaId === undefined || slaId === null || slaId === '') {
         computed.slaStatus = 'No SLA';
@@ -178,41 +213,87 @@ function buildComputedBlock(
         } else if (pausedHours > 0) {
             computed.slaStatus = 'Paused';
         } else {
-            const resolvedDue = parseDateValue(ticket.resolvedDueDateTime as string | undefined);
-            if (!resolvedDue) {
-                computed.slaStatus = 'Pending';
-            } else if (now.getTime() > resolvedDue.getTime()) {
-                computed.slaStatus = 'Breached';
-            } else if (createDate) {
-                const elapsed = (now.getTime() - createDate.getTime());
-                const remaining = resolvedDue.getTime() - now.getTime();
-                const total = elapsed + remaining;
-                if (total > 0 && remaining / total < 0.25) {
-                    computed.slaStatus = 'At Risk';
-                } else {
-                    computed.slaStatus = 'On Track';
-                }
-            } else {
-                const remaining = roundN((resolvedDue.getTime() - now.getTime()) / 3600000, 2);
-                computed.slaStatus = remaining <= 1 ? 'At Risk' : 'On Track';
+            const milestoneDefs = [
+                {
+                    due: ticket.firstResponseDueDateTime as string | undefined,
+                    actual: ticket.firstResponseDateTime as string | undefined,
+                },
+                {
+                    due: ticket.resolutionPlanDueDateTime as string | undefined,
+                    actual: ticket.resolutionPlanDateTime as string | undefined,
+                },
+                {
+                    due: ticket.resolvedDueDateTime as string | undefined,
+                    actual: ticket.resolvedDateTime as string | undefined,
+                },
+            ];
+
+            type MilestoneResult = { status: string; wallClockRemainingHours: number | null };
+            const milestoneResults: MilestoneResult[] = milestoneDefs.map(({ due, actual }) =>
+                computeMilestoneStatus(due ?? null, actual ?? null, null, null, now),
+            );
+
+            let overallStatus = 'Pending';
+            for (const { status } of milestoneResults) {
+                if (status === 'Breached') { overallStatus = 'Breached'; break; }
+                if (status === 'At Risk' && overallStatus !== 'Breached') overallStatus = 'At Risk';
+                if ((status === 'On Track' || status === 'Met') && overallStatus === 'Pending') overallStatus = 'On Track';
             }
+            computed.slaStatus = overallStatus;
         }
     }
 
-    // slaNextDueHours — smallest positive hours among unmet milestone due dates
-    const milestoneFields = ['firstResponseDueDateTime', 'resolutionPlanDueDateTime', 'resolvedDueDateTime'];
-    let smallestDue: number | undefined;
-    for (const field of milestoneFields) {
-        const milestoneDate = parseDateValue(ticket[field] as string | undefined);
-        if (milestoneDate) {
-            const hours = roundN((milestoneDate.getTime() - now.getTime()) / 3600000, 2);
-            if (smallestDue === undefined || hours < smallestDue) {
-                smallestDue = hours;
+    // slaNextMilestoneDueHours — hours until the next upcoming unmet SLA milestone (positive only).
+    // Absent when no future unmet milestones exist.
+    // slaEarliestBreachHours — hours since the earliest unmet overdue SLA milestone (positive magnitude).
+    // Absent when no milestones are breached.
+    // Both derived from wallClockRemainingHours returned by computeMilestoneStatus.
+    // Note: only computed when SLA is assigned and not already 'Met' or 'Paused' at the ticket level.
+    if (
+        slaId !== undefined && slaId !== null && slaId !== '' &&
+        ticket.serviceLevelAgreementHasBeenMet !== true &&
+        Number(ticket.serviceLevelAgreementPausedNextEventHours ?? 0) <= 0
+    ) {
+        const milestoneDefs = [
+            {
+                due: ticket.firstResponseDueDateTime as string | undefined,
+                actual: ticket.firstResponseDateTime as string | undefined,
+            },
+            {
+                due: ticket.resolutionPlanDueDateTime as string | undefined,
+                actual: ticket.resolutionPlanDateTime as string | undefined,
+            },
+            {
+                due: ticket.resolvedDueDateTime as string | undefined,
+                actual: ticket.resolvedDateTime as string | undefined,
+            },
+        ];
+
+        let nextDueHours: number | undefined;
+        let earliestBreachHours: number | undefined;
+
+        for (const { due, actual } of milestoneDefs) {
+            const result = computeMilestoneStatus(due ?? null, actual ?? null, null, null, now);
+            const remaining = result.wallClockRemainingHours;
+            if (remaining === null) continue;
+            if (remaining >= 0) {
+                if (nextDueHours === undefined || remaining < nextDueHours) {
+                    nextDueHours = remaining;
+                }
+            } else {
+                const breachHours = roundN(-remaining, 2);
+                if (earliestBreachHours === undefined || breachHours > earliestBreachHours) {
+                    earliestBreachHours = breachHours;
+                }
             }
         }
-    }
-    if (smallestDue !== undefined) {
-        computed.slaNextDueHours = smallestDue;
+
+        if (nextDueHours !== undefined) {
+            computed.slaNextMilestoneDueHours = roundN(nextDueHours, 2);
+        }
+        if (earliestBreachHours !== undefined) {
+            computed.slaEarliestBreachHours = earliestBreachHours;
+        }
     }
 
     return computed;
@@ -268,13 +349,14 @@ async function fetchCount(
 export interface TicketSummaryOptions {
     includeRaw: boolean;
     summaryTextLimit: number;
+    includeChildCounts: boolean;
 }
 
 export interface TicketSummaryResult {
     summary: Record<string, unknown>;
     computed: Record<string, unknown>;
     relationships?: Record<string, unknown>;
-    childCounts: Record<string, unknown>;
+    childCounts?: Record<string, unknown>;
     raw?: Record<string, unknown>;
     _meta: Record<string, unknown>;
 }
@@ -291,7 +373,7 @@ export async function buildTicketSummary(
     aliasMap: Map<number, string> | null,
     now: Date,
 ): Promise<TicketSummaryResult> {
-    const { includeRaw, summaryTextLimit } = options;
+    const { includeRaw, summaryTextLimit, includeChildCounts } = options;
 
     // Step 1: Capture the original ticket as raw output (unmodified snapshot).
     const rawTicket: Record<string, unknown> = { ...ticket };
@@ -320,7 +402,8 @@ export async function buildTicketSummary(
     }
 
     // Step 4: Detect ticket type from the working copy (aliases already applied).
-    const detectedType = detectTicketType(working);
+    const detection = detectTicketTypeDetailed(working);
+    const detectedType = detection.type;
 
     // Step 5: Text truncation for description and resolution on the working copy.
     const truncatedFields: Array<{ field: string; originalLength: number; charsRemoved: number }> = [];
@@ -354,7 +437,7 @@ export async function buildTicketSummary(
     }
 
     // Step 7: Build ordered summary from the filtered working copy.
-    const summary = buildOrderedSummary(filteredTicket, detectedType);
+    const { ordered: summary, prioritisedFields } = buildOrderedSummary(filteredTicket, detectedType);
 
     // Step 8: Build computed block from the working copy (pre-filter, all fields available).
     const computed = buildComputedBlock(working, now);
@@ -362,30 +445,58 @@ export async function buildTicketSummary(
     // Step 9: Build relationships block from the working copy.
     const relationships = buildRelationshipsBlock(working);
 
-    // Step 10: Assemble childCounts — omit zero-value keys
-    const childCounts: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(childCountsInput)) {
-        if (key === 'checklistItems') {
-            // Keep checklistItems object if total > 0
-            const ci = value as Record<string, number>;
-            if (ci && typeof ci === 'object' && (ci.total ?? 0) > 0) {
-                childCounts.checklistItems = ci;
+    // Step 10: Assemble childCounts — omit zero-value keys (skipped when includeChildCounts=false)
+    let childCounts: Record<string, unknown> | undefined;
+    if (includeChildCounts) {
+        childCounts = {};
+        for (const [key, value] of Object.entries(childCountsInput)) {
+            if (key === 'checklistItems') {
+                // Keep checklistItems object if total > 0
+                const ci = value as Record<string, number>;
+                if (ci && typeof ci === 'object' && (ci.total ?? 0) > 0) {
+                    childCounts.checklistItems = ci;
+                }
+            } else if (typeof value === 'number' && value > 0) {
+                childCounts[key] = value;
             }
-        } else if (typeof value === 'number' && value > 0) {
-            childCounts[key] = value;
         }
     }
 
     // Step 11: Build _meta
+    const countErrors = (childCountsInput._countErrors ?? []) as CountError[];
+
+    const transformationsApplied: string[] = [];
+    if (aliasMap) transformationsApplied.push('aliasExpansion');
+    transformationsApplied.push('nullFiltering');
+    if (truncatedFields.length > 0) transformationsApplied.push('textTruncation');
+    transformationsApplied.push('typeAwareOrdering');
+
+    const slaId = working.serviceLevelAgreementID;
+
     const meta: Record<string, unknown> = {
-        detectedTicketType: detectedType,
-        typeAwarePrioritisationApplied: true,
-        aliasesApplied: aliasMap !== null,
-        summaryTextLimit,
-        excludedFieldCount: excludedFieldNames.length,
-        excludedFieldNames,
+        // Identity
         source: 'ticket.summary',
         generatedAt: now.toISOString(),
+        // Detection
+        detectedTicketType: detectedType,
+        typeDetectedBy: detection.detectedBy,
+        // Options
+        rawIncluded: includeRaw,
+        summaryTextLimit,
+        childCountsIncluded: includeChildCounts,
+        // Transformations
+        transformationsApplied,
+        // Fields
+        prioritisedFields,
+        excludedFieldCount: excludedFieldNames.length,
+        excludedFieldNames,
+        // Alias state
+        aliasesApplied: aliasMap !== null,
+        // Truncation
+        truncationApplied: truncatedFields.length > 0,
+        // Counts
+        countsPartial: includeChildCounts && countErrors.length > 0,
+        slaDetailAvailable: slaId !== null && slaId !== undefined && slaId !== '',
     };
 
     if (suppressedCanonicalFields.length > 0) {
@@ -397,24 +508,23 @@ export async function buildTicketSummary(
         meta.truncatedFields = truncatedFields;
     }
 
-    const countErrors = (childCountsInput._countErrors ?? []) as CountError[];
     if (countErrors.length > 0) {
         meta.countErrors = countErrors;
     }
-
-    const slaId = working.serviceLevelAgreementID;
-    meta.slaDetailAvailable = slaId !== null && slaId !== undefined && slaId !== '';
 
     // Step 12: Assemble result
     const result: TicketSummaryResult = {
         summary,
         computed,
-        childCounts,
         _meta: meta,
     };
 
     if (relationships) {
         result.relationships = relationships;
+    }
+
+    if (childCounts !== undefined) {
+        result.childCounts = childCounts;
     }
 
     if (includeRaw) {
@@ -431,7 +541,7 @@ export async function buildTicketSummary(
 export async function fetchTicketChildCounts(
     context: IExecuteFunctions,
     ticketId: number | string,
-    detectedType: string,
+    detectedType: TicketType,
 ): Promise<{ counts: Record<string, unknown>; errors: Array<{ entity: string; error: string }> }> {
     const id = Number(ticketId);
     const ticketFilter = [{ field: 'ticketID', op: 'eq', value: id }];

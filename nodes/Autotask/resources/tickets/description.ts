@@ -151,7 +151,7 @@ export const ticketFields: INodeProperties[] = [
         type: 'boolean',
         default: false,
         displayOptions: { show: { resource: ['ticket'], operation: ['summary'] } },
-        description: 'Whether to include the full unfiltered ticket payload in the response',
+        description: 'Whether to include the enriched ticket payload (labels, UDFs) before alias renaming, null filtering, and text truncation',
     },
     {
         displayName: 'Summary Text Limit',
@@ -160,6 +160,14 @@ export const ticketFields: INodeProperties[] = [
         default: 500,
         displayOptions: { show: { resource: ['ticket'], operation: ['summary'] } },
         description: 'Maximum characters for description and resolution fields (0 = no limit)',
+    },
+    {
+        displayName: 'Include Child Counts',
+        name: 'includeChildCounts',
+        type: 'boolean',
+        default: false,
+        displayOptions: { show: { resource: ['ticket'], operation: ['summary'] } },
+        description: 'Whether to fetch and include child entity counts (notes, time entries, attachments, etc.). Disable for faster responses when counts are not needed.',
     },
     {
         displayName: 'Fields',

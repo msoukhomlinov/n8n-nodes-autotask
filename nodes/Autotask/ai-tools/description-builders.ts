@@ -218,20 +218,20 @@ export function buildTicketSummaryDescription(resourceName: string): string {
         'Get a compact, type-aware summary of any Autotask ticket. ' +
         'Automatically detects ticket type (Service Request, Incident, Problem, Change Request, Alert) and prioritises the most relevant fields. ' +
         'Filters out null and empty fields to reduce noise. ' +
-        "Includes a 'computed' block with pre-calculated values: ageHours, daysSinceLastActivity, isAssigned, isOverdue, hoursUntilDue, slaStatus, slaNextDueHours. " +
-        "Includes a 'childCounts' block with counts of: notes, timeEntries, attachments, additionalConfigurationItems, additionalContacts, checklistItems (with completed/remaining breakdown), and changeRequestLinks (Change Request tickets only). " +
+        "Includes a 'computed' block with pre-calculated values: ageHours, daysSinceLastActivity, isAssigned; for open tickets: isOverdue, plus hoursUntilDue (not yet overdue) or hoursOverdue (past due); when SLA is assigned: slaStatus, slaNextMilestoneDueHours, slaEarliestBreachHours. " +
+        "Optionally includes a 'childCounts' block with counts of: notes, timeEntries, attachments, additionalConfigurationItems, additionalContacts, checklistItems (with completed/remaining breakdown), and changeRequestLinks (Change Request tickets only). Set 'includeChildCounts=true' to fetch these counts (adds several parallel API calls; omitted by default). " +
         "Includes a 'relationships' block when the ticket is linked to a project, problem ticket, or opportunity. " +
         "Use 'summaryTextLimit' to cap description/resolution length (default 500 chars). " +
         "Set 'includeRaw=true' to receive the full enriched payload before alias renaming — label/UDF enrichments intact, original changeInfoField{N} keys, no null filtering or text truncation. " +
         "For full SLA milestone timing and elapsed hours, use slaHealthCheck instead. " +
-        `Identify the ticket with 'id' (numeric) or 'ticketNumber' (e.g. T20240615.0001). ` +
+        `You must supply either 'id' (numeric Ticket ID) or 'ticketNumber' (format T{date}.{seq}, e.g. T20240615.0001) — at least one identifier is required; calls without either will be rejected. ` +
         `If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
     );
 }
 
 export function buildTicketSlaHealthCheckDescription(resourceName: string): string {
     return (
-        'Run an SLA health check for a ticket using either numeric id or ticketNumber. ' +
+        'Run an SLA health check for a ticket. You must supply either \'id\' (numeric Ticket ID) or \'ticketNumber\' (format T{date}.{seq}, e.g. T20240615.0001) — at least one identifier is required; calls without either will be rejected. ' +
         'Returns first-response, resolution-plan, and resolution milestone timing and status in consistent hours (2 decimal places). ' +
         "Use 'ticketFields' to limit which ticket fields are returned in the ticket section. " +
         'Includes wallClockRemainingHours, where negative values indicate overdue milestones. ' +

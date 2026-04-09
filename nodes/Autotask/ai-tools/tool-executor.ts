@@ -7,6 +7,7 @@ import { validateEntityId, validateReadFields, validateWriteFields } from './fie
 import { formatApiError, formatFilterConstraintError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES } from './error-formatter';
 import { resolveLabelsToIds, resolveFilterLabelsToIds, type LabelResolution, type PendingLabelConfirmation } from '../helpers/label-resolution';
 import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../helpers/change-info-aliases';
+import { getIdentifierPairConfig } from '../constants/resource-operations';
 import type { IAutotaskCredentials } from '../types/base/auth';
 
 export interface ToolExecutorParams {
@@ -560,6 +561,24 @@ export async function executeAiTool(
         return JSON.stringify(idValidation.error);
     }
 
+    // Pre-flight: operations using the identifier-pair pattern (id OR altIdField) require at least one.
+    // This returns a structured error before the runtime handler throws an unhandled exception.
+    const idPairConfig = getIdentifierPairConfig(resource, effectiveOperation);
+    if (idPairConfig) {
+        const hasId = typeof params.id === 'number' && params.id > 0;
+        const hasAltId = typeof params[idPairConfig.altIdField as keyof typeof params] === 'string'
+            && (params[idPairConfig.altIdField as keyof typeof params] as string).trim() !== '';
+        if (!hasId && !hasAltId) {
+            return JSON.stringify(wrapError(
+                resource,
+                operation,
+                ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+                `${effectiveOperation} requires a ticket identifier: provide 'id' (numeric Ticket ID) or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`,
+                `Call autotask_${resource} with operation '${effectiveOperation}' and include either 'id' (numeric Ticket ID) or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`,
+            ));
+        }
+    }
+
     if (['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(effectiveOperation)) {
         const udfFilters = filters.filter((filter) => filter.udf);
         if (udfFilters.length > 1) {
@@ -739,28 +758,21 @@ export async function executeAiTool(
                 return true;
             case 'flattenUdfs':
                 return true;
-            case 'ticketIdentifierType':
-                if (effectiveOperation === 'slaHealthCheck') {
-                    if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim() !== '') {
-                        return 'ticketNumber';
-                    }
-                    return 'id';
-                }
-                if (effectiveOperation === 'summary') {
-                    if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim() !== '') {
-                        return 'ticketNumber';
-                    }
-                    return 'id';
+            case 'ticketIdentifierType': {
+                const ipc = getIdentifierPairConfig(resource, effectiveOperation);
+                if (ipc) {
+                    const altVal = params[ipc.altIdField as keyof typeof params];
+                    return (typeof altVal === 'string' && altVal.trim() !== '') ? ipc.altIdField : 'id';
                 }
                 return fallbackValue;
-            case 'ticketNumber':
-                if (effectiveOperation === 'slaHealthCheck') {
-                    return typeof params.ticketNumber === 'string' ? params.ticketNumber.trim() : fallbackValue;
-                }
-                if (effectiveOperation === 'summary') {
+            }
+            case 'ticketNumber': {
+                const ipc = getIdentifierPairConfig(resource, effectiveOperation);
+                if (ipc && ipc.altIdField === 'ticketNumber') {
                     return typeof params.ticketNumber === 'string' ? params.ticketNumber.trim() : fallbackValue;
                 }
                 return fallbackValue;
+            }
             case 'includeRaw':
                 if (effectiveOperation === 'summary') {
                     return typeof params.includeRaw === 'boolean' ? params.includeRaw : false;
@@ -769,6 +781,11 @@ export async function executeAiTool(
             case 'summaryTextLimit':
                 if (effectiveOperation === 'summary') {
                     return typeof params.summaryTextLimit === 'number' ? params.summaryTextLimit : 500;
+                }
+                return fallbackValue;
+            case 'includeChildCounts':
+                if (effectiveOperation === 'summary') {
+                    return typeof params.includeChildCounts === 'boolean' ? params.includeChildCounts : false;
                 }
                 return fallbackValue;
             case 'slaTicketFields':

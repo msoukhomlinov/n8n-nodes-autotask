@@ -15,28 +15,13 @@ import { flattenUdfs } from '../../helpers/udf/flatten';
 import { filterEntityBySelectedColumns } from '../../operations/common/select-columns/filter-entity';
 import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../../helpers/change-info-aliases';
 import { buildTicketSummary, fetchTicketChildCounts } from '../../helpers/ticket-summary';
+import { detectTicketType } from '../../helpers/ticket-type';
+import { roundSlaHours, computeMilestoneStatus } from '../../helpers/sla-milestone';
 
 const ENTITY_TYPE = 'ticket';
 const DEFAULT_SLA_TICKET_FIELDS = ['id', 'ticketNumber', 'title', 'status', 'companyID'];
 
 type TicketIdentifierType = 'id' | 'ticketNumber';
-
-function roundHours(value: number): number {
-    return Math.round(value * 100) / 100;
-}
-
-function parseDateValue(value: unknown): Date | null {
-    if (typeof value !== 'string' || value.trim() === '') {
-        return null;
-    }
-
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) {
-        return null;
-    }
-
-    return parsed;
-}
 
 function getStringValue(value: unknown): string | null {
     return typeof value === 'string' && value.trim() !== '' ? value : null;
@@ -44,13 +29,13 @@ function getStringValue(value: unknown): string | null {
 
 function getNumberValue(value: unknown): number | null {
     if (typeof value === 'number' && Number.isFinite(value)) {
-        return roundHours(value);
+        return roundSlaHours(value);
     }
 
     if (typeof value === 'string') {
         const parsed = Number(value);
         if (Number.isFinite(parsed)) {
-            return roundHours(parsed);
+            return roundSlaHours(parsed);
         }
     }
 
@@ -59,54 +44,6 @@ function getNumberValue(value: unknown): number | null {
 
 function getBooleanValue(value: unknown): boolean | null {
     return typeof value === 'boolean' ? value : null;
-}
-
-function computeMilestoneStatus(
-    dueDateTime: string | null,
-    actualDateTime: string | null,
-    elapsedHours: number | null,
-    isMet: boolean | null,
-    now: Date,
-): { status: string; wallClockRemainingHours: number | null } {
-    const dueDate = parseDateValue(dueDateTime);
-    const actualDate = parseDateValue(actualDateTime);
-
-    if (isMet === true) {
-        return { status: 'Met', wallClockRemainingHours: null };
-    }
-
-    if (isMet === false) {
-        return { status: 'Breached', wallClockRemainingHours: null };
-    }
-
-    if (dueDate && actualDate) {
-        return {
-            status: actualDate.getTime() <= dueDate.getTime() ? 'Met' : 'Breached',
-            wallClockRemainingHours: null,
-        };
-    }
-
-    if (!dueDate) {
-        return { status: 'Pending', wallClockRemainingHours: null };
-    }
-
-    const remaining = roundHours((dueDate.getTime() - now.getTime()) / 3600000);
-    if (remaining < 0) {
-        return { status: 'Breached', wallClockRemainingHours: remaining };
-    }
-
-    if (elapsedHours !== null && elapsedHours > 0) {
-        const total = elapsedHours + remaining;
-        if (total > 0 && remaining / total < 0.25) {
-            return { status: 'At Risk', wallClockRemainingHours: remaining };
-        }
-        return { status: 'On Track', wallClockRemainingHours: remaining };
-    }
-
-    return {
-        status: remaining <= 1 ? 'At Risk' : 'On Track',
-        wallClockRemainingHours: remaining,
-    };
 }
 
 async function resolveTicketIdByTicketNumber(
@@ -373,6 +310,13 @@ async function executeTicketSummary(
         summaryTextLimit = 500;
     }
 
+    let includeChildCounts = false;
+    try {
+        includeChildCounts = Boolean(context.getNodeParameter('includeChildCounts', itemIndex, false));
+    } catch {
+        includeChildCounts = false;
+    }
+
     const ticketResponse = await autotaskApiRequest.call(
         context,
         'GET',
@@ -397,31 +341,17 @@ async function executeTicketSummary(
     const now = new Date();
     const ticketRecord = ticket as unknown as Record<string, unknown>;
 
-    // Detect ticket type early (needed for conditional changeRequestLinks count fetch).
-    // Mirrors detectTicketType() in ticket-summary.ts — keep in sync.
-    const earlyType = String(ticketRecord.ticketType_label ?? '').toLowerCase();
-    let earlyDetectedType = 'Unknown';
-    if (earlyType.includes('change request')) earlyDetectedType = 'Change Request';
-    else if (earlyType.includes('incident')) earlyDetectedType = 'Incident';
-    else if (earlyType.includes('problem')) earlyDetectedType = 'Problem';
-    else if (earlyType.includes('service request')) earlyDetectedType = 'Service Request';
-    else if (earlyType.includes('alert')) earlyDetectedType = 'Alert';
-    else {
-        const numType = Number(ticketRecord.ticketType);
-        if (numType === 4) earlyDetectedType = 'Change Request';
-        else if (numType === 2) earlyDetectedType = 'Incident';
-        else if (numType === 3) earlyDetectedType = 'Problem';
-        else if (numType === 1) earlyDetectedType = 'Service Request';
-        else if (numType === 5) earlyDetectedType = 'Alert';
-    }
+    const earlyDetectedType = detectTicketType(ticketRecord);
 
-    const { counts: childCounts } = await fetchTicketChildCounts(context, ticketId, earlyDetectedType);
+    const childCountsInput = includeChildCounts
+        ? (await fetchTicketChildCounts(context, ticketId, earlyDetectedType)).counts
+        : {};
 
     const summaryResult = await buildTicketSummary(
         context,
         ticketRecord,
-        childCounts,
-        { includeRaw, summaryTextLimit },
+        childCountsInput,
+        { includeRaw, summaryTextLimit, includeChildCounts },
         aliasMap,
         now,
     );

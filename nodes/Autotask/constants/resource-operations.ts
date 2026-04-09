@@ -41,6 +41,38 @@ const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
     apiThreshold: ['get'],
 };
 
+/**
+ * Operations that accept either a numeric `id` OR an alternative string identifier.
+ * At least one must be provided. Keyed by resource name.
+ * When adding a new identifier-pair operation (e.g. ticket.timeline), add it to
+ * the operations array — schema, pre-flight validation, and parameter routing
+ * are automatically handled by the consumers of this registry.
+ */
+export interface IdentifierPairConfig {
+    /** Operation names that use the id-OR-altId pattern. */
+    operations: string[];
+    /** The alternative identifier field name (e.g. 'ticketNumber'). */
+    altIdField: string;
+    /** A concrete example value for use in schema descriptions (e.g. 'T20240615.0674'). */
+    altIdExample: string;
+    /** Human-readable format hint (e.g. 'T{date}.{seq}'). */
+    altIdFormat: string;
+}
+
+export const IDENTIFIER_PAIR_OPERATIONS: Record<string, IdentifierPairConfig> = {
+    ticket: {
+        operations: ['slaHealthCheck', 'summary'],
+        altIdField: 'ticketNumber',
+        altIdExample: 'T20240615.0674',
+        altIdFormat: 'T{date}.{seq}',
+    },
+};
+
+export function getIdentifierPairConfig(resource: string, operation: string): IdentifierPairConfig | null {
+    const config = IDENTIFIER_PAIR_OPERATIONS[resource];
+    return (config && config.operations.includes(operation)) ? config : null;
+}
+
 function lowerCamelCase(value: string): string {
     if (!value) return value;
     return value.charAt(0).toLowerCase() + value.slice(1);
