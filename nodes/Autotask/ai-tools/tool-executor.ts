@@ -862,7 +862,7 @@ export async function executeAiTool(
             labelPendingConfirmations = resolution.pendingConfirmations;
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            labelWarnings.push(`Label resolution failed: ${msg}. Proceeding with raw values.`);
+            labelWarnings.push(`Label resolution failed: ${msg}.`);
         }
     }
 
