@@ -1369,7 +1369,15 @@ function formatToolResponse(
                 const identifier = params.ticketNumber ?? params.id ?? 'unknown';
                 return JSON.stringify(formatNotFoundError(resource, operation, identifier as number | string));
             }
-            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+            const summaryRecord = firstRecord as { _meta?: { countsPartial?: boolean; truncationApplied?: boolean } };
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('summary', firstRecord, {
+                    mutated: false,
+                    retryable: true,
+                    partial: summaryRecord._meta?.countsPartial === true,
+                    truncated: summaryRecord._meta?.truncationApplied === true,
+                }),
+            ));
         }
 
         case 'moveConfigurationItem': {
