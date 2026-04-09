@@ -32,18 +32,22 @@ export interface ToolExecutorParams {
     domain?: string;
     domainOperator?: string;
     searchContactEmails?: boolean;
+    filtersJson?: string;
+    returnAll?: boolean;
+    targetOperation?: string;
     [key: string]: string | number | boolean | Array<string | number | boolean> | undefined;
 }
 
 export interface ToolExecutionMetadata {
     readFields?: FieldMeta[];
     writeFields?: FieldMeta[];
+    allAllowedOps?: string[];
 }
 
 /** Maximum records to include in a single tool response before truncation */
-const MAX_RESPONSE_RECORDS = 25;
+const MAX_RESPONSE_RECORDS = 100;
 const DEFAULT_QUERY_LIMIT = 10;
-const MAX_QUERY_LIMIT = 100;
+const MAX_QUERY_LIMIT = 500;
 const RECENCY_OVER_REQUEST_LIMIT = 500;
 const RECENCY_FIELD_PRIORITY = [
     'createDateTime',
