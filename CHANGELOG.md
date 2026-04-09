@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.9.0] - 2026-04-09 (unreleased)
+
+### Fixed
+
+- **`createIfNotExists` double-prefix bug**: All three `wrapSuccess`/`wrapError` call sites for `createIfNotExists` compound operations were passing `` `${resource}.createIfNotExists` `` as the `operation` argument. Because `buildOperationString` internally prepends `${resource}.`, the final envelope `operation` field was double-prefixed (e.g. `ticket.ticket.createIfNotExists`). All three sites now pass the literal `'createIfNotExists'`, producing the correct `ticket.createIfNotExists`.
+- **`summary` operation missing envelope metadata**: The `summary` case in `formatToolResponse` omitted the `extras` argument to `buildResultPayload`, causing `warnings`, `pendingConfirmations`, and `appliedResolutions` to always be empty in summary responses regardless of what label resolution produced. The standard extras block is now passed from `context`, consistent with all other operation families.
+
 ## [2.9.0] - 2026-04-09
 
 ### Added
