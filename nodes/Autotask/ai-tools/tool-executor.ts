@@ -826,7 +826,7 @@ export async function executeAiTool(
             ? Math.min(effectiveOffset + effectiveLimit, MAX_QUERY_LIMIT)
             : effectiveLimit;
 
-    if (supportsOffsetPagination && offsetExceedsApiCap) {
+    if (supportsOffsetPagination && offsetExceedsApiCap && !params.returnAll) {
         return JSON.stringify(wrapError(
             resource, effectiveOperation, ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
             `Offset ${effectiveOffset} exceeds the maximum queryable range of ${MAX_QUERY_LIMIT} records. Pagination via offset is limited to the first ${MAX_QUERY_LIMIT} records.`,
@@ -1033,9 +1033,11 @@ export async function executeAiTool(
                     ? combinedFilters
                     : undefined;
             case 'returnAll':
-                return false;
+                return params.returnAll === true;
             case 'maxRecords':
-                return queryLimit;
+                return params.returnAll === true
+                    ? undefined  // executeScopedQuery handles full pagination internally; MaxRecords is ignored
+                    : queryLimit;
             case 'bodyJson':
                 if (['create', 'update'].includes(effectiveOperation) && Object.keys(fieldValues).length > 0) {
                     return JSON.stringify(fieldValues);
@@ -1408,6 +1410,13 @@ function formatToolResponse(
                 if (truncated) {
                     totalAvailable = total;
                 }
+            } else if (params.returnAll) {
+                // returnAll=true: all matching API records were fetched; response may be truncated
+                // but there are no more pages — hasMore must be false.
+                hasMore = false;
+                if (truncated) {
+                    totalAvailable = total;
+                }
             } else if (truncated) {
                 totalAvailable = total;
                 const truncatedNextOffset = currentOffset + MAX_RESPONSE_RECORDS;
@@ -1431,11 +1440,18 @@ function formatToolResponse(
             const notes: string[] = [];
             if (context.recencyNote) notes.push(context.recencyNote);
             if (truncated) {
-                notes.push(
-                    hasMore
-                        ? `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use offset=${nextOffset} to see the next page, or use a narrower filter.`
-                        : `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Offset pagination limit (${MAX_QUERY_LIMIT}) reached — use narrower filters to access more records.`,
-                );
+                if (params.returnAll) {
+                    notes.push(
+                        `Fetched all ${total} matching records via returnAll; showing first ${MAX_RESPONSE_RECORDS} in this response. ` +
+                        `Use 'fields' to reduce payload size, or narrow filters to reduce match count.`,
+                    );
+                } else {
+                    notes.push(
+                        hasMore
+                            ? `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use offset=${nextOffset} to see the next page, or use a narrower filter.`
+                            : `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Offset pagination limit (${MAX_QUERY_LIMIT}) reached — use narrower filters to access more records.`,
+                    );
+                }
             }
 
             // Warnings — actionable signals
