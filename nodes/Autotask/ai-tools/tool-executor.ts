@@ -805,6 +805,7 @@ export async function executeAiTool(
     // Gated to write ops to avoid unnecessary Resource entity list fetch on reads.
     const isWriteOperation = ['create', 'createIfNotExists', 'update', 'moveConfigurationItem', 'moveToCompany', 'transferOwnership', 'approve', 'reject', 'delete'].includes(effectiveOperation);
     let resolvedImpersonationId: number | undefined;
+    let labelImpersonationFailed = false;
     const rawImpersonation = params.impersonationResourceId;
     if (isWriteOperation && rawImpersonation !== undefined && rawImpersonation !== null && rawImpersonation !== '') {
         const impersonationValue = typeof rawImpersonation === 'string' ? rawImpersonation.trim() : rawImpersonation;
@@ -842,12 +843,13 @@ export async function executeAiTool(
                     resolvedImpersonationId = matchedId;
                     labelResolutions.push({ field: 'impersonationResourceId', from: impersonationValue, to: matchedId, method: 'reference' });
                 } else {
-                    // Partial match → warning, pass raw value
+                    labelImpersonationFailed = true;
                     labelWarnings.push(`Could not resolve impersonation resource '${impersonationValue}' to a resource ID. Provide a numeric ID instead.`);
                 }
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
-                labelWarnings.push(`Impersonation resource resolution failed: ${msg}. Provide a numeric ID instead.`);
+                labelImpersonationFailed = true;
+                labelWarnings.push(`[INFRASTRUCTURE] Impersonation resource resolution failed: ${msg}. Provide a numeric ID instead.`);
             }
         }
     }
@@ -1161,6 +1163,8 @@ export async function executeAiTool(
         const allResolutions = [...labelResolutions, ...filterResolutions];
         const allWarnings = [...labelWarnings, ...filterWarnings];
         const allPendingConfirmations = [...labelPendingConfirmations, ...filterPendingConfirmations];
+        // Reserve labelImpersonationFailed for write-safety guard in Task 4
+        void labelImpersonationFailed;
         // When recency is active, offset-based pagination is not supported — add a note
         const recencyOffsetNote = recencyResult.isActive && effectiveOffset > 0
             ? 'Offset is ignored when recency or since/until is active (recency re-sorts results by date).'
