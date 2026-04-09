@@ -1377,7 +1377,12 @@ function formatToolResponse(
                 const id = params.id ?? 'unknown';
                 return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
             }
-            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('mutation',
+                    { id: extractOperationId(firstRecord), entity: firstRecord },
+                    { mutated: true, retryable: true },
+                ),
+            ));
         }
 
         case 'moveToCompany': {
@@ -1385,23 +1390,28 @@ function formatToolResponse(
                 const id = params.id ?? 'unknown';
                 return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
             }
-            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('mutation',
+                    { id: extractOperationId(firstRecord), entity: firstRecord },
+                    { mutated: true, retryable: true },
+                ),
+            ));
         }
 
-        case 'approve': {
-            if (firstRecord === null || firstRecord === undefined) {
-                const id = params.id ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
-        }
-
+        case 'approve':
         case 'reject': {
             if (firstRecord === null || firstRecord === undefined) {
                 const id = params.id ?? 'unknown';
                 return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
             }
-            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+            // Use params.id as canonical id — API may return { success: true } stub without an id field
+            const approveId = (params.id as number | undefined) ?? extractOperationId(firstRecord);
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('mutation',
+                    { id: approveId, entity: firstRecord },
+                    { mutated: true, retryable: true },
+                ),
+            ));
         }
 
         case 'transferOwnership': {
@@ -1412,7 +1422,12 @@ function formatToolResponse(
                     `Verify source and destination resource IDs, then retry.`,
                 ));
             }
-            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('mutation',
+                    { id: extractOperationId(firstRecord), entity: firstRecord },
+                    { mutated: true, retryable: true },
+                ),
+            ));
         }
 
         case 'count': {
@@ -1423,47 +1438,35 @@ function formatToolResponse(
         }
 
         case 'create': {
-            const operationId = extractOperationId(firstRecord);
-            const createResult: Record<string, unknown> = {
-                itemId: operationId,
-                entity: firstRecord,
-            };
-            if (context.resolutions && context.resolutions.length > 0) {
-                createResult.resolvedLabels = context.resolutions;
-            }
-            if (context.resolutionWarnings && context.resolutionWarnings.length > 0) {
-                createResult.resolutionWarnings = context.resolutionWarnings;
-            }
-            if (context.pendingConfirmations && context.pendingConfirmations.length > 0) {
-                createResult.pendingConfirmations = context.pendingConfirmations;
-            }
-            return JSON.stringify(wrapSuccess(resource, operation, createResult));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('mutation',
+                    { id: extractOperationId(firstRecord), entity: firstRecord },
+                    { mutated: true, retryable: false }, {
+                        warnings: context.resolutionWarnings ?? [],
+                        pendingConfirmations: context.pendingConfirmations ?? [],
+                        appliedResolutions: context.resolutions ?? [],
+                    },
+                ),
+            ));
         }
 
         case 'update': {
-            const operationId = extractOperationId(firstRecord);
-            const updateResult: Record<string, unknown> = {
-                itemId: operationId,
-                entity: firstRecord,
-            };
-            if (context.resolutions && context.resolutions.length > 0) {
-                updateResult.resolvedLabels = context.resolutions;
-            }
-            if (context.resolutionWarnings && context.resolutionWarnings.length > 0) {
-                updateResult.resolutionWarnings = context.resolutionWarnings;
-            }
-            if (context.pendingConfirmations && context.pendingConfirmations.length > 0) {
-                updateResult.pendingConfirmations = context.pendingConfirmations;
-            }
-            return JSON.stringify(wrapSuccess(resource, operation, updateResult));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('mutation',
+                    { id: extractOperationId(firstRecord), entity: firstRecord },
+                    { mutated: true, retryable: true }, {
+                        warnings: context.resolutionWarnings ?? [],
+                        pendingConfirmations: context.pendingConfirmations ?? [],
+                        appliedResolutions: context.resolutions ?? [],
+                    },
+                ),
+            ));
         }
 
         case 'delete': {
-            const id = params.id;
-            return JSON.stringify(wrapSuccess(resource, operation, {
-                id,
-                deleted: true,
-            }));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('mutation', { id: params.id, deleted: true }, { mutated: true, retryable: true }),
+            ));
         }
 
         case 'getByResource': {
