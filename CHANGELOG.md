@@ -2,6 +2,28 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.10.0]
+### Changed
+- Result Envelope Standard v2: `SuccessEnvelope.result` is now a typed `ResultPayload`
+  instead of `unknown`. Every success response has a consistent shape: `kind`, `data`,
+  `flags`, `warnings`, `pendingConfirmations`, `appliedResolutions`, plus optional
+  `pagination` (list kind) and `notes`.
+- `kind` discriminator: `item | list | count | mutation | compound | summary | metadata`
+- `flags` block always present: `mutated`, `retryable`, `partial`, `truncated`,
+  `needsUserConfirmation`, `safeToContinue`
+- `warnings[]`, `pendingConfirmations[]`, `appliedResolutions[]` always present (never absent)
+- `searchByDomain` always returns `kind: list` regardless of result count
+- `createIfNotExists` compound data normalised: entity-specific ID fields unified to
+  `id`/`existingId`; parent/scope fields in `context` block
+- `resolvedLabels` renamed to `appliedResolutions`
+- `result.itemId` (create/update) renamed to `result.data.id` under `mutation` kind
+- `recencyWindowLimited` warning now routes to `warnings[]`
+- `safeToContinue` defined as `!needsUserConfirmation && !partial`
+### Fixed
+- `createIfNotExists` not-found outcomes (`company_not_found`, `contract_not_found`,
+  `ticket_not_found`, `project_not_found`, `holiday_set_not_found`) now return
+  `ErrorEnvelope` (ENTITY_NOT_FOUND) instead of a success envelope
+
 ## [2.9.0] - 2026-04-08
 
 ### Added
