@@ -93,7 +93,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
         readFields: FieldMeta[],
         writeFields: FieldMeta[],
     ) {
-        const allOps = [...new Set([...operations, 'describeFields', 'listPicklistValues'])] as [string, ...string[]];
+        const allOps = [...new Set([...operations, 'describeFields', 'listPicklistValues', 'describeOperation'])] as [string, ...string[]];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const shape: Record<string, any> = {};
 
@@ -186,11 +186,23 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
             shape.filter_logic = rz.enum(['and', 'or']).optional().describe(
                 "Logic between filter pairs. Default 'and' (both must match). Use 'or' for either-match queries (e.g. status='Open' OR status='In Progress').",
             );
-            shape.limit = rz.number().int().min(1).max(100).optional().describe('Max results (1-100, default 10)');
-            shape.offset = rz.number().int().min(0).optional().describe('Skip first N records (for pagination, max 99). Use with limit. Response includes hasMore and nextOffset. Limited to first 100 total records — use narrower filters for larger datasets.');
+            shape.limit = rz.number().int().min(1).max(500).optional().describe('Max results (1-500, default 10)');
+            shape.offset = rz.number().int().min(0).optional().describe('Skip first N records (for pagination, max 499). Use with limit. Response includes hasMore and nextOffset. Limited to first 500 total records — use narrower filters for larger datasets.');
             shape.recency = rRecencySchema;
             shape.since = rz.string().optional().describe('Range start in ISO-8601 UTC format (e.g. 2026-01-01T00:00:00Z). When set, recency is ignored.');
             shape.until = rz.string().optional().describe('Range end in ISO-8601 UTC format (e.g. 2026-01-31T23:59:59Z). Requires since or recency.');
+            shape.filtersJson = rz.string().optional().describe(
+                'Advanced filter: JSON array of Autotask IFilterCondition objects. ' +
+                'Mutually exclusive with filter_field/filter_field_2. ' +
+                'Recency/since/until still apply on top when provided. ' +
+                'Label resolution is NOT applied to filtersJson values — pass numeric IDs. ' +
+                "Example: '[{\"field\":\"status\",\"op\":\"in\",\"value\":[1,2,3]},{\"op\":\"or\",\"items\":[{\"field\":\"companyID\",\"op\":\"eq\",\"value\":123},{\"field\":\"companyID\",\"op\":\"eq\",\"value\":456}]}]'",
+            );
+            shape.returnAll = rz.boolean().optional().describe(
+                'When true, fetches ALL records matching the filter using API-native pagination. ' +
+                'Default false returns up to limit records. Use with a tight filter — broad queries may return thousands of records. ' +
+                'Response is still subject to MAX_RESPONSE_RECORDS truncation with a note when hit.',
+            );
         }
 
         // searchByDomain fields
@@ -381,6 +393,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
             shape.limit = rz.number().optional().describe('Max results (used by listPicklistValues for pagination, default 50).');
         }
         shape.page = rz.number().optional().describe('Page number for listPicklistValues pagination (default 1).');
+        shape.targetOperation = rz.string().optional().describe(
+            "For describeOperation: the operation name to document (e.g. 'create', 'createIfNotExists', 'getMany', 'slaHealthCheck').",
+        );
 
         return rz.object(shape);
     }
