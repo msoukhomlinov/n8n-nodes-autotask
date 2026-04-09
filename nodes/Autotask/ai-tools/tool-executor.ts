@@ -834,7 +834,7 @@ export async function executeAiTool(
         }
     }
 
-    const allFilterCount = filters.length + recencyResult.filters.length;
+    const allFilterCount = filters.length + recencyResult.filters.length + (params.filtersJson ? 1 : 0);
     const effectiveOperation =
         normalisedOperation === 'get' && entityId === '' && allFilterCount > 0
             ? 'getMany'
