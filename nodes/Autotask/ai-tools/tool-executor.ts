@@ -407,7 +407,6 @@ function isResolutionFailureWarning(w: string): boolean {
  * Construct a ResultPayload. Derives needsUserConfirmation and safeToContinue automatically.
  * Callers never set those two flags directly.
  */
-// TODO: Use in tasks #3-#9
 function buildResultPayload(
 	kind: ResultKind,
 	data: unknown,
@@ -1412,7 +1411,11 @@ function formatToolResponse(
             return JSON.stringify(wrapSuccess(resource, operation,
                 buildResultPayload('mutation',
                     { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true },
+                    { mutated: true, retryable: true }, {
+                        warnings: context.resolutionWarnings ?? [],
+                        pendingConfirmations: context.pendingConfirmations ?? [],
+                        appliedResolutions: context.resolutions ?? [],
+                    },
                 ),
             ));
         }
@@ -1425,7 +1428,11 @@ function formatToolResponse(
             return JSON.stringify(wrapSuccess(resource, operation,
                 buildResultPayload('mutation',
                     { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true },
+                    { mutated: true, retryable: true }, {
+                        warnings: context.resolutionWarnings ?? [],
+                        pendingConfirmations: context.pendingConfirmations ?? [],
+                        appliedResolutions: context.resolutions ?? [],
+                    },
                 ),
             ));
         }
@@ -1441,7 +1448,11 @@ function formatToolResponse(
             return JSON.stringify(wrapSuccess(resource, operation,
                 buildResultPayload('mutation',
                     { id: approveId, entity: firstRecord },
-                    { mutated: true, retryable: true },
+                    { mutated: true, retryable: true }, {
+                        warnings: context.resolutionWarnings ?? [],
+                        pendingConfirmations: context.pendingConfirmations ?? [],
+                        appliedResolutions: context.resolutions ?? [],
+                    },
                 ),
             ));
         }
@@ -1457,7 +1468,11 @@ function formatToolResponse(
             return JSON.stringify(wrapSuccess(resource, operation,
                 buildResultPayload('mutation',
                     { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true },
+                    { mutated: true, retryable: true }, {
+                        warnings: context.resolutionWarnings ?? [],
+                        pendingConfirmations: context.pendingConfirmations ?? [],
+                        appliedResolutions: context.resolutions ?? [],
+                    },
                 ),
             ));
         }
@@ -1497,7 +1512,11 @@ function formatToolResponse(
 
         case 'delete': {
             return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation', { id: params.id, deleted: true }, { mutated: true, retryable: true }),
+                buildResultPayload('mutation', { id: params.id, deleted: true }, { mutated: true, retryable: true }, {
+                    warnings: context.resolutionWarnings ?? [],
+                    pendingConfirmations: context.pendingConfirmations ?? [],
+                    appliedResolutions: context.resolutions ?? [],
+                }),
             ));
         }
 
