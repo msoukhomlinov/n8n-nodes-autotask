@@ -104,7 +104,7 @@ function buildOperationString(resource: string, operation: string): string {
 	return `${resource}.${operation}`;
 }
 
-export function wrapSuccess(resource: string, operation: string, result: unknown): SuccessEnvelope {
+export function wrapSuccess(resource: string, operation: string, result: ResultPayload): SuccessEnvelope {
 	return {
 		schemaVersion: '1',
 		success: true,
