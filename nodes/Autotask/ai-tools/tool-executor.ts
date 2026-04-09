@@ -7,6 +7,7 @@ import { validateEntityId, validateReadFields, validateWriteFields } from './fie
 import { formatApiError, formatFilterConstraintError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES, type ResultKind, type ResultPayload, type PaginationInfo } from './error-formatter';
 import { resolveLabelsToIds, resolveFilterLabelsToIds, type LabelResolution, type PendingLabelConfirmation } from '../helpers/label-resolution';
 import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../helpers/change-info-aliases';
+import { buildOperationDoc } from './description-builders';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
 import type { IAutotaskCredentials } from '../types/base/auth';
 
@@ -378,6 +379,8 @@ function normaliseOperation(operation: string): string {
             return 'getByResource';
         case 'getbyyear':
             return 'getByYear';
+        case 'describeoperation':
+            return 'describeOperation';
         default:
             return key;
     }
@@ -745,6 +748,26 @@ export async function executeAiTool(
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             return JSON.stringify(formatApiError(message, resource, 'listPicklistValues'));
+        }
+    }
+    if (normalisedOperation === 'describeOperation') {
+        try {
+            const target = params.targetOperation as string | undefined;
+            const allAllowedOps = metadata.allAllowedOps ?? [];
+            if (!target || !allAllowedOps.includes(target)) {
+                return JSON.stringify(wrapError(
+                    resource, 'describeOperation', ERROR_TYPES.INVALID_OPERATION,
+                    `'targetOperation' must be one of: ${allAllowedOps.join(', ')}`,
+                    `Call autotask_${resource} with operation='describeOperation' and a valid targetOperation value.`,
+                ));
+            }
+            const doc = buildOperationDoc(resource, target, readFields, writeFields);
+            return JSON.stringify(wrapSuccess(resource, 'describeOperation',
+                buildResultPayload('metadata', doc, { mutated: false, retryable: true }),
+            ));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return JSON.stringify(formatApiError(message, resource, 'describeOperation'));
         }
     }
 
