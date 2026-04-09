@@ -9,7 +9,7 @@ export interface SuccessEnvelope {
 	success: true;
 	resource: string;
 	operation: string;
-	result: unknown;
+	result: ResultPayload;
 }
 
 // ---------------------------------------------------------------------------
