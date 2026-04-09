@@ -1250,75 +1250,71 @@ function formatToolResponse(
                 if (params.until) filtersUsed.until = params.until;
                 return JSON.stringify(formatNoResultsFound(resource, operation, filtersUsed));
             }
+
             const total = records.length;
             const truncated = total > MAX_RESPONSE_RECORDS;
             const items = truncated ? records.slice(0, MAX_RESPONSE_RECORDS) : records;
             const currentOffset = context.effectiveOffset ?? 0;
-            const resultPayload: Record<string, unknown> = {
-                items,
-                count: items.length,
-                offset: currentOffset,
-            };
-            const notes: string[] = [];
+
+            // Build pagination
+            let hasMore = false;
+            let nextOffset: number | undefined;
+            let totalAvailable: number | undefined;
+
             if (context.recencyActive) {
-                // Recency mode reverse-sorts the full window — offset pagination is not
-                // meaningful, so suppress hasMore/nextOffset to prevent confusing the LLM.
-                resultPayload.hasMore = false;
+                hasMore = false;
                 if (truncated) {
-                    resultPayload.truncated = true;
-                    resultPayload.totalAvailable = total;
-                    notes.push(
-                        `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use a narrower recency window or increase limit to see more.`,
-                    );
+                    totalAvailable = total;
                 }
             } else if (truncated) {
-                resultPayload.truncated = true;
-                resultPayload.totalAvailable = total;
+                totalAvailable = total;
                 const truncatedNextOffset = currentOffset + MAX_RESPONSE_RECORDS;
-                resultPayload.hasMore = truncatedNextOffset < MAX_QUERY_LIMIT;
-                if (resultPayload.hasMore) {
-                    resultPayload.nextOffset = truncatedNextOffset;
-                }
-                notes.push(
-                    resultPayload.hasMore
-                        ? `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use offset=${truncatedNextOffset} to see the next page, or use a narrower filter.`
-                        : `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Offset pagination limit (${MAX_QUERY_LIMIT}) reached — use narrower filters to access more records.`,
-                );
+                hasMore = truncatedNextOffset < MAX_QUERY_LIMIT;
+                if (hasMore) nextOffset = truncatedNextOffset;
             } else if (items.length > 0) {
                 const requestedLimit = getEffectiveLimit(params.limit);
-                const nextOffset = currentOffset + items.length;
-                // hasMore is true when we got a full page AND the next offset would be within API cap
-                resultPayload.hasMore = items.length >= requestedLimit && nextOffset < MAX_QUERY_LIMIT;
-                if (resultPayload.hasMore) {
-                    resultPayload.nextOffset = nextOffset;
-                }
-            } else {
-                resultPayload.hasMore = false;
+                const candidateNext = currentOffset + items.length;
+                hasMore = items.length >= requestedLimit && candidateNext < MAX_QUERY_LIMIT;
+                if (hasMore) nextOffset = candidateNext;
             }
-            if (context.recencyWindowLimited) {
+
+            const pagination: PaginationInfo = {
+                offset: currentOffset,
+                hasMore,
+                ...(nextOffset !== undefined ? { nextOffset } : {}),
+                ...(totalAvailable !== undefined ? { totalAvailable } : {}),
+            };
+
+            // Notes — informational context only
+            const notes: string[] = [];
+            if (context.recencyNote) notes.push(context.recencyNote);
+            if (truncated) {
                 notes.push(
+                    hasMore
+                        ? `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use offset=${nextOffset} to see the next page, or use a narrower filter.`
+                        : `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Offset pagination limit (${MAX_QUERY_LIMIT}) reached — use narrower filters to access more records.`,
+                );
+            }
+
+            // Warnings — actionable signals
+            const listWarnings: string[] = [...(context.resolutionWarnings ?? [])];
+            if (context.recencyWindowLimited) {
+                listWarnings.push(
                     '500 records were returned for the current recency window. Narrow recency, or provide since/until, to ensure the newest records are included.',
                 );
             }
-            if (context.recencyNote) {
-                notes.push(context.recencyNote);
-            }
-            if (notes.length === 1) {
-                resultPayload.note = notes[0];
-            } else if (notes.length > 1) {
-                resultPayload.notes = notes;
-                resultPayload.note = notes.join(' ');
-            }
-            if (context.resolutions && context.resolutions.length > 0) {
-                resultPayload.resolvedLabels = context.resolutions;
-            }
-            if (context.resolutionWarnings && context.resolutionWarnings.length > 0) {
-                resultPayload.resolutionWarnings = context.resolutionWarnings;
-            }
-            if (context.pendingConfirmations && context.pendingConfirmations.length > 0) {
-                resultPayload.pendingConfirmations = context.pendingConfirmations;
-            }
-            return JSON.stringify(wrapSuccess(resource, operation, resultPayload));
+
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('list', { items, count: items.length },
+                    { mutated: false, retryable: true, truncated }, {
+                        warnings: listWarnings,
+                        pendingConfirmations: context.pendingConfirmations ?? [],
+                        appliedResolutions: context.resolutions ?? [],
+                        pagination,
+                        notes: notes.length > 0 ? notes : undefined,
+                    },
+                ),
+            ));
         }
 
         case 'whoAmI': {
@@ -1335,17 +1331,23 @@ function formatToolResponse(
         }
 
         case 'searchByDomain': {
-            if (firstRecord === null || firstRecord === undefined) {
+            if (records.length === 0) {
                 return JSON.stringify(wrapError(
-                    resource, operation, ERROR_TYPES.ENTITY_NOT_FOUND,
+                    resource, operation, ERROR_TYPES.NO_RESULTS_FOUND,
                     'No company found matching the supplied domain.',
                     `Verify the domain and retry, or use autotask_${resource} with operation 'getMany' with a filter.`,
                 ));
             }
-            if (records.length > 1) {
-                return JSON.stringify(wrapSuccess(resource, operation, { items: records, count: records.length }));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('list', { items: records, count: records.length },
+                    { mutated: false, retryable: true }, {
+                        warnings: context.resolutionWarnings ?? [],
+                        pendingConfirmations: context.pendingConfirmations ?? [],
+                        appliedResolutions: context.resolutions ?? [],
+                        pagination: { offset: 0, hasMore: false },
+                    },
+                ),
+            ));
         }
 
         case 'slaHealthCheck': {
@@ -1415,7 +1417,9 @@ function formatToolResponse(
 
         case 'count': {
             const countValue = records[0]?.count ?? records.length;
-            return JSON.stringify(wrapSuccess(resource, operation, { count: countValue }));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('count', { count: countValue }, { mutated: false, retryable: true }),
+            ));
         }
 
         case 'create': {
