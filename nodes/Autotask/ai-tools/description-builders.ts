@@ -305,9 +305,9 @@ const TRUNCATION_SUFFIX = '...[description truncated — call with operation=\'d
  */
 function truncateDescription(text: string, limit = 2000): string {
     if (text.length <= limit) return text;
-    const cutAt = limit - TRUNCATION_SUFFIX.length;
+    const cutAt = Math.max(0, limit - TRUNCATION_SUFFIX.length);
     const lastSpace = text.lastIndexOf(' ', cutAt);
-    const breakpoint = lastSpace > 0 ? lastSpace : cutAt;
+    const breakpoint = lastSpace >= 0 ? lastSpace : cutAt;
     return text.slice(0, breakpoint) + TRUNCATION_SUFFIX;
 }
 
