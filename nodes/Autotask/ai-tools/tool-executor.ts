@@ -400,7 +400,73 @@ const PARENT_NOT_FOUND_OUTCOMES = new Set([
 function isResolutionFailureWarning(w: string): boolean {
 	return w.startsWith('[INFRASTRUCTURE]')
 		|| w.includes('resolution failed')
-		|| w.includes('Proceeding with raw values');
+		|| w.includes('resolution error')
+		|| w.includes('Proceeding with raw values')
+		|| w.includes('Could not resolve')
+		|| w.includes('has no known entity type');
+}
+
+/**
+ * Pre-execution write guard. Returns a serialised ErrorEnvelope JSON string if any
+ * resolution failure condition blocks the write, or null to allow execution to proceed.
+ *
+ * Blocking conditions:
+ *  - pendingConfirmations.length > 0       (partial/ambiguous field matches)
+ *  - warning matches isResolutionFailureWarning() but is not [INFRASTRUCTURE]  (no-match fields)
+ *  - warning starts with [INFRASTRUCTURE]  (infra error during resolution)
+ *  - impersonationFailed === true          (unresolvable impersonationResourceId string)
+ */
+function buildWriteResolutionBlocker(
+    resource: string,
+    operation: string,
+    pendingConfirmations: import('../helpers/label-resolution').PendingLabelConfirmation[],
+    warnings: string[],
+    impersonationFailed: boolean,
+): string | null {
+    const unresolvedFields = warnings
+        .filter(w => isResolutionFailureWarning(w) && !w.startsWith('[INFRASTRUCTURE]') && !w.includes('impersonation'))
+        .map(w => {
+            const fieldMatch = w.match(/for (?:field )?'([^']+)'/);
+            return fieldMatch ? fieldMatch[1] : '[general-resolution-failure]';
+        });
+    const infraErrors = warnings.filter(w => w.startsWith('[INFRASTRUCTURE]'));
+
+    const hasBlock = pendingConfirmations.length > 0
+        || unresolvedFields.length > 0
+        || infraErrors.length > 0
+        || impersonationFailed;
+
+    if (!hasBlock) return null;
+
+    const parts: string[] = [];
+    if (pendingConfirmations.length > 0) {
+        const fields = pendingConfirmations.map(p => `'${p.field}'`).join(', ');
+        parts.push(`Ambiguous matches for field(s) ${fields} — multiple candidates found.`);
+    }
+    if (unresolvedFields.length > 0) {
+        parts.push(`No match found for field(s): ${unresolvedFields.map(f => `'${f}'`).join(', ')}.`);
+    }
+    if (infraErrors.length > 0) {
+        parts.push(`Resolution infrastructure error(s) prevented field lookup.`);
+    }
+    if (impersonationFailed) {
+        parts.push(`'impersonationResourceId' could not be resolved to a numeric resource ID.`);
+    }
+
+    const ctx: Record<string, unknown> = {};
+    if (pendingConfirmations.length > 0) ctx.pendingConfirmations = pendingConfirmations;
+    if (unresolvedFields.length > 0) ctx.unresolvedFields = unresolvedFields;
+    if (infraErrors.length > 0) ctx.infraErrors = infraErrors;
+    if (impersonationFailed) ctx.impersonationFailed = true;
+
+    return JSON.stringify(wrapError(
+        resource,
+        operation,
+        ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
+        `Write blocked: ${parts.join(' ')} Resolve all field references before retrying.`,
+        `Call autotask_${resource} with operation 'describeFields' to inspect field metadata, then retry with exact IDs or unambiguous labels.`,
+        ctx,
+    ));
 }
 
 /**
@@ -796,7 +862,7 @@ export async function executeAiTool(
             labelPendingConfirmations = resolution.pendingConfirmations;
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            labelWarnings.push(`Label resolution failed: ${msg}. Proceeding with raw values.`);
+            labelWarnings.push(`Label resolution failed: ${msg}.`);
         }
     }
 
@@ -804,6 +870,7 @@ export async function executeAiTool(
     // Gated to write ops to avoid unnecessary Resource entity list fetch on reads.
     const isWriteOperation = ['create', 'createIfNotExists', 'update', 'moveConfigurationItem', 'moveToCompany', 'transferOwnership', 'approve', 'reject', 'delete'].includes(effectiveOperation);
     let resolvedImpersonationId: number | undefined;
+    let labelImpersonationFailed = false;
     const rawImpersonation = params.impersonationResourceId;
     if (isWriteOperation && rawImpersonation !== undefined && rawImpersonation !== null && rawImpersonation !== '') {
         const impersonationValue = typeof rawImpersonation === 'string' ? rawImpersonation.trim() : rawImpersonation;
@@ -841,14 +908,27 @@ export async function executeAiTool(
                     resolvedImpersonationId = matchedId;
                     labelResolutions.push({ field: 'impersonationResourceId', from: impersonationValue, to: matchedId, method: 'reference' });
                 } else {
-                    // Partial match → warning, pass raw value
+                    labelImpersonationFailed = true;
                     labelWarnings.push(`Could not resolve impersonation resource '${impersonationValue}' to a resource ID. Provide a numeric ID instead.`);
                 }
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
-                labelWarnings.push(`Impersonation resource resolution failed: ${msg}. Provide a numeric ID instead.`);
+                labelImpersonationFailed = true;
+                labelWarnings.push(`[INFRASTRUCTURE] Impersonation resource resolution failed: ${msg}. Provide a numeric ID instead.`);
             }
         }
+    }
+
+    // Pre-execution write guard: block if any resolution failure condition exists.
+    if (isWriteOperation) {
+        const blocker = buildWriteResolutionBlocker(
+            resource,
+            effectiveOperation,
+            labelPendingConfirmations,
+            labelWarnings,
+            labelImpersonationFailed,
+        );
+        if (blocker !== null) return blocker;
     }
 
     context.getNodeParameter = ((
