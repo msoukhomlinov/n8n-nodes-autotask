@@ -648,7 +648,9 @@ export async function executeAiTool(
         try {
             const mode = (params.mode as 'read' | 'write') ?? 'read';
             const result = await describeResource(context as unknown as ILoadOptionsFunctions, resource, mode);
-            return JSON.stringify(wrapSuccess(resource, 'describeFields', compactDescribeResponse(result)));
+            return JSON.stringify(wrapSuccess(resource, 'describeFields',
+                buildResultPayload('metadata', compactDescribeResponse(result), { mutated: false, retryable: true }),
+            ));
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             return JSON.stringify(formatApiError(message, resource, 'describeFields'));
@@ -664,7 +666,9 @@ export async function executeAiTool(
                 (params.limit as number) ?? 50,
                 (params.page as number) ?? 1,
             );
-            return JSON.stringify(wrapSuccess(resource, 'listPicklistValues', result));
+            return JSON.stringify(wrapSuccess(resource, 'listPicklistValues',
+                buildResultPayload('metadata', result, { mutated: false, retryable: true }),
+            ));
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             return JSON.stringify(formatApiError(message, resource, 'listPicklistValues'));
