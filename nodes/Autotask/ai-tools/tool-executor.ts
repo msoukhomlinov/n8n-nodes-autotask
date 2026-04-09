@@ -4,7 +4,7 @@ import type { FieldMeta } from '../helpers/aiHelper';
 import { describeResource, listPicklistValues, type DescribeResourceResponse } from '../helpers/aiHelper';
 import { mapFilterOp } from './schema-generator';
 import { validateEntityId, validateReadFields, validateWriteFields } from './field-validator';
-import { formatApiError, formatFilterConstraintError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES, type ResultKind, type ResultPayload, type PaginationInfo } from './error-formatter';
+import { formatApiError, formatFilterConstraintError, formatIdError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES, type ResultKind, type ResultPayload, type PaginationInfo } from './error-formatter';
 import { resolveLabelsToIds, resolveFilterLabelsToIds, type LabelResolution, type PendingLabelConfirmation } from '../helpers/label-resolution';
 import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../helpers/change-info-aliases';
 import { buildOperationDoc } from './description-builders';
@@ -392,10 +392,22 @@ const N8N_METADATA_FIELDS = new Set([
     'root',
     'tool', 'toolName', 'toolCallId',
     'operation',
+    'dryRun',
 ]);
 
 /** Key prefixes injected by n8n that must be stripped regardless of suffix */
 const N8N_METADATA_PREFIXES = ['Prompt__'];
+
+/** Inject correlationId into a serialised envelope JSON string if defined. */
+function attachCorrelation(json: string, id: string | undefined): string {
+    if (!id) return json;
+    try {
+        const parsed = JSON.parse(json) as Record<string, unknown>;
+        return JSON.stringify({ correlationId: id, ...parsed });
+    } catch {
+        return json;
+    }
+}
 
 /** Compound operation outcomes that indicate a parent entity was not found — become ErrorEnvelope */
 const PARENT_NOT_FOUND_OUTCOMES = new Set([
@@ -512,6 +524,7 @@ function buildResultPayload(
 			truncated: flags.truncated ?? false,
 			needsUserConfirmation,
 			safeToContinue: !needsUserConfirmation && !partial,
+			...(flags.dryRunOnly ? { dryRunOnly: true } : {}),
 		},
 		warnings,
 		pendingConfirmations,
@@ -661,6 +674,11 @@ export async function executeAiTool(
     rawParams: ToolExecutorParams,
     metadata: ToolExecutionMetadata = {},
 ): Promise<string> {
+    const rawCorrelation = rawParams.toolCallId ?? rawParams.sessionId;
+    const correlationId: string | undefined = typeof rawCorrelation === 'string' && rawCorrelation.trim()
+        ? rawCorrelation.trim()
+        : typeof rawCorrelation === 'number' ? String(rawCorrelation) : undefined;
+
     // Strip n8n framework metadata injected into every tool call
     const params = {} as ToolExecutorParams;
     for (const [key, value] of Object.entries(rawParams)) {
@@ -702,13 +720,22 @@ export async function executeAiTool(
                 const msg = err instanceof Error ? err.message : String(err);
                 filterWarnings.push(`Filter label resolution failed for '${filter.field}': ${msg}`);
             }
-        } else if (Array.isArray(filter.value) && filter.value.some(v => typeof v === 'string' && !/^\d+$/.test(v))) {
-            // Warn when in/notIn arrays contain non-numeric strings on reference/picklist fields
-            const fieldMeta = readFields.find(f => f.id.toLowerCase() === filter.field.toLowerCase());
-            if (fieldMeta && (fieldMeta.isPickList || fieldMeta.isReference)) {
-                filterWarnings.push(
-                    `Filter field '${filter.field}' uses in/notIn with string values. Name-based resolution is not supported for array filter values — use numeric IDs instead.`,
+        } else if (Array.isArray(filter.value)) {
+            // Attempt label resolution for in/notIn array filter values on reference/picklist fields.
+            // Each string element is resolved individually; numeric elements are kept as-is.
+            try {
+                const resolution = await resolveFilterLabelsToIds(
+                    context, resource, filter.field, filter.value, readFields,
                 );
+                if (resolution.resolutions.length > 0) {
+                    filter.value = resolution.values[filter.field] as Array<string | number | boolean>;
+                    filterResolutions.push(...resolution.resolutions);
+                }
+                filterWarnings.push(...resolution.warnings);
+                filterPendingConfirmations.push(...resolution.pendingConfirmations);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                filterWarnings.push(`Array filter label resolution failed for '${filter.field}': ${msg}`);
             }
         }
     }
@@ -724,12 +751,12 @@ export async function executeAiTool(
         try {
             const mode = (params.mode as 'read' | 'write') ?? 'read';
             const result = await describeResource(context as unknown as ILoadOptionsFunctions, resource, mode);
-            return JSON.stringify(wrapSuccess(resource, 'describeFields',
+            return attachCorrelation(JSON.stringify(wrapSuccess(resource, 'describeFields',
                 buildResultPayload('metadata', compactDescribeResponse(result), { mutated: false, retryable: true }),
-            ));
+            )), correlationId);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            return JSON.stringify(formatApiError(message, resource, 'describeFields'));
+            return attachCorrelation(JSON.stringify(formatApiError(message, resource, 'describeFields')), correlationId);
         }
     }
     if (normalisedOperation === 'listPicklistValues') {
@@ -742,12 +769,12 @@ export async function executeAiTool(
                 (params.limit as number) ?? 50,
                 (params.page as number) ?? 1,
             );
-            return JSON.stringify(wrapSuccess(resource, 'listPicklistValues',
+            return attachCorrelation(JSON.stringify(wrapSuccess(resource, 'listPicklistValues',
                 buildResultPayload('metadata', result, { mutated: false, retryable: true }),
-            ));
+            )), correlationId);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            return JSON.stringify(formatApiError(message, resource, 'listPicklistValues'));
+            return attachCorrelation(JSON.stringify(formatApiError(message, resource, 'listPicklistValues')), correlationId);
         }
     }
     if (normalisedOperation === 'describeOperation') {
@@ -755,49 +782,55 @@ export async function executeAiTool(
             const target = params.targetOperation as string | undefined;
             const allAllowedOps = metadata.allAllowedOps ?? [];
             if (!target || !allAllowedOps.includes(target)) {
-                return JSON.stringify(wrapError(
+                return attachCorrelation(JSON.stringify(wrapError(
                     resource, 'describeOperation', ERROR_TYPES.INVALID_OPERATION,
                     `'targetOperation' must be one of: ${allAllowedOps.join(', ')}`,
                     `Call autotask_${resource} with operation='describeOperation' and a valid targetOperation value.`,
-                ));
+                )), correlationId);
             }
             const doc = buildOperationDoc(resource, target, readFields, writeFields);
-            return JSON.stringify(wrapSuccess(resource, 'describeOperation',
+            return attachCorrelation(JSON.stringify(wrapSuccess(resource, 'describeOperation',
                 buildResultPayload('metadata', doc, { mutated: false, retryable: true }),
-            ));
+            )), correlationId);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            return JSON.stringify(formatApiError(message, resource, 'describeOperation'));
+            return attachCorrelation(JSON.stringify(formatApiError(message, resource, 'describeOperation')), correlationId);
         }
     }
 
-    // Build recency filters BEFORE determining effectiveOperation so that
-    // recency-only queries (no explicit filter_field) correctly upgrade
-    // a bare 'get' to 'getMany'.
     let recencyResult: RecencyBuildResult;
     try {
         recencyResult = buildRecencyFilters(params, readFields);
     } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
-        return JSON.stringify(
+        return attachCorrelation(JSON.stringify(
             formatFilterConstraintError(
                 resource,
                 normalisedOperation,
                 detail,
                 "Use recency windows (for example 'last_7d') or ISO-8601 UTC values for since/until.",
             ),
-        );
+        ), correlationId);
     }
+    if (recencyResult.note && !recencyResult.isActive) {
+        return attachCorrelation(JSON.stringify(formatFilterConstraintError(
+            resource,
+            normalisedOperation,
+            recencyResult.note,
+            `No datetime field was detected for ${resource}. Use explicit filter_field/filter_value pairs with a known date field, or call autotask_${resource} with operation 'describeFields' with mode 'read' to discover available date fields.`,
+        )), correlationId);
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let combinedFilters: any[];
     if (params.filtersJson) {
         // filtersJson path — mutually exclusive with flat filter triplets
         if (params.filter_field || params.filter_field_2) {
-            return JSON.stringify(formatFilterConstraintError(
+            return attachCorrelation(JSON.stringify(formatFilterConstraintError(
                 resource, normalisedOperation,
                 'filtersJson is mutually exclusive with filter_field/filter_field_2. Provide one or the other, not both.',
                 'Remove filter_field and filter_field_2 when using filtersJson, or remove filtersJson when using flat triplets.',
-            ));
+            )), correlationId);
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let parsedFiltersJson: any[] = [];
@@ -806,18 +839,18 @@ export async function executeAiTool(
             if (!Array.isArray(parsed)) throw new Error('filtersJson must be a JSON array.');
             parsedFiltersJson = parsed;
         } catch (e) {
-            return JSON.stringify(formatFilterConstraintError(
+            return attachCorrelation(JSON.stringify(formatFilterConstraintError(
                 resource, normalisedOperation,
                 `filtersJson parse error: ${e instanceof Error ? e.message : String(e)}`,
                 "Provide a valid JSON array of Autotask IFilterCondition objects. Example: '[{\"field\":\"status\",\"op\":\"eq\",\"value\":1}]'",
-            ));
+            )), correlationId);
         }
         if (parsedFiltersJson.some((f) => typeof f !== 'object' || f === null || !('op' in (f as object)))) {
-            return JSON.stringify(formatFilterConstraintError(
+            return attachCorrelation(JSON.stringify(formatFilterConstraintError(
                 resource, normalisedOperation,
                 'filtersJson validation error: each element must have at minimum an "op" property.',
                 "Each filter object requires at minimum an 'op' property (e.g. 'eq', 'or', 'and'). Field-level filters also need 'field' and 'value'.",
-            ));
+            )), correlationId);
         }
         // Recency always AND-appended on top (time window constraint)
         combinedFilters = [...parsedFiltersJson, ...recencyResult.filters];
@@ -835,10 +868,16 @@ export async function executeAiTool(
     }
 
     const allFilterCount = filters.length + recencyResult.filters.length + (params.filtersJson ? 1 : 0);
-    const effectiveOperation =
-        normalisedOperation === 'get' && entityId === '' && allFilterCount > 0
-            ? 'getMany'
-            : normalisedOperation;
+    if (normalisedOperation === 'get' && entityId === '') {
+        return attachCorrelation(JSON.stringify(
+            allFilterCount > 0
+                ? wrapError(resource, 'get', ERROR_TYPES.INVALID_OPERATION,
+                    'operation "get" requires a numeric entity ID. Filters and recency parameters are not valid for "get".',
+                    `Use operation 'getMany' with the same filters to retrieve matching ${resource} records.`)
+                : formatIdError(resource, 'get'),
+        ), correlationId);
+    }
+    const effectiveOperation = normalisedOperation;
     // When offset is used, we need offset+limit records from the API then slice client-side.
     // Cap at MAX_QUERY_LIMIT to stay within API bounds; warn if offset exceeds this.
     const offsetExceedsApiCap = effectiveOffset > 0 && effectiveOffset >= MAX_QUERY_LIMIT;
@@ -850,16 +889,16 @@ export async function executeAiTool(
             : effectiveLimit;
 
     if (supportsOffsetPagination && offsetExceedsApiCap && !params.returnAll) {
-        return JSON.stringify(wrapError(
+        return attachCorrelation(JSON.stringify(wrapError(
             resource, effectiveOperation, ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
             `Offset ${effectiveOffset} exceeds the maximum queryable range of ${MAX_QUERY_LIMIT} records. Pagination via offset is limited to the first ${MAX_QUERY_LIMIT} records.`,
             `Use narrower filters (e.g. date ranges via since/until, or more specific filter_field/filter_value) to reduce the result set, then paginate within the narrowed results.`,
-        ));
+        )), correlationId);
     }
 
     const idValidation = validateEntityId(entityId, resource, effectiveOperation);
     if (!idValidation.valid) {
-        return JSON.stringify(idValidation.error);
+        return attachCorrelation(JSON.stringify(idValidation.error), correlationId);
     }
 
     // Pre-flight: operations using the identifier-pair pattern (id OR altIdField) require at least one.
@@ -870,38 +909,38 @@ export async function executeAiTool(
         const hasAltId = typeof params[idPairConfig.altIdField as keyof typeof params] === 'string'
             && (params[idPairConfig.altIdField as keyof typeof params] as string).trim() !== '';
         if (!hasId && !hasAltId) {
-            return JSON.stringify(wrapError(
+            return attachCorrelation(JSON.stringify(wrapError(
                 resource,
                 operation,
                 ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
                 `${effectiveOperation} requires a ticket identifier: provide 'id' (numeric Ticket ID) or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`,
                 `Call autotask_${resource} with operation '${effectiveOperation}' and include either 'id' (numeric Ticket ID) or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`,
-            ));
+            )), correlationId);
         }
     }
 
     if (['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(effectiveOperation)) {
         const udfFilters = filters.filter((filter) => filter.udf);
         if (udfFilters.length > 1) {
-            return JSON.stringify(
+            return attachCorrelation(JSON.stringify(
                 formatFilterConstraintError(
                     resource,
                     effectiveOperation,
                     `Only one UDF filter is supported per query for ${resource}.${effectiveOperation}.`,
                     `Retry with a single UDF filter, or use autotask_${resource} with operation 'describeFields' to use standard fields where possible.`,
                 ),
-            );
+            ), correlationId);
         }
         const readValidation = validateReadFields(selectedColumns, readFields, resource, effectiveOperation);
         if (!readValidation.valid) {
-            return JSON.stringify(readValidation.error);
+            return attachCorrelation(JSON.stringify(readValidation.error), correlationId);
         }
     }
 
     if (['create', 'update', 'createIfNotExists'].includes(effectiveOperation)) {
         const writeValidation = validateWriteFields(fieldValues, writeFields, resource, effectiveOperation);
         if (!writeValidation.valid) {
-            return JSON.stringify(writeValidation.error);
+            return attachCorrelation(JSON.stringify(writeValidation.error), correlationId);
         }
     }
 
@@ -988,7 +1027,19 @@ export async function executeAiTool(
             labelWarnings,
             labelImpersonationFailed,
         );
-        if (blocker !== null) return blocker;
+        if (blocker !== null) return attachCorrelation(blocker, correlationId);
+    }
+
+    if (rawParams.dryRun === true) {
+        return attachCorrelation(JSON.stringify(wrapSuccess(resource, effectiveOperation,
+            buildResultPayload('summary', {
+                resolvedFieldValues: fieldValues,
+                note: 'Dry run only — no API call was made. The resolved field values above show exactly what would have been sent to the Autotask API.',
+            }, { mutated: false, retryable: true, dryRunOnly: true }, {
+                warnings: labelWarnings,
+                appliedResolutions: labelResolutions,
+            }),
+        )), correlationId);
     }
 
     context.getNodeParameter = ((
@@ -1066,9 +1117,14 @@ export async function executeAiTool(
                     return JSON.stringify(fieldValues);
                 }
                 return fallbackValue ?? '{}';
-            // Label enrichment and UDF flattening -- always enable for AI tools
+            // Label enrichment and UDF flattening -- default to idsAndLabels; caller may override to rawIds.
+            // addPicklistLabels and addReferenceLabels remain hardcoded true even when outputMode='rawIds':
+            // processOutputMode() reads outputMode first and short-circuits label enrichment before these
+            // flags are consulted, so they have no effect in rawIds mode. Keeping them true avoids
+            // sending a narrower IncludeFields request that would omit label columns needed if the
+            // caller later switches back to idsAndLabels without a new API call.
             case 'outputMode':
-                return 'idsAndLabels';
+                return (params.outputMode as string | undefined) ?? 'idsAndLabels';
             case 'addPicklistLabels':
                 return true;
             case 'addReferenceLabels':
@@ -1128,11 +1184,18 @@ export async function executeAiTool(
                     return fallbackValue;
                 }
                 return rawImpersonation ?? fallbackValue;
-            case 'dryRun':
-                return params.dryRun === true;
             case 'allowedResources':
+                // The AI tools path validates resource+operations in supplyData() at tool
+                // construction time. The downstream executor's allowedResources check is
+                // redundant — the AI tool already ensures only the configured resource's
+                // operations reach executeAiTool(). Empty array disables the allowlist check.
                 return '[]';
             case 'allowDryRunForWrites':
+                // The AI path manages its own dry-run response contract: params.dryRun is
+                // stripped from API bodies via N8N_METADATA_FIELDS. This must remain true
+                // to allow the downstream executor to process dryRun calls that originate
+                // from the AI schema (currently exposed on moveToCompany / moveConfigurationItem
+                // / transferOwnership; extending to all write ops is a follow-on task).
                 return true;
             default:
                 if (Object.prototype.hasOwnProperty.call(params, name)) {
@@ -1222,24 +1285,24 @@ export async function executeAiTool(
                 const { createHolidayIfNotExists } = await import('../helpers/holiday-creator');
                 compoundResult = await createHolidayIfNotExists(context, 0, compoundOptions);
             } else {
-                return JSON.stringify(wrapError(resource, 'createIfNotExists', ERROR_TYPES.INVALID_OPERATION,
+                return attachCorrelation(JSON.stringify(wrapError(resource, 'createIfNotExists', ERROR_TYPES.INVALID_OPERATION,
                     `createIfNotExists is not implemented for resource '${resource}'.`,
                     `Use autotask_${resource} with operation 'create' instead.`,
-                ));
+                )), correlationId);
             }
 
             if (compoundResult) {
                 // Reclassify not-found outcomes as errors
                 if (PARENT_NOT_FOUND_OUTCOMES.has(compoundResult.outcome)) {
                     const parentRef = compoundResult.parentLookupValue ?? compoundResult.companyID ?? compoundResult.ticketID ?? 'unknown';
-                    return JSON.stringify(wrapError(
+                    return attachCorrelation(JSON.stringify(wrapError(
                         resource,
                         'createIfNotExists',
                         ERROR_TYPES.ENTITY_NOT_FOUND,
                         `Parent entity not found: ${parentRef}`,
                         `Verify the parent entity identifier and retry.`,
                         { outcome: compoundResult.outcome },
-                    ));
+                    )), correlationId);
                 }
 
                 // Merge compound warnings with label resolution warnings
@@ -1261,7 +1324,7 @@ export async function executeAiTool(
                 if (compoundResult.fieldsCompared !== undefined) compoundData.fieldsCompared = compoundResult.fieldsCompared;
                 if (compoundContext !== undefined) compoundData.context = compoundContext;
 
-                return JSON.stringify(wrapSuccess(resource, 'createIfNotExists',
+                return attachCorrelation(JSON.stringify(wrapSuccess(resource, 'createIfNotExists',
                     buildResultPayload('compound', compoundData,
                         {
                             mutated: compoundResult.outcome !== 'skipped',
@@ -1273,7 +1336,7 @@ export async function executeAiTool(
                             appliedResolutions: labelResolutions,
                         },
                     ),
-                ));
+                )), correlationId);
             }
         }
 
@@ -1291,11 +1354,11 @@ export async function executeAiTool(
             // Detect offset beyond available records — return clear error instead of
             // misleading "no results found" which could trigger LLM data fabrication.
             if (records.length === 0 && fetchedRecords.length > 0) {
-                return JSON.stringify(wrapError(
+                return attachCorrelation(JSON.stringify(wrapError(
                     resource, effectiveOperation, ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
                     `Offset ${effectiveOffset} is beyond the available ${fetchedRecords.length} records. No records remain at this offset.`,
                     `Use offset=0 to start from the beginning, or use narrower filters to find specific records.`,
-                ));
+                )), correlationId);
             }
         }
         // Merge write label resolutions and filter label resolutions
@@ -1337,10 +1400,10 @@ export async function executeAiTool(
         }
 
         // Build structured response per operation type
-        return formatToolResponse(resource, effectiveOperation, records, params, responseContext);
+        return attachCorrelation(formatToolResponse(resource, effectiveOperation, records, params, responseContext), correlationId);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        return JSON.stringify(formatApiError(message, resource, effectiveOperation));
+        return attachCorrelation(JSON.stringify(formatApiError(message, resource, effectiveOperation)), correlationId);
     } finally {
         context.getNodeParameter = originalGetNodeParameter;
     }
@@ -1415,7 +1478,17 @@ function formatToolResponse(
                 if (params.recency) filtersUsed.recency = params.recency;
                 if (params.since) filtersUsed.since = params.since;
                 if (params.until) filtersUsed.until = params.until;
-                return JSON.stringify(formatNoResultsFound(resource, operation, filtersUsed));
+                const noResultsError = formatNoResultsFound(resource, operation, filtersUsed);
+                // Surface any filter label resolution failures in the error context so the
+                // LLM can correlate empty results with a failed label lookup.
+                const unresolvedFilterWarnings = context.resolutionWarnings ?? [];
+                if (unresolvedFilterWarnings.length > 0) {
+                    noResultsError.context = {
+                        ...noResultsError.context,
+                        filterResolutionWarnings: unresolvedFilterWarnings,
+                    };
+                }
+                return JSON.stringify(noResultsError);
             }
 
             const total = records.length;

@@ -251,7 +251,48 @@ export async function resolveFilterLabelsToIds(
     const warnings: string[] = [];
     const pendingConfirmations: PendingLabelConfirmation[] = [];
 
-    // Only attempt resolution on string values (not numbers, booleans, or arrays)
+    // Handle array values for in/notIn operators on reference/picklist fields.
+    // Resolves each string element individually; keeps numeric/boolean elements as-is.
+    if (Array.isArray(filterValue)) {
+        const field = readFields.find(f => f.id.toLowerCase() === filterField.toLowerCase());
+        if (!field || (!field.isPickList && !field.isReference)) {
+            return { values, resolutions, warnings, pendingConfirmations };
+        }
+        const hasStringLabels = filterValue.some(v => typeof v === 'string' && !isLikelyId(v));
+        if (!hasStringLabels) {
+            return { values, resolutions, warnings, pendingConfirmations };
+        }
+
+        const resolvedArray: Array<string | number | boolean> = [];
+        const unresolvedLabels: string[] = [];
+
+        for (const element of filterValue) {
+            if (typeof element !== 'string' || isLikelyId(element)) {
+                resolvedArray.push(element as string | number | boolean);
+                continue;
+            }
+            const elementResult = await resolveFilterLabelsToIds(context, resource, filterField, element, readFields);
+            if (elementResult.resolutions.length > 0) {
+                resolvedArray.push(elementResult.values[filterField] as string | number);
+                resolutions.push(...elementResult.resolutions);
+            } else {
+                resolvedArray.push(element);
+                unresolvedLabels.push(`'${element}'`);
+            }
+            warnings.push(...elementResult.warnings);
+            pendingConfirmations.push(...elementResult.pendingConfirmations);
+        }
+
+        if (unresolvedLabels.length > 0) {
+            warnings.push(
+                `Could not resolve ${unresolvedLabels.length} in/notIn filter element(s) for '${filterField}': ${unresolvedLabels.join(', ')}`,
+            );
+        }
+        values[filterField] = resolvedArray;
+        return { values, resolutions, warnings, pendingConfirmations };
+    }
+
+    // Only attempt resolution on string values (not numbers, booleans)
     if (typeof filterValue !== 'string' || filterValue.trim() === '') {
         return { values, resolutions, warnings, pendingConfirmations };
     }

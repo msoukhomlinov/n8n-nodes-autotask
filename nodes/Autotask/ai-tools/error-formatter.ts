@@ -10,6 +10,7 @@ export interface SuccessEnvelope {
 	resource: string;
 	operation: string;
 	result: ResultPayload;
+	correlationId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -35,6 +36,8 @@ export interface ResultFlags {
 	needsUserConfirmation: boolean;
 	/** !needsUserConfirmation && !partial. False = stop and present to user before continuing. */
 	safeToContinue: boolean;
+	/** True when the response was produced by a dry-run: no API call was made. */
+	dryRunOnly?: boolean;
 }
 
 export interface PaginationInfo {
@@ -69,6 +72,7 @@ export interface ErrorEnvelope {
 	message: string;
 	nextAction: string;
 	context?: Record<string, unknown>;
+	correlationId?: string;
 }
 
 /** @deprecated Use ErrorEnvelope instead */

@@ -203,6 +203,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
                 'Default false returns up to limit records. Use with a tight filter — broad queries may return thousands of records. ' +
                 'Response is still subject to MAX_RESPONSE_RECORDS truncation with a note when hit.',
             );
+            shape.outputMode = rz.enum(['idsAndLabels', 'rawIds']).optional().describe(
+                "Output format. 'idsAndLabels' (default) returns IDs enriched with human-readable labels and resolved picklist values. Use 'rawIds' for lighter responses when processing high-cardinality data or when labels are not needed.",
+            );
         }
 
         // searchByDomain fields
@@ -254,6 +257,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
                 shape.proceedWithoutImpersonationIfDenied = rz.boolean().optional()
                     .describe('When true and impersonation is set, retry without impersonation if denied (default true).');
             }
+            if (!shape.dryRun)
+                shape.dryRun = rz.boolean().optional().describe('When true, resolves labels and validates fields but makes no API call (default false). Returns a summary of resolved field values.');
         }
 
         // moveConfigurationItem fields
@@ -378,6 +383,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
                 shape.proceedWithoutImpersonationIfDenied = rz.boolean().optional()
                     .describe('When true and impersonation is set, retry without impersonation if denied (default true).');
             }
+            if (!shape.dryRun)
+                shape.dryRun = rz.boolean().optional().describe('When true, resolves labels and validates fields but makes no API call (default false). Returns a summary of resolved field values.');
         }
 
         // describeFields fields
