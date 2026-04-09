@@ -451,8 +451,6 @@ function buildResultPayload(
 	};
 }
 
-void buildResultPayload;
-
 /** Extract the canonical created-entity numeric ID from a compound creator result. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildCompoundEntityId(resource: string, result: any): number | undefined {
@@ -1215,7 +1213,13 @@ function formatToolResponse(
                 const id = params.id ?? 'unknown';
                 return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
             }
-            return JSON.stringify(wrapSuccess(resource, operation, entity));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('item', entity, { mutated: false, retryable: true }, {
+                    warnings: context.resolutionWarnings ?? [],
+                    pendingConfirmations: context.pendingConfirmations ?? [],
+                    appliedResolutions: context.resolutions ?? [],
+                }),
+            ));
         }
 
         case 'getMany':
@@ -1321,7 +1325,13 @@ function formatToolResponse(
             if (firstRecord === null || firstRecord === undefined) {
                 return JSON.stringify(formatNotFoundError(resource, operation, 'authenticated user'));
             }
-            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('item', firstRecord, { mutated: false, retryable: true }, {
+                    warnings: context.resolutionWarnings ?? [],
+                    pendingConfirmations: context.pendingConfirmations ?? [],
+                    appliedResolutions: context.resolutions ?? [],
+                }),
+            ));
         }
 
         case 'searchByDomain': {
@@ -1343,7 +1353,13 @@ function formatToolResponse(
                 const identifier = params.ticketNumber ?? params.id ?? 'unknown';
                 return JSON.stringify(formatNotFoundError(resource, operation, identifier as number | string));
             }
-            return JSON.stringify(wrapSuccess(resource, operation, firstRecord));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('item', firstRecord, { mutated: false, retryable: true }, {
+                    warnings: context.resolutionWarnings ?? [],
+                    pendingConfirmations: context.pendingConfirmations ?? [],
+                    appliedResolutions: context.resolutions ?? [],
+                }),
+            ));
         }
 
         case 'summary': {
@@ -1456,7 +1472,13 @@ function formatToolResponse(
                 const rid = params.resourceID ?? 'unknown';
                 return JSON.stringify(formatNotFoundError(resource, operation, rid as number | string));
             }
-            return JSON.stringify(wrapSuccess(resource, operation, entity));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('item', entity, { mutated: false, retryable: true }, {
+                    warnings: context.resolutionWarnings ?? [],
+                    pendingConfirmations: context.pendingConfirmations ?? [],
+                    appliedResolutions: context.resolutions ?? [],
+                }),
+            ));
         }
 
         case 'getByYear': {
@@ -1470,7 +1492,13 @@ function formatToolResponse(
                 const yr = params.year ?? 'unknown';
                 return JSON.stringify(formatNotFoundError(resource, operation, `resource ${rid}, year ${yr}`));
             }
-            return JSON.stringify(wrapSuccess(resource, operation, entity));
+            return JSON.stringify(wrapSuccess(resource, operation,
+                buildResultPayload('item', entity, { mutated: false, retryable: true }, {
+                    warnings: context.resolutionWarnings ?? [],
+                    pendingConfirmations: context.pendingConfirmations ?? [],
+                    appliedResolutions: context.resolutions ?? [],
+                }),
+            ));
         }
 
         default:
