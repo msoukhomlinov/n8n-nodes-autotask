@@ -400,7 +400,8 @@ const PARENT_NOT_FOUND_OUTCOMES = new Set([
 function isResolutionFailureWarning(w: string): boolean {
 	return w.startsWith('[INFRASTRUCTURE]')
 		|| w.includes('resolution failed')
-		|| w.includes('Proceeding with raw values');
+		|| w.includes('Proceeding with raw values')
+		|| w.includes('Could not resolve');
 }
 
 /**
