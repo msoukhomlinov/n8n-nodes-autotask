@@ -323,6 +323,10 @@ function buildFieldValues(
 				'dedupFields',
 				'errorOnDuplicate',
 				'updateFields',
+				'outputMode',
+				'targetOperation',
+				'filtersJson',
+				'returnAll',
     ]);
     for (const [key, value] of Object.entries(params)) {
         if (value !== undefined && value !== '' && !exclude.has(key)) {
@@ -1335,6 +1339,7 @@ function formatToolResponse(
             const hasFilters = !!(
                 params.filter_field ||
                 params.filter_field_2 ||
+                params.filtersJson ||
                 params.recency ||
                 params.since ||
                 params.until
@@ -1352,6 +1357,7 @@ function formatToolResponse(
                     filtersUsed.filter_value_2 = params.filter_value_2;
                 }
                 if (params.filter_logic && params.filter_logic !== 'and') filtersUsed.filter_logic = params.filter_logic;
+                if (params.filtersJson) filtersUsed.filtersJson = params.filtersJson;
                 if (params.recency) filtersUsed.recency = params.recency;
                 if (params.since) filtersUsed.since = params.since;
                 if (params.until) filtersUsed.until = params.until;
