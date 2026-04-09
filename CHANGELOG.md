@@ -2,10 +2,18 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [2.9.0] - 2026-04-09 (unreleased)
+## [2.10.0] - 2026-04-09
+
+### Changed
+
+- **Enforceable write resolution blocking**: Write operations (create, update, delete, approve, reject, move, transfer, createIfNotExists) are now blocked before execution when label/reference resolution fails. New `WRITE_RESOLUTION_INCOMPLETE` error type with structured context: `pendingConfirmations` (ambiguous matches with candidates), `unresolvedFields` (no-match fields), `infraErrors` (infrastructure failures during resolution), `impersonationFailed` (unresolvable impersonationResourceId). Previously, writes executed with raw unresolved values and returned advisory `safeToContinue: false` after the mutation. Read operations are unaffected — filter label resolution continues to degrade gracefully.
+- **Description safety header + visible truncation**: `buildUnifiedDescription()` now places a write-safety header as the first section (guaranteed to survive truncation) when write operations are configured. Silent `.slice(0, 2000)` replaced with `truncateDescription()` that cuts at word boundary and appends a visible `...[description truncated — call with operation='describeFields' for full field detail]` suffix.
 
 ### Fixed
 
+- **`isResolutionFailureWarning()` incomplete coverage**: Added detection for `'resolution error'` (non-infra exceptions), `'has no known entity type'` (unknown reference entity), and `'Could not resolve'` (no-match warnings). Previously these warning strings bypassed the resolution failure classifier, allowing writes to proceed with raw values.
+- **Impersonation catch warning missing `[INFRASTRUCTURE]` prefix**: The catch block in impersonation resolution now prefixes its warning with `[INFRASTRUCTURE]`, consistent with `label-resolution.ts` error handling.
+- **Case mismatch in write guard impersonation exclusion**: `buildWriteResolutionBlocker()` filtered `'Impersonation'` (capital I) but actual warnings use lowercase `'impersonation'`. Fixed to match actual casing.
 - **`createIfNotExists` double-prefix bug**: All three `wrapSuccess`/`wrapError` call sites for `createIfNotExists` compound operations were passing `` `${resource}.createIfNotExists` `` as the `operation` argument. Because `buildOperationString` internally prepends `${resource}.`, the final envelope `operation` field was double-prefixed (e.g. `ticket.ticket.createIfNotExists`). All three sites now pass the literal `'createIfNotExists'`, producing the correct `ticket.createIfNotExists`.
 - **`summary` operation missing envelope metadata**: The `summary` case in `formatToolResponse` omitted the `extras` argument to `buildResultPayload`, causing `warnings`, `pendingConfirmations`, and `appliedResolutions` to always be empty in summary responses regardless of what label resolution produced. The standard extras block is now passed from `context`, consistent with all other operation families.
 
