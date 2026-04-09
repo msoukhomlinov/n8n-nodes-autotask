@@ -196,7 +196,7 @@ export class AutotaskAiTools implements INodeType {
             supportsImpersonation,
         );
 
-        const allAllowedOps = [...new Set([...effectiveOps, 'describeFields', 'listPicklistValues'])];
+        const allAllowedOps = [...new Set([...effectiveOps, 'describeFields', 'listPicklistValues', 'describeOperation'])];
 
         const unifiedTool = new RuntimeDynamicStructuredTool({
             name: `autotask_${resource}`,
@@ -227,6 +227,7 @@ export class AutotaskAiTools implements INodeType {
                     {
                         readFields: readDescribe?.fields ?? [],
                         writeFields: writeDescribe?.fields ?? [],
+                        allAllowedOps,
                     },
                 );
             },
@@ -299,8 +300,8 @@ export class AutotaskAiTools implements INodeType {
             }]];
         }
 
-        // describeFields and listPicklistValues are always available (same as supplyData path)
-        const allAllowedOps = [...new Set([...effectiveOps, 'describeFields', 'listPicklistValues'])];
+        // describeFields, listPicklistValues, and describeOperation are always available (same as supplyData path)
+        const allAllowedOps = [...new Set([...effectiveOps, 'describeFields', 'listPicklistValues', 'describeOperation'])];
 
         // Fetch field metadata for label resolution and field validation (mirrors supplyData)
         const needsReadFields = effectiveOps.some((op) =>
@@ -358,6 +359,7 @@ export class AutotaskAiTools implements INodeType {
                 const resultJson = await executeAiTool(this, resource, operation, params, {
                     readFields: readDescribe?.fields ?? [],
                     writeFields: writeDescribe?.fields ?? [],
+                    allAllowedOps,
                 });
                 let parsed: IDataObject;
                 if (typeof resultJson === 'string') {
