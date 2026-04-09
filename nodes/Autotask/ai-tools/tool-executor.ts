@@ -396,18 +396,12 @@ const PARENT_NOT_FOUND_OUTCOMES = new Set([
 	'holiday_set_not_found', // holiday
 ]);
 
-// TODO: Use in task #8 (update metadata early-return sites)
-void PARENT_NOT_FOUND_OUTCOMES;
-
 /** Returns true for warnings that indicate a resolution failure affecting written data. */
-// TODO: Use in task #8 (update metadata early-return sites)
 function isResolutionFailureWarning(w: string): boolean {
 	return w.startsWith('[INFRASTRUCTURE]')
 		|| w.includes('resolution failed')
 		|| w.includes('Proceeding with raw values');
 }
-
-void isResolutionFailureWarning;
 
 /**
  * Construct a ResultPayload. Derives needsUserConfirmation and safeToContinue automatically.
@@ -486,8 +480,6 @@ function buildCompoundEntityId(resource: string, result: any): number | undefine
 	}
 }
 
-void buildCompoundEntityId;
-
 /** Extract the canonical existing-entity numeric ID from a compound creator result (skip/update). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildCompoundExistingId(resource: string, result: any): number | undefined {
@@ -520,8 +512,6 @@ function buildCompoundExistingId(resource: string, result: any): number | undefi
 			return result.existingId;
 	}
 }
-
-void buildCompoundExistingId;
 
 /** Build the context block (parent/scope fields) for a compound creator result. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -567,8 +557,6 @@ function buildCompoundContext(resource: string, result: any): Record<string, unk
 			return undefined;
 	}
 }
-
-void buildCompoundContext;
 
 function compactDescribeResponse(response: DescribeResourceResponse): Record<string, unknown> {
     return {
@@ -1096,19 +1084,51 @@ export async function executeAiTool(
             }
 
             if (compoundResult) {
-                if (labelResolutions.length > 0) {
-                    (compoundResult as Record<string, unknown>).resolvedLabels = labelResolutions;
+                // Reclassify not-found outcomes as errors
+                if (PARENT_NOT_FOUND_OUTCOMES.has(compoundResult.outcome)) {
+                    const parentRef = compoundResult.parentLookupValue ?? compoundResult.companyID ?? compoundResult.ticketID ?? 'unknown';
+                    return JSON.stringify(wrapError(
+                        resource,
+                        `${resource}.createIfNotExists`,
+                        ERROR_TYPES.ENTITY_NOT_FOUND,
+                        `Parent entity not found: ${parentRef}`,
+                        `Verify the parent entity identifier and retry.`,
+                        { outcome: compoundResult.outcome },
+                    ));
                 }
-                if (labelWarnings.length > 0) {
-                    const warnings = (compoundResult as Record<string, unknown>).warnings;
-                    if (Array.isArray(warnings)) {
-                        warnings.push(...labelWarnings);
-                    }
-                }
-                if (labelPendingConfirmations.length > 0) {
-                    (compoundResult as Record<string, unknown>).pendingConfirmations = labelPendingConfirmations;
-                }
-                return JSON.stringify(wrapSuccess(resource, `${resource}.createIfNotExists`, compoundResult));
+
+                // Merge compound warnings with label resolution warnings
+                const rawCompoundWarnings: string[] = Array.isArray(compoundResult.warnings) ? compoundResult.warnings : [];
+                const allWarnings = [...rawCompoundWarnings, ...labelWarnings];
+                const partial = allWarnings.some(isResolutionFailureWarning);
+
+                const entityId = buildCompoundEntityId(resource, compoundResult);
+                const existingEntityId = buildCompoundExistingId(resource, compoundResult);
+                const compoundContext = buildCompoundContext(resource, compoundResult);
+
+                const compoundData: Record<string, unknown> = {
+                    outcome: compoundResult.outcome,
+                };
+                if (entityId !== undefined) compoundData.id = entityId;
+                if (existingEntityId !== undefined) compoundData.existingId = existingEntityId;
+                if (compoundResult.matchedDedupFields !== undefined) compoundData.matchedDedupFields = compoundResult.matchedDedupFields;
+                if (compoundResult.fieldsUpdated !== undefined) compoundData.fieldsUpdated = compoundResult.fieldsUpdated;
+                if (compoundResult.fieldsCompared !== undefined) compoundData.fieldsCompared = compoundResult.fieldsCompared;
+                if (compoundContext !== undefined) compoundData.context = compoundContext;
+
+                return JSON.stringify(wrapSuccess(resource, `${resource}.createIfNotExists`,
+                    buildResultPayload('compound', compoundData,
+                        {
+                            mutated: compoundResult.outcome !== 'skipped',
+                            retryable: compoundResult.outcome !== 'created',
+                            partial,
+                        }, {
+                            warnings: allWarnings,
+                            pendingConfirmations: labelPendingConfirmations,
+                            appliedResolutions: labelResolutions,
+                        },
+                    ),
+                ));
             }
         }
 
