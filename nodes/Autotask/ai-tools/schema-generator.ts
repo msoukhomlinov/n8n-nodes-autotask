@@ -197,7 +197,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
             if (!shape.ticketNumber) {
                 shape.ticketNumber = rz.string().optional().describe('Ticket number (e.g. T20240615.0674). Provide this or id.');
             }
-            shape.includeRaw = rz.boolean().optional().describe('When true, includes the full unfiltered ticket payload under a raw key.');
+            shape.includeRaw = rz.boolean().optional().describe('When true, includes the enriched pre-alias-rename payload: label and UDF enrichments intact, original changeInfoField{N} keys (not aliased names), no null filtering or truncation. Use _meta.aliasMap for changeInfo key mapping.');
             shape.summaryTextLimit = rz.number().optional().describe('Maximum characters for description and resolution fields in the summary. Default 500. Pass 0 for no limit.');
         }
 

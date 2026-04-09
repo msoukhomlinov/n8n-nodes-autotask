@@ -293,21 +293,36 @@ export async function buildTicketSummary(
 ): Promise<TicketSummaryResult> {
     const { includeRaw, summaryTextLimit } = options;
 
-    // Step 1: Apply aliases — then remove originals to avoid duplicate noise
+    // Step 1: Capture the original ticket as raw output (unmodified snapshot).
+    const rawTicket: Record<string, unknown> = { ...ticket };
+
+    // Step 2: Clone into a working copy — all enrichment and transformation happens here.
+    // The input `ticket` is never mutated.
+    const working: Record<string, unknown> = { ...ticket };
+
+    const suppressedCanonicalFields: string[] = [];
+    const metaAliasMap: Record<string, string> = {};
+
+    // Step 3: Apply aliases to the working copy, then drop the canonical originals from it.
     if (aliasMap) {
-        applyChangeInfoAliases(ticket, aliasMap);
+        applyChangeInfoAliases(working, aliasMap);
         for (let n = 1; n <= 5; n++) {
-            delete ticket[`changeInfoField${n}`];
+            const canonicalKey = `changeInfoField${n}`;
+            if (canonicalKey in rawTicket) {
+                const alias = aliasMap.get(n);
+                if (alias) {
+                    suppressedCanonicalFields.push(canonicalKey);
+                    metaAliasMap[canonicalKey] = `${canonicalKey}_${alias}`;
+                }
+            }
+            delete working[canonicalKey];
         }
     }
 
-    // Step 2: Save raw copy (post-alias, pre-filter)
-    const rawTicket: Record<string, unknown> = { ...ticket };
+    // Step 4: Detect ticket type from the working copy (aliases already applied).
+    const detectedType = detectTicketType(working);
 
-    // Step 3: Detect ticket type (before filtering so all fields are available)
-    const detectedType = detectTicketType(ticket);
-
-    // Step 4: Text truncation for description and resolution
+    // Step 5: Text truncation for description and resolution on the working copy.
     const truncatedFields: Array<{ field: string; originalLength: number; charsRemoved: number }> = [];
 
     function maybeTruncate(value: unknown, fieldName: string): unknown {
@@ -319,18 +334,18 @@ export async function buildTicketSummary(
         return `${value.slice(0, summaryTextLimit)}\u2026[truncated, ${originalLength} chars total]`;
     }
 
-    if ('description' in ticket) {
-        ticket.description = maybeTruncate(ticket.description, 'description');
+    if ('description' in working) {
+        working.description = maybeTruncate(working.description, 'description');
     }
-    if ('resolution' in ticket) {
-        ticket.resolution = maybeTruncate(ticket.resolution, 'resolution');
+    if ('resolution' in working) {
+        working.resolution = maybeTruncate(working.resolution, 'resolution');
     }
 
-    // Step 5: Filter null/empty-string/empty-array fields
+    // Step 6: Filter null/empty-string/empty-array fields from the working copy.
     const filteredTicket: Record<string, unknown> = {};
     const excludedFieldNames: string[] = [];
 
-    for (const [key, value] of Object.entries(ticket)) {
+    for (const [key, value] of Object.entries(working)) {
         if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
             excludedFieldNames.push(key);
         } else {
@@ -338,16 +353,16 @@ export async function buildTicketSummary(
         }
     }
 
-    // Step 6: Build ordered summary
+    // Step 7: Build ordered summary from the filtered working copy.
     const summary = buildOrderedSummary(filteredTicket, detectedType);
 
-    // Step 7: Build computed block
-    const computed = buildComputedBlock(ticket, now);
+    // Step 8: Build computed block from the working copy (pre-filter, all fields available).
+    const computed = buildComputedBlock(working, now);
 
-    // Step 8: Build relationships block
-    const relationships = buildRelationshipsBlock(ticket);
+    // Step 9: Build relationships block from the working copy.
+    const relationships = buildRelationshipsBlock(working);
 
-    // Step 9: Assemble childCounts — omit zero-value keys
+    // Step 10: Assemble childCounts — omit zero-value keys
     const childCounts: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(childCountsInput)) {
         if (key === 'checklistItems') {
@@ -361,7 +376,7 @@ export async function buildTicketSummary(
         }
     }
 
-    // Step 10: Build _meta
+    // Step 11: Build _meta
     const meta: Record<string, unknown> = {
         detectedTicketType: detectedType,
         typeAwarePrioritisationApplied: true,
@@ -373,6 +388,11 @@ export async function buildTicketSummary(
         generatedAt: now.toISOString(),
     };
 
+    if (suppressedCanonicalFields.length > 0) {
+        meta.suppressedCanonicalFields = suppressedCanonicalFields;
+        meta.aliasMap = metaAliasMap;
+    }
+
     if (truncatedFields.length > 0) {
         meta.truncatedFields = truncatedFields;
     }
@@ -382,10 +402,10 @@ export async function buildTicketSummary(
         meta.countErrors = countErrors;
     }
 
-    const slaId = ticket.serviceLevelAgreementID;
+    const slaId = working.serviceLevelAgreementID;
     meta.slaDetailAvailable = slaId !== null && slaId !== undefined && slaId !== '';
 
-    // Step 11: Assemble result
+    // Step 12: Assemble result
     const result: TicketSummaryResult = {
         summary,
         computed,

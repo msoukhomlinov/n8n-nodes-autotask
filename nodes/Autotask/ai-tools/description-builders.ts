@@ -222,7 +222,7 @@ export function buildTicketSummaryDescription(resourceName: string): string {
         "Includes a 'childCounts' block with counts of: notes, timeEntries, attachments, additionalConfigurationItems, additionalContacts, checklistItems (with completed/remaining breakdown), and changeRequestLinks (Change Request tickets only). " +
         "Includes a 'relationships' block when the ticket is linked to a project, problem ticket, or opportunity. " +
         "Use 'summaryTextLimit' to cap description/resolution length (default 500 chars). " +
-        "Set 'includeRaw=true' to also receive the full original ticket payload. " +
+        "Set 'includeRaw=true' to receive the full enriched payload before alias renaming — label/UDF enrichments intact, original changeInfoField{N} keys, no null filtering or text truncation. " +
         "For full SLA milestone timing and elapsed hours, use slaHealthCheck instead. " +
         `Identify the ticket with 'id' (numeric) or 'ticketNumber' (e.g. T20240615.0001). ` +
         `If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
