@@ -400,8 +400,10 @@ const PARENT_NOT_FOUND_OUTCOMES = new Set([
 function isResolutionFailureWarning(w: string): boolean {
 	return w.startsWith('[INFRASTRUCTURE]')
 		|| w.includes('resolution failed')
+		|| w.includes('resolution error')
 		|| w.includes('Proceeding with raw values')
-		|| w.includes('Could not resolve');
+		|| w.includes('Could not resolve')
+		|| w.includes('has no known entity type');
 }
 
 /**
@@ -422,10 +424,10 @@ function buildWriteResolutionBlocker(
     impersonationFailed: boolean,
 ): string | null {
     const unresolvedFields = warnings
-        .filter(w => isResolutionFailureWarning(w) && !w.startsWith('[INFRASTRUCTURE]') && !w.includes('Impersonation'))
+        .filter(w => isResolutionFailureWarning(w) && !w.startsWith('[INFRASTRUCTURE]') && !w.includes('impersonation'))
         .map(w => {
-            const fieldMatch = w.match(/for field '([^']+)'/);
-            return fieldMatch ? fieldMatch[1] : w;
+            const fieldMatch = w.match(/for (?:field )?'([^']+)'/);
+            return fieldMatch ? fieldMatch[1] : '[general-resolution-failure]';
         });
     const infraErrors = warnings.filter(w => w.startsWith('[INFRASTRUCTURE]'));
 
