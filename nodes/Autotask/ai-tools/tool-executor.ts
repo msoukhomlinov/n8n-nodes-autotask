@@ -4,7 +4,7 @@ import type { FieldMeta } from '../helpers/aiHelper';
 import { describeResource, listPicklistValues, type DescribeResourceResponse } from '../helpers/aiHelper';
 import { mapFilterOp } from './schema-generator';
 import { validateEntityId, validateReadFields, validateWriteFields } from './field-validator';
-import { formatApiError, formatFilterConstraintError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES } from './error-formatter';
+import { formatApiError, formatFilterConstraintError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES, type ResultKind, type ResultPayload, type PaginationInfo } from './error-formatter';
 import { resolveLabelsToIds, resolveFilterLabelsToIds, type LabelResolution, type PendingLabelConfirmation } from '../helpers/label-resolution';
 import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../helpers/change-info-aliases';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
@@ -385,6 +385,177 @@ const N8N_METADATA_FIELDS = new Set([
 
 /** Key prefixes injected by n8n that must be stripped regardless of suffix */
 const N8N_METADATA_PREFIXES = ['Prompt__'];
+
+/** Compound operation outcomes that indicate a parent entity was not found — become ErrorEnvelope */
+export const PARENT_NOT_FOUND_OUTCOMES = new Set([
+	'parent_not_found',      // defensive — remapped by thin wrappers but kept for safety
+	'company_not_found',     // contract, configurationItems, opportunity
+	'contract_not_found',    // contractCharge, contractService
+	'ticket_not_found',      // ticketCharge, ticketAdditionalConfigurationItem, ticketAdditionalContact
+	'project_not_found',     // projectCharge
+	'holiday_set_not_found', // holiday
+]);
+
+/** Returns true for warnings that indicate a resolution failure affecting written data. */
+export function isResolutionFailureWarning(w: string): boolean {
+	return w.startsWith('[INFRASTRUCTURE]')
+		|| w.includes('resolution failed')
+		|| w.includes('Proceeding with raw values');
+}
+
+/**
+ * Construct a ResultPayload. Derives needsUserConfirmation and safeToContinue automatically.
+ * Callers never set those two flags directly.
+ */
+export function buildResultPayload(
+	kind: ResultKind,
+	data: unknown,
+	flags: Partial<Omit<import('./error-formatter').ResultFlags, 'needsUserConfirmation' | 'safeToContinue'>>,
+	extras: {
+		warnings?: string[];
+		pendingConfirmations?: import('../helpers/label-resolution').PendingLabelConfirmation[];
+		appliedResolutions?: import('../helpers/label-resolution').LabelResolution[];
+		pagination?: PaginationInfo;
+		notes?: string[];
+	} = {},
+): ResultPayload {
+	const pendingConfirmations = extras.pendingConfirmations ?? [];
+	const warnings = extras.warnings ?? [];
+	const appliedResolutions = extras.appliedResolutions ?? [];
+	const needsUserConfirmation = pendingConfirmations.length > 0;
+	const partial = flags.partial ?? false;
+
+	return {
+		kind,
+		data,
+		flags: {
+			mutated: flags.mutated ?? false,
+			retryable: flags.retryable ?? true,
+			partial,
+			truncated: flags.truncated ?? false,
+			needsUserConfirmation,
+			safeToContinue: !needsUserConfirmation && !partial,
+		},
+		warnings,
+		pendingConfirmations,
+		appliedResolutions,
+		...(extras.pagination ? { pagination: extras.pagination } : {}),
+		...(extras.notes?.length ? { notes: extras.notes } : {}),
+	};
+}
+
+/** Extract the canonical created-entity numeric ID from a compound creator result. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function buildCompoundEntityId(resource: string, result: any): number | undefined {
+	switch (resource) {
+		case 'contractCharge':
+		case 'ticketCharge':
+		case 'projectCharge':
+			return result.chargeId;
+		case 'configurationItems':
+			return result.configurationItemId;
+		case 'timeEntry':
+			return result.timeEntryId;
+		case 'contractService':
+			return result.contractServiceId;
+		case 'contract':
+			return result.contractId;
+		case 'opportunity':
+			return result.opportunityId;
+		case 'expenseItem':
+			return result.expenseItemId;
+		case 'ticketAdditionalConfigurationItem':
+			return result.ticketAdditionalConfigurationItemId;
+		case 'ticketAdditionalContact':
+			return result.ticketAdditionalContactId;
+		case 'changeRequestLink':
+			return result.linkId;
+		case 'holidaySet':
+			return result.holidaySetId;
+		case 'holiday':
+			return result.holidayId;
+		default:
+			return result.id ?? result.itemId;
+	}
+}
+
+/** Extract the canonical existing-entity numeric ID from a compound creator result (skip/update). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function buildCompoundExistingId(resource: string, result: any): number | undefined {
+	switch (resource) {
+		case 'contractCharge':
+		case 'ticketCharge':
+		case 'projectCharge':
+			return result.existingChargeId;
+		case 'configurationItems':
+			return result.existingConfigurationItemId;
+		case 'timeEntry':
+			return result.existingTimeEntryId;
+		case 'contractService':
+			return result.existingContractServiceId;
+		case 'contract':
+			return result.existingContractId;
+		case 'opportunity':
+		case 'ticketAdditionalConfigurationItem':
+		case 'ticketAdditionalContact':
+			return result.existingId;
+		case 'expenseItem':
+			return result.existingExpenseItemId;
+		case 'changeRequestLink':
+			return result.existingLinkId;
+		case 'holidaySet':
+			return result.existingHolidaySetId;
+		case 'holiday':
+			return result.existingHolidayId;
+		default:
+			return result.existingId;
+	}
+}
+
+/** Build the context block (parent/scope fields) for a compound creator result. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function buildCompoundContext(resource: string, result: any): Record<string, unknown> | undefined {
+	switch (resource) {
+		case 'contractCharge':
+			return result.contractId !== undefined ? { contractId: result.contractId } : undefined;
+		case 'ticketCharge':
+			return { ticketId: result.ticketId, ticketID: result.ticketID };
+		case 'projectCharge':
+			return result.projectId !== undefined ? { projectId: result.projectId } : undefined;
+		case 'configurationItems':
+			return { companyID: result.companyID };
+		case 'timeEntry': {
+			const ctx: Record<string, unknown> = { resourceID: result.resourceID };
+			if (result.ticketID !== undefined) ctx.ticketID = result.ticketID;
+			if (result.taskID !== undefined) ctx.taskID = result.taskID;
+			return ctx;
+		}
+		case 'contractService':
+			return result.contractId !== undefined ? { contractId: result.contractId } : undefined;
+		case 'contract':
+			return { companyID: result.companyID };
+		case 'opportunity':
+			return undefined;
+		case 'expenseItem':
+			return { expenseReportID: result.expenseReportID };
+		case 'ticketAdditionalConfigurationItem':
+			return result.ticketID !== undefined ? { ticketID: result.ticketID } : undefined;
+		case 'ticketAdditionalContact':
+			return result.ticketID !== undefined ? { ticketID: result.ticketID } : undefined;
+		case 'changeRequestLink': {
+			const ctx: Record<string, unknown> = {};
+			if (result.changeRequestTicketID !== undefined) ctx.changeRequestTicketID = result.changeRequestTicketID;
+			if (result.problemOrIncidentTicketID !== undefined) ctx.problemOrIncidentTicketID = result.problemOrIncidentTicketID;
+			return Object.keys(ctx).length > 0 ? ctx : undefined;
+		}
+		case 'holidaySet':
+			return undefined;
+		case 'holiday':
+			return result.holidaySetId !== undefined ? { holidaySetId: result.holidaySetId } : undefined;
+		default:
+			return undefined;
+	}
+}
 
 function compactDescribeResponse(response: DescribeResourceResponse): Record<string, unknown> {
     return {
