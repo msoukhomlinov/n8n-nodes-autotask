@@ -765,21 +765,50 @@ export async function executeAiTool(
             ),
         );
     }
-    // Build combined filter structure with proper AND/OR grouping.
-    // User filters may be OR-grouped; recency filters are ALWAYS ANDed on top (they constrain the time window).
-    const filterLogic = params.filter_logic === 'or' ? 'or' : 'and';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let combinedFilters: any[];
-    if (filterLogic === 'or' && filters.length >= 2 && recencyResult.filters.length > 0) {
-        // OR between user filters, AND with recency: [{op:'or', items:[f1,f2]}, recency...]
-        // finalizeResourceMapperFilters will wrap the top-level array with AND
-        combinedFilters = [{ op: 'or', items: [...filters] }, ...recencyResult.filters];
-    } else if (filterLogic === 'or' && filters.length >= 2) {
-        // OR between user filters, no recency
-        combinedFilters = [{ op: 'or', items: [...filters] }];
+    if (params.filtersJson) {
+        // filtersJson path — mutually exclusive with flat filter triplets
+        if (params.filter_field || params.filter_field_2) {
+            return JSON.stringify(formatFilterConstraintError(
+                resource, normalisedOperation,
+                'filtersJson is mutually exclusive with filter_field/filter_field_2. Provide one or the other, not both.',
+                'Remove filter_field and filter_field_2 when using filtersJson, or remove filtersJson when using flat triplets.',
+            ));
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let parsedFiltersJson: any[] = [];
+        try {
+            const parsed: unknown = JSON.parse(params.filtersJson as string);
+            if (!Array.isArray(parsed)) throw new Error('filtersJson must be a JSON array.');
+            parsedFiltersJson = parsed;
+        } catch (e) {
+            return JSON.stringify(formatFilterConstraintError(
+                resource, normalisedOperation,
+                `filtersJson parse error: ${e instanceof Error ? e.message : String(e)}`,
+                "Provide a valid JSON array of Autotask IFilterCondition objects. Example: '[{\"field\":\"status\",\"op\":\"eq\",\"value\":1}]'",
+            ));
+        }
+        if (parsedFiltersJson.some((f) => typeof f !== 'object' || f === null || !('op' in (f as object)))) {
+            return JSON.stringify(formatFilterConstraintError(
+                resource, normalisedOperation,
+                'filtersJson validation error: each element must have at minimum an "op" property.',
+                "Each filter object requires at minimum an 'op' property (e.g. 'eq', 'or', 'and'). Field-level filters also need 'field' and 'value'.",
+            ));
+        }
+        // Recency always AND-appended on top (time window constraint)
+        combinedFilters = [...parsedFiltersJson, ...recencyResult.filters];
     } else {
-        // AND (default) or single filter — flat array
-        combinedFilters = [...filters, ...recencyResult.filters];
+        // Standard flat-triplet filter path
+        const filterLogic = params.filter_logic === 'or' ? 'or' : 'and';
+        if (filterLogic === 'or' && filters.length >= 2 && recencyResult.filters.length > 0) {
+            // OR between user filters, AND with recency
+            combinedFilters = [{ op: 'or', items: [...filters] }, ...recencyResult.filters];
+        } else if (filterLogic === 'or' && filters.length >= 2) {
+            combinedFilters = [{ op: 'or', items: [...filters] }];
+        } else {
+            combinedFilters = [...filters, ...recencyResult.filters];
+        }
     }
 
     const allFilterCount = filters.length + recencyResult.filters.length;
