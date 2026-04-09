@@ -296,6 +296,21 @@ export function buildListPicklistValuesDescription(resourceLabel: string): strin
     );
 }
 
+const TRUNCATION_SUFFIX = '...[description truncated — call with operation=\'describeFields\' for full field detail]';
+
+/**
+ * Truncate a description to fit within the character budget.
+ * Cuts at the last word boundary before the limit and appends a visible truncation suffix
+ * so the LLM knows content was removed.
+ */
+function truncateDescription(text: string, limit = 2000): string {
+    if (text.length <= limit) return text;
+    const cutAt = limit - TRUNCATION_SUFFIX.length;
+    const lastSpace = text.lastIndexOf(' ', cutAt);
+    const breakpoint = lastSpace > 0 ? lastSpace : cutAt;
+    return text.slice(0, breakpoint) + TRUNCATION_SUFFIX;
+}
+
 export function buildUnifiedDescription(
     resourceLabel: string,
     resource: string,
@@ -305,12 +320,27 @@ export function buildUnifiedDescription(
     referenceUtc: string,
     supportsImpersonation: boolean,
 ): string {
+    const hasWriteOps = operations.some(op =>
+        op === 'create' || op === 'update' || op === 'delete'
+        || op === 'createIfNotExists' || op === 'approve' || op === 'reject'
+        || op === 'moveToCompany' || op === 'moveConfigurationItem' || op === 'transferOwnership',
+    );
     const allOps = [...new Set([...operations, 'describeFields', 'listPicklistValues'])];
-    const sections: string[] = [
+    const sections: string[] = [];
+
+    // Safety-critical header — always first, guaranteed to survive truncation
+    if (hasWriteOps) {
+        sections.push(
+            'WRITE SAFETY: All write operations require field references to resolve exactly.' +
+            ' Ambiguous, unmatched, or infrastructure-failed resolutions block execution before any mutation occurs.',
+        );
+    }
+
+    sections.push(
         `Perform operations on Autotask ${resourceLabel} records.`,
         `Required: 'operation' field — one of: ${allOps.join(', ')}.`,
         dateTimeReferenceSnippet(referenceUtc),
-    ];
+    );
 
     for (const op of operations) {
         let summary: string;
@@ -393,5 +423,5 @@ export function buildUnifiedDescription(
         sections.push(`Impersonation supported: pass 'impersonationResourceId' for write attribution.`);
     }
 
-    return sections.join(' ').slice(0, 2000);
+    return truncateDescription(sections.join(' '));
 }
