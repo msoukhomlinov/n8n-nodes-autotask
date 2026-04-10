@@ -189,13 +189,22 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
             shape.limit = rz.number().int().min(1).max(500).optional().describe('Max results (1-500, default 10)');
             shape.offset = rz.number().int().min(0).optional().describe('Skip first N records (for pagination, max 499). Use with limit. Response includes hasMore and nextOffset. Limited to first 500 total records — use narrower filters for larger datasets.');
             shape.recency = rRecencySchema;
-            shape.since = rz.string().optional().describe('Range start in ISO-8601 UTC format (e.g. 2026-01-01T00:00:00Z). When set, recency is ignored.');
-            shape.until = rz.string().optional().describe('Range end in ISO-8601 UTC format (e.g. 2026-01-31T23:59:59Z). Requires since or recency.');
+            shape.since = rz.string().optional().describe(
+                'Range start as a date/time string in your configured timezone (e.g. 2026-01-01T09:00:00). ' +
+                'An explicit UTC offset is also accepted and respected (e.g. 2026-01-01T09:00:00Z). ' +
+                'When set, recency is ignored.',
+            );
+            shape.until = rz.string().optional().describe(
+                'Range end as a date/time string in your configured timezone (e.g. 2026-01-31T17:00:00). ' +
+                'An explicit UTC offset is also accepted and respected (e.g. 2026-01-31T17:00:00Z). ' +
+                'Requires since or recency.',
+            );
             shape.filtersJson = rz.string().optional().describe(
                 'Advanced filter: JSON array of Autotask IFilterCondition objects. ' +
                 'Mutually exclusive with filter_field/filter_field_2. ' +
                 'Recency/since/until still apply on top when provided. ' +
                 'Label resolution is NOT applied to filtersJson values — pass numeric IDs. ' +
+                'Date/time values in filtersJson must be in UTC (e.g. 2026-01-01T00:00:00Z) — filtersJson bypasses automatic timezone conversion. ' +
                 "Example: '[{\"field\":\"status\",\"op\":\"in\",\"value\":[1,2,3]},{\"op\":\"or\",\"items\":[{\"field\":\"companyID\",\"op\":\"eq\",\"value\":123},{\"field\":\"companyID\",\"op\":\"eq\",\"value\":456}]}]'",
             );
             shape.returnAll = rz.boolean().optional().describe(
