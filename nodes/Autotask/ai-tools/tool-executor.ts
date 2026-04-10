@@ -10,7 +10,7 @@ import { resolveLabelsToIds, resolveFilterLabelsToIds, type LabelResolution, typ
 import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../helpers/change-info-aliases';
 import { buildOperationDoc } from './description-builders';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
-import { getConfiguredTimezone/*, convertDatesToUTC*/ } from '../helpers/date-time/utils';
+import { getConfiguredTimezone, convertDatesToUTC } from '../helpers/date-time/utils';
 import type { IAutotaskCredentials } from '../types/base/auth';
 
 export interface ToolExecutorParams {
@@ -1251,7 +1251,14 @@ export async function executeAiTool(
             let compoundResult: any;
 
             // createFields comes from fieldValues (already validated + label-resolved above)
-            const createFields: Record<string, unknown> = { ...fieldValues };
+            // Convert date fields from user timezone to UTC before passing to compound helpers,
+            // which bypass CreateOperation.execute() and therefore convertDatesToUTC.
+            const createFields: Record<string, unknown> = await convertDatesToUTC(
+                { ...fieldValues } as IDataObject,
+                resource,
+                context,
+                'createIfNotExists',
+            ) as Record<string, unknown>;
             const DEFAULT_DEDUP_FIELDS: Record<string, string[]> = {
                 contractCharge: ['name', 'datePurchased'],
                 ticketCharge: ['name', 'datePurchased'],
