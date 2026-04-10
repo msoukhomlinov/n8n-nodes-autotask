@@ -508,17 +508,18 @@ export class AutotaskAiTools implements INodeType {
 					pairedItem: { item: itemIndex },
 				});
 			} catch (error) {
-				traceError({
-					phase: 'execute-agent-v3-item',
-					resource,
-					operation,
-					itemIndex,
-					summary: {
-						errorMessage: error instanceof Error ? error.message : String(error),
-						beforeApiCall: true,
-					},
-				});
 				const msg = error instanceof Error ? error.message : String(error);
+				try {
+					traceError({
+						phase: 'execute-agent-v3-item',
+						resource,
+						operation,
+						itemIndex,
+						summary: { errorMessage: msg, beforeApiCall: true },
+					});
+				} catch {
+					// best-effort: trace must not suppress the rethrow
+				}
 				throw new NodeOperationError(this.getNode(), msg, { itemIndex });
 			}
 		}

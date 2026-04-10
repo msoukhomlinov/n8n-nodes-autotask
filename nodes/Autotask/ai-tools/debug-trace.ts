@@ -1,9 +1,11 @@
-import { appendFileSync } from 'node:fs';
+import { appendFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { FieldMeta } from '../helpers/aiHelper';
 
 export const AI_TOOL_DEBUG_ENABLED = false;
 export const AI_TOOL_DEBUG_VERBOSE = false;
-export const AI_TOOL_DEBUG_FILE_PATH = '/tmp/autotask-ai-tool-debug.jsonl';
+export const AI_TOOL_DEBUG_FILE_PATH = join(tmpdir(), 'autotask-ai-tool-debug.jsonl');
 
 export interface AiTraceEvent {
 	ts: string;
@@ -30,13 +32,12 @@ export interface AiTraceEvent {
 export function writeAiTrace(event: Omit<AiTraceEvent, 'ts'>): void {
 	if (!AI_TOOL_DEBUG_ENABLED) return;
 	try {
-		appendFileSync(
-			AI_TOOL_DEBUG_FILE_PATH,
-			`${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`,
-			'utf8',
-		);
+		const line = `${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`;
+		appendFile(AI_TOOL_DEBUG_FILE_PATH, line, 'utf8').catch(() => {
+			// best-effort only: trace failures must never affect node execution
+		});
 	} catch {
-		// best-effort only: trace failures must never affect node execution
+		// best-effort only: JSON.stringify failures must never affect node execution
 	}
 }
 
@@ -58,8 +59,8 @@ export function summariseFields(fields: FieldMeta[]): Record<string, unknown> {
 
 function redactScalar(value: unknown): unknown {
 	if (typeof value === 'string') {
-		if (value.length > 120) return `${value.slice(0, 120)}…`;
 		if (/token|secret|password|authorization|api[-_]?key/i.test(value)) return '[REDACTED]';
+		if (value.length > 120) return `${value.slice(0, 120)}…`;
 		return value;
 	}
 	return value;
