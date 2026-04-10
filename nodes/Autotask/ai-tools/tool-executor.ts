@@ -10,7 +10,7 @@ import { resolveLabelsToIds, resolveFilterLabelsToIds, type LabelResolution, typ
 import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../helpers/change-info-aliases';
 import { buildOperationDoc } from './description-builders';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
-import { getConfiguredTimezone, convertDatesToUTC } from '../helpers/date-time/utils';
+import { getConfiguredTimezone/*, convertDatesToUTC*/ } from '../helpers/date-time/utils';
 import type { IAutotaskCredentials } from '../types/base/auth';
 
 export interface ToolExecutorParams {
@@ -259,6 +259,7 @@ function coerceFilterValueByFieldType(
 function buildFilterFromParams(
     params: ToolExecutorParams,
     readFields: FieldMeta[],
+    timezone: string,
 ): ToolFilter[] {
     const filters: ToolFilter[] = [];
     const readFieldLookup = buildFieldLookup(readFields);
@@ -268,10 +269,26 @@ function buildFilterFromParams(
     const isNullCheckOp1 = mappedOp1 === 'exist' || mappedOp1 === 'notExist';
     if (params.filter_field && (isNullCheckOp1 || (params.filter_value !== undefined && params.filter_value !== ''))) {
         const canonicalField = readFieldLookup.get(params.filter_field.toLowerCase());
+        let coercedValue1 = coerceFilterValueByFieldType(
+            params.filter_value as string | number | boolean | Array<string | number | boolean>,
+            canonicalField?.type,
+            mappedOp1,
+        );
+        if (
+            !isNullCheckOp1 &&
+            typeof coercedValue1 === 'string' &&
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(coercedValue1) &&
+            canonicalField?.type?.toLowerCase() === 'datetime'
+        ) {
+            const converted = moment.tz(coercedValue1, timezone);
+            if (converted.isValid()) {
+                coercedValue1 = converted.utc().toISOString().replace(/\.\d{3}Z$/, 'Z');
+            }
+        }
         filters.push({
             field: canonicalField?.id ?? params.filter_field,
             op: mappedOp1,
-            ...(!isNullCheckOp1 ? { value: coerceFilterValueByFieldType(params.filter_value as string | number | boolean | Array<string | number | boolean>, canonicalField?.type, mappedOp1) } : {}),
+            ...(!isNullCheckOp1 ? { value: coercedValue1 } : {}),
             ...(canonicalField?.udf ? { udf: true } : {}),
         });
     }
@@ -281,10 +298,26 @@ function buildFilterFromParams(
     const isNullCheckOp2 = mappedOp2 === 'exist' || mappedOp2 === 'notExist';
     if (params.filter_field_2 && (isNullCheckOp2 || (params.filter_value_2 !== undefined && params.filter_value_2 !== ''))) {
         const canonicalField = readFieldLookup.get(params.filter_field_2.toLowerCase());
+        let coercedValue2 = coerceFilterValueByFieldType(
+            params.filter_value_2 as string | number | boolean | Array<string | number | boolean>,
+            canonicalField?.type,
+            mappedOp2,
+        );
+        if (
+            !isNullCheckOp2 &&
+            typeof coercedValue2 === 'string' &&
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(coercedValue2) &&
+            canonicalField?.type?.toLowerCase() === 'datetime'
+        ) {
+            const converted = moment.tz(coercedValue2, timezone);
+            if (converted.isValid()) {
+                coercedValue2 = converted.utc().toISOString().replace(/\.\d{3}Z$/, 'Z');
+            }
+        }
         filters.push({
             field: canonicalField?.id ?? params.filter_field_2,
             op: mappedOp2,
-            ...(!isNullCheckOp2 ? { value: coerceFilterValueByFieldType(params.filter_value_2 as string | number | boolean | Array<string | number | boolean>, canonicalField?.type, mappedOp2) } : {}),
+            ...(!isNullCheckOp2 ? { value: coercedValue2 } : {}),
             ...(canonicalField?.udf ? { udf: true } : {}),
         });
     }
