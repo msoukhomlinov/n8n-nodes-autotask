@@ -1,4 +1,5 @@
 import type { IExecuteFunctions, IGetNodeParameterOptions, ILoadOptionsFunctions, IDataObject } from 'n8n-workflow';
+import moment from 'moment-timezone';
 import { executeToolOperation } from '../resources/tool/execute';
 import type { FieldMeta } from '../helpers/aiHelper';
 import { describeResource, listPicklistValues, type DescribeResourceResponse } from '../helpers/aiHelper';
@@ -9,6 +10,7 @@ import { resolveLabelsToIds, resolveFilterLabelsToIds, type LabelResolution, typ
 import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../helpers/change-info-aliases';
 import { buildOperationDoc } from './description-builders';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
+import { getConfiguredTimezone, convertDatesToUTC } from '../helpers/date-time/utils';
 import type { IAutotaskCredentials } from '../types/base/auth';
 
 export interface ToolExecutorParams {
@@ -687,11 +689,13 @@ export async function executeAiTool(
         (params as Record<string, unknown>)[key] = value;
     }
 
+    const timezone = await getConfiguredTimezone.call(context);
+
     const originalGetNodeParameter = context.getNodeParameter.bind(context);
     const readFields = metadata.readFields ?? [];
     const writeFields = metadata.writeFields ?? [];
     const fieldValues = buildFieldValues(params, ['id'], writeFields);
-    const filters = buildFilterFromParams(params, readFields);
+    const filters = buildFilterFromParams(params, readFields, timezone);
     const entityId = params.id !== undefined ? String(params.id) : '';
 
     // Resolve human-readable labels to IDs for filter values on reference/picklist fields.
@@ -800,7 +804,7 @@ export async function executeAiTool(
 
     let recencyResult: RecencyBuildResult;
     try {
-        recencyResult = buildRecencyFilters(params, readFields);
+        recencyResult = buildRecencyFilters(params, readFields, timezone);
     } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         return attachCorrelation(JSON.stringify(
