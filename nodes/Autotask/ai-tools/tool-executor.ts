@@ -129,14 +129,16 @@ function buildFieldLookup(fields: FieldMeta[]): Map<string, FieldMeta> {
     return new Map(fields.map((field) => [field.id.toLowerCase(), field]));
 }
 
-function toUtcIsoSeconds(input: string, parameterName: 'since' | 'until'): string {
-    const parsed = new Date(input);
-    if (Number.isNaN(parsed.getTime())) {
+function toUtcIsoSeconds(input: string, parameterName: 'since' | 'until', timezone: string): string {
+    const parsed = moment.tz(input, timezone);
+    if (!parsed.isValid()) {
         throw new Error(
-            `Invalid ${parameterName} value '${input}'. Use ISO-8601 UTC format, for example 2026-01-01T00:00:00Z.`,
+            `Invalid ${parameterName} value '${input}'. Use a date/time string such as ` +
+            `2026-01-15T09:00:00 (interpreted as your configured timezone) or ` +
+            `2026-01-15T09:00:00Z / 2026-01-15T09:00:00+10:00 (explicit offset respected).`,
         );
     }
-    return parsed.toISOString().replace(/\.\d{3}Z$/, 'Z');
+    return parsed.utc().toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 function resolveRecencyField(readFields: FieldMeta[]): string | null {
@@ -154,7 +156,7 @@ function resolveRecencyField(readFields: FieldMeta[]): string | null {
     return fallback?.id ?? null;
 }
 
-function buildRecencyFilters(params: ToolExecutorParams, readFields: FieldMeta[]): RecencyBuildResult {
+function buildRecencyFilters(params: ToolExecutorParams, readFields: FieldMeta[], timezone: string): RecencyBuildResult {
     const recency = typeof params.recency === 'string' ? params.recency.trim() : '';
     const sinceRaw = typeof params.since === 'string' ? params.since.trim() : '';
     const untilRaw = typeof params.until === 'string' ? params.until.trim() : '';
@@ -175,7 +177,7 @@ function buildRecencyFilters(params: ToolExecutorParams, readFields: FieldMeta[]
 
     let startIso: string | undefined;
     if (sinceRaw) {
-        startIso = toUtcIsoSeconds(sinceRaw, 'since');
+        startIso = toUtcIsoSeconds(sinceRaw, 'since', timezone);
     } else if (recency) {
         const windowMs = parseRecencyWindowMs(recency);
         startIso = new Date(Date.now() - windowMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -196,7 +198,7 @@ function buildRecencyFilters(params: ToolExecutorParams, readFields: FieldMeta[]
     ];
 
     if (untilRaw) {
-        const endIso = toUtcIsoSeconds(untilRaw, 'until');
+        const endIso = toUtcIsoSeconds(untilRaw, 'until', timezone);
         if (new Date(endIso).getTime() < new Date(startIso).getTime()) {
             throw new Error(`'until' (${endIso}) must be greater than or equal to 'since' (${startIso}).`);
         }
@@ -812,7 +814,7 @@ export async function executeAiTool(
                 resource,
                 normalisedOperation,
                 detail,
-                "Use recency windows (for example 'last_7d') or ISO-8601 UTC values for since/until.",
+                "Use recency windows (for example 'last_7d') or date/time strings for since/until (e.g. 2026-01-15T09:00:00 in your configured timezone, or 2026-01-15T09:00:00Z with explicit UTC offset).",
             ),
         ), correlationId);
     }
