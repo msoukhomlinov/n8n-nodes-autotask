@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FieldMeta } from '../helpers/aiHelper';
 
-export const AI_TOOL_DEBUG_ENABLED = false;
-export const AI_TOOL_DEBUG_VERBOSE = false;
+export const AI_TOOL_DEBUG_ENABLED = true;
+export const AI_TOOL_DEBUG_VERBOSE = true;
 export const AI_TOOL_DEBUG_FILE_PATH = join(tmpdir(), 'autotask-ai-tool-debug.jsonl');
 
 export interface AiTraceEvent {
