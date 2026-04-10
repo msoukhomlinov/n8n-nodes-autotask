@@ -1,14 +1,14 @@
 import { NodeOperationError } from 'n8n-workflow';
 import type {
-    IDataObject,
-    IExecuteFunctions,
-    ILoadOptionsFunctions,
-    INodeType,
-    INodeTypeDescription,
-    INodePropertyOptions,
-    INodeExecutionData,
-    ISupplyDataFunctions,
-    SupplyData,
+	IDataObject,
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	INodeType,
+	INodeTypeDescription,
+	INodePropertyOptions,
+	INodeExecutionData,
+	ISupplyDataFunctions,
+	SupplyData,
 } from 'n8n-workflow';
 import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/resource-operations';
 import { describeResource } from './helpers/aiHelper';
@@ -18,34 +18,58 @@ import { RuntimeDynamicStructuredTool, runtimeZod, getLazyLogWrapper } from './a
 import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
 import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
 import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
+import {
+	AI_TOOL_DEBUG_VERBOSE,
+	redactForVerbose,
+	safeKeys,
+	traceError,
+	traceExecutor,
+	traceToolBuild,
+} from './ai-tools/debug-trace';
 
-const WRITE_OPERATIONS = ['create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'approve', 'reject', 'delete'];
+const WRITE_OPERATIONS = [
+	'create',
+	'createIfNotExists',
+	'moveToCompany',
+	'moveConfigurationItem',
+	'transferOwnership',
+	'update',
+	'approve',
+	'reject',
+	'delete',
+];
 const SUPPORTED_TOOL_OPERATIONS = [
-    'get',
-    'getMany',
-    'searchByDomain',
-    'getPosted',
-    'getUnposted',
-    'getByResource',
-    'getByYear',
-    'count',
-    'create',
-    'moveToCompany',
-    'moveConfigurationItem',
-    'transferOwnership',
-    'update',
-    'delete',
-    'whoAmI',
-    'slaHealthCheck',
-    'summary',
-    'createIfNotExists',
-    'approve',
-    'reject',
+	'get',
+	'getMany',
+	'searchByDomain',
+	'getPosted',
+	'getUnposted',
+	'getByResource',
+	'getByYear',
+	'count',
+	'create',
+	'moveToCompany',
+	'moveConfigurationItem',
+	'transferOwnership',
+	'update',
+	'delete',
+	'whoAmI',
+	'slaHealthCheck',
+	'summary',
+	'createIfNotExists',
+	'approve',
+	'reject',
 ];
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
 
 function formatResourceName(value: string): string {
-    return value.charAt(0).toUpperCase() + value.slice(1).replace(/([A-Z])/g, ' $1').trim();
+	return (
+		value.charAt(0).toUpperCase() +
+		value
+			.slice(1)
+			.replace(/([A-Z])/g, ' $1')
+			.trim()
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -53,394 +77,515 @@ function formatResourceName(value: string): string {
 // ---------------------------------------------------------------------------
 
 export class AutotaskAiTools implements INodeType {
-    description: INodeTypeDescription = {
-        displayName: 'Autotask AI Tools',
-        name: 'autotaskAiTools',
-        icon: 'file:autotask.svg',
-        group: ['output'],
-        version: 1,
-        description: 'Expose Autotask operations as individual AI tools for the AI Agent',
-        codex: {
-            categories: ['AI'],
-            subcategories: {
-                AI: ['Tools'],
-            },
-            resources: {
-                primaryDocumentation: [
-                    {
-                        url: 'https://github.com/msoukhomlinov/n8n-nodes-autotask',
-                    },
-                    {
-                        url: 'https://ww6.autotask.net/help/developerhelp/Content/APIs/REST/REST_API_Home.htm',
-                    },
-                ],
-            },
-        },
-        defaults: {
-            name: 'Autotask AI Tools',
-        },
-        inputs: [],
-        outputs: [{ type: 'ai_tool', displayName: 'Tools' }],
-        credentials: [{ name: 'autotaskApi', required: true }],
-        properties: [
-            {
-                displayName: 'Resource Name or ID',
-                name: 'resource',
-                type: 'options',
-                required: true,
-                noDataExpression: true,
-                typeOptions: { loadOptionsMethod: 'getToolResources' },
-                default: '',
-                description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
-            },
-            {
-                displayName: 'Operations Names or IDs',
-                name: 'operations',
-                type: 'multiOptions',
-                required: true,
-                typeOptions: {
-                    loadOptionsMethod: 'getToolResourceOperations',
-                    loadOptionsDependsOn: ['resource', 'allowWriteOperations'],
-                },
-                default: [],
-                description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
-            },
-            {
-                displayName: 'Allow Write Operations',
-                name: 'allowWriteOperations',
-                type: 'boolean',
-                default: false,
-                description: 'Whether to enable mutating tools (create, createIfNotExists, moveToCompany, moveConfigurationItem, transferOwnership, update, delete). Disabled = read-only.',
-            },
-        ],
-    };
+	description: INodeTypeDescription = {
+		displayName: 'Autotask AI Tools',
+		name: 'autotaskAiTools',
+		icon: 'file:autotask.svg',
+		group: ['output'],
+		version: 1,
+		description: 'Expose Autotask operations as individual AI tools for the AI Agent',
+		codex: {
+			categories: ['AI'],
+			subcategories: {
+				AI: ['Tools'],
+			},
+			resources: {
+				primaryDocumentation: [
+					{
+						url: 'https://github.com/msoukhomlinov/n8n-nodes-autotask',
+					},
+					{
+						url: 'https://ww6.autotask.net/help/developerhelp/Content/APIs/REST/REST_API_Home.htm',
+					},
+				],
+			},
+		},
+		defaults: {
+			name: 'Autotask AI Tools',
+		},
+		inputs: [],
+		outputs: [{ type: 'ai_tool', displayName: 'Tools' }],
+		credentials: [{ name: 'autotaskApi', required: true }],
+		properties: [
+			{
+				displayName: 'Resource Name or ID',
+				name: 'resource',
+				type: 'options',
+				required: true,
+				noDataExpression: true,
+				typeOptions: { loadOptionsMethod: 'getToolResources' },
+				default: '',
+				description:
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+			},
+			{
+				displayName: 'Operations Names or IDs',
+				name: 'operations',
+				type: 'multiOptions',
+				required: true,
+				typeOptions: {
+					loadOptionsMethod: 'getToolResourceOperations',
+					loadOptionsDependsOn: ['resource', 'allowWriteOperations'],
+				},
+				default: [],
+				description:
+					'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+			},
+			{
+				displayName: 'Allow Write Operations',
+				name: 'allowWriteOperations',
+				type: 'boolean',
+				default: false,
+				description:
+					'Whether to enable mutating tools (create, createIfNotExists, moveToCompany, moveConfigurationItem, transferOwnership, update, delete). Disabled = read-only.',
+			},
+		],
+	};
 
-    methods = {
-        loadOptions: {
-            getToolResources,
-            getToolResourceOperations,
-        },
-    };
+	methods = {
+		loadOptions: {
+			getToolResources,
+			getToolResourceOperations,
+		},
+	};
 
-    async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
-        const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
+	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
+		const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
 
-        const resource = this.getNodeParameter('resource', itemIndex) as string;
-        const operations = this.getNodeParameter('operations', itemIndex) as string[];
-        const allowWriteOperations = this.getNodeParameter('allowWriteOperations', itemIndex, false) as boolean;
+		const resource = this.getNodeParameter('resource', itemIndex) as string;
+		const operations = this.getNodeParameter('operations', itemIndex) as string[];
+		const allowWriteOperations = this.getNodeParameter(
+			'allowWriteOperations',
+			itemIndex,
+			false,
+		) as boolean;
 
-        if (!resource) {
-            throw new NodeOperationError(this.getNode(), 'Resource is required');
-        }
-        if (!operations?.length) {
-            throw new NodeOperationError(this.getNode(), 'At least one operation must be selected');
-        }
+		if (!resource) {
+			throw new NodeOperationError(this.getNode(), 'Resource is required');
+		}
+		if (!operations?.length) {
+			throw new NodeOperationError(this.getNode(), 'At least one operation must be selected');
+		}
 
-        const unsupportedOperations = operations.filter(
-            (operation) => !SUPPORTED_TOOL_OPERATIONS.includes(operation),
-        );
-        if (unsupportedOperations.length > 0) {
-            throw new NodeOperationError(
-                this.getNode(),
-                `Unsupported operation(s) for AI tools: ${unsupportedOperations.join(', ')}. ` +
-                    `Supported operations are: ${SUPPORTED_TOOL_OPERATIONS.join(', ')}.`,
-            );
-        }
+		const unsupportedOperations = operations.filter(
+			(operation) => !SUPPORTED_TOOL_OPERATIONS.includes(operation),
+		);
+		if (unsupportedOperations.length > 0) {
+			throw new NodeOperationError(
+				this.getNode(),
+				`Unsupported operation(s) for AI tools: ${unsupportedOperations.join(', ')}. ` +
+					`Supported operations are: ${SUPPORTED_TOOL_OPERATIONS.join(', ')}.`,
+			);
+		}
 
-        const effectiveOps = operations.filter(
-            (op) => !WRITE_OPERATIONS.includes(op) || allowWriteOperations,
-        );
-        if (effectiveOps.length === 0) {
-            throw new NodeOperationError(
-                this.getNode(),
-                'No permitted operations. Enable "Allow Write Operations" if write operations are needed.',
-            );
-        }
+		const effectiveOps = operations.filter(
+			(op) => !WRITE_OPERATIONS.includes(op) || allowWriteOperations,
+		);
+		if (effectiveOps.length === 0) {
+			throw new NodeOperationError(
+				this.getNode(),
+				'No permitted operations. Enable "Allow Write Operations" if write operations are needed.',
+			);
+		}
 
-        const resourceLabel = formatResourceName(resource);
-        const referenceUtc = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-        const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
+		const resourceLabel = formatResourceName(resource);
+		const referenceUtc = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+		const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
+		// Trace tool-construction decisions to understand what the AI can see.
+		traceToolBuild({
+			phase: 'supplyData-start',
+			resource,
+			itemIndex,
+			summary: {
+				selectedResource: resource,
+				configuredOperations: operations,
+				effectiveOperations: effectiveOps,
+				writeOpsAllowed: allowWriteOperations,
+				supportsImpersonation,
+			},
+		});
 
-        // Fetch field metadata once — reused by schema + description + executor
-        const needsReadFields = effectiveOps.some((op) =>
-            ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain', 'getByResource', 'getByYear'].includes(op),
-        );
-        const needsWriteFields = effectiveOps.some((op) => ['create', 'createIfNotExists', 'update'].includes(op));
+		// Fetch field metadata once — reused by schema + description + executor
+		const needsReadFields = effectiveOps.some((op) =>
+			[
+				'get',
+				'getMany',
+				'getPosted',
+				'getUnposted',
+				'count',
+				'whoAmI',
+				'searchByDomain',
+				'getByResource',
+				'getByYear',
+			].includes(op),
+		);
+		const needsWriteFields = effectiveOps.some((op) =>
+			['create', 'createIfNotExists', 'update'].includes(op),
+		);
 
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
-        const supplyDataContext = this;
+		// eslint-disable-next-line @typescript-eslint/no-this-alias
+		const supplyDataContext = this;
 
-        const [readDescribe, writeDescribe] = await Promise.all([
-            needsReadFields
-                ? describeResource(supplyDataContext as unknown as ILoadOptionsFunctions, resource, 'read')
-                : Promise.resolve(undefined),
-            needsWriteFields
-                ? describeResource(supplyDataContext as unknown as ILoadOptionsFunctions, resource, 'write')
-                : Promise.resolve(undefined),
-        ]);
+		const [readDescribe, writeDescribe] = await Promise.all([
+			needsReadFields
+				? describeResource(supplyDataContext as unknown as ILoadOptionsFunctions, resource, 'read')
+				: Promise.resolve(undefined),
+			needsWriteFields
+				? describeResource(supplyDataContext as unknown as ILoadOptionsFunctions, resource, 'write')
+				: Promise.resolve(undefined),
+		]);
+		traceToolBuild({
+			phase: 'metadata-fetched',
+			resource,
+			itemIndex,
+			summary: {
+				readMetadataFetched: needsReadFields,
+				writeMetadataFetched: needsWriteFields,
+				readFieldCount: readDescribe?.fields?.length ?? 0,
+				writeFieldCount: writeDescribe?.fields?.length ?? 0,
+			},
+		});
 
-        const schema = buildUnifiedSchema(
-            resource,
-            effectiveOps,
-            readDescribe?.fields ?? [],
-            writeDescribe?.fields ?? [],
-        );
+		const schema = buildUnifiedSchema(
+			resource,
+			effectiveOps,
+			readDescribe?.fields ?? [],
+			writeDescribe?.fields ?? [],
+		);
 
-        const description = buildUnifiedDescription(
-            resourceLabel,
-            resource,
-            effectiveOps,
-            readDescribe?.fields ?? [],
-            writeDescribe?.fields ?? [],
-            referenceUtc,
-            supportsImpersonation,
-        );
+		const description = buildUnifiedDescription(
+			resourceLabel,
+			resource,
+			effectiveOps,
+			readDescribe?.fields ?? [],
+			writeDescribe?.fields ?? [],
+			referenceUtc,
+			supportsImpersonation,
+		);
 
-        const allAllowedOps = [...new Set([...effectiveOps, 'describeFields', 'listPicklistValues', 'describeOperation'])];
+		const allAllowedOps = [
+			...new Set([...effectiveOps, 'describeFields', 'listPicklistValues', 'describeOperation']),
+		];
+		traceToolBuild({
+			phase: 'tool-built',
+			resource,
+			itemIndex,
+			summary: {
+				toolName: `autotask_${resource}`,
+				allAllowedOps,
+				schemaFieldCount: safeKeys(schema).length,
+				schemaTopLevelKeys: safeKeys(schema),
+				descriptionLength: description.length,
+				...(AI_TOOL_DEBUG_VERBOSE ? { descriptionPreview: redactForVerbose(description) } : {}),
+			},
+		});
 
-        const unifiedTool = new RuntimeDynamicStructuredTool({
-            name: `autotask_${resource}`,
-            description,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            schema: schema as any,
-            func: async (rawParams: Record<string, unknown>) => {
-                const operation = rawParams.operation as string;
-                if (!operation || !allAllowedOps.includes(operation)) {
-                    if (operation && WRITE_OPERATIONS.includes(operation) && !allowWriteOperations) {
-                        return JSON.stringify(wrapError(
-                            resource, operation, ERROR_TYPES.WRITE_OPERATION_BLOCKED,
-                            `Write operation '${operation}' is blocked. Enable "Allow Write Operations" in the node configuration.`,
-                            `Use a read operation such as 'get' or 'getMany', or ask the user to enable write operations.`,
-                        ));
-                    }
-                    return JSON.stringify(wrapError(
-                        resource, operation ?? 'unknown', ERROR_TYPES.INVALID_OPERATION,
-                        `Unknown operation '${operation}'.`,
-                        `Use one of: ${allAllowedOps.join(', ')}`,
-                    ));
-                }
-                return executeAiTool(
-                    supplyDataContext as unknown as IExecuteFunctions,
-                    resource,
-                    operation,
-                    rawParams as unknown as ToolExecutorParams,
-                    {
-                        readFields: readDescribe?.fields ?? [],
-                        writeFields: writeDescribe?.fields ?? [],
-                        allAllowedOps,
-                    },
-                );
-            },
-        });
+		const unifiedTool = new RuntimeDynamicStructuredTool({
+			name: `autotask_${resource}`,
+			description,
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			schema: schema as any,
+			func: async (rawParams: Record<string, unknown>) => {
+				const operation = rawParams.operation as string;
+				if (!operation || !allAllowedOps.includes(operation)) {
+					if (operation && WRITE_OPERATIONS.includes(operation) && !allowWriteOperations) {
+						return JSON.stringify(
+							wrapError(
+								resource,
+								operation,
+								ERROR_TYPES.WRITE_OPERATION_BLOCKED,
+								`Write operation '${operation}' is blocked. Enable "Allow Write Operations" in the node configuration.`,
+								`Use a read operation such as 'get' or 'getMany', or ask the user to enable write operations.`,
+							),
+						);
+					}
+					return JSON.stringify(
+						wrapError(
+							resource,
+							operation ?? 'unknown',
+							ERROR_TYPES.INVALID_OPERATION,
+							`Unknown operation '${operation}'.`,
+							`Use one of: ${allAllowedOps.join(', ')}`,
+						),
+					);
+				}
+				return executeAiTool(
+					supplyDataContext as unknown as IExecuteFunctions,
+					resource,
+					operation,
+					rawParams as unknown as ToolExecutorParams,
+					{
+						readFields: readDescribe?.fields ?? [],
+						writeFields: writeDescribe?.fields ?? [],
+						allAllowedOps,
+					},
+				);
+			},
+		});
 
-        // Wrap with logWrapper for n8n execution view visibility.
-        // getLazyLogWrapper() returns null if @n8n/ai-utilities is unavailable
-        // (graceful degradation — tool works without it).
-        // ensureRuntime() was already called above via runtimeZod/RuntimeDynamicStructuredTool.
-        const logWrapFn = getLazyLogWrapper();
-        const wrappedTool = logWrapFn ? logWrapFn(unifiedTool, this) : unifiedTool;
+		// Wrap with logWrapper for n8n execution view visibility.
+		// getLazyLogWrapper() returns null if @n8n/ai-utilities is unavailable
+		// (graceful degradation — tool works without it).
+		// ensureRuntime() was already called above via runtimeZod/RuntimeDynamicStructuredTool.
+		const logWrapFn = getLazyLogWrapper();
+		const wrappedTool = logWrapFn ? logWrapFn(unifiedTool, this) : unifiedTool;
 
-        return { response: wrappedTool };
-    }
+		return { response: wrappedTool };
+	}
 
-    /**
-     * execute() serves two purposes:
-     *
-     * 1. Prevents n8n 2.8+ from falling through to the declarative RoutingNode
-     *    test path (which causes ERR_INVALID_URL — no requestDefaults/routing).
-     *
-     * 2. Handles Agent V3 (n8n ~1.116+) EngineRequest-based tool execution.
-     *    Agent V3 routes ALL tool calls through execute() with params in
-     *    item.json (including 'operation'), bypassing supplyData() → func().
-     *    The supplyData() → func() path is still used by Agent V2 and
-     *    MCP Trigger queue-mode workers.
-     *
-     * Because tool construction is expensive (API calls to describeResource),
-     * we process item.json directly here rather than rebuilding the tool.
-     * Framework-injected fields (Prompt__*, sessionId, etc.) are stripped
-     * by N8N_METADATA_FIELDS / N8N_METADATA_PREFIXES in executeAiTool().
-     */
-    async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-        const items = this.getInputData();
-        const resource = this.getNodeParameter('resource', 0) as string;
-        const operations = this.getNodeParameter('operations', 0) as string[];
-        const allowWriteOperations = this.getNodeParameter('allowWriteOperations', 0, false) as boolean;
+	/**
+	 * execute() serves two purposes:
+	 *
+	 * 1. Prevents n8n 2.8+ from falling through to the declarative RoutingNode
+	 *    test path (which causes ERR_INVALID_URL — no requestDefaults/routing).
+	 *
+	 * 2. Handles Agent V3 (n8n ~1.116+) EngineRequest-based tool execution.
+	 *    Agent V3 routes ALL tool calls through execute() with params in
+	 *    item.json (including 'operation'), bypassing supplyData() → func().
+	 *    The supplyData() → func() path is still used by Agent V2 and
+	 *    MCP Trigger queue-mode workers.
+	 *
+	 * Because tool construction is expensive (API calls to describeResource),
+	 * we process item.json directly here rather than rebuilding the tool.
+	 * Framework-injected fields (Prompt__*, sessionId, etc.) are stripped
+	 * by N8N_METADATA_FIELDS / N8N_METADATA_PREFIXES in executeAiTool().
+	 */
+	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+		const items = this.getInputData();
+		const resource = this.getNodeParameter('resource', 0) as string;
+		const operations = this.getNodeParameter('operations', 0) as string[];
+		const allowWriteOperations = this.getNodeParameter('allowWriteOperations', 0, false) as boolean;
 
-        if (!resource || !operations?.length) {
-            throw new NodeOperationError(
-                this.getNode(),
-                'Resource and at least one operation must be configured.',
-            );
-        }
+		if (!resource || !operations?.length) {
+			throw new NodeOperationError(
+				this.getNode(),
+				'Resource and at least one operation must be configured.',
+			);
+		}
 
-        // Pick the first permitted operation as the default for test execution
-        const effectiveOps = operations.filter(
-            (op) => !WRITE_OPERATIONS.includes(op) || allowWriteOperations,
-        );
-        if (effectiveOps.length === 0) {
-            throw new NodeOperationError(
-                this.getNode(),
-                'No permitted operations. Enable "Allow Write Operations" if needed.',
-            );
-        }
+		// Pick the first permitted operation as the default for test execution
+		const effectiveOps = operations.filter(
+			(op) => !WRITE_OPERATIONS.includes(op) || allowWriteOperations,
+		);
+		if (effectiveOps.length === 0) {
+			throw new NodeOperationError(
+				this.getNode(),
+				'No permitted operations. Enable "Allow Write Operations" if needed.',
+			);
+		}
 
-        // Detect real tool invocation vs "Test step" in the editor.
-        // n8n 2.14+ routes tool calls through execute() with params in item.json
-        // (including 'operation'). Older versions set a 'tool' field. If neither
-        // is present, this is an editor test step — return a friendly stub.
-        const firstItem = items[0]?.json ?? {};
-        const hasToolCall = !!(firstItem['tool'] || firstItem['operation']);
-        if (!hasToolCall) {
-            return [[{
-                json: {
-                    message: 'This is an AI Tool node. Connect it to an AI Agent node to use it.',
-                    configured: { resource, operations },
-                },
-                pairedItem: { item: 0 },
-            }]];
-        }
+		// Detect real tool invocation vs "Test step" in the editor.
+		// n8n 2.14+ routes tool calls through execute() with params in item.json
+		// (including 'operation'). Older versions set a 'tool' field. If neither
+		// is present, this is an editor test step — return a friendly stub.
+		const firstItem = items[0]?.json ?? {};
+		const hasToolCall = !!(firstItem['tool'] || firstItem['operation']);
+		if (!hasToolCall) {
+			traceExecutor({
+				phase: 'execute-test-step-stub',
+				resource,
+				summary: {
+					path: 'test-step-stub',
+				},
+			});
+			return [
+				[
+					{
+						json: {
+							message: 'This is an AI Tool node. Connect it to an AI Agent node to use it.',
+							configured: { resource, operations },
+						},
+						pairedItem: { item: 0 },
+					},
+				],
+			];
+		}
+		traceExecutor({
+			phase: 'execute-agent-v3-path',
+			resource,
+			summary: {
+				path: 'agent-v3',
+				itemCount: items.length,
+			},
+		});
 
-        // describeFields, listPicklistValues, and describeOperation are always available (same as supplyData path)
-        const allAllowedOps = [...new Set([...effectiveOps, 'describeFields', 'listPicklistValues', 'describeOperation'])];
+		// describeFields, listPicklistValues, and describeOperation are always available (same as supplyData path)
+		const allAllowedOps = [
+			...new Set([...effectiveOps, 'describeFields', 'listPicklistValues', 'describeOperation']),
+		];
 
-        // Fetch field metadata for label resolution and field validation (mirrors supplyData)
-        const needsReadFields = effectiveOps.some((op) =>
-            ['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain', 'getByResource', 'getByYear'].includes(op),
-        );
-        const needsWriteFields = effectiveOps.some((op) => ['create', 'createIfNotExists', 'update'].includes(op));
+		// Fetch field metadata for label resolution and field validation (mirrors supplyData)
+		const needsReadFields = effectiveOps.some((op) =>
+			[
+				'get',
+				'getMany',
+				'getPosted',
+				'getUnposted',
+				'count',
+				'whoAmI',
+				'searchByDomain',
+				'getByResource',
+				'getByYear',
+			].includes(op),
+		);
+		const needsWriteFields = effectiveOps.some((op) =>
+			['create', 'createIfNotExists', 'update'].includes(op),
+		);
 
-        const [readDescribe, writeDescribe] = await Promise.all([
-            needsReadFields
-                ? describeResource(this as unknown as ILoadOptionsFunctions, resource, 'read')
-                : Promise.resolve(undefined),
-            needsWriteFields
-                ? describeResource(this as unknown as ILoadOptionsFunctions, resource, 'write')
-                : Promise.resolve(undefined),
-        ]);
+		const [readDescribe, writeDescribe] = await Promise.all([
+			needsReadFields
+				? describeResource(this as unknown as ILoadOptionsFunctions, resource, 'read')
+				: Promise.resolve(undefined),
+			needsWriteFields
+				? describeResource(this as unknown as ILoadOptionsFunctions, resource, 'write')
+				: Promise.resolve(undefined),
+		]);
 
-        const response: INodeExecutionData[] = [];
+		const response: INodeExecutionData[] = [];
 
-        for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
-            const item = items[itemIndex];
-            if (!item) continue;
+		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+			const item = items[itemIndex];
+			if (!item) continue;
 
-            const requestedOp = (item.json.operation as string) || effectiveOps[0];
-            if (requestedOp && !allAllowedOps.includes(requestedOp)) {
-                if (WRITE_OPERATIONS.includes(requestedOp) && !allowWriteOperations) {
-                    response.push({
-                        json: { ...wrapError(
-                            resource, requestedOp, ERROR_TYPES.WRITE_OPERATION_BLOCKED,
-                            `Write operation '${requestedOp}' is blocked. Enable "Allow Write Operations" in the node configuration.`,
-                            `Use a read operation such as 'get' or 'getMany', or ask the user to enable write operations.`,
-                        ) },
-                        pairedItem: { item: itemIndex },
-                    });
-                    continue;
-                }
-                response.push({
-                    json: { ...wrapError(
-                        resource, requestedOp, ERROR_TYPES.INVALID_OPERATION,
-                        `Operation '${requestedOp}' is not configured for this node.`,
-                        `Use one of: ${allAllowedOps.join(', ')}`,
-                    ) },
-                    pairedItem: { item: itemIndex },
-                });
-                continue;
-            }
-            const operation = requestedOp;
+			const requestedOp = (item.json.operation as string) || effectiveOps[0];
+			if (requestedOp && !allAllowedOps.includes(requestedOp)) {
+				if (WRITE_OPERATIONS.includes(requestedOp) && !allowWriteOperations) {
+					response.push({
+						json: {
+							...wrapError(
+								resource,
+								requestedOp,
+								ERROR_TYPES.WRITE_OPERATION_BLOCKED,
+								`Write operation '${requestedOp}' is blocked. Enable "Allow Write Operations" in the node configuration.`,
+								`Use a read operation such as 'get' or 'getMany', or ask the user to enable write operations.`,
+							),
+						},
+						pairedItem: { item: itemIndex },
+					});
+					continue;
+				}
+				response.push({
+					json: {
+						...wrapError(
+							resource,
+							requestedOp,
+							ERROR_TYPES.INVALID_OPERATION,
+							`Operation '${requestedOp}' is not configured for this node.`,
+							`Use one of: ${allAllowedOps.join(', ')}`,
+						),
+					},
+					pairedItem: { item: itemIndex },
+				});
+				continue;
+			}
+			const operation = requestedOp;
 
-            try {
-                const params: ToolExecutorParams = {
-                    ...(item.json as Record<string, unknown>),
-                    resource,
-                    operation,
-                } as unknown as ToolExecutorParams;
+			try {
+				const params: ToolExecutorParams = {
+					...(item.json as Record<string, unknown>),
+					resource,
+					operation,
+				} as unknown as ToolExecutorParams;
 
-                const resultJson = await executeAiTool(this, resource, operation, params, {
-                    readFields: readDescribe?.fields ?? [],
-                    writeFields: writeDescribe?.fields ?? [],
-                    allAllowedOps,
-                });
-                let parsed: IDataObject;
-                if (typeof resultJson === 'string') {
-                    try {
-                        parsed = JSON.parse(resultJson);
-                    } catch {
-                        parsed = { error: resultJson };
-                    }
-                } else {
-                    parsed = resultJson;
-                }
+				const resultJson = await executeAiTool(this, resource, operation, params, {
+					readFields: readDescribe?.fields ?? [],
+					writeFields: writeDescribe?.fields ?? [],
+					allAllowedOps,
+				});
+				let parsed: IDataObject;
+				if (typeof resultJson === 'string') {
+					try {
+						parsed = JSON.parse(resultJson);
+					} catch {
+						parsed = { error: resultJson };
+					}
+				} else {
+					parsed = resultJson;
+				}
 
-                response.push({
-                    json: parsed,
-                    pairedItem: { item: itemIndex },
-                });
-            } catch (error) {
-                const msg = error instanceof Error ? error.message : String(error);
-                throw new NodeOperationError(this.getNode(), msg, { itemIndex });
-            }
-        }
+				response.push({
+					json: parsed,
+					pairedItem: { item: itemIndex },
+				});
+			} catch (error) {
+				const msg = error instanceof Error ? error.message : String(error);
+				try {
+					traceError({
+						phase: 'execute-agent-v3-item',
+						resource,
+						operation,
+						itemIndex,
+						summary: { errorMessage: msg, beforeApiCall: true },
+					});
+				} catch {
+					// best-effort: trace must not suppress the rethrow
+				}
+				throw new NodeOperationError(this.getNode(), msg, { itemIndex });
+			}
+		}
 
-        return [response];
-    }
+		return [response];
+	}
 }
 
 async function getToolResources(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-    const options: INodePropertyOptions[] = [];
-    for (const [value, ops] of Object.entries(RESOURCE_OPERATIONS_MAP)) {
-        if (EXCLUDED_RESOURCES.includes(value)) continue;
-        const hasSupportedToolOps = ops.some((o) => SUPPORTED_TOOL_OPERATIONS.includes(o));
-        if (!hasSupportedToolOps) continue;
-        options.push({
-            name: formatResourceName(value),
-            value,
-            description: `${formatResourceName(value)} entity`,
-        });
-    }
-    return options.sort((a, b) => a.name.localeCompare(b.name));
+	const options: INodePropertyOptions[] = [];
+	for (const [value, ops] of Object.entries(RESOURCE_OPERATIONS_MAP)) {
+		if (EXCLUDED_RESOURCES.includes(value)) continue;
+		const hasSupportedToolOps = ops.some((o) => SUPPORTED_TOOL_OPERATIONS.includes(o));
+		if (!hasSupportedToolOps) continue;
+		options.push({
+			name: formatResourceName(value),
+			value,
+			description: `${formatResourceName(value)} entity`,
+		});
+	}
+	return options.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-async function getToolResourceOperations(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-    const resource = this.getCurrentNodeParameter('resource') as string;
-    const allowWriteOperations = (this.getCurrentNodeParameter('allowWriteOperations') ?? false) as boolean;
+async function getToolResourceOperations(
+	this: ILoadOptionsFunctions,
+): Promise<INodePropertyOptions[]> {
+	const resource = this.getCurrentNodeParameter('resource') as string;
+	const allowWriteOperations = (this.getCurrentNodeParameter('allowWriteOperations') ??
+		false) as boolean;
 
-    if (!resource) return [];
+	if (!resource) return [];
 
-    const ops = getResourceOperations(resource);
-    const options: INodePropertyOptions[] = [];
+	const ops = getResourceOperations(resource);
+	const options: INodePropertyOptions[] = [];
 
-    const opLabels: Record<string, string> = {
-        get: 'Get by ID',
-        whoAmI: 'Who am I',
-        getMany: 'Get many (with filters)',
-        searchByDomain: 'Search by domain',
-        slaHealthCheck: 'SLA health check',
-        summary: 'Ticket summary',
-        getPosted: 'Get posted time entries',
-        getUnposted: 'Get unposted time entries',
-        count: 'Count',
-        create: 'Create',
-        moveToCompany: 'Move contact to company',
-        moveConfigurationItem: 'Move configuration item (clone to company)',
-        transferOwnership: 'Transfer ownership',
-        update: 'Update',
-        delete: 'Delete',
-        createIfNotExists: 'Create If Not Exists (idempotent)',
-        getByResource: 'Get by resource',
-        getByYear: 'Get by resource and year',
-        approve: 'Approve time off request',
-        reject: 'Reject time off request',
-    };
+	const opLabels: Record<string, string> = {
+		get: 'Get by ID',
+		whoAmI: 'Who am I',
+		getMany: 'Get many (with filters)',
+		searchByDomain: 'Search by domain',
+		slaHealthCheck: 'SLA health check',
+		summary: 'Ticket summary',
+		getPosted: 'Get posted time entries',
+		getUnposted: 'Get unposted time entries',
+		count: 'Count',
+		create: 'Create',
+		moveToCompany: 'Move contact to company',
+		moveConfigurationItem: 'Move configuration item (clone to company)',
+		transferOwnership: 'Transfer ownership',
+		update: 'Update',
+		delete: 'Delete',
+		createIfNotExists: 'Create If Not Exists (idempotent)',
+		getByResource: 'Get by resource',
+		getByYear: 'Get by resource and year',
+		approve: 'Approve time off request',
+		reject: 'Reject time off request',
+	};
 
-    for (const op of ops) {
-        if (!SUPPORTED_TOOL_OPERATIONS.includes(op)) continue;
-        if (WRITE_OPERATIONS.includes(op) && !allowWriteOperations) continue;
-        options.push({
-            name: opLabels[op] ?? op,
-            value: op,
-            description: `${op} operation`,
-        });
-    }
-    return options;
+	for (const op of ops) {
+		if (!SUPPORTED_TOOL_OPERATIONS.includes(op)) continue;
+		if (WRITE_OPERATIONS.includes(op) && !allowWriteOperations) continue;
+		options.push({
+			name: opLabels[op] ?? op,
+			value: op,
+			description: `${op} operation`,
+		});
+	}
+	return options;
 }

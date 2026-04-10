@@ -4,6 +4,14 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [2.9.0] — 2026-04-10
 
+### Changed
+
+- **AI tools — optional debug trace (JSONL)**: Added a low-noise, code-togglable
+  debug trace system for `AutotaskAiTools` (`debug-trace.ts`). Tracing is off by
+  default and writes compact append-only JSONL events for tool build, schema/description
+  hints, execution/filter planning, label resolution, write blockers, response envelopes,
+  and error paths.
+
 ### Fixed
 
 - **AI tools — timezone-aware date handling**: Date values provided by the LLM are now

@@ -1,50 +1,94 @@
-import type { IExecuteFunctions, IGetNodeParameterOptions, ILoadOptionsFunctions, IDataObject } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	IGetNodeParameterOptions,
+	ILoadOptionsFunctions,
+	IDataObject,
+} from 'n8n-workflow';
 import moment from 'moment-timezone';
 import { executeToolOperation } from '../resources/tool/execute';
 import type { FieldMeta } from '../helpers/aiHelper';
-import { describeResource, listPicklistValues, type DescribeResourceResponse } from '../helpers/aiHelper';
+import {
+	describeResource,
+	listPicklistValues,
+	type DescribeResourceResponse,
+} from '../helpers/aiHelper';
 import { mapFilterOp } from './schema-generator';
 import { validateEntityId, validateReadFields, validateWriteFields } from './field-validator';
-import { formatApiError, formatFilterConstraintError, formatIdError, formatNotFoundError, formatNoResultsFound, wrapSuccess, wrapError, ERROR_TYPES, type ResultKind, type ResultPayload, type PaginationInfo } from './error-formatter';
-import { resolveLabelsToIds, resolveFilterLabelsToIds, type LabelResolution, type PendingLabelConfirmation } from '../helpers/label-resolution';
-import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../helpers/change-info-aliases';
+import {
+	formatApiError,
+	formatFilterConstraintError,
+	formatIdError,
+	formatNotFoundError,
+	formatNoResultsFound,
+	wrapSuccess,
+	wrapError,
+	ERROR_TYPES,
+	type ResultKind,
+	type ResultPayload,
+	type PaginationInfo,
+} from './error-formatter';
+import {
+	resolveLabelsToIds,
+	resolveFilterLabelsToIds,
+	type LabelResolution,
+	type PendingLabelConfirmation,
+} from '../helpers/label-resolution';
+import {
+	applyChangeInfoAliases,
+	buildAliasMap,
+	shouldApplyAliases,
+} from '../helpers/change-info-aliases';
 import { buildOperationDoc } from './description-builders';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
 import { getConfiguredTimezone, convertDatesToUTC } from '../helpers/date-time/utils';
 import type { IAutotaskCredentials } from '../types/base/auth';
+import {
+	AI_TOOL_DEBUG_VERBOSE,
+	redactForVerbose,
+	safeKeys,
+	summariseFilters,
+	summariseResponseEnvelope,
+	traceError,
+	traceExecutor,
+	traceFilterBuild,
+	traceLabelResolution,
+	traceResponse,
+	traceToolCall,
+	traceWriteGuard,
+} from './debug-trace';
 
 export interface ToolExecutorParams {
-    resource: string;
-    operation: string;
-    id?: number;
-    ticketNumber?: string;
-    ticketFields?: string;
-    filter_field?: string;
-    filter_op?: string;
-    filter_value?: string | number | boolean | Array<string | number | boolean>;
-    filter_field_2?: string;
-    filter_op_2?: string;
-    filter_value_2?: string | number | boolean | Array<string | number | boolean>;
-    filter_logic?: 'and' | 'or';
-    limit?: number;
-    offset?: number;
-    fields?: string;
-    recency?: string;
-    since?: string;
-    until?: string;
-    domain?: string;
-    domainOperator?: string;
-    searchContactEmails?: boolean;
-    filtersJson?: string;
-    returnAll?: boolean;
-    targetOperation?: string;
-    [key: string]: string | number | boolean | Array<string | number | boolean> | undefined;
+	resource: string;
+	operation: string;
+	id?: number;
+	ticketNumber?: string;
+	ticketFields?: string;
+	filter_field?: string;
+	filter_op?: string;
+	filter_value?: string | number | boolean | Array<string | number | boolean>;
+	filter_field_2?: string;
+	filter_op_2?: string;
+	filter_value_2?: string | number | boolean | Array<string | number | boolean>;
+	filter_logic?: 'and' | 'or';
+	limit?: number;
+	offset?: number;
+	fields?: string;
+	recency?: string;
+	since?: string;
+	until?: string;
+	domain?: string;
+	domainOperator?: string;
+	searchContactEmails?: boolean;
+	filtersJson?: string;
+	returnAll?: boolean;
+	targetOperation?: string;
+	[key: string]: string | number | boolean | Array<string | number | boolean> | undefined;
 }
 
 export interface ToolExecutionMetadata {
-    readFields?: FieldMeta[];
-    writeFields?: FieldMeta[];
-    allAllowedOps?: string[];
+	readFields?: FieldMeta[];
+	writeFields?: FieldMeta[];
+	allAllowedOps?: string[];
 }
 
 /** Maximum records to include in a single tool response before truncation */
@@ -53,24 +97,24 @@ const DEFAULT_QUERY_LIMIT = 10;
 const MAX_QUERY_LIMIT = 500;
 const RECENCY_OVER_REQUEST_LIMIT = 500;
 const RECENCY_FIELD_PRIORITY = [
-    'createDateTime',
-    'createDate',
-    'lastModifiedDateTime',
-    'lastActivityDateTime',
-    'lastActivityDate',
-    'dateWorked',
+	'createDateTime',
+	'createDate',
+	'lastModifiedDateTime',
+	'lastActivityDateTime',
+	'lastActivityDate',
+	'dateWorked',
 ] as const;
 const RECENCY_WINDOWS_MS: Record<string, number> = {
-    last_15m: 15 * 60 * 1000,
-    last_1h: 60 * 60 * 1000,
-    last_4h: 4 * 60 * 60 * 1000,
-    last_12h: 12 * 60 * 60 * 1000,
-    last_24h: 24 * 60 * 60 * 1000,
-    last_3d: 3 * 24 * 60 * 60 * 1000,
-    last_7d: 7 * 24 * 60 * 60 * 1000,
-    last_14d: 14 * 24 * 60 * 60 * 1000,
-    last_30d: 30 * 24 * 60 * 60 * 1000,
-    last_90d: 90 * 24 * 60 * 60 * 1000,
+	last_15m: 15 * 60 * 1000,
+	last_1h: 60 * 60 * 1000,
+	last_4h: 4 * 60 * 60 * 1000,
+	last_12h: 12 * 60 * 60 * 1000,
+	last_24h: 24 * 60 * 60 * 1000,
+	last_3d: 3 * 24 * 60 * 60 * 1000,
+	last_7d: 7 * 24 * 60 * 60 * 1000,
+	last_14d: 14 * 24 * 60 * 60 * 1000,
+	last_30d: 30 * 24 * 60 * 60 * 1000,
+	last_90d: 90 * 24 * 60 * 60 * 1000,
 };
 
 const RECENCY_CUSTOM_DAYS_MIN = 1;
@@ -78,178 +122,197 @@ const RECENCY_CUSTOM_DAYS_MAX = 365;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function parseRecencyWindowMs(recency: string): number {
-    const preset = RECENCY_WINDOWS_MS[recency];
-    if (preset !== undefined) {
-        return preset;
-    }
-    const match = /^last_(\d+)d$/.exec(recency);
-    if (match) {
-        const days = parseInt(match[1], 10);
-        if (Number.isFinite(days) && days >= RECENCY_CUSTOM_DAYS_MIN && days <= RECENCY_CUSTOM_DAYS_MAX) {
-            return days * MS_PER_DAY;
-        }
-    }
-    const presets = Object.keys(RECENCY_WINDOWS_MS).join(', ');
-    throw new Error(
-        `Unsupported recency value '${recency}'. Use a preset (${presets}) or custom last_Nd with N between ${RECENCY_CUSTOM_DAYS_MIN} and ${RECENCY_CUSTOM_DAYS_MAX} (e.g. last_5d, last_45d).`,
-    );
+	const preset = RECENCY_WINDOWS_MS[recency];
+	if (preset !== undefined) {
+		return preset;
+	}
+	const match = /^last_(\d+)d$/.exec(recency);
+	if (match) {
+		const days = parseInt(match[1], 10);
+		if (
+			Number.isFinite(days) &&
+			days >= RECENCY_CUSTOM_DAYS_MIN &&
+			days <= RECENCY_CUSTOM_DAYS_MAX
+		) {
+			return days * MS_PER_DAY;
+		}
+	}
+	const presets = Object.keys(RECENCY_WINDOWS_MS).join(', ');
+	throw new Error(
+		`Unsupported recency value '${recency}'. Use a preset (${presets}) or custom last_Nd with N between ${RECENCY_CUSTOM_DAYS_MIN} and ${RECENCY_CUSTOM_DAYS_MAX} (e.g. last_5d, last_45d).`,
+	);
 }
 
 interface ToolFilter {
-    field: string;
-    op: string;
-    value?: string | number | boolean | Array<string | number | boolean>;
-    udf?: boolean;
+	field: string;
+	op: string;
+	value?: string | number | boolean | Array<string | number | boolean>;
+	udf?: boolean;
 }
 
 interface RecencyBuildResult {
-    filters: ToolFilter[];
-    isActive: boolean;
-    note?: string;
+	filters: ToolFilter[];
+	isActive: boolean;
+	note?: string;
 }
 
 interface ToolResponseContext {
-    recencyActive?: boolean;
-    recencyWindowLimited?: boolean;
-    recencyNote?: string;
-    resolutions?: LabelResolution[];
-    resolutionWarnings?: string[];
-    pendingConfirmations?: PendingLabelConfirmation[];
-    effectiveOffset?: number;
+	recencyActive?: boolean;
+	recencyWindowLimited?: boolean;
+	recencyNote?: string;
+	resolutions?: LabelResolution[];
+	resolutionWarnings?: string[];
+	pendingConfirmations?: PendingLabelConfirmation[];
+	effectiveOffset?: number;
 }
 
 function getEffectiveLimit(limit: number | undefined): number {
-    if (typeof limit !== 'number' || Number.isNaN(limit)) {
-        return DEFAULT_QUERY_LIMIT;
-    }
-    return Math.min(Math.max(Math.trunc(limit), 1), MAX_QUERY_LIMIT);
+	if (typeof limit !== 'number' || Number.isNaN(limit)) {
+		return DEFAULT_QUERY_LIMIT;
+	}
+	return Math.min(Math.max(Math.trunc(limit), 1), MAX_QUERY_LIMIT);
 }
 
 function buildFieldLookup(fields: FieldMeta[]): Map<string, FieldMeta> {
-    return new Map(fields.map((field) => [field.id.toLowerCase(), field]));
+	return new Map(fields.map((field) => [field.id.toLowerCase(), field]));
 }
 
-function toUtcIsoSeconds(input: string, parameterName: 'since' | 'until', timezone: string): string {
-    const parsed = moment.tz(input, timezone);
-    if (!parsed.isValid()) {
-        throw new Error(
-            `Invalid ${parameterName} value '${input}'. Use a date/time string such as ` +
-            `2026-01-15T09:00:00 (interpreted as your configured timezone) or ` +
-            `2026-01-15T09:00:00Z / 2026-01-15T09:00:00+10:00 (explicit offset respected).`,
-        );
-    }
-    return parsed.utc().toISOString().replace(/\.\d{3}Z$/, 'Z');
+function toUtcIsoSeconds(
+	input: string,
+	parameterName: 'since' | 'until',
+	timezone: string,
+): string {
+	const parsed = moment.tz(input, timezone);
+	if (!parsed.isValid()) {
+		throw new Error(
+			`Invalid ${parameterName} value '${input}'. Use a date/time string such as ` +
+				`2026-01-15T09:00:00 (interpreted as your configured timezone) or ` +
+				`2026-01-15T09:00:00Z / 2026-01-15T09:00:00+10:00 (explicit offset respected).`,
+		);
+	}
+	return parsed
+		.utc()
+		.toISOString()
+		.replace(/\.\d{3}Z$/, 'Z');
 }
 
 function resolveRecencyField(readFields: FieldMeta[]): string | null {
-    if (readFields.length === 0) {
-        return null;
-    }
-    const lookup = buildFieldLookup(readFields);
-    for (const candidate of RECENCY_FIELD_PRIORITY) {
-        const field = lookup.get(candidate.toLowerCase());
-        if (field && !field.udf) {
-            return field.id;
-        }
-    }
-    const fallback = readFields.find((field) => !field.udf && field.type.toLowerCase().includes('date'));
-    return fallback?.id ?? null;
+	if (readFields.length === 0) {
+		return null;
+	}
+	const lookup = buildFieldLookup(readFields);
+	for (const candidate of RECENCY_FIELD_PRIORITY) {
+		const field = lookup.get(candidate.toLowerCase());
+		if (field && !field.udf) {
+			return field.id;
+		}
+	}
+	const fallback = readFields.find(
+		(field) => !field.udf && field.type.toLowerCase().includes('date'),
+	);
+	return fallback?.id ?? null;
 }
 
-function buildRecencyFilters(params: ToolExecutorParams, readFields: FieldMeta[], timezone: string): RecencyBuildResult {
-    const recency = typeof params.recency === 'string' ? params.recency.trim() : '';
-    const sinceRaw = typeof params.since === 'string' ? params.since.trim() : '';
-    const untilRaw = typeof params.until === 'string' ? params.until.trim() : '';
-    const hasRecencyInput = Boolean(recency || sinceRaw || untilRaw);
+function buildRecencyFilters(
+	params: ToolExecutorParams,
+	readFields: FieldMeta[],
+	timezone: string,
+): RecencyBuildResult {
+	const recency = typeof params.recency === 'string' ? params.recency.trim() : '';
+	const sinceRaw = typeof params.since === 'string' ? params.since.trim() : '';
+	const untilRaw = typeof params.until === 'string' ? params.until.trim() : '';
+	const hasRecencyInput = Boolean(recency || sinceRaw || untilRaw);
 
-    if (!hasRecencyInput) {
-        return { filters: [], isActive: false };
-    }
+	if (!hasRecencyInput) {
+		return { filters: [], isActive: false };
+	}
 
-    const recencyField = resolveRecencyField(readFields);
-    if (!recencyField) {
-        return {
-            filters: [],
-            isActive: false,
-            note: 'Recency filters were ignored because no datetime field was detected for this resource.',
-        };
-    }
+	const recencyField = resolveRecencyField(readFields);
+	if (!recencyField) {
+		return {
+			filters: [],
+			isActive: false,
+			note: 'Recency filters were ignored because no datetime field was detected for this resource.',
+		};
+	}
 
-    let startIso: string | undefined;
-    if (sinceRaw) {
-        startIso = toUtcIsoSeconds(sinceRaw, 'since', timezone);
-    } else if (recency) {
-        const windowMs = parseRecencyWindowMs(recency);
-        startIso = new Date(Date.now() - windowMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
-    } else if (untilRaw) {
-        throw new Error("The 'until' parameter requires either 'since' or 'recency'.");
-    }
+	let startIso: string | undefined;
+	if (sinceRaw) {
+		startIso = toUtcIsoSeconds(sinceRaw, 'since', timezone);
+	} else if (recency) {
+		const windowMs = parseRecencyWindowMs(recency);
+		startIso = new Date(Date.now() - windowMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
+	} else if (untilRaw) {
+		throw new Error("The 'until' parameter requires either 'since' or 'recency'.");
+	}
 
-    if (!startIso) {
-        return { filters: [], isActive: false };
-    }
+	if (!startIso) {
+		return { filters: [], isActive: false };
+	}
 
-    const filters: ToolFilter[] = [
-        {
-            field: recencyField,
-            op: 'gte',
-            value: startIso,
-        },
-    ];
+	const filters: ToolFilter[] = [
+		{
+			field: recencyField,
+			op: 'gte',
+			value: startIso,
+		},
+	];
 
-    if (untilRaw) {
-        const endIso = toUtcIsoSeconds(untilRaw, 'until', timezone);
-        if (new Date(endIso).getTime() < new Date(startIso).getTime()) {
-            throw new Error(`'until' (${endIso}) must be greater than or equal to 'since' (${startIso}).`);
-        }
-        filters.push({
-            field: recencyField,
-            op: 'lte',
-            value: endIso,
-        });
-    }
+	if (untilRaw) {
+		const endIso = toUtcIsoSeconds(untilRaw, 'until', timezone);
+		if (new Date(endIso).getTime() < new Date(startIso).getTime()) {
+			throw new Error(
+				`'until' (${endIso}) must be greater than or equal to 'since' (${startIso}).`,
+			);
+		}
+		filters.push({
+			field: recencyField,
+			op: 'lte',
+			value: endIso,
+		});
+	}
 
-    return { filters, isActive: true };
+	return { filters, isActive: true };
 }
 
 function coerceFilterValueByFieldType(
-    value: string | number | boolean | Array<string | number | boolean>,
-    fieldType: string | undefined,
-    operator: string,
+	value: string | number | boolean | Array<string | number | boolean>,
+	fieldType: string | undefined,
+	operator: string,
 ): string | number | boolean | Array<string | number | boolean> {
-    const normalisedType = (fieldType ?? '').toLowerCase();
-    const toTypedScalar = (input: string | number | boolean): string | number | boolean => {
-        if (typeof input === 'number' || typeof input === 'boolean') {
-            return input;
-        }
-        if (normalisedType === 'number') {
-            const parsed = Number(input);
-            return Number.isFinite(parsed) ? parsed : input;
-        }
-        if (normalisedType === 'boolean') {
-            if (input.toLowerCase() === 'true') return true;
-            if (input.toLowerCase() === 'false') return false;
-        }
-        return input;
-    };
+	const normalisedType = (fieldType ?? '').toLowerCase();
+	const toTypedScalar = (input: string | number | boolean): string | number | boolean => {
+		if (typeof input === 'number' || typeof input === 'boolean') {
+			return input;
+		}
+		if (normalisedType === 'number') {
+			const parsed = Number(input);
+			return Number.isFinite(parsed) ? parsed : input;
+		}
+		if (normalisedType === 'boolean') {
+			if (input.toLowerCase() === 'true') return true;
+			if (input.toLowerCase() === 'false') return false;
+		}
+		return input;
+	};
 
-    if (operator === 'in' || operator === 'notIn') {
-        if (Array.isArray(value)) {
-            return value.map((v) => toTypedScalar(v));
-        }
-        if (typeof value === 'string' && value.includes(',')) {
-            return value
-                .split(',')
-                .map((v) => v.trim())
-                .filter(Boolean)
-                .map((v) => toTypedScalar(v));
-        }
-        return [toTypedScalar(value)];
-    }
-    if (Array.isArray(value)) {
-        return value.length > 0 ? toTypedScalar(value[0]) : '';
-    }
-    return toTypedScalar(value);
+	if (operator === 'in' || operator === 'notIn') {
+		if (Array.isArray(value)) {
+			return value.map((v) => toTypedScalar(v));
+		}
+		if (typeof value === 'string' && value.includes(',')) {
+			return value
+				.split(',')
+				.map((v) => v.trim())
+				.filter(Boolean)
+				.map((v) => toTypedScalar(v));
+		}
+		return [toTypedScalar(value)];
+	}
+	if (Array.isArray(value)) {
+		return value.length > 0 ? toTypedScalar(value[0]) : '';
+	}
+	return toTypedScalar(value);
 }
 
 /**
@@ -257,72 +320,84 @@ function coerceFilterValueByFieldType(
  * Supports two filter triplets for compound queries.
  */
 function buildFilterFromParams(
-    params: ToolExecutorParams,
-    readFields: FieldMeta[],
-    timezone: string,
+	params: ToolExecutorParams,
+	readFields: FieldMeta[],
+	timezone: string,
 ): ToolFilter[] {
-    const filters: ToolFilter[] = [];
-    const readFieldLookup = buildFieldLookup(readFields);
+	const filters: ToolFilter[] = [];
+	const readFieldLookup = buildFieldLookup(readFields);
 
-    // First filter
-    const mappedOp1 = params.filter_op ? mapFilterOp(params.filter_op) : 'eq';
-    const isNullCheckOp1 = mappedOp1 === 'exist' || mappedOp1 === 'notExist';
-    if (params.filter_field && (isNullCheckOp1 || (params.filter_value !== undefined && params.filter_value !== ''))) {
-        const canonicalField = readFieldLookup.get(params.filter_field.toLowerCase());
-        let coercedValue1 = coerceFilterValueByFieldType(
-            params.filter_value as string | number | boolean | Array<string | number | boolean>,
-            canonicalField?.type,
-            mappedOp1,
-        );
-        if (
-            !isNullCheckOp1 &&
-            typeof coercedValue1 === 'string' &&
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(coercedValue1) &&
-            canonicalField?.type?.toLowerCase() === 'datetime'
-        ) {
-            const converted = moment.tz(coercedValue1, timezone);
-            if (converted.isValid()) {
-                coercedValue1 = converted.utc().toISOString().replace(/\.\d{3}Z$/, 'Z');
-            }
-        }
-        filters.push({
-            field: canonicalField?.id ?? params.filter_field,
-            op: mappedOp1,
-            ...(!isNullCheckOp1 ? { value: coercedValue1 } : {}),
-            ...(canonicalField?.udf ? { udf: true } : {}),
-        });
-    }
+	// First filter
+	const mappedOp1 = params.filter_op ? mapFilterOp(params.filter_op) : 'eq';
+	const isNullCheckOp1 = mappedOp1 === 'exist' || mappedOp1 === 'notExist';
+	if (
+		params.filter_field &&
+		(isNullCheckOp1 || (params.filter_value !== undefined && params.filter_value !== ''))
+	) {
+		const canonicalField = readFieldLookup.get(params.filter_field.toLowerCase());
+		let coercedValue1 = coerceFilterValueByFieldType(
+			params.filter_value as string | number | boolean | Array<string | number | boolean>,
+			canonicalField?.type,
+			mappedOp1,
+		);
+		if (
+			!isNullCheckOp1 &&
+			typeof coercedValue1 === 'string' &&
+			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(coercedValue1) &&
+			canonicalField?.type?.toLowerCase() === 'datetime'
+		) {
+			const converted = moment.tz(coercedValue1, timezone);
+			if (converted.isValid()) {
+				coercedValue1 = converted
+					.utc()
+					.toISOString()
+					.replace(/\.\d{3}Z$/, 'Z');
+			}
+		}
+		filters.push({
+			field: canonicalField?.id ?? params.filter_field,
+			op: mappedOp1,
+			...(!isNullCheckOp1 ? { value: coercedValue1 } : {}),
+			...(canonicalField?.udf ? { udf: true } : {}),
+		});
+	}
 
-    // Second filter
-    const mappedOp2 = params.filter_op_2 ? mapFilterOp(params.filter_op_2) : 'eq';
-    const isNullCheckOp2 = mappedOp2 === 'exist' || mappedOp2 === 'notExist';
-    if (params.filter_field_2 && (isNullCheckOp2 || (params.filter_value_2 !== undefined && params.filter_value_2 !== ''))) {
-        const canonicalField = readFieldLookup.get(params.filter_field_2.toLowerCase());
-        let coercedValue2 = coerceFilterValueByFieldType(
-            params.filter_value_2 as string | number | boolean | Array<string | number | boolean>,
-            canonicalField?.type,
-            mappedOp2,
-        );
-        if (
-            !isNullCheckOp2 &&
-            typeof coercedValue2 === 'string' &&
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(coercedValue2) &&
-            canonicalField?.type?.toLowerCase() === 'datetime'
-        ) {
-            const converted = moment.tz(coercedValue2, timezone);
-            if (converted.isValid()) {
-                coercedValue2 = converted.utc().toISOString().replace(/\.\d{3}Z$/, 'Z');
-            }
-        }
-        filters.push({
-            field: canonicalField?.id ?? params.filter_field_2,
-            op: mappedOp2,
-            ...(!isNullCheckOp2 ? { value: coercedValue2 } : {}),
-            ...(canonicalField?.udf ? { udf: true } : {}),
-        });
-    }
+	// Second filter
+	const mappedOp2 = params.filter_op_2 ? mapFilterOp(params.filter_op_2) : 'eq';
+	const isNullCheckOp2 = mappedOp2 === 'exist' || mappedOp2 === 'notExist';
+	if (
+		params.filter_field_2 &&
+		(isNullCheckOp2 || (params.filter_value_2 !== undefined && params.filter_value_2 !== ''))
+	) {
+		const canonicalField = readFieldLookup.get(params.filter_field_2.toLowerCase());
+		let coercedValue2 = coerceFilterValueByFieldType(
+			params.filter_value_2 as string | number | boolean | Array<string | number | boolean>,
+			canonicalField?.type,
+			mappedOp2,
+		);
+		if (
+			!isNullCheckOp2 &&
+			typeof coercedValue2 === 'string' &&
+			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(coercedValue2) &&
+			canonicalField?.type?.toLowerCase() === 'datetime'
+		) {
+			const converted = moment.tz(coercedValue2, timezone);
+			if (converted.isValid()) {
+				coercedValue2 = converted
+					.utc()
+					.toISOString()
+					.replace(/\.\d{3}Z$/, 'Z');
+			}
+		}
+		filters.push({
+			field: canonicalField?.id ?? params.filter_field_2,
+			op: mappedOp2,
+			...(!isNullCheckOp2 ? { value: coercedValue2 } : {}),
+			...(canonicalField?.udf ? { udf: true } : {}),
+		});
+	}
 
-    return filters;
+	return filters;
 }
 
 /**
@@ -330,106 +405,110 @@ function buildFilterFromParams(
  * Only includes actual entity field values, excluding control params.
  */
 function buildFieldValues(
-    params: ToolExecutorParams,
-    excludeKeys: string[],
-    writeFields: FieldMeta[],
+	params: ToolExecutorParams,
+	excludeKeys: string[],
+	writeFields: FieldMeta[],
 ): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
-    const writeFieldLookup = buildFieldLookup(writeFields);
-    const exclude = new Set([
-        ...excludeKeys,
-        'resource',
-        'operation',
-        'filter_field',
-        'filter_op',
-        'filter_value',
-        'filter_field_2',
-        'filter_op_2',
-        'filter_value_2',
-        'filter_logic',
-        'limit',
-        'offset',
-        'fields',
-        'recency',
-        'since',
-        'until',
-        'domain',
-        'domainOperator',
-        'searchContactEmails',
-				'impersonationResourceId',
-				'proceedWithoutImpersonationIfDenied',
-				'dedupFields',
-				'errorOnDuplicate',
-				'updateFields',
-				'outputMode',
-				'targetOperation',
-				'filtersJson',
-				'returnAll',
-    ]);
-    for (const [key, value] of Object.entries(params)) {
-        if (value !== undefined && value !== '' && !exclude.has(key)) {
-            const canonicalField = writeFieldLookup.get(key.toLowerCase());
-            result[canonicalField?.id ?? key] = value;
-        }
-    }
-    return result;
+	const result: Record<string, unknown> = {};
+	const writeFieldLookup = buildFieldLookup(writeFields);
+	const exclude = new Set([
+		...excludeKeys,
+		'resource',
+		'operation',
+		'filter_field',
+		'filter_op',
+		'filter_value',
+		'filter_field_2',
+		'filter_op_2',
+		'filter_value_2',
+		'filter_logic',
+		'limit',
+		'offset',
+		'fields',
+		'recency',
+		'since',
+		'until',
+		'domain',
+		'domainOperator',
+		'searchContactEmails',
+		'impersonationResourceId',
+		'proceedWithoutImpersonationIfDenied',
+		'dedupFields',
+		'errorOnDuplicate',
+		'updateFields',
+		'outputMode',
+		'targetOperation',
+		'filtersJson',
+		'returnAll',
+	]);
+	for (const [key, value] of Object.entries(params)) {
+		if (value !== undefined && value !== '' && !exclude.has(key)) {
+			const canonicalField = writeFieldLookup.get(key.toLowerCase());
+			result[canonicalField?.id ?? key] = value;
+		}
+	}
+	return result;
 }
 
 /**
  * Parse the 'fields' param into a selectColumns-compatible array.
  */
 function parseFieldsParam(fields: string | undefined): string[] {
-    if (!fields || typeof fields !== 'string') return [];
-    return fields
-        .split(',')
-        .map((f) => f.trim())
-        .filter(Boolean);
+	if (!fields || typeof fields !== 'string') return [];
+	return fields
+		.split(',')
+		.map((f) => f.trim())
+		.filter(Boolean);
 }
 
 /**
  * Normalise operation names to canonical forms used by the executor.
  */
 function normaliseOperation(operation: string): string {
-    const key = operation.trim().toLowerCase();
-    switch (key) {
-        case 'getmany':
-            return 'getMany';
-        case 'whoami':
-            return 'whoAmI';
-        case 'getposted':
-            return 'getPosted';
-        case 'getunposted':
-            return 'getUnposted';
-        case 'searchbydomain':
-            return 'searchByDomain';
-        case 'slahealthcheck':
-            return 'slaHealthCheck';
-        case 'moveconfigurationitem':
-            return 'moveConfigurationItem';
-        case 'movetocompany':
-            return 'moveToCompany';
-        case 'transferownership':
-            return 'transferOwnership';
-        case 'createifnotexists':
-            return 'createIfNotExists';
-        case 'getbyresource':
-            return 'getByResource';
-        case 'getbyyear':
-            return 'getByYear';
-        case 'describeoperation':
-            return 'describeOperation';
-        default:
-            return key;
-    }
+	const key = operation.trim().toLowerCase();
+	switch (key) {
+		case 'getmany':
+			return 'getMany';
+		case 'whoami':
+			return 'whoAmI';
+		case 'getposted':
+			return 'getPosted';
+		case 'getunposted':
+			return 'getUnposted';
+		case 'searchbydomain':
+			return 'searchByDomain';
+		case 'slahealthcheck':
+			return 'slaHealthCheck';
+		case 'moveconfigurationitem':
+			return 'moveConfigurationItem';
+		case 'movetocompany':
+			return 'moveToCompany';
+		case 'transferownership':
+			return 'transferOwnership';
+		case 'createifnotexists':
+			return 'createIfNotExists';
+		case 'getbyresource':
+			return 'getByResource';
+		case 'getbyyear':
+			return 'getByYear';
+		case 'describeoperation':
+			return 'describeOperation';
+		default:
+			return key;
+	}
 }
 
 /** n8n framework fields injected into every tool call — must not reach API request bodies */
 const N8N_METADATA_FIELDS = new Set([
-    'sessionId', 'action', 'chatInput',
-    'root',
-    'tool', 'toolName', 'toolCallId',
-    'operation',
-    'dryRun',
+	'sessionId',
+	'action',
+	'chatInput',
+	'root',
+	'tool',
+	'toolName',
+	'toolCallId',
+	'operation',
+	'dryRun',
 ]);
 
 /** Key prefixes injected by n8n that must be stripped regardless of suffix */
@@ -437,33 +516,62 @@ const N8N_METADATA_PREFIXES = ['Prompt__'];
 
 /** Inject correlationId into a serialised envelope JSON string if defined. */
 function attachCorrelation(json: string, id: string | undefined): string {
-    if (!id) return json;
-    try {
-        const parsed = JSON.parse(json) as Record<string, unknown>;
-        return JSON.stringify({ correlationId: id, ...parsed });
-    } catch {
-        return json;
-    }
+	if (!id) return json;
+	try {
+		const parsed = JSON.parse(json) as Record<string, unknown>;
+		return JSON.stringify({ correlationId: id, ...parsed });
+	} catch {
+		return json;
+	}
 }
 
 /** Compound operation outcomes that indicate a parent entity was not found — become ErrorEnvelope */
 const PARENT_NOT_FOUND_OUTCOMES = new Set([
-	'parent_not_found',      // defensive — remapped by thin wrappers but kept for safety
-	'company_not_found',     // contract, configurationItems, opportunity
-	'contract_not_found',    // contractCharge, contractService
-	'ticket_not_found',      // ticketCharge, ticketAdditionalConfigurationItem, ticketAdditionalContact
-	'project_not_found',     // projectCharge
+	'parent_not_found', // defensive — remapped by thin wrappers but kept for safety
+	'company_not_found', // contract, configurationItems, opportunity
+	'contract_not_found', // contractCharge, contractService
+	'ticket_not_found', // ticketCharge, ticketAdditionalConfigurationItem, ticketAdditionalContact
+	'project_not_found', // projectCharge
 	'holiday_set_not_found', // holiday
 ]);
 
 /** Returns true for warnings that indicate a resolution failure affecting written data. */
 function isResolutionFailureWarning(w: string): boolean {
-	return w.startsWith('[INFRASTRUCTURE]')
-		|| w.includes('resolution failed')
-		|| w.includes('resolution error')
-		|| w.includes('Proceeding with raw values')
-		|| w.includes('Could not resolve')
-		|| w.includes('has no known entity type');
+	return (
+		w.startsWith('[INFRASTRUCTURE]') ||
+		w.includes('resolution failed') ||
+		w.includes('resolution error') ||
+		w.includes('Proceeding with raw values') ||
+		w.includes('Could not resolve') ||
+		w.includes('has no known entity type')
+	);
+}
+
+function summariseResolutionState(
+	resolutions: LabelResolution[],
+	warnings: string[],
+	pendingConfirmations: PendingLabelConfirmation[],
+): Record<string, unknown> {
+	const warningKinds = warnings.map((warning) =>
+		warning.startsWith('[INFRASTRUCTURE]') ? 'infrastructure' : 'resolution',
+	);
+	return {
+		resolvedFields: Array.from(new Set(resolutions.map((r) => r.field))),
+		failedFields: Array.from(
+			new Set(
+				warnings
+					.filter((w) => isResolutionFailureWarning(w))
+					.map((w) => {
+						const fieldMatch = w.match(/for (?:field )?'([^']+)'/);
+						return fieldMatch ? fieldMatch[1] : '[unknown]';
+					}),
+			),
+		),
+		pendingConfirmationFields: Array.from(new Set(pendingConfirmations.map((p) => p.field))),
+		warningKinds: Array.from(new Set(warningKinds)),
+		warningCount: warnings.length,
+		pendingConfirmationCount: pendingConfirmations.length,
+	};
 }
 
 /**
@@ -477,56 +585,81 @@ function isResolutionFailureWarning(w: string): boolean {
  *  - impersonationFailed === true          (unresolvable impersonationResourceId string)
  */
 function buildWriteResolutionBlocker(
-    resource: string,
-    operation: string,
-    pendingConfirmations: import('../helpers/label-resolution').PendingLabelConfirmation[],
-    warnings: string[],
-    impersonationFailed: boolean,
+	resource: string,
+	operation: string,
+	pendingConfirmations: import('../helpers/label-resolution').PendingLabelConfirmation[],
+	warnings: string[],
+	impersonationFailed: boolean,
 ): string | null {
-    const unresolvedFields = warnings
-        .filter(w => isResolutionFailureWarning(w) && !w.startsWith('[INFRASTRUCTURE]') && !w.includes('impersonation'))
-        .map(w => {
-            const fieldMatch = w.match(/for (?:field )?'([^']+)'/);
-            return fieldMatch ? fieldMatch[1] : '[general-resolution-failure]';
-        });
-    const infraErrors = warnings.filter(w => w.startsWith('[INFRASTRUCTURE]'));
+	const unresolvedFields = warnings
+		.filter(
+			(w) =>
+				isResolutionFailureWarning(w) &&
+				!w.startsWith('[INFRASTRUCTURE]') &&
+				!w.includes('impersonation'),
+		)
+		.map((w) => {
+			const fieldMatch = w.match(/for (?:field )?'([^']+)'/);
+			return fieldMatch ? fieldMatch[1] : '[general-resolution-failure]';
+		});
+	const infraErrors = warnings.filter((w) => w.startsWith('[INFRASTRUCTURE]'));
 
-    const hasBlock = pendingConfirmations.length > 0
-        || unresolvedFields.length > 0
-        || infraErrors.length > 0
-        || impersonationFailed;
+	const hasBlock =
+		pendingConfirmations.length > 0 ||
+		unresolvedFields.length > 0 ||
+		infraErrors.length > 0 ||
+		impersonationFailed;
 
-    if (!hasBlock) return null;
+	if (!hasBlock) return null;
+	traceWriteGuard({
+		phase: 'blocked',
+		resource,
+		operation,
+		summary: {
+			blockerTypes: [
+				...(pendingConfirmations.length > 0 ? ['ambiguous'] : []),
+				...(unresolvedFields.length > 0 ? ['unresolved'] : []),
+				...(infraErrors.length > 0 ? ['infra'] : []),
+				...(impersonationFailed ? ['impersonation'] : []),
+			],
+			unresolvedFields,
+			infraErrorsCount: infraErrors.length,
+			ambiguousFieldsCount: pendingConfirmations.length,
+			impersonationFailure: impersonationFailed,
+		},
+	});
 
-    const parts: string[] = [];
-    if (pendingConfirmations.length > 0) {
-        const fields = pendingConfirmations.map(p => `'${p.field}'`).join(', ');
-        parts.push(`Ambiguous matches for field(s) ${fields} — multiple candidates found.`);
-    }
-    if (unresolvedFields.length > 0) {
-        parts.push(`No match found for field(s): ${unresolvedFields.map(f => `'${f}'`).join(', ')}.`);
-    }
-    if (infraErrors.length > 0) {
-        parts.push(`Resolution infrastructure error(s) prevented field lookup.`);
-    }
-    if (impersonationFailed) {
-        parts.push(`'impersonationResourceId' could not be resolved to a numeric resource ID.`);
-    }
+	const parts: string[] = [];
+	if (pendingConfirmations.length > 0) {
+		const fields = pendingConfirmations.map((p) => `'${p.field}'`).join(', ');
+		parts.push(`Ambiguous matches for field(s) ${fields} — multiple candidates found.`);
+	}
+	if (unresolvedFields.length > 0) {
+		parts.push(`No match found for field(s): ${unresolvedFields.map((f) => `'${f}'`).join(', ')}.`);
+	}
+	if (infraErrors.length > 0) {
+		parts.push(`Resolution infrastructure error(s) prevented field lookup.`);
+	}
+	if (impersonationFailed) {
+		parts.push(`'impersonationResourceId' could not be resolved to a numeric resource ID.`);
+	}
 
-    const ctx: Record<string, unknown> = {};
-    if (pendingConfirmations.length > 0) ctx.pendingConfirmations = pendingConfirmations;
-    if (unresolvedFields.length > 0) ctx.unresolvedFields = unresolvedFields;
-    if (infraErrors.length > 0) ctx.infraErrors = infraErrors;
-    if (impersonationFailed) ctx.impersonationFailed = true;
+	const ctx: Record<string, unknown> = {};
+	if (pendingConfirmations.length > 0) ctx.pendingConfirmations = pendingConfirmations;
+	if (unresolvedFields.length > 0) ctx.unresolvedFields = unresolvedFields;
+	if (infraErrors.length > 0) ctx.infraErrors = infraErrors;
+	if (impersonationFailed) ctx.impersonationFailed = true;
 
-    return JSON.stringify(wrapError(
-        resource,
-        operation,
-        ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
-        `Write blocked: ${parts.join(' ')} Resolve all field references before retrying.`,
-        `Call autotask_${resource} with operation 'describeFields' to inspect field metadata, then retry with exact IDs or unambiguous labels.`,
-        ctx,
-    ));
+	return JSON.stringify(
+		wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
+			`Write blocked: ${parts.join(' ')} Resolve all field references before retrying.`,
+			`Call autotask_${resource} with operation 'describeFields' to inspect field metadata, then retry with exact IDs or unambiguous labels.`,
+			ctx,
+		),
+	);
 }
 
 /**
@@ -536,7 +669,9 @@ function buildWriteResolutionBlocker(
 function buildResultPayload(
 	kind: ResultKind,
 	data: unknown,
-	flags: Partial<Omit<import('./error-formatter').ResultFlags, 'needsUserConfirmation' | 'safeToContinue'>>,
+	flags: Partial<
+		Omit<import('./error-formatter').ResultFlags, 'needsUserConfirmation' | 'safeToContinue'>
+	>,
 	extras: {
 		warnings?: string[];
 		pendingConfirmations?: import('../helpers/label-resolution').PendingLabelConfirmation[];
@@ -671,8 +806,10 @@ function buildCompoundContext(resource: string, result: any): Record<string, unk
 			return result.ticketID !== undefined ? { ticketID: result.ticketID } : undefined;
 		case 'changeRequestLink': {
 			const ctx: Record<string, unknown> = {};
-			if (result.changeRequestTicketID !== undefined) ctx.changeRequestTicketID = result.changeRequestTicketID;
-			if (result.problemOrIncidentTicketID !== undefined) ctx.problemOrIncidentTicketID = result.problemOrIncidentTicketID;
+			if (result.changeRequestTicketID !== undefined)
+				ctx.changeRequestTicketID = result.changeRequestTicketID;
+			if (result.problemOrIncidentTicketID !== undefined)
+				ctx.problemOrIncidentTicketID = result.problemOrIncidentTicketID;
 			return Object.keys(ctx).length > 0 ? ctx : undefined;
 		}
 		case 'holidaySet':
@@ -685,19 +822,19 @@ function buildCompoundContext(resource: string, result: any): Record<string, unk
 }
 
 function compactDescribeResponse(response: DescribeResourceResponse): Record<string, unknown> {
-    return {
-        resource: response.resource,
-        mode: response.mode,
-        timezone: response.timezone,
-        fields: response.fields.map((field) => ({
-            id: field.id,
-            type: field.type,
-            required: field.required,
-            isPickList: field.isPickList,
-            isReference: field.isReference,
-        })),
-        notes: response.notes ?? [],
-    };
+	return {
+		resource: response.resource,
+		mode: response.mode,
+		timezone: response.timezone,
+		fields: response.fields.map((field) => ({
+			id: field.id,
+			type: field.type,
+			required: field.required,
+			isPickList: field.isPickList,
+			isReference: field.isReference,
+		})),
+		notes: response.notes ?? [],
+	};
 }
 
 /**
@@ -705,1146 +842,1675 @@ function compactDescribeResponse(response: DescribeResourceResponse): Record<str
  * with getNodeParameter overridden to map flat AI tool params.
  */
 export async function executeAiTool(
-    context: IExecuteFunctions,
-    resource: string,
-    operation: string,
-    rawParams: ToolExecutorParams,
-    metadata: ToolExecutionMetadata = {},
+	context: IExecuteFunctions,
+	resource: string,
+	operation: string,
+	rawParams: ToolExecutorParams,
+	metadata: ToolExecutionMetadata = {},
 ): Promise<string> {
-    const rawCorrelation = rawParams.toolCallId ?? rawParams.sessionId;
-    const correlationId: string | undefined = typeof rawCorrelation === 'string' && rawCorrelation.trim()
-        ? rawCorrelation.trim()
-        : typeof rawCorrelation === 'number' ? String(rawCorrelation) : undefined;
+	const startedAt = Date.now();
+	const rawCorrelation = rawParams.toolCallId ?? rawParams.sessionId;
+	const correlationId: string | undefined =
+		typeof rawCorrelation === 'string' && rawCorrelation.trim()
+			? rawCorrelation.trim()
+			: typeof rawCorrelation === 'number'
+				? String(rawCorrelation)
+				: undefined;
 
-    // Strip n8n framework metadata injected into every tool call
-    const params = {} as ToolExecutorParams;
-    for (const [key, value] of Object.entries(rawParams)) {
-        if (N8N_METADATA_FIELDS.has(key)) continue;
-        if (N8N_METADATA_PREFIXES.some((p) => key.startsWith(p))) continue;
-        (params as Record<string, unknown>)[key] = value;
-    }
+	// Strip n8n framework metadata injected into every tool call
+	const params = {} as ToolExecutorParams;
+	const strippedMetadataKeys: string[] = [];
+	for (const [key, value] of Object.entries(rawParams)) {
+		if (N8N_METADATA_FIELDS.has(key) || N8N_METADATA_PREFIXES.some((p) => key.startsWith(p))) {
+			strippedMetadataKeys.push(key);
+			continue;
+		}
+		(params as Record<string, unknown>)[key] = value;
+	}
+	const normalisedOperation = normaliseOperation(operation);
+	traceToolCall({
+		phase: 'execute-start',
+		resource,
+		operation: normalisedOperation,
+		correlationId,
+		summary: {
+			rawOperation: operation,
+			normalisedOperation,
+			rawParamKeys: safeKeys(rawParams),
+			sanitisedParamKeys: safeKeys(params),
+			strippedMetadataKeys,
+		},
+	});
 
-    const timezone = await getConfiguredTimezone.call(context);
+	const timezone = await getConfiguredTimezone.call(context);
 
-    const originalGetNodeParameter = context.getNodeParameter.bind(context);
-    const readFields = metadata.readFields ?? [];
-    const writeFields = metadata.writeFields ?? [];
-    const fieldValues = buildFieldValues(params, ['id'], writeFields);
-    const filters = buildFilterFromParams(params, readFields, timezone);
-    const entityId = params.id !== undefined ? String(params.id) : '';
+	const originalGetNodeParameter = context.getNodeParameter.bind(context);
+	const readFields = metadata.readFields ?? [];
+	const writeFields = metadata.writeFields ?? [];
+	const fieldValues = buildFieldValues(params, ['id'], writeFields);
+	const filters = buildFilterFromParams(params, readFields, timezone);
+	const entityId = params.id !== undefined ? String(params.id) : '';
 
-    // Resolve human-readable labels to IDs for filter values on reference/picklist fields.
-    // This allows the LLM to pass e.g. filter_field="companyID", filter_value="Contoso"
-    // instead of requiring a prerequisite lookup to get the numeric ID.
-    const filterResolutions: LabelResolution[] = [];
-    const filterWarnings: string[] = [];
-    const filterPendingConfirmations: PendingLabelConfirmation[] = [];
-    for (const filter of filters) {
-        if (filter.value !== undefined && typeof filter.value === 'string') {
-            try {
-                const resolution = await resolveFilterLabelsToIds(
-                    context, resource, filter.field, filter.value, readFields,
-                );
-                if (resolution.resolutions.length > 0) {
-                    filter.value = resolution.values[filter.field] as string | number | boolean;
-                    filterResolutions.push(...resolution.resolutions);
-                }
-                if (resolution.warnings.length > 0) {
-                    filterWarnings.push(...resolution.warnings);
-                }
-                if (resolution.pendingConfirmations.length > 0) {
-                    filterPendingConfirmations.push(...resolution.pendingConfirmations);
-                }
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                filterWarnings.push(`Filter label resolution failed for '${filter.field}': ${msg}`);
-            }
-        } else if (Array.isArray(filter.value)) {
-            // Attempt label resolution for in/notIn array filter values on reference/picklist fields.
-            // Each string element is resolved individually; numeric elements are kept as-is.
-            try {
-                const resolution = await resolveFilterLabelsToIds(
-                    context, resource, filter.field, filter.value, readFields,
-                );
-                if (resolution.resolutions.length > 0) {
-                    filter.value = resolution.values[filter.field] as Array<string | number | boolean>;
-                    filterResolutions.push(...resolution.resolutions);
-                }
-                filterWarnings.push(...resolution.warnings);
-                filterPendingConfirmations.push(...resolution.pendingConfirmations);
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                filterWarnings.push(`Array filter label resolution failed for '${filter.field}': ${msg}`);
-            }
-        }
-    }
-    const selectedColumns = parseFieldsParam(params.fields);
-    const selectedSlaTicketColumns = parseFieldsParam(params.ticketFields);
-    const effectiveLimit = getEffectiveLimit(params.limit);
-    const effectiveOffset = typeof params.offset === 'number' && Number.isFinite(params.offset) && params.offset >= 0
-        ? Math.trunc(params.offset) : 0;
-    const normalisedOperation = normaliseOperation(operation);
+	// Resolve human-readable labels to IDs for filter values on reference/picklist fields.
+	// This allows the LLM to pass e.g. filter_field="companyID", filter_value="Contoso"
+	// instead of requiring a prerequisite lookup to get the numeric ID.
+	const filterResolutions: LabelResolution[] = [];
+	const filterWarnings: string[] = [];
+	const filterPendingConfirmations: PendingLabelConfirmation[] = [];
+	for (const filter of filters) {
+		if (filter.value !== undefined && typeof filter.value === 'string') {
+			try {
+				const resolution = await resolveFilterLabelsToIds(
+					context,
+					resource,
+					filter.field,
+					filter.value,
+					readFields,
+				);
+				if (resolution.resolutions.length > 0) {
+					filter.value = resolution.values[filter.field] as string | number | boolean;
+					filterResolutions.push(...resolution.resolutions);
+				}
+				if (resolution.warnings.length > 0) {
+					filterWarnings.push(...resolution.warnings);
+				}
+				if (resolution.pendingConfirmations.length > 0) {
+					filterPendingConfirmations.push(...resolution.pendingConfirmations);
+				}
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				filterWarnings.push(`Filter label resolution failed for '${filter.field}': ${msg}`);
+			}
+		} else if (Array.isArray(filter.value)) {
+			// Attempt label resolution for in/notIn array filter values on reference/picklist fields.
+			// Each string element is resolved individually; numeric elements are kept as-is.
+			try {
+				const resolution = await resolveFilterLabelsToIds(
+					context,
+					resource,
+					filter.field,
+					filter.value,
+					readFields,
+				);
+				if (resolution.resolutions.length > 0) {
+					filter.value = resolution.values[filter.field] as Array<string | number | boolean>;
+					filterResolutions.push(...resolution.resolutions);
+				}
+				filterWarnings.push(...resolution.warnings);
+				filterPendingConfirmations.push(...resolution.pendingConfirmations);
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				filterWarnings.push(`Array filter label resolution failed for '${filter.field}': ${msg}`);
+			}
+		}
+	}
+	traceLabelResolution({
+		phase: 'filter-resolution',
+		resource,
+		operation: normalisedOperation,
+		correlationId,
+		summary: {
+			attempted: filters.length > 0,
+			...summariseResolutionState(filterResolutions, filterWarnings, filterPendingConfirmations),
+			...(AI_TOOL_DEBUG_VERBOSE ? { filterSnapshot: redactForVerbose(filters) } : {}),
+		},
+	});
+	const selectedColumns = parseFieldsParam(params.fields);
+	const selectedSlaTicketColumns = parseFieldsParam(params.ticketFields);
+	const effectiveLimit = getEffectiveLimit(params.limit);
+	const effectiveOffset =
+		typeof params.offset === 'number' && Number.isFinite(params.offset) && params.offset >= 0
+			? Math.trunc(params.offset)
+			: 0;
 
-    // Handle helper operations that bypass the standard executor
-    if (normalisedOperation === 'describeFields') {
-        try {
-            const mode = (params.mode as 'read' | 'write') ?? 'read';
-            const result = await describeResource(context as unknown as ILoadOptionsFunctions, resource, mode);
-            return attachCorrelation(JSON.stringify(wrapSuccess(resource, 'describeFields',
-                buildResultPayload('metadata', compactDescribeResponse(result), { mutated: false, retryable: true }),
-            )), correlationId);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            return attachCorrelation(JSON.stringify(formatApiError(message, resource, 'describeFields')), correlationId);
-        }
-    }
-    if (normalisedOperation === 'listPicklistValues') {
-        try {
-            const result = await listPicklistValues(
-                context as unknown as ILoadOptionsFunctions,
-                resource,
-                params.fieldId as string,
-                params.query as string | undefined,
-                (params.limit as number) ?? 50,
-                (params.page as number) ?? 1,
-            );
-            return attachCorrelation(JSON.stringify(wrapSuccess(resource, 'listPicklistValues',
-                buildResultPayload('metadata', result, { mutated: false, retryable: true }),
-            )), correlationId);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            return attachCorrelation(JSON.stringify(formatApiError(message, resource, 'listPicklistValues')), correlationId);
-        }
-    }
-    if (normalisedOperation === 'describeOperation') {
-        try {
-            const target = params.targetOperation as string | undefined;
-            const allAllowedOps = metadata.allAllowedOps ?? [];
-            if (!target || !allAllowedOps.includes(target)) {
-                return attachCorrelation(JSON.stringify(wrapError(
-                    resource, 'describeOperation', ERROR_TYPES.INVALID_OPERATION,
-                    `'targetOperation' must be one of: ${allAllowedOps.join(', ')}`,
-                    `Call autotask_${resource} with operation='describeOperation' and a valid targetOperation value.`,
-                )), correlationId);
-            }
-            const doc = buildOperationDoc(resource, target, readFields, writeFields);
-            return attachCorrelation(JSON.stringify(wrapSuccess(resource, 'describeOperation',
-                buildResultPayload('metadata', doc, { mutated: false, retryable: true }),
-            )), correlationId);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            return attachCorrelation(JSON.stringify(formatApiError(message, resource, 'describeOperation')), correlationId);
-        }
-    }
+	// Handle helper operations that bypass the standard executor
+	if (normalisedOperation === 'describeFields') {
+		try {
+			const mode = (params.mode as 'read' | 'write') ?? 'read';
+			const result = await describeResource(
+				context as unknown as ILoadOptionsFunctions,
+				resource,
+				mode,
+			);
+			const responseJson = JSON.stringify(
+				wrapSuccess(
+					resource,
+					'describeFields',
+					buildResultPayload('metadata', compactDescribeResponse(result), {
+						mutated: false,
+						retryable: true,
+					}),
+				),
+			);
+			traceResponse({
+				phase: 'helper-describeFields',
+				resource,
+				operation: 'describeFields',
+				correlationId,
+				durationMs: Date.now() - startedAt,
+				summary: summariseResponseEnvelope(responseJson),
+			});
+			return attachCorrelation(responseJson, correlationId);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			traceError({
+				phase: 'helper-describeFields',
+				resource,
+				operation: 'describeFields',
+				correlationId,
+				summary: { errorMessage: message, beforeApiCall: false },
+			});
+			return attachCorrelation(
+				JSON.stringify(formatApiError(message, resource, 'describeFields')),
+				correlationId,
+			);
+		}
+	}
+	if (normalisedOperation === 'listPicklistValues') {
+		try {
+			const result = await listPicklistValues(
+				context as unknown as ILoadOptionsFunctions,
+				resource,
+				params.fieldId as string,
+				params.query as string | undefined,
+				(params.limit as number) ?? 50,
+				(params.page as number) ?? 1,
+			);
+			return attachCorrelation(
+				JSON.stringify(
+					wrapSuccess(
+						resource,
+						'listPicklistValues',
+						buildResultPayload('metadata', result, { mutated: false, retryable: true }),
+					),
+				),
+				correlationId,
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return attachCorrelation(
+				JSON.stringify(formatApiError(message, resource, 'listPicklistValues')),
+				correlationId,
+			);
+		}
+	}
+	if (normalisedOperation === 'describeOperation') {
+		try {
+			const target = params.targetOperation as string | undefined;
+			const allAllowedOps = metadata.allAllowedOps ?? [];
+			if (!target || !allAllowedOps.includes(target)) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'describeOperation',
+							ERROR_TYPES.INVALID_OPERATION,
+							`'targetOperation' must be one of: ${allAllowedOps.join(', ')}`,
+							`Call autotask_${resource} with operation='describeOperation' and a valid targetOperation value.`,
+						),
+					),
+					correlationId,
+				);
+			}
+			const doc = buildOperationDoc(resource, target, readFields, writeFields);
+			return attachCorrelation(
+				JSON.stringify(
+					wrapSuccess(
+						resource,
+						'describeOperation',
+						buildResultPayload('metadata', doc, { mutated: false, retryable: true }),
+					),
+				),
+				correlationId,
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return attachCorrelation(
+				JSON.stringify(formatApiError(message, resource, 'describeOperation')),
+				correlationId,
+			);
+		}
+	}
 
-    let recencyResult: RecencyBuildResult;
-    try {
-        recencyResult = buildRecencyFilters(params, readFields, timezone);
-    } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        return attachCorrelation(JSON.stringify(
-            formatFilterConstraintError(
-                resource,
-                normalisedOperation,
-                detail,
-                "Use recency windows (for example 'last_7d') or date/time strings for since/until (e.g. 2026-01-15T09:00:00 in your configured timezone, or 2026-01-15T09:00:00Z with explicit UTC offset).",
-            ),
-        ), correlationId);
-    }
-    if (recencyResult.note && !recencyResult.isActive) {
-        return attachCorrelation(JSON.stringify(formatFilterConstraintError(
-            resource,
-            normalisedOperation,
-            recencyResult.note,
-            `No datetime field was detected for ${resource}. Use explicit filter_field/filter_value pairs with a known date field, or call autotask_${resource} with operation 'describeFields' with mode 'read' to discover available date fields.`,
-        )), correlationId);
-    }
+	let recencyResult: RecencyBuildResult;
+	try {
+		recencyResult = buildRecencyFilters(params, readFields, timezone);
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
+		return attachCorrelation(
+			JSON.stringify(
+				formatFilterConstraintError(
+					resource,
+					normalisedOperation,
+					detail,
+					"Use recency windows (for example 'last_7d') or date/time strings for since/until (e.g. 2026-01-15T09:00:00 in your configured timezone, or 2026-01-15T09:00:00Z with explicit UTC offset).",
+				),
+			),
+			correlationId,
+		);
+	}
+	if (recencyResult.note && !recencyResult.isActive) {
+		return attachCorrelation(
+			JSON.stringify(
+				formatFilterConstraintError(
+					resource,
+					normalisedOperation,
+					recencyResult.note,
+					`No datetime field was detected for ${resource}. Use explicit filter_field/filter_value pairs with a known date field, or call autotask_${resource} with operation 'describeFields' with mode 'read' to discover available date fields.`,
+				),
+			),
+			correlationId,
+		);
+	}
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let combinedFilters: any[];
-    if (params.filtersJson) {
-        // filtersJson path — mutually exclusive with flat filter triplets
-        if (params.filter_field || params.filter_field_2) {
-            return attachCorrelation(JSON.stringify(formatFilterConstraintError(
-                resource, normalisedOperation,
-                'filtersJson is mutually exclusive with filter_field/filter_field_2. Provide one or the other, not both.',
-                'Remove filter_field and filter_field_2 when using filtersJson, or remove filtersJson when using flat triplets.',
-            )), correlationId);
-        }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let parsedFiltersJson: any[] = [];
-        try {
-            const parsed: unknown = JSON.parse(params.filtersJson as string);
-            if (!Array.isArray(parsed)) throw new Error('filtersJson must be a JSON array.');
-            parsedFiltersJson = parsed;
-        } catch (e) {
-            return attachCorrelation(JSON.stringify(formatFilterConstraintError(
-                resource, normalisedOperation,
-                `filtersJson parse error: ${e instanceof Error ? e.message : String(e)}`,
-                "Provide a valid JSON array of Autotask IFilterCondition objects. Example: '[{\"field\":\"status\",\"op\":\"eq\",\"value\":1}]'",
-            )), correlationId);
-        }
-        if (parsedFiltersJson.some((f) => typeof f !== 'object' || f === null || !('op' in (f as object)))) {
-            return attachCorrelation(JSON.stringify(formatFilterConstraintError(
-                resource, normalisedOperation,
-                'filtersJson validation error: each element must have at minimum an "op" property.',
-                "Each filter object requires at minimum an 'op' property (e.g. 'eq', 'or', 'and'). Field-level filters also need 'field' and 'value'.",
-            )), correlationId);
-        }
-        // Recency always AND-appended on top (time window constraint)
-        combinedFilters = [...parsedFiltersJson, ...recencyResult.filters];
-    } else {
-        // Standard flat-triplet filter path
-        const filterLogic = params.filter_logic === 'or' ? 'or' : 'and';
-        if (filterLogic === 'or' && filters.length >= 2 && recencyResult.filters.length > 0) {
-            // OR between user filters, AND with recency
-            combinedFilters = [{ op: 'or', items: [...filters] }, ...recencyResult.filters];
-        } else if (filterLogic === 'or' && filters.length >= 2) {
-            combinedFilters = [{ op: 'or', items: [...filters] }];
-        } else {
-            combinedFilters = [...filters, ...recencyResult.filters];
-        }
-    }
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let combinedFilters: any[];
+	if (params.filtersJson) {
+		// filtersJson path — mutually exclusive with flat filter triplets
+		if (params.filter_field || params.filter_field_2) {
+			return attachCorrelation(
+				JSON.stringify(
+					formatFilterConstraintError(
+						resource,
+						normalisedOperation,
+						'filtersJson is mutually exclusive with filter_field/filter_field_2. Provide one or the other, not both.',
+						'Remove filter_field and filter_field_2 when using filtersJson, or remove filtersJson when using flat triplets.',
+					),
+				),
+				correlationId,
+			);
+		}
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		let parsedFiltersJson: any[] = [];
+		try {
+			const parsed: unknown = JSON.parse(params.filtersJson as string);
+			if (!Array.isArray(parsed)) throw new Error('filtersJson must be a JSON array.');
+			parsedFiltersJson = parsed;
+		} catch (e) {
+			return attachCorrelation(
+				JSON.stringify(
+					formatFilterConstraintError(
+						resource,
+						normalisedOperation,
+						`filtersJson parse error: ${e instanceof Error ? e.message : String(e)}`,
+						'Provide a valid JSON array of Autotask IFilterCondition objects. Example: \'[{"field":"status","op":"eq","value":1}]\'',
+					),
+				),
+				correlationId,
+			);
+		}
+		if (
+			parsedFiltersJson.some((f) => typeof f !== 'object' || f === null || !('op' in (f as object)))
+		) {
+			return attachCorrelation(
+				JSON.stringify(
+					formatFilterConstraintError(
+						resource,
+						normalisedOperation,
+						'filtersJson validation error: each element must have at minimum an "op" property.',
+						"Each filter object requires at minimum an 'op' property (e.g. 'eq', 'or', 'and'). Field-level filters also need 'field' and 'value'.",
+					),
+				),
+				correlationId,
+			);
+		}
+		// Recency always AND-appended on top (time window constraint)
+		combinedFilters = [...parsedFiltersJson, ...recencyResult.filters];
+	} else {
+		// Standard flat-triplet filter path
+		const filterLogic = params.filter_logic === 'or' ? 'or' : 'and';
+		if (filterLogic === 'or' && filters.length >= 2 && recencyResult.filters.length > 0) {
+			// OR between user filters, AND with recency
+			combinedFilters = [{ op: 'or', items: [...filters] }, ...recencyResult.filters];
+		} else if (filterLogic === 'or' && filters.length >= 2) {
+			combinedFilters = [{ op: 'or', items: [...filters] }];
+		} else {
+			combinedFilters = [...filters, ...recencyResult.filters];
+		}
+	}
+	traceFilterBuild({
+		phase: 'combined-filters',
+		resource,
+		operation: normalisedOperation,
+		correlationId,
+		summary: {
+			flatFilters: summariseFilters(filters),
+			recencyFilters: summariseFilters(recencyResult.filters),
+			filtersJsonUsed: Boolean(params.filtersJson),
+			combinedStrategy: params.filtersJson
+				? 'filtersJson+recency'
+				: params.filter_logic === 'or' && filters.length >= 2
+					? recencyResult.filters.length > 0
+						? 'or-group+recency'
+						: 'or-group'
+					: 'flat-and-recency',
+			recencyActive: recencyResult.isActive,
+			recencyNote: recencyResult.note,
+		},
+	});
 
-    const allFilterCount = filters.length + recencyResult.filters.length + (params.filtersJson ? 1 : 0);
-    if (normalisedOperation === 'get' && entityId === '') {
-        return attachCorrelation(JSON.stringify(
-            allFilterCount > 0
-                ? wrapError(resource, 'get', ERROR_TYPES.INVALID_OPERATION,
-                    'operation "get" requires a numeric entity ID. Filters and recency parameters are not valid for "get".',
-                    `Use operation 'getMany' with the same filters to retrieve matching ${resource} records.`)
-                : formatIdError(resource, 'get'),
-        ), correlationId);
-    }
-    const effectiveOperation = normalisedOperation;
-    // When offset is used, we need offset+limit records from the API then slice client-side.
-    // Cap at MAX_QUERY_LIMIT to stay within API bounds; warn if offset exceeds this.
-    const offsetExceedsApiCap = effectiveOffset > 0 && effectiveOffset >= MAX_QUERY_LIMIT;
-    const supportsOffsetPagination = ['getMany', 'getPosted', 'getUnposted'].includes(effectiveOperation);
-    const queryLimit = recencyResult.isActive
-        ? RECENCY_OVER_REQUEST_LIMIT
-        : (effectiveOffset > 0 && supportsOffsetPagination)
-            ? Math.min(effectiveOffset + effectiveLimit, MAX_QUERY_LIMIT)
-            : effectiveLimit;
+	const allFilterCount =
+		filters.length + recencyResult.filters.length + (params.filtersJson ? 1 : 0);
+	if (normalisedOperation === 'get' && entityId === '') {
+		return attachCorrelation(
+			JSON.stringify(
+				allFilterCount > 0
+					? wrapError(
+							resource,
+							'get',
+							ERROR_TYPES.INVALID_OPERATION,
+							'operation "get" requires a numeric entity ID. Filters and recency parameters are not valid for "get".',
+							`Use operation 'getMany' with the same filters to retrieve matching ${resource} records.`,
+						)
+					: formatIdError(resource, 'get'),
+			),
+			correlationId,
+		);
+	}
+	const effectiveOperation = normalisedOperation;
+	// When offset is used, we need offset+limit records from the API then slice client-side.
+	// Cap at MAX_QUERY_LIMIT to stay within API bounds; warn if offset exceeds this.
+	const offsetExceedsApiCap = effectiveOffset > 0 && effectiveOffset >= MAX_QUERY_LIMIT;
+	const supportsOffsetPagination = ['getMany', 'getPosted', 'getUnposted'].includes(
+		effectiveOperation,
+	);
+	const queryLimit = recencyResult.isActive
+		? RECENCY_OVER_REQUEST_LIMIT
+		: effectiveOffset > 0 && supportsOffsetPagination
+			? Math.min(effectiveOffset + effectiveLimit, MAX_QUERY_LIMIT)
+			: effectiveLimit;
+	traceFilterBuild({
+		phase: 'pagination-plan',
+		resource,
+		operation: effectiveOperation,
+		correlationId,
+		summary: {
+			effectiveLimit,
+			effectiveOffset,
+			queryLimit,
+			recencyActive: recencyResult.isActive,
+			offsetIgnoredDueToRecency: recencyResult.isActive && effectiveOffset > 0,
+			offsetExceedsApiCap,
+			outputMode: params.outputMode ?? 'idsAndLabels',
+		},
+	});
 
-    if (supportsOffsetPagination && offsetExceedsApiCap && !params.returnAll) {
-        return attachCorrelation(JSON.stringify(wrapError(
-            resource, effectiveOperation, ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
-            `Offset ${effectiveOffset} exceeds the maximum queryable range of ${MAX_QUERY_LIMIT} records. Pagination via offset is limited to the first ${MAX_QUERY_LIMIT} records.`,
-            `Use narrower filters (e.g. date ranges via since/until, or more specific filter_field/filter_value) to reduce the result set, then paginate within the narrowed results.`,
-        )), correlationId);
-    }
+	if (supportsOffsetPagination && offsetExceedsApiCap && !params.returnAll) {
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					effectiveOperation,
+					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+					`Offset ${effectiveOffset} exceeds the maximum queryable range of ${MAX_QUERY_LIMIT} records. Pagination via offset is limited to the first ${MAX_QUERY_LIMIT} records.`,
+					`Use narrower filters (e.g. date ranges via since/until, or more specific filter_field/filter_value) to reduce the result set, then paginate within the narrowed results.`,
+				),
+			),
+			correlationId,
+		);
+	}
 
-    const idValidation = validateEntityId(entityId, resource, effectiveOperation);
-    if (!idValidation.valid) {
-        return attachCorrelation(JSON.stringify(idValidation.error), correlationId);
-    }
+	const idValidation = validateEntityId(entityId, resource, effectiveOperation);
+	if (!idValidation.valid) {
+		return attachCorrelation(JSON.stringify(idValidation.error), correlationId);
+	}
 
-    // Pre-flight: operations using the identifier-pair pattern (id OR altIdField) require at least one.
-    // This returns a structured error before the runtime handler throws an unhandled exception.
-    const idPairConfig = getIdentifierPairConfig(resource, effectiveOperation);
-    if (idPairConfig) {
-        const hasId = typeof params.id === 'number' && params.id > 0;
-        const hasAltId = typeof params[idPairConfig.altIdField as keyof typeof params] === 'string'
-            && (params[idPairConfig.altIdField as keyof typeof params] as string).trim() !== '';
-        if (!hasId && !hasAltId) {
-            return attachCorrelation(JSON.stringify(wrapError(
-                resource,
-                operation,
-                ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
-                `${effectiveOperation} requires a ticket identifier: provide 'id' (numeric Ticket ID) or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`,
-                `Call autotask_${resource} with operation '${effectiveOperation}' and include either 'id' (numeric Ticket ID) or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`,
-            )), correlationId);
-        }
-    }
+	// Pre-flight: operations using the identifier-pair pattern (id OR altIdField) require at least one.
+	// This returns a structured error before the runtime handler throws an unhandled exception.
+	const idPairConfig = getIdentifierPairConfig(resource, effectiveOperation);
+	if (idPairConfig) {
+		const hasId = typeof params.id === 'number' && params.id > 0;
+		const hasAltId =
+			typeof params[idPairConfig.altIdField as keyof typeof params] === 'string' &&
+			(params[idPairConfig.altIdField as keyof typeof params] as string).trim() !== '';
+		if (!hasId && !hasAltId) {
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						operation,
+						ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+						`${effectiveOperation} requires a ticket identifier: provide 'id' (numeric Ticket ID) or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`,
+						`Call autotask_${resource} with operation '${effectiveOperation}' and include either 'id' (numeric Ticket ID) or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`,
+					),
+				),
+				correlationId,
+			);
+		}
+	}
 
-    if (['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(effectiveOperation)) {
-        const udfFilters = filters.filter((filter) => filter.udf);
-        if (udfFilters.length > 1) {
-            return attachCorrelation(JSON.stringify(
-                formatFilterConstraintError(
-                    resource,
-                    effectiveOperation,
-                    `Only one UDF filter is supported per query for ${resource}.${effectiveOperation}.`,
-                    `Retry with a single UDF filter, or use autotask_${resource} with operation 'describeFields' to use standard fields where possible.`,
-                ),
-            ), correlationId);
-        }
-        const readValidation = validateReadFields(selectedColumns, readFields, resource, effectiveOperation);
-        if (!readValidation.valid) {
-            return attachCorrelation(JSON.stringify(readValidation.error), correlationId);
-        }
-    }
+	if (
+		['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(
+			effectiveOperation,
+		)
+	) {
+		const udfFilters = filters.filter((filter) => filter.udf);
+		if (udfFilters.length > 1) {
+			return attachCorrelation(
+				JSON.stringify(
+					formatFilterConstraintError(
+						resource,
+						effectiveOperation,
+						`Only one UDF filter is supported per query for ${resource}.${effectiveOperation}.`,
+						`Retry with a single UDF filter, or use autotask_${resource} with operation 'describeFields' to use standard fields where possible.`,
+					),
+				),
+				correlationId,
+			);
+		}
+		const readValidation = validateReadFields(
+			selectedColumns,
+			readFields,
+			resource,
+			effectiveOperation,
+		);
+		if (!readValidation.valid) {
+			return attachCorrelation(JSON.stringify(readValidation.error), correlationId);
+		}
+	}
 
-    if (['create', 'update', 'createIfNotExists'].includes(effectiveOperation)) {
-        const writeValidation = validateWriteFields(fieldValues, writeFields, resource, effectiveOperation);
-        if (!writeValidation.valid) {
-            return attachCorrelation(JSON.stringify(writeValidation.error), correlationId);
-        }
-    }
+	if (['create', 'update', 'createIfNotExists'].includes(effectiveOperation)) {
+		const writeValidation = validateWriteFields(
+			fieldValues,
+			writeFields,
+			resource,
+			effectiveOperation,
+		);
+		if (!writeValidation.valid) {
+			return attachCorrelation(JSON.stringify(writeValidation.error), correlationId);
+		}
+	}
 
-    // Resolve human-readable labels to IDs for picklist and reference fields on write ops.
-    // This allows the LLM to pass names (e.g. "Will Spence") instead of numeric IDs.
-    let labelResolutions: LabelResolution[] = [];
-    let labelWarnings: string[] = [];
-    let labelPendingConfirmations: PendingLabelConfirmation[] = [];
-    if (['create', 'update', 'createIfNotExists'].includes(effectiveOperation) && Object.keys(fieldValues).length > 0) {
-        try {
-            const resolution = await resolveLabelsToIds(context, resource, fieldValues as IDataObject);
-            // Replace fieldValues entries with resolved IDs in-place
-            for (const [key, value] of Object.entries(resolution.values)) {
-                fieldValues[key] = value;
-            }
-            labelResolutions = resolution.resolutions;
-            labelWarnings = resolution.warnings;
-            labelPendingConfirmations = resolution.pendingConfirmations;
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            labelWarnings.push(`Label resolution failed: ${msg}.`);
-        }
-    }
+	// Resolve human-readable labels to IDs for picklist and reference fields on write ops.
+	// This allows the LLM to pass names (e.g. "Will Spence") instead of numeric IDs.
+	let labelResolutions: LabelResolution[] = [];
+	let labelWarnings: string[] = [];
+	let labelPendingConfirmations: PendingLabelConfirmation[] = [];
+	if (
+		['create', 'update', 'createIfNotExists'].includes(effectiveOperation) &&
+		Object.keys(fieldValues).length > 0
+	) {
+		try {
+			const resolution = await resolveLabelsToIds(context, resource, fieldValues as IDataObject);
+			// Replace fieldValues entries with resolved IDs in-place
+			for (const [key, value] of Object.entries(resolution.values)) {
+				fieldValues[key] = value;
+			}
+			labelResolutions = resolution.resolutions;
+			labelWarnings = resolution.warnings;
+			labelPendingConfirmations = resolution.pendingConfirmations;
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			labelWarnings.push(`Label resolution failed: ${msg}.`);
+		}
+	}
 
-    // Resolve impersonationResourceId name/email → numeric ID for write operations only.
-    // Gated to write ops to avoid unnecessary Resource entity list fetch on reads.
-    const isWriteOperation = ['create', 'createIfNotExists', 'update', 'moveConfigurationItem', 'moveToCompany', 'transferOwnership', 'approve', 'reject', 'delete'].includes(effectiveOperation);
-    let resolvedImpersonationId: number | undefined;
-    let labelImpersonationFailed = false;
-    const rawImpersonation = params.impersonationResourceId;
-    if (isWriteOperation && rawImpersonation !== undefined && rawImpersonation !== null && rawImpersonation !== '') {
-        const impersonationValue = typeof rawImpersonation === 'string' ? rawImpersonation.trim() : rawImpersonation;
-        const isNumericId = typeof impersonationValue === 'number' ||
-            (typeof impersonationValue === 'string' && /^\d+$/.test(impersonationValue) && String(parseInt(impersonationValue, 10)) === impersonationValue);
+	// Resolve impersonationResourceId name/email → numeric ID for write operations only.
+	// Gated to write ops to avoid unnecessary Resource entity list fetch on reads.
+	const isWriteOperation = [
+		'create',
+		'createIfNotExists',
+		'update',
+		'moveConfigurationItem',
+		'moveToCompany',
+		'transferOwnership',
+		'approve',
+		'reject',
+		'delete',
+	].includes(effectiveOperation);
+	let resolvedImpersonationId: number | undefined;
+	let labelImpersonationFailed = false;
+	const rawImpersonation = params.impersonationResourceId;
+	if (
+		isWriteOperation &&
+		rawImpersonation !== undefined &&
+		rawImpersonation !== null &&
+		rawImpersonation !== ''
+	) {
+		const impersonationValue =
+			typeof rawImpersonation === 'string' ? rawImpersonation.trim() : rawImpersonation;
+		const isNumericId =
+			typeof impersonationValue === 'number' ||
+			(typeof impersonationValue === 'string' &&
+				/^\d+$/.test(impersonationValue) &&
+				String(parseInt(impersonationValue, 10)) === impersonationValue);
 
-        if (isNumericId) {
-            resolvedImpersonationId = typeof impersonationValue === 'number' ? impersonationValue : parseInt(impersonationValue, 10);
-        } else if (typeof impersonationValue === 'string') {
-            // Resolve name or email to resource ID
-            try {
-                const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
-                const helper = new EntityValueHelper(context as unknown as import('n8n-workflow').ILoadOptionsFunctions, 'Resource');
-                const candidates = await helper.getValues(true);
-                const label = impersonationValue.toLowerCase();
+		if (isNumericId) {
+			resolvedImpersonationId =
+				typeof impersonationValue === 'number'
+					? impersonationValue
+					: parseInt(impersonationValue, 10);
+		} else if (typeof impersonationValue === 'string') {
+			// Resolve name or email to resource ID
+			try {
+				const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
+				const helper = new EntityValueHelper(
+					context as unknown as import('n8n-workflow').ILoadOptionsFunctions,
+					'Resource',
+				);
+				const candidates = await helper.getValues(true);
+				const label = impersonationValue.toLowerCase();
 
-                // Try exact name match first
-                let matchedId: number | undefined;
-                for (const entity of candidates) {
-                    const entityObj = entity as unknown as IDataObject;
-                    const display = helper.getEntityDisplayName(entityObj);
-                    if (display && display.toLowerCase() === label) {
-                        matchedId = entityObj.id as number;
-                        break;
-                    }
-                    // Also check email fields (must check each independently — ?? stops at first non-null)
-                    const emailFields = [entityObj.email, entityObj.email2, entityObj.email3] as (string | undefined)[];
-                    if (emailFields.some(e => e && e.toLowerCase() === label)) {
-                        matchedId = entityObj.id as number;
-                        break;
-                    }
-                }
+				// Try exact name match first
+				let matchedId: number | undefined;
+				for (const entity of candidates) {
+					const entityObj = entity as unknown as IDataObject;
+					const display = helper.getEntityDisplayName(entityObj);
+					if (display && display.toLowerCase() === label) {
+						matchedId = entityObj.id as number;
+						break;
+					}
+					// Also check email fields (must check each independently — ?? stops at first non-null)
+					const emailFields = [entityObj.email, entityObj.email2, entityObj.email3] as (
+						| string
+						| undefined
+					)[];
+					if (emailFields.some((e) => e && e.toLowerCase() === label)) {
+						matchedId = entityObj.id as number;
+						break;
+					}
+				}
 
-                if (matchedId !== undefined) {
-                    resolvedImpersonationId = matchedId;
-                    labelResolutions.push({ field: 'impersonationResourceId', from: impersonationValue, to: matchedId, method: 'reference' });
-                } else {
-                    labelImpersonationFailed = true;
-                    labelWarnings.push(`Could not resolve impersonation resource '${impersonationValue}' to a resource ID. Provide a numeric ID instead.`);
-                }
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                labelImpersonationFailed = true;
-                labelWarnings.push(`[INFRASTRUCTURE] Impersonation resource resolution failed: ${msg}. Provide a numeric ID instead.`);
-            }
-        }
-    }
+				if (matchedId !== undefined) {
+					resolvedImpersonationId = matchedId;
+					labelResolutions.push({
+						field: 'impersonationResourceId',
+						from: impersonationValue,
+						to: matchedId,
+						method: 'reference',
+					});
+				} else {
+					labelImpersonationFailed = true;
+					labelWarnings.push(
+						`Could not resolve impersonation resource '${impersonationValue}' to a resource ID. Provide a numeric ID instead.`,
+					);
+				}
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				labelImpersonationFailed = true;
+				labelWarnings.push(
+					`[INFRASTRUCTURE] Impersonation resource resolution failed: ${msg}. Provide a numeric ID instead.`,
+				);
+			}
+		}
+	}
+	traceLabelResolution({
+		phase: 'write-resolution',
+		resource,
+		operation: effectiveOperation,
+		correlationId,
+		summary: {
+			attempted: isWriteOperation && Object.keys(fieldValues).length > 0,
+			...summariseResolutionState(labelResolutions, labelWarnings, labelPendingConfirmations),
+			impersonationResolved: resolvedImpersonationId !== undefined,
+			impersonationFailed: labelImpersonationFailed,
+			...(AI_TOOL_DEBUG_VERBOSE ? { fieldValuesPreview: redactForVerbose(fieldValues) } : {}),
+		},
+	});
 
-    // Pre-execution write guard: block if any resolution failure condition exists.
-    if (isWriteOperation) {
-        const blocker = buildWriteResolutionBlocker(
-            resource,
-            effectiveOperation,
-            labelPendingConfirmations,
-            labelWarnings,
-            labelImpersonationFailed,
-        );
-        if (blocker !== null) return attachCorrelation(blocker, correlationId);
-    }
+	// Pre-execution write guard: block if any resolution failure condition exists.
+	if (isWriteOperation) {
+		const blocker = buildWriteResolutionBlocker(
+			resource,
+			effectiveOperation,
+			labelPendingConfirmations,
+			labelWarnings,
+			labelImpersonationFailed,
+		);
+		if (blocker !== null) return attachCorrelation(blocker, correlationId);
+	}
 
-    if (rawParams.dryRun === true) {
-        return attachCorrelation(JSON.stringify(wrapSuccess(resource, effectiveOperation,
-            buildResultPayload('summary', {
-                resolvedFieldValues: fieldValues,
-                note: 'Dry run only — no API call was made. The resolved field values above show exactly what would have been sent to the Autotask API.',
-            }, { mutated: false, retryable: true, dryRunOnly: true }, {
-                warnings: labelWarnings,
-                appliedResolutions: labelResolutions,
-            }),
-        )), correlationId);
-    }
+	if (rawParams.dryRun === true) {
+		const dryRunResponse = JSON.stringify(
+			wrapSuccess(
+				resource,
+				effectiveOperation,
+				buildResultPayload(
+					'summary',
+					{
+						resolvedFieldValues: fieldValues,
+						note: 'Dry run only — no API call was made. The resolved field values above show exactly what would have been sent to the Autotask API.',
+					},
+					{ mutated: false, retryable: true, dryRunOnly: true },
+					{
+						warnings: labelWarnings,
+						appliedResolutions: labelResolutions,
+					},
+				),
+			),
+		);
+		traceResponse({
+			phase: 'dry-run',
+			resource,
+			operation: effectiveOperation,
+			correlationId,
+			durationMs: Date.now() - startedAt,
+			summary: summariseResponseEnvelope(dryRunResponse),
+		});
+		return attachCorrelation(dryRunResponse, correlationId);
+	}
 
-    context.getNodeParameter = ((
-        name: string,
-        index: number,
-        fallbackValue?: unknown,
-        options?: IGetNodeParameterOptions,
-    ): unknown => {
-        switch (name) {
-            case 'resource':
-                return resource;
-            case 'operation':
-                return effectiveOperation;
-            case 'id':
-                return entityId;
-            case 'targetOperation':
-                return `${resource}.${effectiveOperation}`;
-            case 'entityId':
-                return entityId;
-            case 'requestData': {
-                const data: Record<string, unknown> =
-                    ['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation) && combinedFilters.length > 0
-                        ? { filter: combinedFilters }
-                        : Object.keys(fieldValues).length > 0
-                            ? fieldValues
-                            : {};
-                if (effectiveOperation === 'slaHealthCheck') {
-                    if (params.id !== undefined) {
-                        data.id = params.id;
-                    }
-                    if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim() !== '') {
-                        data.ticketNumber = params.ticketNumber.trim();
-                    }
-                    if (selectedSlaTicketColumns.length > 0) {
-                        data.slaTicketFields = selectedSlaTicketColumns;
-                    }
-                }
-                // Always apply bounded query limits for list/count style operations.
-                // Note: offset is applied client-side only (slice after fetch), not sent to API.
-                if (['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation)) {
-                    data.limit = queryLimit;
-                }
-                if (effectiveOperation === 'searchByDomain') {
-                    data.limit = effectiveLimit;
-                }
-                return JSON.stringify(data);
-            }
-            case 'fieldsToMap':
-                if (['create', 'update'].includes(effectiveOperation) && Object.keys(fieldValues).length > 0) {
-                    return { mappingMode: 'defineBelow', value: fieldValues };
-                }
-                if (['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation) && combinedFilters.length > 0) {
-                    const value: Record<string, unknown> = {};
-                    // Only extract field/value from flat filter objects (skip nested OR/AND groups)
-                    for (const f of combinedFilters) {
-                        if (f.field !== undefined) {
-                            value[f.field] = f.value;
-                        }
-                    }
-                    return { value };
-                }
-                return fallbackValue ?? { value: {} };
-            case 'filtersFromTool':
-                return ['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation) && combinedFilters.length > 0
-                    ? combinedFilters
-                    : undefined;
-            case 'returnAll':
-                return params.returnAll === true;
-            case 'maxRecords':
-                return params.returnAll === true
-                    ? undefined  // executeScopedQuery handles full pagination internally; MaxRecords is ignored
-                    : queryLimit;
-            case 'bodyJson':
-                if (['create', 'update'].includes(effectiveOperation) && Object.keys(fieldValues).length > 0) {
-                    return JSON.stringify(fieldValues);
-                }
-                return fallbackValue ?? '{}';
-            // Label enrichment and UDF flattening -- default to idsAndLabels; caller may override to rawIds.
-            // addPicklistLabels and addReferenceLabels remain hardcoded true even when outputMode='rawIds':
-            // processOutputMode() reads outputMode first and short-circuits label enrichment before these
-            // flags are consulted, so they have no effect in rawIds mode. Keeping them true avoids
-            // sending a narrower IncludeFields request that would omit label columns needed if the
-            // caller later switches back to idsAndLabels without a new API call.
-            case 'outputMode':
-                return (params.outputMode as string | undefined) ?? 'idsAndLabels';
-            case 'addPicklistLabels':
-                return true;
-            case 'addReferenceLabels':
-                return true;
-            case 'flattenUdfs':
-                return true;
-            case 'ticketIdentifierType': {
-                const ipc = getIdentifierPairConfig(resource, effectiveOperation);
-                if (ipc) {
-                    const altVal = params[ipc.altIdField as keyof typeof params];
-                    return (typeof altVal === 'string' && altVal.trim() !== '') ? ipc.altIdField : 'id';
-                }
-                return fallbackValue;
-            }
-            case 'ticketNumber': {
-                const ipc = getIdentifierPairConfig(resource, effectiveOperation);
-                if (ipc && ipc.altIdField === 'ticketNumber') {
-                    return typeof params.ticketNumber === 'string' ? params.ticketNumber.trim() : fallbackValue;
-                }
-                return fallbackValue;
-            }
-            case 'includeRaw':
-                if (effectiveOperation === 'summary') {
-                    return typeof params.includeRaw === 'boolean' ? params.includeRaw : false;
-                }
-                return fallbackValue;
-            case 'summaryTextLimit':
-                if (effectiveOperation === 'summary') {
-                    return typeof params.summaryTextLimit === 'number' ? params.summaryTextLimit : 500;
-                }
-                return fallbackValue;
-            case 'includeChildCounts':
-                if (effectiveOperation === 'summary') {
-                    return typeof params.includeChildCounts === 'boolean' ? params.includeChildCounts : false;
-                }
-                return fallbackValue;
-            case 'slaTicketFields':
-                if (effectiveOperation === 'slaHealthCheck') {
-                    return selectedSlaTicketColumns.length > 0 ? selectedSlaTicketColumns : [];
-                }
-                return fallbackValue;
-            // Column selection
-            case 'selectColumns':
-                return selectedColumns.length > 0 ? selectedColumns : [];
-            case 'selectColumnsJson':
-                return selectedColumns.length > 0 ? JSON.stringify(selectedColumns) : '[]';
-            case 'allowWriteOperations':
-                return originalGetNodeParameter('allowWriteOperations', index, false);
-            case 'impersonationResourceId':
-                if (resolvedImpersonationId !== undefined) {
-                    return resolvedImpersonationId;
-                }
-                // If rawImpersonation was a non-numeric string that failed resolution,
-                // return fallbackValue so getOptionalImpersonationResourceId treats it as absent.
-                // The warning is already in labelWarnings.
-                if (typeof rawImpersonation === 'string' && rawImpersonation.trim() !== '' && !/^\d+$/.test(rawImpersonation.trim())) {
-                    return fallbackValue;
-                }
-                return rawImpersonation ?? fallbackValue;
-            case 'allowedResources':
-                // The AI tools path validates resource+operations in supplyData() at tool
-                // construction time. The downstream executor's allowedResources check is
-                // redundant — the AI tool already ensures only the configured resource's
-                // operations reach executeAiTool(). Empty array disables the allowlist check.
-                return '[]';
-            case 'allowDryRunForWrites':
-                // The AI path manages its own dry-run response contract: params.dryRun is
-                // stripped from API bodies via N8N_METADATA_FIELDS. This must remain true
-                // to allow the downstream executor to process dryRun calls that originate
-                // from the AI schema (currently exposed on moveToCompany / moveConfigurationItem
-                // / transferOwnership; extending to all write ops is a follow-on task).
-                return true;
-            default:
-                if (Object.prototype.hasOwnProperty.call(params, name)) {
-                    return params[name as keyof ToolExecutorParams];
-                }
-                return originalGetNodeParameter(name, index, fallbackValue, options);
-        }
-    }) as typeof context.getNodeParameter;
+	context.getNodeParameter = ((
+		name: string,
+		index: number,
+		fallbackValue?: unknown,
+		options?: IGetNodeParameterOptions,
+	): unknown => {
+		switch (name) {
+			case 'resource':
+				return resource;
+			case 'operation':
+				return effectiveOperation;
+			case 'id':
+				return entityId;
+			case 'targetOperation':
+				return `${resource}.${effectiveOperation}`;
+			case 'entityId':
+				return entityId;
+			case 'requestData': {
+				const data: Record<string, unknown> =
+					['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation) &&
+					combinedFilters.length > 0
+						? { filter: combinedFilters }
+						: Object.keys(fieldValues).length > 0
+							? fieldValues
+							: {};
+				if (effectiveOperation === 'slaHealthCheck') {
+					if (params.id !== undefined) {
+						data.id = params.id;
+					}
+					if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim() !== '') {
+						data.ticketNumber = params.ticketNumber.trim();
+					}
+					if (selectedSlaTicketColumns.length > 0) {
+						data.slaTicketFields = selectedSlaTicketColumns;
+					}
+				}
+				// Always apply bounded query limits for list/count style operations.
+				// Note: offset is applied client-side only (slice after fetch), not sent to API.
+				if (['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation)) {
+					data.limit = queryLimit;
+				}
+				if (effectiveOperation === 'searchByDomain') {
+					data.limit = effectiveLimit;
+				}
+				return JSON.stringify(data);
+			}
+			case 'fieldsToMap':
+				if (
+					['create', 'update'].includes(effectiveOperation) &&
+					Object.keys(fieldValues).length > 0
+				) {
+					return { mappingMode: 'defineBelow', value: fieldValues };
+				}
+				if (
+					['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation) &&
+					combinedFilters.length > 0
+				) {
+					const value: Record<string, unknown> = {};
+					// Only extract field/value from flat filter objects (skip nested OR/AND groups)
+					for (const f of combinedFilters) {
+						if (f.field !== undefined) {
+							value[f.field] = f.value;
+						}
+					}
+					return { value };
+				}
+				return fallbackValue ?? { value: {} };
+			case 'filtersFromTool':
+				return ['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation) &&
+					combinedFilters.length > 0
+					? combinedFilters
+					: undefined;
+			case 'returnAll':
+				return params.returnAll === true;
+			case 'maxRecords':
+				return params.returnAll === true
+					? undefined // executeScopedQuery handles full pagination internally; MaxRecords is ignored
+					: queryLimit;
+			case 'bodyJson':
+				if (
+					['create', 'update'].includes(effectiveOperation) &&
+					Object.keys(fieldValues).length > 0
+				) {
+					return JSON.stringify(fieldValues);
+				}
+				return fallbackValue ?? '{}';
+			// Label enrichment and UDF flattening -- default to idsAndLabels; caller may override to rawIds.
+			// addPicklistLabels and addReferenceLabels remain hardcoded true even when outputMode='rawIds':
+			// processOutputMode() reads outputMode first and short-circuits label enrichment before these
+			// flags are consulted, so they have no effect in rawIds mode. Keeping them true avoids
+			// sending a narrower IncludeFields request that would omit label columns needed if the
+			// caller later switches back to idsAndLabels without a new API call.
+			case 'outputMode':
+				return (params.outputMode as string | undefined) ?? 'idsAndLabels';
+			case 'addPicklistLabels':
+				return true;
+			case 'addReferenceLabels':
+				return true;
+			case 'flattenUdfs':
+				return true;
+			case 'ticketIdentifierType': {
+				const ipc = getIdentifierPairConfig(resource, effectiveOperation);
+				if (ipc) {
+					const altVal = params[ipc.altIdField as keyof typeof params];
+					return typeof altVal === 'string' && altVal.trim() !== '' ? ipc.altIdField : 'id';
+				}
+				return fallbackValue;
+			}
+			case 'ticketNumber': {
+				const ipc = getIdentifierPairConfig(resource, effectiveOperation);
+				if (ipc && ipc.altIdField === 'ticketNumber') {
+					return typeof params.ticketNumber === 'string'
+						? params.ticketNumber.trim()
+						: fallbackValue;
+				}
+				return fallbackValue;
+			}
+			case 'includeRaw':
+				if (effectiveOperation === 'summary') {
+					return typeof params.includeRaw === 'boolean' ? params.includeRaw : false;
+				}
+				return fallbackValue;
+			case 'summaryTextLimit':
+				if (effectiveOperation === 'summary') {
+					return typeof params.summaryTextLimit === 'number' ? params.summaryTextLimit : 500;
+				}
+				return fallbackValue;
+			case 'includeChildCounts':
+				if (effectiveOperation === 'summary') {
+					return typeof params.includeChildCounts === 'boolean' ? params.includeChildCounts : false;
+				}
+				return fallbackValue;
+			case 'slaTicketFields':
+				if (effectiveOperation === 'slaHealthCheck') {
+					return selectedSlaTicketColumns.length > 0 ? selectedSlaTicketColumns : [];
+				}
+				return fallbackValue;
+			// Column selection
+			case 'selectColumns':
+				return selectedColumns.length > 0 ? selectedColumns : [];
+			case 'selectColumnsJson':
+				return selectedColumns.length > 0 ? JSON.stringify(selectedColumns) : '[]';
+			case 'allowWriteOperations':
+				return originalGetNodeParameter('allowWriteOperations', index, false);
+			case 'impersonationResourceId':
+				if (resolvedImpersonationId !== undefined) {
+					return resolvedImpersonationId;
+				}
+				// If rawImpersonation was a non-numeric string that failed resolution,
+				// return fallbackValue so getOptionalImpersonationResourceId treats it as absent.
+				// The warning is already in labelWarnings.
+				if (
+					typeof rawImpersonation === 'string' &&
+					rawImpersonation.trim() !== '' &&
+					!/^\d+$/.test(rawImpersonation.trim())
+				) {
+					return fallbackValue;
+				}
+				return rawImpersonation ?? fallbackValue;
+			case 'allowedResources':
+				// The AI tools path validates resource+operations in supplyData() at tool
+				// construction time. The downstream executor's allowedResources check is
+				// redundant — the AI tool already ensures only the configured resource's
+				// operations reach executeAiTool(). Empty array disables the allowlist check.
+				return '[]';
+			case 'allowDryRunForWrites':
+				// The AI path manages its own dry-run response contract: params.dryRun is
+				// stripped from API bodies via N8N_METADATA_FIELDS. This must remain true
+				// to allow the downstream executor to process dryRun calls that originate
+				// from the AI schema (currently exposed on moveToCompany / moveConfigurationItem
+				// / transferOwnership; extending to all write ops is a follow-on task).
+				return true;
+			default:
+				if (Object.prototype.hasOwnProperty.call(params, name)) {
+					return params[name as keyof ToolExecutorParams];
+				}
+				return originalGetNodeParameter(name, index, fallbackValue, options);
+		}
+	}) as typeof context.getNodeParameter;
 
-    try {
-        // Compound operation short-circuit: createIfNotExists bypasses the standard executor
-        if (effectiveOperation === 'createIfNotExists') {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            let compoundResult: any;
+	try {
+		// Compound operation short-circuit: createIfNotExists bypasses the standard executor
+		if (effectiveOperation === 'createIfNotExists') {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			let compoundResult: any;
 
-            // createFields comes from fieldValues (already validated + label-resolved above)
-            // Convert date fields from user timezone to UTC before passing to compound helpers,
-            // which bypass CreateOperation.execute() and therefore convertDatesToUTC.
-            const createFields: Record<string, unknown> = await convertDatesToUTC(
-                { ...fieldValues } as IDataObject,
-                resource,
-                context,
-                'createIfNotExists',
-            ) as Record<string, unknown>;
-            const DEFAULT_DEDUP_FIELDS: Record<string, string[]> = {
-                contractCharge: ['name', 'datePurchased'],
-                ticketCharge: ['name', 'datePurchased'],
-                projectCharge: ['name', 'datePurchased'],
-                configurationItems: ['serialNumber'],
-                timeEntry: ['dateWorked', 'hoursWorked'],
-                contractService: ['serviceID'],
-                contract: ['contractName'],
-                expenseItem: ['expenseDate', 'description'],
-                holiday: ['holidayDate'],
-                holidaySet: ['holidaySetName'],
-                opportunity: ['title'],
-                ticketAdditionalConfigurationItem: ['configurationItemID'],
-                ticketAdditionalContact: ['contactID'],
-                changeRequestLink: ['changeRequestTicketID', 'problemOrIncidentTicketID'],
-            };
-            const dedupFields = (params.dedupFields as string[]) ?? DEFAULT_DEDUP_FIELDS[resource] ?? [];
-            const errorOnDuplicate = params.errorOnDuplicate === true;
-            const updateFields = (params.updateFields as string[] | undefined) ?? [];
+			// createFields comes from fieldValues (already validated + label-resolved above)
+			// Convert date fields from user timezone to UTC before passing to compound helpers,
+			// which bypass CreateOperation.execute() and therefore convertDatesToUTC.
+			const createFields: Record<string, unknown> = (await convertDatesToUTC(
+				{ ...fieldValues } as IDataObject,
+				resource,
+				context,
+				'createIfNotExists',
+			)) as Record<string, unknown>;
+			const DEFAULT_DEDUP_FIELDS: Record<string, string[]> = {
+				contractCharge: ['name', 'datePurchased'],
+				ticketCharge: ['name', 'datePurchased'],
+				projectCharge: ['name', 'datePurchased'],
+				configurationItems: ['serialNumber'],
+				timeEntry: ['dateWorked', 'hoursWorked'],
+				contractService: ['serviceID'],
+				contract: ['contractName'],
+				expenseItem: ['expenseDate', 'description'],
+				holiday: ['holidayDate'],
+				holidaySet: ['holidaySetName'],
+				opportunity: ['title'],
+				ticketAdditionalConfigurationItem: ['configurationItemID'],
+				ticketAdditionalContact: ['contactID'],
+				changeRequestLink: ['changeRequestTicketID', 'problemOrIncidentTicketID'],
+			};
+			const dedupFields = (params.dedupFields as string[]) ?? DEFAULT_DEDUP_FIELDS[resource] ?? [];
+			const errorOnDuplicate = params.errorOnDuplicate === true;
+			const updateFields = (params.updateFields as string[] | undefined) ?? [];
 
-            const compoundOptions = {
-                createFields,
-                dedupFields,
-                errorOnDuplicate,
-                updateFields,
-                impersonationResourceId: resolvedImpersonationId,
-                proceedWithoutImpersonationIfDenied: params.proceedWithoutImpersonationIfDenied !== false,
-            };
+			const compoundOptions = {
+				createFields,
+				dedupFields,
+				errorOnDuplicate,
+				updateFields,
+				impersonationResourceId: resolvedImpersonationId,
+				proceedWithoutImpersonationIfDenied: params.proceedWithoutImpersonationIfDenied !== false,
+			};
 
-            if (resource === 'contractCharge') {
-                const { createContractChargeIfNotExists } = await import('../helpers/contract-charge-creator');
-                compoundResult = await createContractChargeIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'ticketCharge') {
-                const { createTicketChargeIfNotExists } = await import('../helpers/ticket-charge-creator');
-                compoundResult = await createTicketChargeIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'projectCharge') {
-                const { createProjectChargeIfNotExists } = await import('../helpers/project-charge-creator');
-                compoundResult = await createProjectChargeIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'configurationItems') {
-                const { createConfigurationItemIfNotExists } = await import('../helpers/configuration-item-creator');
-                compoundResult = await createConfigurationItemIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'timeEntry') {
-                const { createTimeEntryIfNotExists } = await import('../helpers/time-entry-creator');
-                compoundResult = await createTimeEntryIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'contractService') {
-                const { createContractServiceIfNotExists } = await import('../helpers/contract-service-creator');
-                compoundResult = await createContractServiceIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'contract') {
-                const { createContractIfNotExists } = await import('../helpers/contract-creator');
-                compoundResult = await createContractIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'opportunity') {
-                const { createOpportunityIfNotExists } = await import('../helpers/opportunity-creator');
-                compoundResult = await createOpportunityIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'expenseItem') {
-                const { createExpenseItemIfNotExists } = await import('../helpers/expense-item-creator');
-                compoundResult = await createExpenseItemIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'ticketAdditionalConfigurationItem') {
-                const { createTicketAdditionalCIIfNotExists } = await import('../helpers/ticket-additional-ci-creator');
-                compoundResult = await createTicketAdditionalCIIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'ticketAdditionalContact') {
-                const { createTicketAdditionalContactIfNotExists } = await import('../helpers/ticket-additional-contact-creator');
-                compoundResult = await createTicketAdditionalContactIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'changeRequestLink') {
-                const { createChangeRequestLinkIfNotExists } = await import('../helpers/change-request-link-creator');
-                compoundResult = await createChangeRequestLinkIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'holidaySet') {
-                const { createHolidaySetIfNotExists } = await import('../helpers/holiday-set-creator');
-                compoundResult = await createHolidaySetIfNotExists(context, 0, compoundOptions);
-            } else if (resource === 'holiday') {
-                const { createHolidayIfNotExists } = await import('../helpers/holiday-creator');
-                compoundResult = await createHolidayIfNotExists(context, 0, compoundOptions);
-            } else {
-                return attachCorrelation(JSON.stringify(wrapError(resource, 'createIfNotExists', ERROR_TYPES.INVALID_OPERATION,
-                    `createIfNotExists is not implemented for resource '${resource}'.`,
-                    `Use autotask_${resource} with operation 'create' instead.`,
-                )), correlationId);
-            }
+			if (resource === 'contractCharge') {
+				const { createContractChargeIfNotExists } =
+					await import('../helpers/contract-charge-creator');
+				compoundResult = await createContractChargeIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'ticketCharge') {
+				const { createTicketChargeIfNotExists } = await import('../helpers/ticket-charge-creator');
+				compoundResult = await createTicketChargeIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'projectCharge') {
+				const { createProjectChargeIfNotExists } =
+					await import('../helpers/project-charge-creator');
+				compoundResult = await createProjectChargeIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'configurationItems') {
+				const { createConfigurationItemIfNotExists } =
+					await import('../helpers/configuration-item-creator');
+				compoundResult = await createConfigurationItemIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'timeEntry') {
+				const { createTimeEntryIfNotExists } = await import('../helpers/time-entry-creator');
+				compoundResult = await createTimeEntryIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'contractService') {
+				const { createContractServiceIfNotExists } =
+					await import('../helpers/contract-service-creator');
+				compoundResult = await createContractServiceIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'contract') {
+				const { createContractIfNotExists } = await import('../helpers/contract-creator');
+				compoundResult = await createContractIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'opportunity') {
+				const { createOpportunityIfNotExists } = await import('../helpers/opportunity-creator');
+				compoundResult = await createOpportunityIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'expenseItem') {
+				const { createExpenseItemIfNotExists } = await import('../helpers/expense-item-creator');
+				compoundResult = await createExpenseItemIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'ticketAdditionalConfigurationItem') {
+				const { createTicketAdditionalCIIfNotExists } =
+					await import('../helpers/ticket-additional-ci-creator');
+				compoundResult = await createTicketAdditionalCIIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'ticketAdditionalContact') {
+				const { createTicketAdditionalContactIfNotExists } =
+					await import('../helpers/ticket-additional-contact-creator');
+				compoundResult = await createTicketAdditionalContactIfNotExists(
+					context,
+					0,
+					compoundOptions,
+				);
+			} else if (resource === 'changeRequestLink') {
+				const { createChangeRequestLinkIfNotExists } =
+					await import('../helpers/change-request-link-creator');
+				compoundResult = await createChangeRequestLinkIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'holidaySet') {
+				const { createHolidaySetIfNotExists } = await import('../helpers/holiday-set-creator');
+				compoundResult = await createHolidaySetIfNotExists(context, 0, compoundOptions);
+			} else if (resource === 'holiday') {
+				const { createHolidayIfNotExists } = await import('../helpers/holiday-creator');
+				compoundResult = await createHolidayIfNotExists(context, 0, compoundOptions);
+			} else {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'createIfNotExists',
+							ERROR_TYPES.INVALID_OPERATION,
+							`createIfNotExists is not implemented for resource '${resource}'.`,
+							`Use autotask_${resource} with operation 'create' instead.`,
+						),
+					),
+					correlationId,
+				);
+			}
 
-            if (compoundResult) {
-                // Reclassify not-found outcomes as errors
-                if (PARENT_NOT_FOUND_OUTCOMES.has(compoundResult.outcome)) {
-                    const parentRef = compoundResult.parentLookupValue ?? compoundResult.companyID ?? compoundResult.ticketID ?? 'unknown';
-                    return attachCorrelation(JSON.stringify(wrapError(
-                        resource,
-                        'createIfNotExists',
-                        ERROR_TYPES.ENTITY_NOT_FOUND,
-                        `Parent entity not found: ${parentRef}`,
-                        `Verify the parent entity identifier and retry.`,
-                        { outcome: compoundResult.outcome },
-                    )), correlationId);
-                }
+			if (compoundResult) {
+				// Reclassify not-found outcomes as errors
+				if (PARENT_NOT_FOUND_OUTCOMES.has(compoundResult.outcome)) {
+					const parentRef =
+						compoundResult.parentLookupValue ??
+						compoundResult.companyID ??
+						compoundResult.ticketID ??
+						'unknown';
+					return attachCorrelation(
+						JSON.stringify(
+							wrapError(
+								resource,
+								'createIfNotExists',
+								ERROR_TYPES.ENTITY_NOT_FOUND,
+								`Parent entity not found: ${parentRef}`,
+								`Verify the parent entity identifier and retry.`,
+								{ outcome: compoundResult.outcome },
+							),
+						),
+						correlationId,
+					);
+				}
 
-                // Merge compound warnings with label resolution warnings
-                const rawCompoundWarnings: string[] = Array.isArray(compoundResult.warnings) ? compoundResult.warnings : [];
-                const allWarnings = [...rawCompoundWarnings, ...labelWarnings];
-                const partial = allWarnings.some(isResolutionFailureWarning);
+				// Merge compound warnings with label resolution warnings
+				const rawCompoundWarnings: string[] = Array.isArray(compoundResult.warnings)
+					? compoundResult.warnings
+					: [];
+				const allWarnings = [...rawCompoundWarnings, ...labelWarnings];
+				const partial = allWarnings.some(isResolutionFailureWarning);
 
-                const entityId = buildCompoundEntityId(resource, compoundResult);
-                const existingEntityId = buildCompoundExistingId(resource, compoundResult);
-                const compoundContext = buildCompoundContext(resource, compoundResult);
+				const entityId = buildCompoundEntityId(resource, compoundResult);
+				const existingEntityId = buildCompoundExistingId(resource, compoundResult);
+				const compoundContext = buildCompoundContext(resource, compoundResult);
 
-                const compoundData: Record<string, unknown> = {
-                    outcome: compoundResult.outcome,
-                };
-                if (entityId !== undefined) compoundData.id = entityId;
-                if (existingEntityId !== undefined) compoundData.existingId = existingEntityId;
-                if (compoundResult.matchedDedupFields !== undefined) compoundData.matchedDedupFields = compoundResult.matchedDedupFields;
-                if (compoundResult.fieldsUpdated !== undefined) compoundData.fieldsUpdated = compoundResult.fieldsUpdated;
-                if (compoundResult.fieldsCompared !== undefined) compoundData.fieldsCompared = compoundResult.fieldsCompared;
-                if (compoundContext !== undefined) compoundData.context = compoundContext;
+				const compoundData: Record<string, unknown> = {
+					outcome: compoundResult.outcome,
+				};
+				if (entityId !== undefined) compoundData.id = entityId;
+				if (existingEntityId !== undefined) compoundData.existingId = existingEntityId;
+				if (compoundResult.matchedDedupFields !== undefined)
+					compoundData.matchedDedupFields = compoundResult.matchedDedupFields;
+				if (compoundResult.fieldsUpdated !== undefined)
+					compoundData.fieldsUpdated = compoundResult.fieldsUpdated;
+				if (compoundResult.fieldsCompared !== undefined)
+					compoundData.fieldsCompared = compoundResult.fieldsCompared;
+				if (compoundContext !== undefined) compoundData.context = compoundContext;
 
-                return attachCorrelation(JSON.stringify(wrapSuccess(resource, 'createIfNotExists',
-                    buildResultPayload('compound', compoundData,
-                        {
-                            mutated: compoundResult.outcome !== 'skipped',
-                            retryable: compoundResult.outcome !== 'created',
-                            partial,
-                        }, {
-                            warnings: allWarnings,
-                            pendingConfirmations: labelPendingConfirmations,
-                            appliedResolutions: labelResolutions,
-                        },
-                    ),
-                )), correlationId);
-            }
-        }
+				return attachCorrelation(
+					JSON.stringify(
+						wrapSuccess(
+							resource,
+							'createIfNotExists',
+							buildResultPayload(
+								'compound',
+								compoundData,
+								{
+									mutated: compoundResult.outcome !== 'skipped',
+									retryable: compoundResult.outcome !== 'created',
+									partial,
+								},
+								{
+									warnings: allWarnings,
+									pendingConfirmations: labelPendingConfirmations,
+									appliedResolutions: labelResolutions,
+								},
+							),
+						),
+					),
+					correlationId,
+				);
+			}
+		}
 
-        const result = await executeToolOperation.call(context);
-        const items = result[0] ?? [];
-        const fetchedRecords = items.map((item) => item.json);
-        let records = fetchedRecords;
-        const supportsListResponse = ['getMany', 'getPosted', 'getUnposted'].includes(effectiveOperation);
-        // Recency takes priority: reverse-sort by date and take first N. Offset is not
-        // compatible with recency (recency re-sorts the full window), so ignore offset here.
-        if (recencyResult.isActive && supportsListResponse) {
-            records = fetchedRecords.slice().reverse().slice(0, effectiveLimit);
-        } else if (effectiveOffset > 0 && supportsListResponse) {
-            records = fetchedRecords.slice(effectiveOffset, effectiveOffset + effectiveLimit);
-            // Detect offset beyond available records — return clear error instead of
-            // misleading "no results found" which could trigger LLM data fabrication.
-            if (records.length === 0 && fetchedRecords.length > 0) {
-                return attachCorrelation(JSON.stringify(wrapError(
-                    resource, effectiveOperation, ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
-                    `Offset ${effectiveOffset} is beyond the available ${fetchedRecords.length} records. No records remain at this offset.`,
-                    `Use offset=0 to start from the beginning, or use narrower filters to find specific records.`,
-                )), correlationId);
-            }
-        }
-        // Merge write label resolutions and filter label resolutions
-        const allResolutions = [...labelResolutions, ...filterResolutions];
-        const allWarnings = [...labelWarnings, ...filterWarnings];
-        const allPendingConfirmations = [...labelPendingConfirmations, ...filterPendingConfirmations];
-        // When recency is active, offset-based pagination is not supported — add a note
-        const recencyOffsetNote = recencyResult.isActive && effectiveOffset > 0
-            ? 'Offset is ignored when recency or since/until is active (recency re-sorts results by date).'
-            : undefined;
-        const responseContext: ToolResponseContext = {
-            recencyActive: recencyResult.isActive,
-            recencyNote: recencyResult.note ?? recencyOffsetNote,
-            recencyWindowLimited:
-                recencyResult.isActive &&
-                supportsListResponse &&
-                fetchedRecords.length >= RECENCY_OVER_REQUEST_LIMIT,
-            resolutions: allResolutions.length > 0 ? allResolutions : undefined,
-            resolutionWarnings: allWarnings.length > 0 ? allWarnings : undefined,
-            pendingConfirmations: allPendingConfirmations.length > 0 ? allPendingConfirmations : undefined,
-            effectiveOffset: recencyResult.isActive ? 0 : effectiveOffset,
-        };
+		traceExecutor({
+			phase: 'api-call-start',
+			resource,
+			operation: effectiveOperation,
+			correlationId,
+			summary: {
+				queryLimit,
+				hasFilters: combinedFilters.length > 0,
+				selectedColumnsCount: selectedColumns.length,
+			},
+		});
+		const result = await executeToolOperation.call(context);
+		const items = result[0] ?? [];
+		const fetchedRecords = items.map((item) => item.json);
+		let records = fetchedRecords;
+		const supportsListResponse = ['getMany', 'getPosted', 'getUnposted'].includes(
+			effectiveOperation,
+		);
+		// Recency takes priority: reverse-sort by date and take first N. Offset is not
+		// compatible with recency (recency re-sorts the full window), so ignore offset here.
+		if (recencyResult.isActive && supportsListResponse) {
+			records = fetchedRecords.slice().reverse().slice(0, effectiveLimit);
+		} else if (effectiveOffset > 0 && supportsListResponse) {
+			records = fetchedRecords.slice(effectiveOffset, effectiveOffset + effectiveLimit);
+			// Detect offset beyond available records — return clear error instead of
+			// misleading "no results found" which could trigger LLM data fabrication.
+			if (records.length === 0 && fetchedRecords.length > 0) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							effectiveOperation,
+							ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+							`Offset ${effectiveOffset} is beyond the available ${fetchedRecords.length} records. No records remain at this offset.`,
+							`Use offset=0 to start from the beginning, or use narrower filters to find specific records.`,
+						),
+					),
+					correlationId,
+				);
+			}
+		}
+		// Merge write label resolutions and filter label resolutions
+		const allResolutions = [...labelResolutions, ...filterResolutions];
+		const allWarnings = [...labelWarnings, ...filterWarnings];
+		const allPendingConfirmations = [...labelPendingConfirmations, ...filterPendingConfirmations];
+		// When recency is active, offset-based pagination is not supported — add a note
+		const recencyOffsetNote =
+			recencyResult.isActive && effectiveOffset > 0
+				? 'Offset is ignored when recency or since/until is active (recency re-sorts results by date).'
+				: undefined;
+		const responseContext: ToolResponseContext = {
+			recencyActive: recencyResult.isActive,
+			recencyNote: recencyResult.note ?? recencyOffsetNote,
+			recencyWindowLimited:
+				recencyResult.isActive &&
+				supportsListResponse &&
+				fetchedRecords.length >= RECENCY_OVER_REQUEST_LIMIT,
+			resolutions: allResolutions.length > 0 ? allResolutions : undefined,
+			resolutionWarnings: allWarnings.length > 0 ? allWarnings : undefined,
+			pendingConfirmations:
+				allPendingConfirmations.length > 0 ? allPendingConfirmations : undefined,
+			effectiveOffset: recencyResult.isActive ? 0 : effectiveOffset,
+		};
 
-        // Apply Change Info Field aliases to ticket read results.
-        // Note: 'summary' applies aliases internally via buildTicketSummary — do not apply here.
-        if (resource === 'ticket' && effectiveOperation !== 'summary') {
-            const creds = await context.getCredentials('autotaskApi') as IAutotaskCredentials;
-            if (shouldApplyAliases(creds)) {
-                const aliasMap = buildAliasMap(creds);
-                if (effectiveOperation === 'slaHealthCheck') {
-                    const ticketData = (records[0] as Record<string, unknown>)?.ticket;
-                    if (ticketData) applyChangeInfoAliases(ticketData as Record<string, unknown>, aliasMap);
-                } else {
-                    for (const rec of records) {
-                        applyChangeInfoAliases(rec as Record<string, unknown>, aliasMap);
-                    }
-                }
-            }
-        }
+		// Apply Change Info Field aliases to ticket read results.
+		// Note: 'summary' applies aliases internally via buildTicketSummary — do not apply here.
+		if (resource === 'ticket' && effectiveOperation !== 'summary') {
+			const creds = (await context.getCredentials('autotaskApi')) as IAutotaskCredentials;
+			if (shouldApplyAliases(creds)) {
+				const aliasMap = buildAliasMap(creds);
+				if (effectiveOperation === 'slaHealthCheck') {
+					const ticketData = (records[0] as Record<string, unknown>)?.ticket;
+					if (ticketData) applyChangeInfoAliases(ticketData as Record<string, unknown>, aliasMap);
+				} else {
+					for (const rec of records) {
+						applyChangeInfoAliases(rec as Record<string, unknown>, aliasMap);
+					}
+				}
+			}
+		}
 
-        // Build structured response per operation type
-        return attachCorrelation(formatToolResponse(resource, effectiveOperation, records, params, responseContext), correlationId);
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return attachCorrelation(JSON.stringify(formatApiError(message, resource, effectiveOperation)), correlationId);
-    } finally {
-        context.getNodeParameter = originalGetNodeParameter;
-    }
+		// Build structured response per operation type
+		const formattedResponse = formatToolResponse(
+			resource,
+			effectiveOperation,
+			records,
+			params,
+			responseContext,
+		);
+		traceResponse({
+			phase: 'operation-complete',
+			resource,
+			operation: effectiveOperation,
+			correlationId,
+			durationMs: Date.now() - startedAt,
+			summary: {
+				...summariseResponseEnvelope(formattedResponse),
+				recordsFetchedCount: fetchedRecords.length,
+				noResultsClassification: records.length === 0 ? 'empty' : 'non-empty',
+			},
+		});
+		return attachCorrelation(formattedResponse, correlationId);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		traceError({
+			phase: 'execute-catch',
+			resource,
+			operation: effectiveOperation,
+			correlationId,
+			durationMs: Date.now() - startedAt,
+			summary: {
+				errorMessage: message,
+				beforeApiCall: false,
+			},
+		});
+		return attachCorrelation(
+			JSON.stringify(formatApiError(message, resource, effectiveOperation)),
+			correlationId,
+		);
+	} finally {
+		context.getNodeParameter = originalGetNodeParameter;
+	}
 }
 
 /**
  * Format the raw execution result into a consistent, structured JSON response.
  */
 function formatToolResponse(
-    resource: string,
-    operation: string,
-    records: Record<string, unknown>[],
-    params: ToolExecutorParams,
-    context: ToolResponseContext = {},
+	resource: string,
+	operation: string,
+	records: Record<string, unknown>[],
+	params: ToolExecutorParams,
+	context: ToolResponseContext = {},
 ): string {
-    const firstRecord = records[0] ?? null;
-    const extractOperationId = (record: Record<string, unknown> | null): number | string | null => {
-        if (!record) return null;
-        const idCandidate = record.itemId ?? record.id;
-        if (typeof idCandidate === 'number' || typeof idCandidate === 'string') {
-            return idCandidate;
-        }
-        return null;
-    };
+	const firstRecord = records[0] ?? null;
+	const extractOperationId = (record: Record<string, unknown> | null): number | string | null => {
+		if (!record) return null;
+		const idCandidate = record.itemId ?? record.id;
+		if (typeof idCandidate === 'number' || typeof idCandidate === 'string') {
+			return idCandidate;
+		}
+		return null;
+	};
 
-    switch (operation) {
-        case 'get': {
-            const entity = firstRecord;
-            if (
-                entity === null ||
-                entity === undefined ||
-                (Array.isArray(entity) && entity.length === 0) ||
-                (typeof entity === 'object' && !Array.isArray(entity) && Object.keys(entity).length === 0)
-            ) {
-                const id = params.id ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('item', entity, { mutated: false, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
-            ));
-        }
+	switch (operation) {
+		case 'get': {
+			const entity = firstRecord;
+			if (
+				entity === null ||
+				entity === undefined ||
+				(Array.isArray(entity) && entity.length === 0) ||
+				(typeof entity === 'object' && !Array.isArray(entity) && Object.keys(entity).length === 0)
+			) {
+				const id = params.id ?? 'unknown';
+				return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
+			}
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'item',
+						entity,
+						{ mutated: false, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'getMany':
-        case 'getPosted':
-        case 'getUnposted': {
-            const hasFilters = !!(
-                params.filter_field ||
-                params.filter_field_2 ||
-                params.filtersJson ||
-                params.recency ||
-                params.since ||
-                params.until
-            );
-            if (hasFilters && records.length === 0) {
-                const filtersUsed: Record<string, unknown> = {};
-                if (params.filter_field) {
-                    filtersUsed.filter_field = params.filter_field;
-                    filtersUsed.filter_op = params.filter_op;
-                    filtersUsed.filter_value = params.filter_value;
-                }
-                if (params.filter_field_2) {
-                    filtersUsed.filter_field_2 = params.filter_field_2;
-                    filtersUsed.filter_op_2 = params.filter_op_2;
-                    filtersUsed.filter_value_2 = params.filter_value_2;
-                }
-                if (params.filter_logic && params.filter_logic !== 'and') filtersUsed.filter_logic = params.filter_logic;
-                if (params.filtersJson) filtersUsed.filtersJson = params.filtersJson;
-                if (params.recency) filtersUsed.recency = params.recency;
-                if (params.since) filtersUsed.since = params.since;
-                if (params.until) filtersUsed.until = params.until;
-                const noResultsError = formatNoResultsFound(resource, operation, filtersUsed);
-                // Surface any filter label resolution failures in the error context so the
-                // LLM can correlate empty results with a failed label lookup.
-                const unresolvedFilterWarnings = context.resolutionWarnings ?? [];
-                if (unresolvedFilterWarnings.length > 0) {
-                    noResultsError.context = {
-                        ...noResultsError.context,
-                        filterResolutionWarnings: unresolvedFilterWarnings,
-                    };
-                }
-                return JSON.stringify(noResultsError);
-            }
+		case 'getMany':
+		case 'getPosted':
+		case 'getUnposted': {
+			const hasFilters = !!(
+				params.filter_field ||
+				params.filter_field_2 ||
+				params.filtersJson ||
+				params.recency ||
+				params.since ||
+				params.until
+			);
+			if (hasFilters && records.length === 0) {
+				const filtersUsed: Record<string, unknown> = {};
+				if (params.filter_field) {
+					filtersUsed.filter_field = params.filter_field;
+					filtersUsed.filter_op = params.filter_op;
+					filtersUsed.filter_value = params.filter_value;
+				}
+				if (params.filter_field_2) {
+					filtersUsed.filter_field_2 = params.filter_field_2;
+					filtersUsed.filter_op_2 = params.filter_op_2;
+					filtersUsed.filter_value_2 = params.filter_value_2;
+				}
+				if (params.filter_logic && params.filter_logic !== 'and')
+					filtersUsed.filter_logic = params.filter_logic;
+				if (params.filtersJson) filtersUsed.filtersJson = params.filtersJson;
+				if (params.recency) filtersUsed.recency = params.recency;
+				if (params.since) filtersUsed.since = params.since;
+				if (params.until) filtersUsed.until = params.until;
+				const noResultsError = formatNoResultsFound(resource, operation, filtersUsed);
+				// Surface any filter label resolution failures in the error context so the
+				// LLM can correlate empty results with a failed label lookup.
+				const unresolvedFilterWarnings = context.resolutionWarnings ?? [];
+				if (unresolvedFilterWarnings.length > 0) {
+					noResultsError.context = {
+						...noResultsError.context,
+						filterResolutionWarnings: unresolvedFilterWarnings,
+					};
+				}
+				return JSON.stringify(noResultsError);
+			}
 
-            const total = records.length;
-            const truncated = total > MAX_RESPONSE_RECORDS;
-            const items = truncated ? records.slice(0, MAX_RESPONSE_RECORDS) : records;
-            const currentOffset = context.effectiveOffset ?? 0;
+			const total = records.length;
+			const truncated = total > MAX_RESPONSE_RECORDS;
+			const items = truncated ? records.slice(0, MAX_RESPONSE_RECORDS) : records;
+			const currentOffset = context.effectiveOffset ?? 0;
 
-            // Build pagination
-            let hasMore = false;
-            let nextOffset: number | undefined;
-            let totalAvailable: number | undefined;
+			// Build pagination
+			let hasMore = false;
+			let nextOffset: number | undefined;
+			let totalAvailable: number | undefined;
 
-            if (context.recencyActive) {
-                hasMore = false;
-                if (truncated) {
-                    totalAvailable = total;
-                }
-            } else if (params.returnAll) {
-                // returnAll=true: all matching API records were fetched; response may be truncated
-                // but there are no more pages — hasMore must be false.
-                hasMore = false;
-                if (truncated) {
-                    totalAvailable = total;
-                }
-            } else if (truncated) {
-                totalAvailable = total;
-                const truncatedNextOffset = currentOffset + MAX_RESPONSE_RECORDS;
-                hasMore = truncatedNextOffset < MAX_QUERY_LIMIT;
-                if (hasMore) nextOffset = truncatedNextOffset;
-            } else if (items.length > 0) {
-                const requestedLimit = getEffectiveLimit(params.limit);
-                const candidateNext = currentOffset + items.length;
-                hasMore = items.length >= requestedLimit && candidateNext < MAX_QUERY_LIMIT;
-                if (hasMore) nextOffset = candidateNext;
-            }
+			if (context.recencyActive) {
+				hasMore = false;
+				if (truncated) {
+					totalAvailable = total;
+				}
+			} else if (params.returnAll) {
+				// returnAll=true: all matching API records were fetched; response may be truncated
+				// but there are no more pages — hasMore must be false.
+				hasMore = false;
+				if (truncated) {
+					totalAvailable = total;
+				}
+			} else if (truncated) {
+				totalAvailable = total;
+				const truncatedNextOffset = currentOffset + MAX_RESPONSE_RECORDS;
+				hasMore = truncatedNextOffset < MAX_QUERY_LIMIT;
+				if (hasMore) nextOffset = truncatedNextOffset;
+			} else if (items.length > 0) {
+				const requestedLimit = getEffectiveLimit(params.limit);
+				const candidateNext = currentOffset + items.length;
+				hasMore = items.length >= requestedLimit && candidateNext < MAX_QUERY_LIMIT;
+				if (hasMore) nextOffset = candidateNext;
+			}
 
-            const pagination: PaginationInfo = {
-                offset: currentOffset,
-                hasMore,
-                ...(nextOffset !== undefined ? { nextOffset } : {}),
-                ...(totalAvailable !== undefined ? { totalAvailable } : {}),
-            };
+			const pagination: PaginationInfo = {
+				offset: currentOffset,
+				hasMore,
+				...(nextOffset !== undefined ? { nextOffset } : {}),
+				...(totalAvailable !== undefined ? { totalAvailable } : {}),
+			};
 
-            // Notes — informational context only
-            const notes: string[] = [];
-            if (context.recencyNote) notes.push(context.recencyNote);
-            if (truncated) {
-                if (params.returnAll) {
-                    notes.push(
-                        `Fetched all ${total} matching records via returnAll; showing first ${MAX_RESPONSE_RECORDS} in this response. ` +
-                        `Use 'fields' to reduce payload size, or narrow filters to reduce match count.`,
-                    );
-                } else {
-                    notes.push(
-                        hasMore
-                            ? `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use offset=${nextOffset} to see the next page, or use a narrower filter.`
-                            : `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Offset pagination limit (${MAX_QUERY_LIMIT}) reached — use narrower filters to access more records.`,
-                    );
-                }
-            }
+			// Notes — informational context only
+			const notes: string[] = [];
+			if (context.recencyNote) notes.push(context.recencyNote);
+			if (truncated) {
+				if (params.returnAll) {
+					notes.push(
+						`Fetched all ${total} matching records via returnAll; showing first ${MAX_RESPONSE_RECORDS} in this response. ` +
+							`Use 'fields' to reduce payload size, or narrow filters to reduce match count.`,
+					);
+				} else {
+					notes.push(
+						hasMore
+							? `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use offset=${nextOffset} to see the next page, or use a narrower filter.`
+							: `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Offset pagination limit (${MAX_QUERY_LIMIT}) reached — use narrower filters to access more records.`,
+					);
+				}
+			}
 
-            // Warnings — actionable signals
-            const listWarnings: string[] = [...(context.resolutionWarnings ?? [])];
-            if (context.recencyWindowLimited) {
-                listWarnings.push(
-                    '500 records were returned for the current recency window. Narrow recency, or provide since/until, to ensure the newest records are included.',
-                );
-            }
+			// Warnings — actionable signals
+			const listWarnings: string[] = [...(context.resolutionWarnings ?? [])];
+			if (context.recencyWindowLimited) {
+				listWarnings.push(
+					'500 records were returned for the current recency window. Narrow recency, or provide since/until, to ensure the newest records are included.',
+				);
+			}
 
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('list', { items, count: items.length },
-                    { mutated: false, retryable: true, truncated }, {
-                        warnings: listWarnings,
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                        pagination,
-                        notes: notes.length > 0 ? notes : undefined,
-                    },
-                ),
-            ));
-        }
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'list',
+						{ items, count: items.length },
+						{ mutated: false, retryable: true, truncated },
+						{
+							warnings: listWarnings,
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+							pagination,
+							notes: notes.length > 0 ? notes : undefined,
+						},
+					),
+				),
+			);
+		}
 
-        case 'whoAmI': {
-            if (firstRecord === null || firstRecord === undefined) {
-                return JSON.stringify(formatNotFoundError(resource, operation, 'authenticated user'));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('item', firstRecord, { mutated: false, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
-            ));
-        }
+		case 'whoAmI': {
+			if (firstRecord === null || firstRecord === undefined) {
+				return JSON.stringify(formatNotFoundError(resource, operation, 'authenticated user'));
+			}
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'item',
+						firstRecord,
+						{ mutated: false, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'searchByDomain': {
-            if (records.length === 0) {
-                return JSON.stringify(wrapError(
-                    resource, operation, ERROR_TYPES.NO_RESULTS_FOUND,
-                    'No company found matching the supplied domain.',
-                    `Verify the domain and retry, or use autotask_${resource} with operation 'getMany' with a filter.`,
-                ));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('list', { items: records, count: records.length },
-                    { mutated: false, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                        pagination: { offset: 0, hasMore: false },
-                    },
-                ),
-            ));
-        }
+		case 'searchByDomain': {
+			if (records.length === 0) {
+				return JSON.stringify(
+					wrapError(
+						resource,
+						operation,
+						ERROR_TYPES.NO_RESULTS_FOUND,
+						'No company found matching the supplied domain.',
+						`Verify the domain and retry, or use autotask_${resource} with operation 'getMany' with a filter.`,
+					),
+				);
+			}
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'list',
+						{ items: records, count: records.length },
+						{ mutated: false, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+							pagination: { offset: 0, hasMore: false },
+						},
+					),
+				),
+			);
+		}
 
-        case 'slaHealthCheck': {
-            if (firstRecord === null || firstRecord === undefined) {
-                const identifier = params.ticketNumber ?? params.id ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, identifier as number | string));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('item', firstRecord, { mutated: false, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
-            ));
-        }
+		case 'slaHealthCheck': {
+			if (firstRecord === null || firstRecord === undefined) {
+				const identifier = params.ticketNumber ?? params.id ?? 'unknown';
+				return JSON.stringify(
+					formatNotFoundError(resource, operation, identifier as number | string),
+				);
+			}
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'item',
+						firstRecord,
+						{ mutated: false, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'summary': {
-            if (firstRecord === null || firstRecord === undefined) {
-                const identifier = params.ticketNumber ?? params.id ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, identifier as number | string));
-            }
-            const summaryRecord = firstRecord as { _meta?: { countsPartial?: boolean; truncationApplied?: boolean } };
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('summary', firstRecord, {
-                    mutated: false,
-                    retryable: true,
-                    partial: summaryRecord._meta?.countsPartial === true,
-                    truncated: summaryRecord._meta?.truncationApplied === true,
-                }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
-            ));
-        }
+		case 'summary': {
+			if (firstRecord === null || firstRecord === undefined) {
+				const identifier = params.ticketNumber ?? params.id ?? 'unknown';
+				return JSON.stringify(
+					formatNotFoundError(resource, operation, identifier as number | string),
+				);
+			}
+			const summaryRecord = firstRecord as {
+				_meta?: { countsPartial?: boolean; truncationApplied?: boolean };
+			};
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'summary',
+						firstRecord,
+						{
+							mutated: false,
+							retryable: true,
+							partial: summaryRecord._meta?.countsPartial === true,
+							truncated: summaryRecord._meta?.truncationApplied === true,
+						},
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'moveConfigurationItem': {
-            if (firstRecord === null || firstRecord === undefined) {
-                const id = params.id ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
-            ));
-        }
+		case 'moveConfigurationItem': {
+			if (firstRecord === null || firstRecord === undefined) {
+				const id = params.id ?? 'unknown';
+				return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
+			}
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'mutation',
+						{ id: extractOperationId(firstRecord), entity: firstRecord },
+						{ mutated: true, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'moveToCompany': {
-            if (firstRecord === null || firstRecord === undefined) {
-                const id = params.id ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
-            ));
-        }
+		case 'moveToCompany': {
+			if (firstRecord === null || firstRecord === undefined) {
+				const id = params.id ?? 'unknown';
+				return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
+			}
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'mutation',
+						{ id: extractOperationId(firstRecord), entity: firstRecord },
+						{ mutated: true, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'approve':
-        case 'reject': {
-            if (firstRecord === null || firstRecord === undefined) {
-                const id = params.id ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
-            }
-            // Use params.id as canonical id — API may return { success: true } stub without an id field
-            const approveId = (params.id as number | undefined) ?? extractOperationId(firstRecord);
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: approveId, entity: firstRecord },
-                    { mutated: true, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
-            ));
-        }
+		case 'approve':
+		case 'reject': {
+			if (firstRecord === null || firstRecord === undefined) {
+				const id = params.id ?? 'unknown';
+				return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
+			}
+			// Use params.id as canonical id — API may return { success: true } stub without an id field
+			const approveId = (params.id as number | undefined) ?? extractOperationId(firstRecord);
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'mutation',
+						{ id: approveId, entity: firstRecord },
+						{ mutated: true, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'transferOwnership': {
-            if (firstRecord === null || firstRecord === undefined) {
-                return JSON.stringify(wrapError(
-                    resource, operation, ERROR_TYPES.ENTITY_NOT_FOUND,
-                    'Transfer ownership returned no result.',
-                    `Verify source and destination resource IDs, then retry.`,
-                ));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
-            ));
-        }
+		case 'transferOwnership': {
+			if (firstRecord === null || firstRecord === undefined) {
+				return JSON.stringify(
+					wrapError(
+						resource,
+						operation,
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						'Transfer ownership returned no result.',
+						`Verify source and destination resource IDs, then retry.`,
+					),
+				);
+			}
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'mutation',
+						{ id: extractOperationId(firstRecord), entity: firstRecord },
+						{ mutated: true, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'count': {
-            const countValue = records[0]?.count ?? records.length;
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('count', { count: countValue }, { mutated: false, retryable: true }),
-            ));
-        }
+		case 'count': {
+			const countValue = records[0]?.count ?? records.length;
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload('count', { count: countValue }, { mutated: false, retryable: true }),
+				),
+			);
+		}
 
-        case 'create': {
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: false }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
-            ));
-        }
+		case 'create': {
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'mutation',
+						{ id: extractOperationId(firstRecord), entity: firstRecord },
+						{ mutated: true, retryable: false },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'update': {
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation',
-                    { id: extractOperationId(firstRecord), entity: firstRecord },
-                    { mutated: true, retryable: true }, {
-                        warnings: context.resolutionWarnings ?? [],
-                        pendingConfirmations: context.pendingConfirmations ?? [],
-                        appliedResolutions: context.resolutions ?? [],
-                    },
-                ),
-            ));
-        }
+		case 'update': {
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'mutation',
+						{ id: extractOperationId(firstRecord), entity: firstRecord },
+						{ mutated: true, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'delete': {
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('mutation', { id: params.id, deleted: true }, { mutated: true, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
-            ));
-        }
+		case 'delete': {
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'mutation',
+						{ id: params.id, deleted: true },
+						{ mutated: true, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'getByResource': {
-            const entity = firstRecord;
-            if (
-                entity === null ||
-                entity === undefined ||
-                (typeof entity === 'object' && !Array.isArray(entity) && Object.keys(entity as object).length === 0)
-            ) {
-                const rid = params.resourceID ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, rid as number | string));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('item', entity, { mutated: false, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
-            ));
-        }
+		case 'getByResource': {
+			const entity = firstRecord;
+			if (
+				entity === null ||
+				entity === undefined ||
+				(typeof entity === 'object' &&
+					!Array.isArray(entity) &&
+					Object.keys(entity as object).length === 0)
+			) {
+				const rid = params.resourceID ?? 'unknown';
+				return JSON.stringify(formatNotFoundError(resource, operation, rid as number | string));
+			}
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'item',
+						entity,
+						{ mutated: false, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        case 'getByYear': {
-            const entity = firstRecord;
-            if (
-                entity === null ||
-                entity === undefined ||
-                (typeof entity === 'object' && !Array.isArray(entity) && Object.keys(entity as object).length === 0)
-            ) {
-                const rid = params.resourceID ?? 'unknown';
-                const yr = params.year ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, `resource ${rid}, year ${yr}`));
-            }
-            return JSON.stringify(wrapSuccess(resource, operation,
-                buildResultPayload('item', entity, { mutated: false, retryable: true }, {
-                    warnings: context.resolutionWarnings ?? [],
-                    pendingConfirmations: context.pendingConfirmations ?? [],
-                    appliedResolutions: context.resolutions ?? [],
-                }),
-            ));
-        }
+		case 'getByYear': {
+			const entity = firstRecord;
+			if (
+				entity === null ||
+				entity === undefined ||
+				(typeof entity === 'object' &&
+					!Array.isArray(entity) &&
+					Object.keys(entity as object).length === 0)
+			) {
+				const rid = params.resourceID ?? 'unknown';
+				const yr = params.year ?? 'unknown';
+				return JSON.stringify(
+					formatNotFoundError(resource, operation, `resource ${rid}, year ${yr}`),
+				);
+			}
+			return JSON.stringify(
+				wrapSuccess(
+					resource,
+					operation,
+					buildResultPayload(
+						'item',
+						entity,
+						{ mutated: false, retryable: true },
+						{
+							warnings: context.resolutionWarnings ?? [],
+							pendingConfirmations: context.pendingConfirmations ?? [],
+							appliedResolutions: context.resolutions ?? [],
+						},
+					),
+				),
+			);
+		}
 
-        default:
-            return JSON.stringify(wrapError(
-                resource, operation, ERROR_TYPES.INVALID_OPERATION,
-                `Unknown operation '${operation}'.`,
-                `Use a supported operation for autotask_${resource}.`,
-            ));
-    }
+		default:
+			return JSON.stringify(
+				wrapError(
+					resource,
+					operation,
+					ERROR_TYPES.INVALID_OPERATION,
+					`Unknown operation '${operation}'.`,
+					`Use a supported operation for autotask_${resource}.`,
+				),
+			);
+	}
 }
