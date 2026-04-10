@@ -2,6 +2,30 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.9.1] — 2026-04-10
+
+### Fixed
+
+- **AI tools — timezone-aware date handling**: Date values provided by the LLM are now
+  correctly interpreted in the user's configured timezone (set in Autotask credentials)
+  and converted to UTC before reaching the API, matching the behaviour of the standard node.
+  - `filter_value` / `filter_value_2`: datetime field values are now converted from user
+    timezone to UTC when the field's metadata type is `dateTime`.
+  - `since` / `until`: now accept date strings in the user's configured timezone
+    (e.g. `2026-01-15T09:00:00`) in addition to explicit UTC offsets
+    (e.g. `2026-01-15T09:00:00Z`). Explicit offsets are always respected.
+  - `createIfNotExists` write fields: date fields are now converted to UTC before being
+    passed to compound helpers, which previously bypassed `CreateOperation.execute()`.
+
+### Known Limitations
+
+- Date values inside `filtersJson` are **not** automatically converted — they must be
+  provided in UTC. The schema description now states this explicitly.
+- Date filter values on UDF fields are not converted (UDFs are absent from `readFields`
+  metadata at filter-build time).
+- Date-only strings (e.g. `2026-01-15` with no time component) are not matched by the
+  ISO datetime pattern and are not converted. Always include the time component.
+
 ## [2.9.0] - 2026-04-09 (unreleased)
 
 ### Changed
