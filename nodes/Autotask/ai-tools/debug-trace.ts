@@ -152,27 +152,43 @@ export function summariseFilters(
 export function summariseResponseEnvelope(serialized: string): Record<string, unknown> {
 	try {
 		const parsed = JSON.parse(serialized) as Record<string, unknown>;
-		const payload = parsed.result as Record<string, unknown> | undefined;
-		const data = payload?.data as Record<string, unknown> | undefined;
-		const flags = (payload?.flags ?? {}) as Record<string, unknown>;
-		const error = parsed.error as Record<string, unknown> | undefined;
-		const items = Array.isArray(data?.items) ? data.items : [];
+		const isError = parsed.error === true;
+
+		// Determine response shape by top-level discriminator key
+		const records = Array.isArray(parsed.records) ? parsed.records : undefined;
+		const record = !records && parsed.record && typeof parsed.record === 'object'
+			? parsed.record
+			: undefined;
+		const ticketSummary = !records && !record && parsed.ticketSummary ? parsed.ticketSummary : undefined;
+
+		let resultKind: string;
+		if (isError) resultKind = 'error';
+		else if (typeof parsed.matchCount === 'number') resultKind = 'count';
+		else if (parsed.dryRun === true) resultKind = 'dryRun';
+		else if (records !== undefined) resultKind = 'list';
+		else if (ticketSummary !== undefined) resultKind = 'ticketSummary';
+		else if (record !== undefined) resultKind = parsed.id !== undefined ? 'mutation' : 'item';
+		else if (parsed.outcome !== undefined) resultKind = 'compound';
+		else if (parsed.fields !== undefined) resultKind = 'describeFields';
+		else if (parsed.picklistValues !== undefined) resultKind = 'listPicklistValues';
+		else if (parsed.operationDoc !== undefined) resultKind = 'describeOperation';
+		else resultKind = 'unknown';
+
 		return {
-			resultKind: payload?.kind,
-			recordsReturnedCount: items.length,
-			recordsFetchedCount: typeof data?.count === 'number' ? data.count : undefined,
-			truncated: flags.truncated,
-			partial: flags.partial,
-			retryable: flags.retryable,
-			mutated: flags.mutated,
-			pendingConfirmationsCount: Array.isArray(payload?.pendingConfirmations)
-				? payload.pendingConfirmations.length
+			resultKind,
+			recordsReturnedCount: typeof parsed.returnedCount === 'number'
+				? parsed.returnedCount
+				: records?.length ?? 0,
+			matchCount: typeof parsed.matchCount === 'number' ? parsed.matchCount : undefined,
+			hasMore: typeof parsed.hasMore === 'boolean' ? parsed.hasMore : undefined,
+			pendingConfirmationsCount: Array.isArray(parsed.pendingConfirmations)
+				? parsed.pendingConfirmations.length
 				: 0,
-			warningsCount: Array.isArray(payload?.warnings) ? payload.warnings.length : 0,
-			appliedResolutionsCount: Array.isArray(payload?.appliedResolutions)
-				? payload.appliedResolutions.length
+			warningsCount: Array.isArray(parsed.warnings) ? parsed.warnings.length : 0,
+			resolvedLabelsCount: Array.isArray(parsed.resolvedLabels)
+				? parsed.resolvedLabels.length
 				: 0,
-			errorType: error?.type,
+			errorType: isError ? parsed.errorType : undefined,
 		};
 	} catch {
 		return { parseError: true };
