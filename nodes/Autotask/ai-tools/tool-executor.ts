@@ -221,7 +221,6 @@ const N8N_METADATA_FIELDS = new Set([
 	'toolCallId',
 	'operation',
 	'dryRun',
-	'recency_field',
 ]);
 
 /** Key prefixes injected by n8n that must be stripped regardless of suffix */

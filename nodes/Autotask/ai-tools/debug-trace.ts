@@ -9,6 +9,7 @@ const DEBUG_LOG_FILENAME = 'autotask-ai-tool-debug.jsonl';
 
 /** Set when file cache initialises — same folder as `cache.json` for that credential. */
 let aiToolDebugLogDir: string | undefined;
+let didWarnDebugPathFailure = false;
 
 export function setAiToolDebugLogDir(dir: string): void {
 	aiToolDebugLogDir = dir;
@@ -22,8 +23,9 @@ export function getAiToolDebugFilePath(): string {
 	return join(aiToolDebugLogDir ?? DEFAULT_DEBUG_LOG_DIR, DEBUG_LOG_FILENAME);
 }
 
+// Code toggle only (not environment-driven).
 export const AI_TOOL_DEBUG_ENABLED = true;
-export const AI_TOOL_DEBUG_VERBOSE = false;
+export const AI_TOOL_DEBUG_VERBOSE = true;
 
 export interface AiTraceEvent {
 	ts: string;
@@ -54,7 +56,13 @@ export function writeAiTrace(event: Omit<AiTraceEvent, 'ts'>): void {
 		const filePath = getAiToolDebugFilePath();
 		mkdir(dirname(filePath), { recursive: true })
 			.then(() => appendFile(filePath, line, 'utf8'))
-			.catch(() => {
+			.catch((error: unknown) => {
+				if (didWarnDebugPathFailure) return;
+				didWarnDebugPathFailure = true;
+				const message = error instanceof Error ? error.message : String(error);
+				console.warn(
+					`[AutotaskAiTools] Failed writing AI debug trace at "${filePath}": ${message}`,
+				);
 				// best-effort only: trace failures must never affect node execution
 			});
 	} catch {
