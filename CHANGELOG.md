@@ -2,6 +2,24 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [3.0.0] — 2026-04-11
+
+### Changed
+
+- **Breaking: AI tool response envelope redesign (v3)**. All AI tool responses now use a flat JSON shape with `summary` always at root. Old nested `{ result: { kind, data, flags } }` shape is removed.
+  - Success responses: top-level key determines shape (`records[]`, `record{}`, `id`+`record{}`, `matchCount`, `outcome`, `dryRun`, `fields[]`, `picklistValues[]`, `operationDoc{}`, `ticketSummary{}`). No `kind` discriminator.
+  - Error responses: `error: true`, `errorType`, `summary`, `nextAction`, context fields (`filtersUsed`, `missingFields`, etc.) lifted to root — no nesting under `context`.
+  - `summary` always present — plain English, termination signals for lists baked in.
+  - `appliedResolutions` renamed to `resolvedLabels`; `method` field dropped.
+  - `flags` removed. `dryRunOnly` flag replaced by top-level `dryRun: true`.
+  - `schemaVersion`, `result` wrapper, `kind` discriminator removed.
+  - `returnedCount` (list) and `matchCount` (count) replace ambiguous `count`.
+- `operation-dispatch.ts`: all operation cases rewritten to use new flat builders.
+- `tool-executor.ts`: helper operations (describeFields, listPicklistValues, describeOperation), dry-run block, and compound block updated to use flat builders.
+- `write-guard.ts`: `buildWriteResolutionBlocker` now produces flat error with named root fields.
+- `debug-trace.ts`: `summariseResponseEnvelope` updated to parse new flat shape.
+- `wrapError` now returns `FlatErrorResponse` (flat shape, no `schemaVersion`). All thin wrappers updated accordingly.
+
 ## [2.9.0] — 2026-04-10
 
 ### Changed
