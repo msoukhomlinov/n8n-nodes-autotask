@@ -6,11 +6,7 @@ import type {
 } from 'n8n-workflow';
 import { executeToolOperation } from '../resources/tool/execute';
 import type { FieldMeta } from '../helpers/aiHelper';
-import {
-	describeResource,
-	listPicklistValues,
-	type DescribeResourceResponse,
-} from '../helpers/aiHelper';
+import { describeResource, listPicklistValues } from '../helpers/aiHelper';
 import { validateEntityId, validateReadFields, validateWriteFields } from './field-validator';
 import {
 	formatApiError,
@@ -293,22 +289,6 @@ function buildCompoundContext(resource: string, result: any): Record<string, unk
 	}
 }
 
-function compactDescribeResponse(response: DescribeResourceResponse): Record<string, unknown> {
-	return {
-		resource: response.resource,
-		mode: response.mode,
-		timezone: response.timezone,
-		fields: response.fields.map((field) => ({
-			id: field.id,
-			type: field.type,
-			required: field.required,
-			isPickList: field.isPickList,
-			isReference: field.isReference,
-		})),
-		notes: response.notes ?? [],
-	};
-}
-
 /**
  * Execute an Autotask operation by routing to the existing tool executor
  * with getNodeParameter overridden to map flat AI tool params.
@@ -402,7 +382,7 @@ export async function executeAiTool(
 			const responseJson = JSON.stringify(
 				buildMetadataResponse(resource, 'describeFields', {
 					kind: 'describeFields',
-					fields: (compactDescribeResponse(result) as { fields: FieldMeta[] }).fields,
+					fields: result.fields,
 					mode,
 				}),
 			);
@@ -445,7 +425,7 @@ export async function executeAiTool(
 					buildMetadataResponse(resource, 'listPicklistValues', {
 						kind: 'listPicklistValues',
 						fieldId: params.fieldId as string,
-						picklistValues: result as unknown as unknown[],
+						picklistValues: result.values,
 					}),
 				),
 				correlationId,
