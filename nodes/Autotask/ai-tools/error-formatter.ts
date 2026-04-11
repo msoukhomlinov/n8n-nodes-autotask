@@ -121,6 +121,10 @@ export interface FlatErrorResponse {
 /**
  * Build a flat error response. Context fields (filtersUsed, missingFields, etc.)
  * are spread at root level — no nesting under a generic `context` key.
+ *
+ * @warning contextFields keys must not collide with declared root fields
+ * (error, errorType, resource, operation, summary, nextAction, correlationId).
+ * Colliding keys will silently overwrite the declared values at runtime.
  */
 export function wrapFlatError(
 	resource: string,
