@@ -167,8 +167,9 @@ export function summariseResponseEnvelope(serialized: string): Record<string, un
 		else if (parsed.dryRun === true) resultKind = 'dryRun';
 		else if (records !== undefined) resultKind = 'list';
 		else if (ticketSummary !== undefined) resultKind = 'ticketSummary';
-		else if (record !== undefined) resultKind = parsed.id !== undefined ? 'mutation' : 'item';
 		else if (parsed.outcome !== undefined) resultKind = 'compound';
+		else if (record !== undefined) resultKind = 'mutation';
+		else if (parsed.id !== undefined) resultKind = 'mutation';
 		else if (parsed.fields !== undefined) resultKind = 'describeFields';
 		else if (parsed.picklistValues !== undefined) resultKind = 'listPicklistValues';
 		else if (parsed.operationDoc !== undefined) resultKind = 'describeOperation';
