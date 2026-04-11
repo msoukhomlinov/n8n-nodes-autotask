@@ -1,5 +1,5 @@
 import { type LabelResolution, type PendingLabelConfirmation } from '../helpers/label-resolution';
-import { ERROR_TYPES, wrapError } from './error-formatter';
+import { ERROR_TYPES, wrapFlatError } from './error-formatter';
 import { traceWriteGuard } from './debug-trace';
 
 export function isResolutionFailureWarning(w: string): boolean {
@@ -107,7 +107,7 @@ export function buildWriteResolutionBlocker(
     if (impersonationFailed) ctx.impersonationFailed = true;
 
     return JSON.stringify(
-        wrapError(
+        wrapFlatError(
             resource,
             operation,
             ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
