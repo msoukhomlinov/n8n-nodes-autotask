@@ -1,14 +1,18 @@
 import {
-    formatNotFoundError,
-    formatNoResultsFound,
-    wrapError,
-    wrapSuccess,
+    wrapFlatError,
     ERROR_TYPES,
-    type PaginationInfo,
 } from '../error-formatter';
 import {
-    buildResultPayload,
+    buildListResponse,
+    buildItemResponse,
+    buildMutationResponse,
+    buildDeleteResponse,
+    buildCountResponse,
+    buildSlaHealthCheckResponse,
+    buildTicketSummaryResponse,
+    toResolvedLabels,
     type ToolResponseContext,
+    type ListPaginationState,
 } from '../response-builder';
 import {
     MAX_QUERY_LIMIT,
@@ -45,55 +49,33 @@ export function dispatchOperationResponse(
     context: ToolResponseContext = {},
 ): string {
     const firstRecord = records[0] ?? null;
-    const buildPayload = (
-        kind: Parameters<typeof buildResultPayload>[0],
-        data: Parameters<typeof buildResultPayload>[1],
-        flags: Parameters<typeof buildResultPayload>[2],
-        extras: Parameters<typeof buildResultPayload>[3] = {},
-    ) =>
-        buildResultPayload(kind, data, flags, {
-            ...extras,
-            resource,
-            operation,
-            readFields: context.readFields,
-        });
-    const extractOperationId = (record: Record<string, unknown> | null): number | string | null => {
+
+    const extractId = (record: Record<string, unknown> | null): number | string | null => {
         if (!record) return null;
-        const idCandidate = record.itemId ?? record.id;
-        if (typeof idCandidate === 'number' || typeof idCandidate === 'string') {
-            return idCandidate;
-        }
-        return null;
+        const candidate = record.itemId ?? record.id;
+        return typeof candidate === 'number' || typeof candidate === 'string' ? candidate : null;
     };
 
     switch (operation) {
         case 'get': {
-            const entity = firstRecord;
             if (
-                entity === null ||
-                entity === undefined ||
-                (Array.isArray(entity) && entity.length === 0) ||
-                (typeof entity === 'object' && !Array.isArray(entity) && Object.keys(entity).length === 0)
+                firstRecord === null ||
+                (typeof firstRecord === 'object' &&
+                    !Array.isArray(firstRecord) &&
+                    Object.keys(firstRecord).length === 0)
             ) {
                 const id = params.id ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
-            }
-            return JSON.stringify(
-                wrapSuccess(
-                    resource,
-                    operation,
-                    buildPayload(
-                        'item',
-                        entity,
-                        { mutated: false, retryable: true },
-                        {
-                            warnings: context.resolutionWarnings ?? [],
-                            pendingConfirmations: context.pendingConfirmations ?? [],
-                            appliedResolutions: context.resolutions ?? [],
-                        },
+                return JSON.stringify(
+                    wrapFlatError(
+                        resource,
+                        operation,
+                        ERROR_TYPES.ENTITY_NOT_FOUND,
+                        `No ${resource} found with id ${id}.`,
+                        `Use autotask_${resource} with operation 'getMany' and the 'filter_field'/'filter_value' parameters to locate a valid record, extract its numeric 'id', then retry.`,
                     ),
-                ),
-            );
+                );
+            }
+            return JSON.stringify(buildItemResponse(resource, operation, firstRecord, {}, context));
         }
 
         case 'getMany':
@@ -126,39 +108,44 @@ export function dispatchOperationResponse(
                 if (params.recency) filtersUsed.recency = params.recency;
                 if (params.since) filtersUsed.since = params.since;
                 if (params.until) filtersUsed.until = params.until;
-                const noResultsError = formatNoResultsFound(resource, operation, filtersUsed);
+
                 const usedFilterFields = new Set<string>(
                     [
                         typeof params.filter_field === 'string' ? params.filter_field : '',
                         typeof params.filter_field_2 === 'string' ? params.filter_field_2 : '',
                     ]
-                        .map((field) => field.trim().toLowerCase())
-                        .filter((field) => field !== ''),
+                        .map((f) => f.trim().toLowerCase())
+                        .filter((f) => f !== ''),
                 );
                 const alternativeFilterFields = (context.readFields ?? [])
                     .filter(
-                        (field) =>
-                            !field.udf &&
-                            typeof field.type === 'string' &&
-                            field.type.toLowerCase() === 'string' &&
-                            !usedFilterFields.has(field.id.toLowerCase()),
+                        (f) =>
+                            !f.udf &&
+                            typeof f.type === 'string' &&
+                            f.type.toLowerCase() === 'string' &&
+                            !usedFilterFields.has(f.id.toLowerCase()),
                     )
-                    .map((field) => field.id)
+                    .map((f) => f.id)
                     .slice(0, 10);
+
+                const contextFields: Record<string, unknown> = { filtersUsed };
                 if (alternativeFilterFields.length > 0) {
-                    noResultsError.context = {
-                        ...noResultsError.context,
-                        alternativeFilterFields,
-                    };
+                    contextFields.alternativeFilterFields = alternativeFilterFields;
                 }
                 const unresolvedFilterWarnings = context.resolutionWarnings ?? [];
                 if (unresolvedFilterWarnings.length > 0) {
-                    noResultsError.context = {
-                        ...noResultsError.context,
-                        filterResolutionWarnings: unresolvedFilterWarnings,
-                    };
+                    contextFields.filterResolutionWarnings = unresolvedFilterWarnings;
                 }
-                return JSON.stringify(noResultsError);
+                return JSON.stringify(
+                    wrapFlatError(
+                        resource,
+                        operation,
+                        ERROR_TYPES.NO_RESULTS_FOUND,
+                        `No ${resource} records matched the supplied filters.`,
+                        `Definitive negative — do not retry with the same filters. Broaden or change filter_field/filter_value and retry.`,
+                        contextFields,
+                    ),
+                );
             }
 
             const total = records.length;
@@ -172,14 +159,10 @@ export function dispatchOperationResponse(
 
             if (context.recencyActive) {
                 hasMore = false;
-                if (truncated) {
-                    totalAvailable = total;
-                }
+                if (truncated) totalAvailable = total;
             } else if (params.returnAll) {
                 hasMore = false;
-                if (truncated) {
-                    totalAvailable = total;
-                }
+                if (truncated) totalAvailable = total;
             } else if (truncated) {
                 totalAvailable = total;
                 const truncatedNextOffset = currentOffset + MAX_RESPONSE_RECORDS;
@@ -191,13 +174,6 @@ export function dispatchOperationResponse(
                 hasMore = items.length >= requestedLimit && candidateNext < MAX_QUERY_LIMIT;
                 if (hasMore) nextOffset = candidateNext;
             }
-
-            const pagination: PaginationInfo = {
-                offset: currentOffset,
-                hasMore,
-                ...(nextOffset !== undefined ? { nextOffset } : {}),
-                ...(totalAvailable !== undefined ? { totalAvailable } : {}),
-            };
 
             const notes: string[] = [];
             if (context.recencyNote) notes.push(context.recencyNote);
@@ -223,135 +199,95 @@ export function dispatchOperationResponse(
                 );
             }
 
-            return JSON.stringify(
-                wrapSuccess(
-                    resource,
-                    operation,
-                    buildPayload(
-                        'list',
-                        { items, count: items.length },
-                        { mutated: false, retryable: true, truncated },
-                        {
-                            warnings: listWarnings,
-                            pendingConfirmations: context.pendingConfirmations ?? [],
-                            appliedResolutions: context.resolutions ?? [],
-                            pagination,
-                            notes: notes.length > 0 ? notes : undefined,
-                        },
-                    ),
-                ),
-            );
+            const pagination: ListPaginationState = {
+                hasMore,
+                ...(nextOffset !== undefined ? { nextOffset } : {}),
+                ...(totalAvailable !== undefined ? { totalAvailable } : {}),
+                ...(notes.length > 0 ? { notes } : {}),
+            };
+
+            const listContext: ToolResponseContext = {
+                ...context,
+                resolutionWarnings: listWarnings,
+            };
+
+            return JSON.stringify(buildListResponse(resource, operation, items, pagination, listContext));
         }
 
         case 'whoAmI': {
             if (firstRecord === null || firstRecord === undefined) {
-                return JSON.stringify(formatNotFoundError(resource, operation, 'authenticated user'));
+                return JSON.stringify(
+                    wrapFlatError(
+                        resource,
+                        operation,
+                        ERROR_TYPES.ENTITY_NOT_FOUND,
+                        `No ${resource} found for authenticated user.`,
+                        `Use autotask_${resource} with operation 'getMany' to locate a valid record, then retry.`,
+                    ),
+                );
             }
             return JSON.stringify(
-                wrapSuccess(
-                    resource,
-                    operation,
-                    buildPayload(
-                        'item',
-                        firstRecord,
-                        { mutated: false, retryable: true },
-                        {
-                            warnings: context.resolutionWarnings ?? [],
-                            pendingConfirmations: context.pendingConfirmations ?? [],
-                            appliedResolutions: context.resolutions ?? [],
-                        },
-                    ),
-                ),
+                buildItemResponse(resource, operation, firstRecord, { verb: 'Authenticated as' }, context),
             );
         }
 
         case 'searchByDomain': {
             if (records.length === 0) {
                 return JSON.stringify(
-                    wrapError(
+                    wrapFlatError(
                         resource,
                         operation,
                         ERROR_TYPES.NO_RESULTS_FOUND,
-                        'No company found matching the supplied domain.',
+                        `No ${resource} found matching the supplied domain.`,
                         `Verify the domain and retry, or use autotask_${resource} with operation 'getMany' with a filter.`,
                     ),
                 );
             }
-            return JSON.stringify(
-                wrapSuccess(
-                    resource,
-                    operation,
-                    buildPayload(
-                        'list',
-                        { items: records, count: records.length },
-                        { mutated: false, retryable: true },
-                        {
-                            warnings: context.resolutionWarnings ?? [],
-                            pendingConfirmations: context.pendingConfirmations ?? [],
-                            appliedResolutions: context.resolutions ?? [],
-                            pagination: { offset: 0, hasMore: false },
-                        },
-                    ),
-                ),
-            );
+            // searchByDomain uses list shape — no domain-specific qualifier in summary since params.domain is not passed
+            const resolvedLabels = toResolvedLabels(context.resolutions);
+            return JSON.stringify({
+                summary: `Found ${records.length} ${resource} records — complete set, no further calls needed.`,
+                resource,
+                operation: `${resource}.${operation}`,
+                records,
+                returnedCount: records.length,
+                hasMore: false,
+                resolvedLabels,
+                pendingConfirmations: context.pendingConfirmations ?? [],
+                warnings: context.resolutionWarnings ?? [],
+            });
         }
 
         case 'slaHealthCheck': {
             if (firstRecord === null || firstRecord === undefined) {
                 const identifier = params.ticketNumber ?? params.id ?? 'unknown';
                 return JSON.stringify(
-                    formatNotFoundError(resource, operation, identifier as number | string),
+                    wrapFlatError(
+                        resource,
+                        operation,
+                        ERROR_TYPES.ENTITY_NOT_FOUND,
+                        `No ${resource} found with id ${identifier}.`,
+                        `Use autotask_${resource} with operation 'getMany' and the 'filter_field'/'filter_value' parameters to locate a valid record, extract its numeric 'id', then retry.`,
+                    ),
                 );
             }
-            return JSON.stringify(
-                wrapSuccess(
-                    resource,
-                    operation,
-                    buildPayload(
-                        'item',
-                        firstRecord,
-                        { mutated: false, retryable: true },
-                        {
-                            warnings: context.resolutionWarnings ?? [],
-                            pendingConfirmations: context.pendingConfirmations ?? [],
-                            appliedResolutions: context.resolutions ?? [],
-                        },
-                    ),
-                ),
-            );
+            return JSON.stringify(buildSlaHealthCheckResponse(resource, operation, firstRecord, context));
         }
 
         case 'summary': {
             if (firstRecord === null || firstRecord === undefined) {
                 const identifier = params.ticketNumber ?? params.id ?? 'unknown';
                 return JSON.stringify(
-                    formatNotFoundError(resource, operation, identifier as number | string),
+                    wrapFlatError(
+                        resource,
+                        operation,
+                        ERROR_TYPES.ENTITY_NOT_FOUND,
+                        `No ${resource} found with id ${identifier}.`,
+                        `Use autotask_${resource} with operation 'getMany' and the 'filter_field'/'filter_value' parameters to locate a valid record, extract its numeric 'id', then retry.`,
+                    ),
                 );
             }
-            const summaryRecord = firstRecord as {
-                _meta?: { countsPartial?: boolean; truncationApplied?: boolean };
-            };
-            return JSON.stringify(
-                wrapSuccess(
-                    resource,
-                    operation,
-                    buildPayload(
-                        'summary',
-                        firstRecord,
-                        {
-                            mutated: false,
-                            retryable: true,
-                            partial: summaryRecord._meta?.countsPartial === true,
-                            truncated: summaryRecord._meta?.truncationApplied === true,
-                        },
-                        {
-                            warnings: context.resolutionWarnings ?? [],
-                            pendingConfirmations: context.pendingConfirmations ?? [],
-                            appliedResolutions: context.resolutions ?? [],
-                        },
-                    ),
-                ),
-            );
+            return JSON.stringify(buildTicketSummaryResponse(resource, operation, firstRecord, context));
         }
 
         case 'moveConfigurationItem':
@@ -360,73 +296,54 @@ export function dispatchOperationResponse(
         case 'reject':
         case 'transferOwnership':
         case 'create':
-        case 'update':
-        case 'delete': {
-            if (
-                (operation === 'moveConfigurationItem' ||
-                    operation === 'moveToCompany' ||
-                    operation === 'approve' ||
-                    operation === 'reject' ||
-                    operation === 'transferOwnership') &&
-                (firstRecord === null || firstRecord === undefined)
-            ) {
+        case 'update': {
+            const isNullReturningOp =
+                operation === 'moveConfigurationItem' ||
+                operation === 'moveToCompany' ||
+                operation === 'approve' ||
+                operation === 'reject' ||
+                operation === 'transferOwnership';
+
+            if (isNullReturningOp && (firstRecord === null || firstRecord === undefined)) {
                 const id = params.id ?? 'unknown';
                 if (operation === 'transferOwnership') {
                     return JSON.stringify(
-                        wrapError(
+                        wrapFlatError(
                             resource,
                             operation,
                             ERROR_TYPES.ENTITY_NOT_FOUND,
-                            'Transfer ownership returned no result.',
+                            `Transfer ownership returned no result.`,
                             `Verify source and destination resource IDs, then retry.`,
                         ),
                     );
                 }
-                return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
+                return JSON.stringify(
+                    wrapFlatError(
+                        resource,
+                        operation,
+                        ERROR_TYPES.ENTITY_NOT_FOUND,
+                        `No ${resource} found with id ${id}.`,
+                        `Use autotask_${resource} with operation 'getMany' and the 'filter_field'/'filter_value' parameters to locate a valid record, extract its numeric 'id', then retry.`,
+                    ),
+                );
             }
 
-            const approveId =
+            const id =
                 operation === 'approve' || operation === 'reject'
-                    ? (params.id as number | undefined) ?? extractOperationId(firstRecord)
-                    : extractOperationId(firstRecord);
+                    ? ((params.id as number | undefined) ?? extractId(firstRecord) ?? 'unknown')
+                    : (extractId(firstRecord) ?? 'unknown');
 
-            const mutationData =
-                operation === 'delete'
-                    ? { id: params.id, deleted: true }
-                    : operation === 'approve' || operation === 'reject'
-                      ? { id: approveId, entity: firstRecord }
-                      : { id: extractOperationId(firstRecord), entity: firstRecord };
+            return JSON.stringify(buildMutationResponse(resource, operation, id, firstRecord ?? undefined, context));
+        }
 
-            const retryable =
-                operation === 'create' ? false : true;
-
-            return JSON.stringify(
-                wrapSuccess(
-                    resource,
-                    operation,
-                    buildPayload(
-                        'mutation',
-                        mutationData,
-                        { mutated: true, retryable },
-                        {
-                            warnings: context.resolutionWarnings ?? [],
-                            pendingConfirmations: context.pendingConfirmations ?? [],
-                            appliedResolutions: context.resolutions ?? [],
-                        },
-                    ),
-                ),
-            );
+        case 'delete': {
+            const id = params.id ?? extractId(firstRecord) ?? 'unknown';
+            return JSON.stringify(buildDeleteResponse(resource, operation, id, context));
         }
 
         case 'count': {
             const countValue = records[0]?.count ?? records.length;
-            return JSON.stringify(
-                wrapSuccess(
-                    resource,
-                    operation,
-                    buildPayload('count', { count: countValue }, { mutated: false, retryable: true }),
-                ),
-            );
+            return JSON.stringify(buildCountResponse(resource, operation, countValue as number));
         }
 
         case 'getByResource':
@@ -443,33 +360,32 @@ export function dispatchOperationResponse(
                     const rid = params.resourceID ?? 'unknown';
                     const yr = params.year ?? 'unknown';
                     return JSON.stringify(
-                        formatNotFoundError(resource, operation, `resource ${rid}, year ${yr}`),
+                        wrapFlatError(
+                            resource,
+                            operation,
+                            ERROR_TYPES.ENTITY_NOT_FOUND,
+                            `No ${resource} found for resource ${rid}, year ${yr}.`,
+                            `Use autotask_${resource} with operation 'getMany' and the 'filter_field'/'filter_value' parameters to locate a valid record, extract its numeric 'id', then retry.`,
+                        ),
                     );
                 }
                 const rid = params.resourceID ?? 'unknown';
-                return JSON.stringify(formatNotFoundError(resource, operation, rid as number | string));
-            }
-            return JSON.stringify(
-                wrapSuccess(
-                    resource,
-                    operation,
-                    buildPayload(
-                        'item',
-                        entity,
-                        { mutated: false, retryable: true },
-                        {
-                            warnings: context.resolutionWarnings ?? [],
-                            pendingConfirmations: context.pendingConfirmations ?? [],
-                            appliedResolutions: context.resolutions ?? [],
-                        },
+                return JSON.stringify(
+                    wrapFlatError(
+                        resource,
+                        operation,
+                        ERROR_TYPES.ENTITY_NOT_FOUND,
+                        `No ${resource} found for resource ${rid}.`,
+                        `Use autotask_${resource} with operation 'getMany' and the 'filter_field'/'filter_value' parameters to locate a valid record, extract its numeric 'id', then retry.`,
                     ),
-                ),
-            );
+                );
+            }
+            return JSON.stringify(buildItemResponse(resource, operation, entity, {}, context));
         }
 
         default:
             return JSON.stringify(
-                wrapError(
+                wrapFlatError(
                     resource,
                     operation,
                     ERROR_TYPES.INVALID_OPERATION,
