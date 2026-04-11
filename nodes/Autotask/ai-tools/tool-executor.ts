@@ -330,6 +330,7 @@ export async function executeAiTool(
 			rawParamKeys: safeKeys(rawParams),
 			sanitisedParamKeys: safeKeys(params),
 			strippedMetadataKeys,
+			...(AI_TOOL_DEBUG_VERBOSE ? { paramsSnapshot: redactForVerbose(params) } : {}),
 		},
 	});
 
@@ -579,6 +580,12 @@ export async function executeAiTool(
 		summary: {
 			flatFilters: summariseFilters(filters),
 			recencyFilters: summariseFilters(recencyResult.filters),
+			recencyDateRange: recencyResult.isActive
+				? {
+					from: recencyResult.filters.find((f) => f.op === 'gte')?.value,
+					to: recencyResult.filters.find((f) => f.op === 'lte')?.value,
+				  }
+				: undefined,
 			filtersJsonUsed: Boolean(params.filtersJson),
 			combinedStrategy: params.filtersJson
 				? 'filtersJson+recency'
@@ -621,7 +628,9 @@ export async function executeAiTool(
 		? RECENCY_OVER_REQUEST_LIMIT
 		: effectiveOffset > 0 && supportsOffsetPagination
 			? Math.min(effectiveOffset + effectiveLimit, MAX_QUERY_LIMIT)
-			: effectiveLimit;
+			: params.returnAll === true
+				? MAX_QUERY_LIMIT
+				: effectiveLimit;
 	traceFilterBuild({
 		phase: 'pagination-plan',
 		resource,
@@ -631,10 +640,12 @@ export async function executeAiTool(
 			effectiveLimit,
 			effectiveOffset,
 			queryLimit,
+			returnAll: params.returnAll === true,
 			recencyActive: recencyResult.isActive,
 			offsetIgnoredDueToRecency: recencyResult.isActive && effectiveOffset > 0,
 			offsetExceedsApiCap,
 			outputMode: params.outputMode ?? 'idsAndLabels',
+			selectedFields: selectedColumns.length > 0 ? selectedColumns : undefined,
 		},
 	});
 
@@ -1239,8 +1250,10 @@ export async function executeAiTool(
 		);
 		// Recency takes priority: reverse-sort by date and take first N. Offset is not
 		// compatible with recency (recency re-sorts the full window), so ignore offset here.
+		// returnAll bypasses the effectiveLimit cap — return all records in the recency window.
 		if (recencyResult.isActive && supportsListResponse) {
-			records = fetchedRecords.slice().reverse().slice(0, effectiveLimit);
+			const recencySliceLimit = params.returnAll ? fetchedRecords.length : effectiveLimit;
+			records = fetchedRecords.slice().reverse().slice(0, recencySliceLimit);
 		} else if (effectiveOffset > 0 && supportsListResponse) {
 			records = fetchedRecords.slice(effectiveOffset, effectiveOffset + effectiveLimit);
 			// Detect offset beyond available records — return clear error instead of
