@@ -16,7 +16,6 @@ import {
 	formatApiError,
 	formatFilterConstraintError,
 	formatIdError,
-	wrapSuccess,
 	wrapError,
 	ERROR_TYPES,
 } from './error-formatter';
@@ -36,7 +35,9 @@ import { getConfiguredTimezone, convertDatesToUTC } from '../helpers/date-time/u
 import { buildRecencyFilters, type RecencyBuildResult } from './recency';
 import {
 	attachCorrelation,
-	buildResultPayload,
+	buildMetadataResponse,
+	buildDryRunResponse,
+	buildCompoundResponse,
 	type ToolResponseContext,
 } from './response-builder';
 import { dispatchOperationResponse } from './operation-handlers/operation-dispatch';
@@ -61,7 +62,6 @@ import {
 } from './debug-trace';
 import {
 	buildWriteResolutionBlocker,
-	isResolutionFailureWarning,
 	summariseResolutionState,
 } from './write-guard';
 import {
@@ -400,14 +400,11 @@ export async function executeAiTool(
 				mode,
 			);
 			const responseJson = JSON.stringify(
-				wrapSuccess(
-					resource,
-					'describeFields',
-					buildResultPayload('metadata', compactDescribeResponse(result), {
-						mutated: false,
-						retryable: true,
-					}),
-				),
+				buildMetadataResponse(resource, 'describeFields', {
+					kind: 'describeFields',
+					fields: (compactDescribeResponse(result) as { fields: FieldMeta[] }).fields,
+					mode,
+				}),
 			);
 			traceResponse({
 				phase: 'helper-describeFields',
@@ -445,11 +442,11 @@ export async function executeAiTool(
 			);
 			return attachCorrelation(
 				JSON.stringify(
-					wrapSuccess(
-						resource,
-						'listPicklistValues',
-						buildResultPayload('metadata', result, { mutated: false, retryable: true }),
-					),
+					buildMetadataResponse(resource, 'listPicklistValues', {
+						kind: 'listPicklistValues',
+						fieldId: params.fieldId as string,
+						picklistValues: result as unknown as unknown[],
+					}),
 				),
 				correlationId,
 			);
@@ -482,11 +479,11 @@ export async function executeAiTool(
 			const doc = buildOperationDoc(resource, target, readFields, writeFields);
 			return attachCorrelation(
 				JSON.stringify(
-					wrapSuccess(
-						resource,
-						'describeOperation',
-						buildResultPayload('metadata', doc, { mutated: false, retryable: true }),
-					),
+					buildMetadataResponse(resource, 'describeOperation', {
+						kind: 'describeOperation',
+						operationDoc: doc,
+						targetOperation: target as string,
+					}),
 				),
 				correlationId,
 			);
@@ -929,22 +926,11 @@ export async function executeAiTool(
 
 	if (rawParams.dryRun === true) {
 		const dryRunResponse = JSON.stringify(
-			wrapSuccess(
-				resource,
-				effectiveOperation,
-				buildResultPayload(
-					'summary',
-					{
-						resolvedFieldValues: fieldValues,
-						note: 'Dry run only — no API call was made. The resolved field values above show exactly what would have been sent to the Autotask API.',
-					},
-					{ mutated: false, retryable: true, dryRunOnly: true },
-					{
-						warnings: labelWarnings,
-						appliedResolutions: labelResolutions,
-					},
-				),
-			),
+			buildDryRunResponse(resource, effectiveOperation, fieldValues, {
+				resolutions: labelResolutions,
+				resolutionWarnings: labelWarnings,
+				pendingConfirmations: labelPendingConfirmations,
+			}),
 		);
 		traceResponse({
 			phase: 'dry-run',
@@ -1223,7 +1209,6 @@ export async function executeAiTool(
 					? compoundResult.warnings
 					: [];
 				const allWarnings = [...rawCompoundWarnings, ...labelWarnings];
-				const partial = allWarnings.some(isResolutionFailureWarning);
 
 				const entityId = buildCompoundEntityId(resource, compoundResult);
 				const existingEntityId = buildCompoundExistingId(resource, compoundResult);
@@ -1244,24 +1229,11 @@ export async function executeAiTool(
 
 				return attachCorrelation(
 					JSON.stringify(
-						wrapSuccess(
-							resource,
-							'createIfNotExists',
-							buildResultPayload(
-								'compound',
-								compoundData,
-								{
-									mutated: compoundResult.outcome !== 'skipped',
-									retryable: compoundResult.outcome !== 'created',
-									partial,
-								},
-								{
-									warnings: allWarnings,
-									pendingConfirmations: labelPendingConfirmations,
-									appliedResolutions: labelResolutions,
-								},
-							),
-						),
+						buildCompoundResponse(resource, 'createIfNotExists', compoundData as Parameters<typeof buildCompoundResponse>[2], {
+							resolutions: labelResolutions,
+							resolutionWarnings: allWarnings,
+							pendingConfirmations: labelPendingConfirmations,
+						}),
 					),
 					correlationId,
 				);
