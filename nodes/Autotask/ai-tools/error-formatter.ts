@@ -1,18 +1,3 @@
-export interface ErrorEnvelope {
-	schemaVersion: '1';
-	error: true;
-	errorType: string;
-	resource: string;
-	operation: string;
-	message: string;
-	nextAction: string;
-	context?: Record<string, unknown>;
-	correlationId?: string;
-}
-
-/** @deprecated Use FlatErrorResponse instead */
-export type StructuredToolError = ErrorEnvelope;
-
 // ---------------------------------------------------------------------------
 // Error type constants
 // ---------------------------------------------------------------------------
@@ -59,7 +44,7 @@ export interface FlatErrorResponse {
  * (error, errorType, resource, operation, summary, nextAction, correlationId).
  * Colliding keys will silently overwrite the declared values at runtime.
  */
-export function wrapFlatError(
+export function wrapError(
 	resource: string,
 	operation: string,
 	errorType: string,
@@ -79,34 +64,6 @@ export function wrapFlatError(
 }
 
 // ---------------------------------------------------------------------------
-// Envelope factories
-// ---------------------------------------------------------------------------
-
-function buildOperationString(resource: string, operation: string): string {
-	return `${resource}.${operation}`;
-}
-
-export function wrapError(
-	resource: string,
-	operation: string,
-	errorType: string,
-	message: string,
-	nextAction: string,
-	context?: Record<string, unknown>,
-): ErrorEnvelope {
-	return {
-		schemaVersion: '1',
-		error: true,
-		errorType,
-		resource,
-		operation: buildOperationString(resource, operation),
-		message,
-		nextAction,
-		...(context ? { context } : {}),
-	};
-}
-
-// ---------------------------------------------------------------------------
 // Thin wrappers (preserve existing call-site signatures)
 // ---------------------------------------------------------------------------
 
@@ -116,13 +73,13 @@ export function formatFieldError(
 	operation: string,
 	invalidFields: string[],
 	validFieldsSample: string[],
-): ErrorEnvelope {
+): FlatErrorResponse {
 	const mode = errorType === 'INVALID_FIELDS' ? 'read' : 'write';
 	return wrapError(
 		resource,
 		operation,
 		errorType,
-		`Invalid field name(s) for ${buildOperationString(resource, operation)}: ${invalidFields.join(', ')}`,
+		`Invalid field name(s) for ${resource}.${operation}: ${invalidFields.join(', ')}`,
 		`Call autotask_${resource} with operation 'describeFields' with mode '${mode}', then retry with valid field names.`,
 		{ invalidFields, validFieldsSample },
 	);
@@ -132,23 +89,23 @@ export function formatRequiredFieldsError(
 	resource: string,
 	operation: string,
 	missingFields: string[],
-): ErrorEnvelope {
+): FlatErrorResponse {
 	return wrapError(
 		resource,
 		operation,
 		ERROR_TYPES.MISSING_REQUIRED_FIELDS,
-		`Missing required field(s) for ${buildOperationString(resource, operation)}: ${missingFields.join(', ')}`,
+		`Missing required field(s) for ${resource}.${operation}: ${missingFields.join(', ')}`,
 		`Call autotask_${resource} with operation 'describeFields' with mode 'write' to review required fields, then retry.`,
 		{ missingFields },
 	);
 }
 
-export function formatIdError(resource: string, operation: string): ErrorEnvelope {
+export function formatIdError(resource: string, operation: string): FlatErrorResponse {
 	return wrapError(
 		resource,
 		operation,
 		ERROR_TYPES.MISSING_ENTITY_ID,
-		`A numeric entity ID is required for ${buildOperationString(resource, operation)}.`,
+		`A numeric entity ID is required for ${resource}.${operation}.`,
 		`Provide a numeric ID. If unknown, call autotask_${resource} with operation 'getMany' to locate the correct record first.`,
 	);
 }
@@ -158,7 +115,7 @@ export function formatFilterConstraintError(
 	operation: string,
 	message: string,
 	nextAction: string,
-): ErrorEnvelope {
+): FlatErrorResponse {
 	return wrapError(
 		resource,
 		operation,
@@ -172,7 +129,7 @@ export function formatApiError(
 	message: string,
 	resource: string,
 	operation: string,
-): ErrorEnvelope {
+): FlatErrorResponse {
 	const lowerMessage = message.toLowerCase();
 
 	if (
@@ -243,7 +200,7 @@ export function formatApiError(
 	);
 }
 
-export function formatNotFoundError(resource: string, operation: string, id: number | string): ErrorEnvelope {
+export function formatNotFoundError(resource: string, operation: string, id: number | string): FlatErrorResponse {
 	return wrapError(
 		resource,
 		operation,
@@ -253,7 +210,7 @@ export function formatNotFoundError(resource: string, operation: string, id: num
 	);
 }
 
-export function formatNoResultsFound(resource: string, operation: string, filtersUsed: Record<string, unknown>): ErrorEnvelope {
+export function formatNoResultsFound(resource: string, operation: string, filtersUsed: Record<string, unknown>): FlatErrorResponse {
 	return wrapError(
 		resource,
 		operation,

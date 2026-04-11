@@ -1,5 +1,5 @@
 import {
-    wrapFlatError,
+    wrapError,
     ERROR_TYPES,
 } from '../error-formatter';
 import {
@@ -66,7 +66,7 @@ export function dispatchOperationResponse(
             ) {
                 const id = params.id ?? 'unknown';
                 return JSON.stringify(
-                    wrapFlatError(
+                    wrapError(
                         resource,
                         operation,
                         ERROR_TYPES.ENTITY_NOT_FOUND,
@@ -137,7 +137,7 @@ export function dispatchOperationResponse(
                     contextFields.filterResolutionWarnings = unresolvedFilterWarnings;
                 }
                 return JSON.stringify(
-                    wrapFlatError(
+                    wrapError(
                         resource,
                         operation,
                         ERROR_TYPES.NO_RESULTS_FOUND,
@@ -217,7 +217,7 @@ export function dispatchOperationResponse(
         case 'whoAmI': {
             if (firstRecord === null || firstRecord === undefined) {
                 return JSON.stringify(
-                    wrapFlatError(
+                    wrapError(
                         resource,
                         operation,
                         ERROR_TYPES.ENTITY_NOT_FOUND,
@@ -234,7 +234,7 @@ export function dispatchOperationResponse(
         case 'searchByDomain': {
             if (records.length === 0) {
                 return JSON.stringify(
-                    wrapFlatError(
+                    wrapError(
                         resource,
                         operation,
                         ERROR_TYPES.NO_RESULTS_FOUND,
@@ -262,7 +262,7 @@ export function dispatchOperationResponse(
             if (firstRecord === null || firstRecord === undefined) {
                 const identifier = params.ticketNumber ?? params.id ?? 'unknown';
                 return JSON.stringify(
-                    wrapFlatError(
+                    wrapError(
                         resource,
                         operation,
                         ERROR_TYPES.ENTITY_NOT_FOUND,
@@ -278,7 +278,7 @@ export function dispatchOperationResponse(
             if (firstRecord === null || firstRecord === undefined) {
                 const identifier = params.ticketNumber ?? params.id ?? 'unknown';
                 return JSON.stringify(
-                    wrapFlatError(
+                    wrapError(
                         resource,
                         operation,
                         ERROR_TYPES.ENTITY_NOT_FOUND,
@@ -308,7 +308,7 @@ export function dispatchOperationResponse(
                 const id = params.id ?? 'unknown';
                 if (operation === 'transferOwnership') {
                     return JSON.stringify(
-                        wrapFlatError(
+                        wrapError(
                             resource,
                             operation,
                             ERROR_TYPES.ENTITY_NOT_FOUND,
@@ -318,7 +318,7 @@ export function dispatchOperationResponse(
                     );
                 }
                 return JSON.stringify(
-                    wrapFlatError(
+                    wrapError(
                         resource,
                         operation,
                         ERROR_TYPES.ENTITY_NOT_FOUND,
@@ -360,7 +360,7 @@ export function dispatchOperationResponse(
                     const rid = params.resourceID ?? 'unknown';
                     const yr = params.year ?? 'unknown';
                     return JSON.stringify(
-                        wrapFlatError(
+                        wrapError(
                             resource,
                             operation,
                             ERROR_TYPES.ENTITY_NOT_FOUND,
@@ -371,7 +371,7 @@ export function dispatchOperationResponse(
                 }
                 const rid = params.resourceID ?? 'unknown';
                 return JSON.stringify(
-                    wrapFlatError(
+                    wrapError(
                         resource,
                         operation,
                         ERROR_TYPES.ENTITY_NOT_FOUND,
@@ -385,7 +385,7 @@ export function dispatchOperationResponse(
 
         default:
             return JSON.stringify(
-                wrapFlatError(
+                wrapError(
                     resource,
                     operation,
                     ERROR_TYPES.INVALID_OPERATION,

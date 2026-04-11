@@ -1,5 +1,5 @@
 import type { FieldMeta } from '../helpers/aiHelper';
-import type { StructuredToolError } from './error-formatter';
+import type { FlatErrorResponse } from './error-formatter';
 import { formatFieldError, formatIdError, formatRequiredFieldsError } from './error-formatter';
 
 interface ValidationSuccess {
@@ -8,7 +8,7 @@ interface ValidationSuccess {
 
 interface ValidationFailure {
     valid: false;
-    error: StructuredToolError;
+    error: FlatErrorResponse;
 }
 
 export type ValidationResult = ValidationSuccess | ValidationFailure;
