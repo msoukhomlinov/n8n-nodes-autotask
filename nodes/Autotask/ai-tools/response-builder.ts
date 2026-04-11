@@ -329,7 +329,7 @@ export function buildListResponse(
     const count = records.length;
     let terminationSignal: string;
     if (pagination.totalAvailable !== undefined) {
-        terminationSignal = `truncated — ${pagination.totalAvailable} total fetched. Use narrower filters`;
+        terminationSignal = `truncated — ${pagination.totalAvailable} total matched, limit reached. Use narrower filters`;
     } else if (pagination.hasMore) {
         terminationSignal = `more available. Use nextOffset: ${pagination.nextOffset} to continue`;
     } else {
@@ -402,10 +402,13 @@ export function buildMutationResponse(
         : operation === 'update' ? 'Updated'
         : operation === 'approve' ? 'Approved'
         : operation === 'reject' ? 'Rejected'
+        : operation === 'post' ? 'Posted'
         : operation === 'moveToCompany' ? 'Moved to company for'
         : operation === 'moveConfigurationItem' ? 'Moved configuration item for'
         : operation === 'transferOwnership' ? 'Transferred ownership for'
-        : operation.charAt(0).toUpperCase() + operation.slice(1) + 'd';
+        : operation.endsWith('e')
+            ? operation.charAt(0).toUpperCase() + operation.slice(1) + 'd'
+            : operation.charAt(0).toUpperCase() + operation.slice(1) + 'ed';
     const identity = record ? buildIdentityString(resource, record) : '';
     const summary = identity
         ? `${opVerb} ${resource} ${identity} successfully.`
@@ -468,7 +471,7 @@ export function buildCompoundResponse(
         fieldsCompared?: Record<string, unknown>;
         context?: Record<string, unknown>;
     },
-    ctx: ToolResponseContext = {},
+    context: ToolResponseContext = {},
 ): Record<string, unknown> {
     const { outcome, id, existingId, record, matchedDedupFields, fieldsUpdated, fieldsCompared } = compoundData;
     const canonicalId = id ?? existingId;
@@ -488,9 +491,9 @@ export function buildCompoundResponse(
         resource,
         operation: `${resource}.${operation}`,
         outcome,
-        resolvedLabels: toResolvedLabels(ctx.resolutions),
-        pendingConfirmations: ctx.pendingConfirmations ?? [],
-        warnings: ctx.resolutionWarnings ?? [],
+        resolvedLabels: toResolvedLabels(context.resolutions),
+        pendingConfirmations: context.pendingConfirmations ?? [],
+        warnings: context.resolutionWarnings ?? [],
     };
     if (canonicalId !== undefined) response.id = canonicalId;
     if (record) response.record = record;
@@ -579,8 +582,9 @@ export function buildMetadataResponse(
         typeof (operationDoc as Record<string, unknown>).purpose === 'string'
             ? (operationDoc as Record<string, unknown>).purpose as string
             : `performs ${targetOperation}.`;
+    const purposeText = purpose.endsWith('.') ? purpose : `${purpose}.`;
     return {
-        summary: `Operation '${targetOperation}' on ${resource}: ${purpose}`,
+        summary: `Operation '${targetOperation}' on ${resource}: ${purposeText}`,
         resource,
         operation: `${resource}.${operation}`,
         operationDoc,
