@@ -105,6 +105,43 @@ export const ERROR_TYPES = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Flat Response Standard (v2)
+// ---------------------------------------------------------------------------
+
+export interface FlatErrorResponse {
+	error: true;
+	errorType: string;
+	resource: string;
+	operation: string;
+	summary: string;
+	nextAction: string;
+	correlationId?: string;
+}
+
+/**
+ * Build a flat error response. Context fields (filtersUsed, missingFields, etc.)
+ * are spread at root level — no nesting under a generic `context` key.
+ */
+export function wrapFlatError(
+	resource: string,
+	operation: string,
+	errorType: string,
+	summary: string,
+	nextAction: string,
+	contextFields?: Record<string, unknown>,
+): FlatErrorResponse {
+	return {
+		error: true,
+		errorType,
+		resource,
+		operation: `${resource}.${operation}`,
+		summary,
+		nextAction,
+		...(contextFields ?? {}),
+	} as FlatErrorResponse;
+}
+
+// ---------------------------------------------------------------------------
 // Envelope factories
 // ---------------------------------------------------------------------------
 
