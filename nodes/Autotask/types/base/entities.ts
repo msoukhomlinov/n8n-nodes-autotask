@@ -33,6 +33,8 @@ export interface IChildResource {
 export interface IEntityMetadata {
 	/** Entity name */
 	name: string;
+	/** Optional semantic guidance for AI tool descriptions */
+	aiDescription?: string;
 	/** Resource key used by executors/AI tools when different from lowerCamelCase entity name */
 	resourceKey?: string;
 	/** Parent entity type for child resources */

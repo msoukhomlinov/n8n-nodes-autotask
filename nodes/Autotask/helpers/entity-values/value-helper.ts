@@ -54,6 +54,22 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		this.cacheService = options?.cacheService;
 	}
 
+	private getEntityFieldMapping(): IPicklistReferenceFieldMapping | undefined {
+		const directMapping = PICKLIST_REFERENCE_FIELD_MAPPINGS[this.entityType];
+		if (directMapping) {
+			return directMapping;
+		}
+
+		const lowerEntityType = this.entityType.toLowerCase();
+		const matchingKey = Object.keys(PICKLIST_REFERENCE_FIELD_MAPPINGS).find(
+			(key) => key.toLowerCase() === lowerEntityType,
+		);
+
+		return matchingKey
+			? PICKLIST_REFERENCE_FIELD_MAPPINGS[matchingKey]
+			: undefined;
+	}
+
 	/**
 	 * Lazily get or create the GetManyOperation instance
 	 * This breaks the circular dependency by deferring the import until first use
@@ -139,7 +155,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	public async getValues(activeOnly = false): Promise<T[]> {
 		try {
 			// Apply any configured filters from PICKLIST_REFERENCE_FIELD_MAPPINGS
-			const mapping = PICKLIST_REFERENCE_FIELD_MAPPINGS[this.entityType];
+			const mapping = this.getEntityFieldMapping();
 			const filters: Record<string, unknown> = {
 				...(mapping?.filters || {}),
 			};
@@ -332,7 +348,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		const requiredFields = new Set<string>(['id']);
 
 		// Get mapping for this entity type
-		const mapping = PICKLIST_REFERENCE_FIELD_MAPPINGS[this.entityType];
+		const mapping = this.getEntityFieldMapping();
 
 		if (mapping) {
 			// Add name fields from mapping, filtering out potentially problematic fields
@@ -623,8 +639,9 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		};
 
 		// 1. Try to use field mapping if enabled and exists
-		if (useMapping && PICKLIST_REFERENCE_FIELD_MAPPINGS[this.entityType]) {
-			const mappedName = this.formatMappedName(entity, PICKLIST_REFERENCE_FIELD_MAPPINGS[this.entityType]);
+		const mapping = this.getEntityFieldMapping();
+		if (useMapping && mapping) {
+			const mappedName = this.formatMappedName(entity, mapping);
 			if (mappedName) return mappedName;
 		}
 

@@ -76,7 +76,7 @@ const REFERENCE_FIELD_MAPPINGS: Record<string, string> = {
 /**
  * Determine what entity a field references based on field name and context
  */
-function getReferencedEntity(fieldId: string, resource: string): string | undefined {
+export function getReferencedEntity(fieldId: string, resource: string): string | undefined {
     // Direct mapping lookup
     if (REFERENCE_FIELD_MAPPINGS[fieldId]) {
         const mappedEntity = REFERENCE_FIELD_MAPPINGS[fieldId];
@@ -283,7 +283,7 @@ export async function describeResource(
                 // Use the original Autotask field metadata to determine if this is a real picklist.
                 // This avoids treating boolean fields (which get Yes/No UI options) as picklists.
                 isPickList: Boolean(originalField?.isPickList),
-                isReference: Boolean((field as unknown as { isReference?: boolean }).isReference)
+                isReference: Boolean(originalField?.isReference)
             };
 
             // Add picklistParentField if the field has a parent picklist dependency

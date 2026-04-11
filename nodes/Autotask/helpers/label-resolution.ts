@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
-import { describeResource, listPicklistValues } from './aiHelper';
+import { describeResource, getReferencedEntity, listPicklistValues } from './aiHelper';
 import { EntityValueHelper } from './entity-values/value-helper';
+import { PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../constants/field.constants';
 
 export interface LabelResolution {
     field: string;
@@ -26,13 +27,60 @@ export interface LabelResolutionResult {
 // Shared utility: detects whether a value looks like a valid Autotask numeric ID.
 // Autotask IDs are positive integers (>0). Uses parseInt round-trip to reject
 // zero-padded strings like "00123".
-function isLikelyId(v: unknown): boolean {
+export function isLikelyId(v: unknown): boolean {
     if (typeof v === 'number') return Number.isInteger(v) && v > 0;
     if (typeof v === 'string' && /^\d+$/.test(v)) {
         const n = parseInt(v, 10);
         return n > 0 && String(n) === v;
     }
     return false;
+}
+
+function inferReferenceEntityFromField(fieldId: string, resource: string): string | undefined {
+    return getReferencedEntity(fieldId, resource);
+}
+
+function getEntityNameFields(entityType: string): string[] {
+    const direct = PICKLIST_REFERENCE_FIELD_MAPPINGS[entityType];
+    if (direct) return direct.nameFields;
+
+    const lowerType = entityType.toLowerCase();
+    const key = Object.keys(PICKLIST_REFERENCE_FIELD_MAPPINGS).find(
+        k => k.toLowerCase() === lowerType,
+    );
+    return key ? PICKLIST_REFERENCE_FIELD_MAPPINGS[key].nameFields : [];
+}
+
+function findUniqueNameFieldMatchId(
+    entities: IDataObject[],
+    label: string,
+    nameFields: string[],
+): string | number | undefined {
+    const trimmedLabel = label.trim();
+    if (trimmedLabel === '' || nameFields.length < 2) {
+        return undefined;
+    }
+
+    const target = trimmedLabel.toLowerCase();
+    const matchedIds: Array<string | number> = [];
+    const seenIds = new Set<string | number>();
+
+    for (const entity of entities) {
+        const id = entity.id as string | number | undefined;
+        if (id === undefined || seenIds.has(id)) continue;
+
+        for (const field of nameFields) {
+            const raw = entity[field];
+            const strValue = typeof raw === 'string' ? raw.trim() : '';
+            if (strValue !== '' && strValue.toLowerCase() === target) {
+                seenIds.add(id);
+                matchedIds.push(id);
+                break;
+            }
+        }
+    }
+
+    return matchedIds.length === 1 ? matchedIds[0] : undefined;
 }
 
 /**
@@ -189,6 +237,7 @@ export async function resolveLabelsToIds(
                         const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
                         const id = (entity as unknown as IDataObject).id as string | number;
                         if (display && display.toLowerCase().includes(label.toLowerCase()) && !seenIds.has(id)) {
+                            seenIds.add(id);
                             allPartials.push({ id, displayName: display });
                         }
                     }
@@ -253,9 +302,14 @@ export async function resolveFilterLabelsToIds(
 
     // Handle array values for in/notIn operators on reference/picklist fields.
     // Resolves each string element individually; keeps numeric/boolean elements as-is.
+    const field = readFields.find(f => f.id.toLowerCase() === filterField.toLowerCase());
+    const inferredReferenceEntity = inferReferenceEntityFromField(filterField, resource);
+    const hasReferenceFallback =
+        Boolean(inferredReferenceEntity) &&
+        (!field || (!field.isPickList && !field.isReference));
+
     if (Array.isArray(filterValue)) {
-        const field = readFields.find(f => f.id.toLowerCase() === filterField.toLowerCase());
-        if (!field || (!field.isPickList && !field.isReference)) {
+        if ((!field || (!field.isPickList && !field.isReference)) && !hasReferenceFallback) {
             return { values, resolutions, warnings, pendingConfirmations };
         }
         const hasStringLabels = filterValue.some(v => typeof v === 'string' && !isLikelyId(v));
@@ -302,15 +356,14 @@ export async function resolveFilterLabelsToIds(
     }
 
     // Find the field metadata in read fields
-    const field = readFields.find(f => f.id.toLowerCase() === filterField.toLowerCase());
-    if (!field) {
+    if (!field && !hasReferenceFallback) {
         return { values, resolutions, warnings, pendingConfirmations };
     }
 
     const label = filterValue.trim();
 
     // Picklist resolution
-    if (field.isPickList) {
+    if (field?.isPickList) {
         let idMatch: string | number | undefined;
 
         // Try inline allowed values first
@@ -360,9 +413,11 @@ export async function resolveFilterLabelsToIds(
     }
 
     // Reference resolution
-    if (field.isReference && field.referencesEntity) {
+    const referenceEntity = field?.isReference ? field.referencesEntity : undefined;
+    const effectiveReferenceEntity = referenceEntity ?? (hasReferenceFallback ? inferredReferenceEntity : undefined);
+    if (effectiveReferenceEntity) {
         try {
-            const helper = new EntityValueHelper(context, field.referencesEntity);
+            const helper = new EntityValueHelper(context, effectiveReferenceEntity);
 
             // Pass 1: Active entities
             const activeCandidates = await helper.getValues(true);
@@ -390,6 +445,41 @@ export async function resolveFilterLabelsToIds(
                 }
             }
 
+            // Individual nameField matching for multi-field entities.
+            // When the mapping has 2+ nameFields (e.g. firstName + lastName for Resource),
+            // the label may match a single field exactly even though the full display name
+            // (e.g. "Max Soukhomlinov") doesn't match the partial label ("Max").
+            // Auto-resolves only when exactly one entity matches on any nameField.
+            const nameFields = getEntityNameFields(effectiveReferenceEntity);
+            if (bestId === undefined && nameFields.length >= 2) {
+                const allForNameMatch = allCandidates ?? await helper.getValues(false);
+                const mergedById = new Map<string | number, IDataObject>();
+
+                for (const entity of activeCandidates) {
+                    const data = entity as unknown as IDataObject;
+                    const id = data.id as string | number | undefined;
+                    if (id !== undefined) {
+                        mergedById.set(id, data);
+                    }
+                }
+                for (const entity of allForNameMatch) {
+                    const data = entity as unknown as IDataObject;
+                    const id = data.id as string | number | undefined;
+                    if (id !== undefined && !mergedById.has(id)) {
+                        mergedById.set(id, data);
+                    }
+                }
+
+                const nameFieldMatchId = findUniqueNameFieldMatchId(
+                    Array.from(mergedById.values()),
+                    label,
+                    nameFields,
+                );
+                if (nameFieldMatchId !== undefined) {
+                    bestId = nameFieldMatchId;
+                }
+            }
+
             // Still no exact match — collect partial matches from both active and all sets
             if (bestId === undefined) {
                 const seenIds = new Set<string | number>();
@@ -410,6 +500,7 @@ export async function resolveFilterLabelsToIds(
                     const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
                     const id = (entity as unknown as IDataObject).id as string | number;
                     if (display && display.toLowerCase().includes(label.toLowerCase()) && !seenIds.has(id)) {
+                        seenIds.add(id);
                         allPartials.push({ id, displayName: display });
                     }
                 }
@@ -422,24 +513,36 @@ export async function resolveFilterLabelsToIds(
                         fieldType: 'reference',
                     });
                 }
+
+                // Read filters are non-mutating, so when there is exactly one candidate
+                // we can safely promote it to an auto-resolution to avoid extra LLM turns.
+                const latestPending = pendingConfirmations[pendingConfirmations.length - 1];
+                if (
+                    latestPending &&
+                    latestPending.field === filterField &&
+                    new Set(latestPending.candidates.map((candidate) => String(candidate.id))).size === 1
+                ) {
+                    bestId = latestPending.candidates[0].id;
+                    pendingConfirmations.pop();
+                }
             }
 
             if (bestId !== undefined) {
                 values[filterField] = bestId;
                 resolutions.push({ field: filterField, from: label, to: bestId, method: 'reference' });
             } else if (pendingConfirmations.length === 0) {
-                warnings.push(`Could not resolve reference filter label '${label}' for field '${filterField}' (${field.referencesEntity})`);
+                warnings.push(`Could not resolve reference filter label '${label}' for field '${filterField}' (${effectiveReferenceEntity})`);
             }
         } catch (err) {
             const msg = (err as Error).message ?? String(err);
             const isInfra = /timeout|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|401|403|unauthorized|forbidden|socket/i.test(msg);
             warnings.push(
                 isInfra
-                    ? `[INFRASTRUCTURE] Filter resolution failed for '${filterField}' (${field.referencesEntity}): ${msg}. Value sent as-is.`
+                    ? `[INFRASTRUCTURE] Filter resolution failed for '${filterField}' (${effectiveReferenceEntity}): ${msg}. Value sent as-is.`
                     : `Filter resolution error for '${filterField}': ${msg}`,
             );
         }
-    } else if (field.isReference && !field.referencesEntity) {
+    } else if (field?.isReference && !field.referencesEntity) {
         warnings.push(
             `Reference filter field '${filterField}' has no known entity type — provide a numeric ID directly, ` +
             `or use autotask_${resource} with operation 'describeFields' to inspect.`,

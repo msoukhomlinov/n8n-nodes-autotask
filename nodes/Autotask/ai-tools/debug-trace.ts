@@ -1,11 +1,29 @@
-import { appendFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mkdir, appendFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import type { FieldMeta } from '../helpers/aiHelper';
 
+/** Matches Autotask API credential default `cacheDirectory` (`./cache/autotask`). */
+const DEFAULT_DEBUG_LOG_DIR = resolve(process.cwd(), 'cache', 'autotask');
+
+const DEBUG_LOG_FILENAME = 'autotask-ai-tool-debug.jsonl';
+
+/** Set when file cache initialises — same folder as `cache.json` for that credential. */
+let aiToolDebugLogDir: string | undefined;
+
+export function setAiToolDebugLogDir(dir: string): void {
+	aiToolDebugLogDir = dir;
+}
+
+export function clearAiToolDebugLogDir(): void {
+	aiToolDebugLogDir = undefined;
+}
+
+export function getAiToolDebugFilePath(): string {
+	return join(aiToolDebugLogDir ?? DEFAULT_DEBUG_LOG_DIR, DEBUG_LOG_FILENAME);
+}
+
 export const AI_TOOL_DEBUG_ENABLED = true;
-export const AI_TOOL_DEBUG_VERBOSE = true;
-export const AI_TOOL_DEBUG_FILE_PATH = join(tmpdir(), 'autotask-ai-tool-debug.jsonl');
+export const AI_TOOL_DEBUG_VERBOSE = false;
 
 export interface AiTraceEvent {
 	ts: string;
@@ -33,9 +51,12 @@ export function writeAiTrace(event: Omit<AiTraceEvent, 'ts'>): void {
 	if (!AI_TOOL_DEBUG_ENABLED) return;
 	try {
 		const line = `${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`;
-		appendFile(AI_TOOL_DEBUG_FILE_PATH, line, 'utf8').catch(() => {
-			// best-effort only: trace failures must never affect node execution
-		});
+		const filePath = getAiToolDebugFilePath();
+		mkdir(dirname(filePath), { recursive: true })
+			.then(() => appendFile(filePath, line, 'utf8'))
+			.catch(() => {
+				// best-effort only: trace failures must never affect node execution
+			});
 	} catch {
 		// best-effort only: JSON.stringify failures must never affect node execution
 	}
@@ -44,6 +65,33 @@ export function writeAiTrace(event: Omit<AiTraceEvent, 'ts'>): void {
 export function safeKeys(value: unknown): string[] {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
 	return Object.keys(value as Record<string, unknown>).sort();
+}
+
+export function safeSchemaKeys(schema: unknown): string[] {
+	if (!schema || typeof schema !== 'object') return [];
+
+	const schemaObj = schema as Record<string, unknown>;
+	if (schemaObj.shape && typeof schemaObj.shape === 'object') {
+		return Object.keys(schemaObj.shape as Record<string, unknown>).sort();
+	}
+
+	const def = schemaObj._def as Record<string, unknown> | undefined;
+	const rawShape = def?.shape;
+	if (typeof rawShape === 'function') {
+		try {
+			const builtShape = rawShape();
+			if (builtShape && typeof builtShape === 'object') {
+				return Object.keys(builtShape as Record<string, unknown>).sort();
+			}
+		} catch {
+			return [];
+		}
+	}
+	if (rawShape && typeof rawShape === 'object') {
+		return Object.keys(rawShape as Record<string, unknown>).sort();
+	}
+
+	return [];
 }
 
 export function summariseFields(fields: FieldMeta[]): Record<string, unknown> {

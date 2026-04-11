@@ -10,6 +10,38 @@ const MAX_INLINE_PICKLIST_VALUES = 8;
 /** Picklist size threshold -- above this, tell LLM to use listPicklistValues */
 const LARGE_PICKLIST_THRESHOLD = 15;
 
+const READ_ONLY_SCHEMA_CACHE_MAX = 200;
+const readOnlySchemaCache = new Map<string, unknown>();
+
+function getSchemaFieldSignature(fields: FieldMeta[]): string {
+	return fields
+		.map((field) =>
+			[
+				field.id,
+				field.type ?? '',
+				field.required ? '1' : '0',
+				field.udf ? '1' : '0',
+				field.isPickList ? '1' : '0',
+				field.isReference ? '1' : '0',
+			].join(':'),
+		)
+		.sort()
+		.join('|');
+}
+
+function getReadOnlySchemaCacheKey(resource: string, operations: string[], readFields: FieldMeta[]): string {
+	const opSig = [...operations].sort().join(',');
+	return `${resource}|${opSig}|${getSchemaFieldSignature(readFields)}`;
+}
+
+function setReadOnlySchemaCache(key: string, value: unknown): void {
+	if (readOnlySchemaCache.size >= READ_ONLY_SCHEMA_CACHE_MAX) {
+		const firstKey = readOnlySchemaCache.keys().next().value as string | undefined;
+		if (firstKey) readOnlySchemaCache.delete(firstKey);
+	}
+	readOnlySchemaCache.set(key, value);
+}
+
 /**
  * Build a description string for a field, including picklist value hints when applicable.
  */
@@ -132,6 +164,20 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		readFields: FieldMeta[],
 		writeFields: FieldMeta[],
 	) {
+		const isReadOnlyOpsSet = writeFields.length === 0;
+		if (isReadOnlyOpsSet) {
+			const cacheKey = getReadOnlySchemaCacheKey(resource, operations, readFields);
+			const cachedSchema = readOnlySchemaCache.get(cacheKey);
+			if (cachedSchema) {
+				traceSchemaBuild({
+					phase: 'build-cache-hit',
+					resource,
+					summary: { cacheKey, strategy: 'read-only' },
+				});
+				return cachedSchema;
+			}
+		}
+
 		traceSchemaBuild({
 			phase: 'build-start',
 			resource,
@@ -286,6 +332,18 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					'Skip first N records (for pagination, max 499). Use with limit. Response includes hasMore and nextOffset. Limited to first 500 total records — use narrower filters for larger datasets.',
 				);
 			shape.recency = rRecencySchema;
+			const dateFields = readFields
+				.filter((f) => !f.udf && f.type.toLowerCase().includes('date'))
+				.map((f) => f.id);
+			if (dateFields.length > 0) {
+				shape.recency_field = rz
+					.enum(dateFields as [string, ...string[]])
+					.optional()
+					.describe(
+						`Date/time field to use for recency/since/until filtering. Available: ${dateFields.join(', ')}. ` +
+							`Default: first available. Choose the field that best matches the query intent (e.g. a work-date field for "worked today", an activity-date for "recent activity").`,
+					);
+			}
 			shape.since = rz
 				.string()
 				.optional()
@@ -871,7 +929,12 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				exposesImpersonationResourceId: Boolean(shape.impersonationResourceId),
 			},
 		});
-		return rz.object(shape);
+		const schema = rz.object(shape);
+		if (isReadOnlyOpsSet) {
+			const cacheKey = getReadOnlySchemaCacheKey(resource, operations, readFields);
+			setReadOnlySchemaCache(cacheKey, schema);
+		}
+		return schema;
 	}
 
 	return { buildUnifiedSchema };

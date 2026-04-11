@@ -2,6 +2,7 @@ import Keyv from 'keyv';
 import KeyvFile from 'keyv-file';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { createHash } from 'node:crypto';
 
 export interface ICacheConfig {
 	enabled: boolean;
@@ -18,6 +19,28 @@ export interface ICacheConfig {
 		enabled: boolean;
 		ttl: number;
 	};
+}
+
+function stableSortObject(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map((item) => stableSortObject(item));
+    }
+
+    if (!value || typeof value !== 'object') {
+        return value;
+    }
+
+    const input = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(input).sort()) {
+        out[key] = stableSortObject(input[key]);
+    }
+    return out;
+}
+
+export function hashCachePayload(value: unknown): string {
+    const canonical = JSON.stringify(stableSortObject(value));
+    return createHash('sha256').update(canonical).digest('hex');
 }
 
 /**
@@ -434,6 +457,14 @@ export class CacheService {
 	 */
 	public getPicklistTTL(): number {
 		return this.config.picklists.ttl;
+	}
+
+	/**
+	 * Directory containing this credential's `cache.json` (cache root + sanitised credential id).
+	 * Used to colocate other diagnostic files (e.g. AI tool debug trace).
+	 */
+	public getCredentialCacheDirectory(): string | undefined {
+		return this.filePath ? path.dirname(this.filePath) : undefined;
 	}
 
 	/**

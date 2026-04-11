@@ -4,7 +4,6 @@ import type {
 	ILoadOptionsFunctions,
 	IDataObject,
 } from 'n8n-workflow';
-import moment from 'moment-timezone';
 import { executeToolOperation } from '../resources/tool/execute';
 import type { FieldMeta } from '../helpers/aiHelper';
 import {
@@ -12,24 +11,17 @@ import {
 	listPicklistValues,
 	type DescribeResourceResponse,
 } from '../helpers/aiHelper';
-import { mapFilterOp } from './schema-generator';
 import { validateEntityId, validateReadFields, validateWriteFields } from './field-validator';
 import {
 	formatApiError,
 	formatFilterConstraintError,
 	formatIdError,
-	formatNotFoundError,
-	formatNoResultsFound,
 	wrapSuccess,
 	wrapError,
 	ERROR_TYPES,
-	type ResultKind,
-	type ResultPayload,
-	type PaginationInfo,
 } from './error-formatter';
 import {
 	resolveLabelsToIds,
-	resolveFilterLabelsToIds,
 	type LabelResolution,
 	type PendingLabelConfirmation,
 } from '../helpers/label-resolution';
@@ -41,6 +33,18 @@ import {
 import { buildOperationDoc } from './description-builders';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
 import { getConfiguredTimezone, convertDatesToUTC } from '../helpers/date-time/utils';
+import { buildRecencyFilters, type RecencyBuildResult } from './recency';
+import {
+	attachCorrelation,
+	buildResultPayload,
+	type ToolResponseContext,
+} from './response-builder';
+import { dispatchOperationResponse } from './operation-handlers/operation-dispatch';
+import {
+	buildFieldLookup,
+	buildFilterFromParams,
+	resolveAndClassifyFilters,
+} from './filter-builder';
 import type { IAutotaskCredentials } from '../types/base/auth';
 import {
 	AI_TOOL_DEBUG_VERBOSE,
@@ -54,8 +58,16 @@ import {
 	traceLabelResolution,
 	traceResponse,
 	traceToolCall,
-	traceWriteGuard,
 } from './debug-trace';
+import {
+	buildWriteResolutionBlocker,
+	isResolutionFailureWarning,
+	summariseResolutionState,
+} from './write-guard';
+import {
+	COMPOUND_REGISTRY,
+	COMPOUND_PARENT_NOT_FOUND_OUTCOMES,
+} from '../constants/compound-registry';
 
 export interface ToolExecutorParams {
 	resource: string;
@@ -74,6 +86,7 @@ export interface ToolExecutorParams {
 	offset?: number;
 	fields?: string;
 	recency?: string;
+	recency_field?: string;
 	since?: string;
 	until?: string;
 	domain?: string;
@@ -91,313 +104,15 @@ export interface ToolExecutionMetadata {
 	allAllowedOps?: string[];
 }
 
-/** Maximum records to include in a single tool response before truncation */
-const MAX_RESPONSE_RECORDS = 100;
-const DEFAULT_QUERY_LIMIT = 10;
-const MAX_QUERY_LIMIT = 500;
-const RECENCY_OVER_REQUEST_LIMIT = 500;
-const RECENCY_FIELD_PRIORITY = [
-	'createDateTime',
-	'createDate',
-	'lastModifiedDateTime',
-	'lastActivityDateTime',
-	'lastActivityDate',
-	'dateWorked',
-] as const;
-const RECENCY_WINDOWS_MS: Record<string, number> = {
-	last_15m: 15 * 60 * 1000,
-	last_1h: 60 * 60 * 1000,
-	last_4h: 4 * 60 * 60 * 1000,
-	last_12h: 12 * 60 * 60 * 1000,
-	last_24h: 24 * 60 * 60 * 1000,
-	last_3d: 3 * 24 * 60 * 60 * 1000,
-	last_7d: 7 * 24 * 60 * 60 * 1000,
-	last_14d: 14 * 24 * 60 * 60 * 1000,
-	last_30d: 30 * 24 * 60 * 60 * 1000,
-	last_90d: 90 * 24 * 60 * 60 * 1000,
-};
+export const DEFAULT_QUERY_LIMIT = 10;
+export const MAX_QUERY_LIMIT = 500;
+export const RECENCY_OVER_REQUEST_LIMIT = 500;
 
-const RECENCY_CUSTOM_DAYS_MIN = 1;
-const RECENCY_CUSTOM_DAYS_MAX = 365;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-function parseRecencyWindowMs(recency: string): number {
-	const preset = RECENCY_WINDOWS_MS[recency];
-	if (preset !== undefined) {
-		return preset;
-	}
-	const match = /^last_(\d+)d$/.exec(recency);
-	if (match) {
-		const days = parseInt(match[1], 10);
-		if (
-			Number.isFinite(days) &&
-			days >= RECENCY_CUSTOM_DAYS_MIN &&
-			days <= RECENCY_CUSTOM_DAYS_MAX
-		) {
-			return days * MS_PER_DAY;
-		}
-	}
-	const presets = Object.keys(RECENCY_WINDOWS_MS).join(', ');
-	throw new Error(
-		`Unsupported recency value '${recency}'. Use a preset (${presets}) or custom last_Nd with N between ${RECENCY_CUSTOM_DAYS_MIN} and ${RECENCY_CUSTOM_DAYS_MAX} (e.g. last_5d, last_45d).`,
-	);
-}
-
-interface ToolFilter {
-	field: string;
-	op: string;
-	value?: string | number | boolean | Array<string | number | boolean>;
-	udf?: boolean;
-}
-
-interface RecencyBuildResult {
-	filters: ToolFilter[];
-	isActive: boolean;
-	note?: string;
-}
-
-interface ToolResponseContext {
-	recencyActive?: boolean;
-	recencyWindowLimited?: boolean;
-	recencyNote?: string;
-	resolutions?: LabelResolution[];
-	resolutionWarnings?: string[];
-	pendingConfirmations?: PendingLabelConfirmation[];
-	effectiveOffset?: number;
-}
-
-function getEffectiveLimit(limit: number | undefined): number {
+export function getEffectiveLimit(limit: number | undefined): number {
 	if (typeof limit !== 'number' || Number.isNaN(limit)) {
 		return DEFAULT_QUERY_LIMIT;
 	}
 	return Math.min(Math.max(Math.trunc(limit), 1), MAX_QUERY_LIMIT);
-}
-
-function buildFieldLookup(fields: FieldMeta[]): Map<string, FieldMeta> {
-	return new Map(fields.map((field) => [field.id.toLowerCase(), field]));
-}
-
-function toUtcIsoSeconds(
-	input: string,
-	parameterName: 'since' | 'until',
-	timezone: string,
-): string {
-	const parsed = moment.tz(input, timezone);
-	if (!parsed.isValid()) {
-		throw new Error(
-			`Invalid ${parameterName} value '${input}'. Use a date/time string such as ` +
-				`2026-01-15T09:00:00 (interpreted as your configured timezone) or ` +
-				`2026-01-15T09:00:00Z / 2026-01-15T09:00:00+10:00 (explicit offset respected).`,
-		);
-	}
-	return parsed
-		.utc()
-		.toISOString()
-		.replace(/\.\d{3}Z$/, 'Z');
-}
-
-function resolveRecencyField(readFields: FieldMeta[]): string | null {
-	if (readFields.length === 0) {
-		return null;
-	}
-	const lookup = buildFieldLookup(readFields);
-	for (const candidate of RECENCY_FIELD_PRIORITY) {
-		const field = lookup.get(candidate.toLowerCase());
-		if (field && !field.udf) {
-			return field.id;
-		}
-	}
-	const fallback = readFields.find(
-		(field) => !field.udf && field.type.toLowerCase().includes('date'),
-	);
-	return fallback?.id ?? null;
-}
-
-function buildRecencyFilters(
-	params: ToolExecutorParams,
-	readFields: FieldMeta[],
-	timezone: string,
-): RecencyBuildResult {
-	const recency = typeof params.recency === 'string' ? params.recency.trim() : '';
-	const sinceRaw = typeof params.since === 'string' ? params.since.trim() : '';
-	const untilRaw = typeof params.until === 'string' ? params.until.trim() : '';
-	const hasRecencyInput = Boolean(recency || sinceRaw || untilRaw);
-
-	if (!hasRecencyInput) {
-		return { filters: [], isActive: false };
-	}
-
-	const recencyField = resolveRecencyField(readFields);
-	if (!recencyField) {
-		return {
-			filters: [],
-			isActive: false,
-			note: 'Recency filters were ignored because no datetime field was detected for this resource.',
-		};
-	}
-
-	let startIso: string | undefined;
-	if (sinceRaw) {
-		startIso = toUtcIsoSeconds(sinceRaw, 'since', timezone);
-	} else if (recency) {
-		const windowMs = parseRecencyWindowMs(recency);
-		startIso = new Date(Date.now() - windowMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
-	} else if (untilRaw) {
-		throw new Error("The 'until' parameter requires either 'since' or 'recency'.");
-	}
-
-	if (!startIso) {
-		return { filters: [], isActive: false };
-	}
-
-	const filters: ToolFilter[] = [
-		{
-			field: recencyField,
-			op: 'gte',
-			value: startIso,
-		},
-	];
-
-	if (untilRaw) {
-		const endIso = toUtcIsoSeconds(untilRaw, 'until', timezone);
-		if (new Date(endIso).getTime() < new Date(startIso).getTime()) {
-			throw new Error(
-				`'until' (${endIso}) must be greater than or equal to 'since' (${startIso}).`,
-			);
-		}
-		filters.push({
-			field: recencyField,
-			op: 'lte',
-			value: endIso,
-		});
-	}
-
-	return { filters, isActive: true };
-}
-
-function coerceFilterValueByFieldType(
-	value: string | number | boolean | Array<string | number | boolean>,
-	fieldType: string | undefined,
-	operator: string,
-): string | number | boolean | Array<string | number | boolean> {
-	const normalisedType = (fieldType ?? '').toLowerCase();
-	const toTypedScalar = (input: string | number | boolean): string | number | boolean => {
-		if (typeof input === 'number' || typeof input === 'boolean') {
-			return input;
-		}
-		if (normalisedType === 'number') {
-			const parsed = Number(input);
-			return Number.isFinite(parsed) ? parsed : input;
-		}
-		if (normalisedType === 'boolean') {
-			if (input.toLowerCase() === 'true') return true;
-			if (input.toLowerCase() === 'false') return false;
-		}
-		return input;
-	};
-
-	if (operator === 'in' || operator === 'notIn') {
-		if (Array.isArray(value)) {
-			return value.map((v) => toTypedScalar(v));
-		}
-		if (typeof value === 'string' && value.includes(',')) {
-			return value
-				.split(',')
-				.map((v) => v.trim())
-				.filter(Boolean)
-				.map((v) => toTypedScalar(v));
-		}
-		return [toTypedScalar(value)];
-	}
-	if (Array.isArray(value)) {
-		return value.length > 0 ? toTypedScalar(value[0]) : '';
-	}
-	return toTypedScalar(value);
-}
-
-/**
- * Build Autotask filter array from flat getMany/count params.
- * Supports two filter triplets for compound queries.
- */
-function buildFilterFromParams(
-	params: ToolExecutorParams,
-	readFields: FieldMeta[],
-	timezone: string,
-): ToolFilter[] {
-	const filters: ToolFilter[] = [];
-	const readFieldLookup = buildFieldLookup(readFields);
-
-	// First filter
-	const mappedOp1 = params.filter_op ? mapFilterOp(params.filter_op) : 'eq';
-	const isNullCheckOp1 = mappedOp1 === 'exist' || mappedOp1 === 'notExist';
-	if (
-		params.filter_field &&
-		(isNullCheckOp1 || (params.filter_value !== undefined && params.filter_value !== ''))
-	) {
-		const canonicalField = readFieldLookup.get(params.filter_field.toLowerCase());
-		let coercedValue1 = coerceFilterValueByFieldType(
-			params.filter_value as string | number | boolean | Array<string | number | boolean>,
-			canonicalField?.type,
-			mappedOp1,
-		);
-		if (
-			!isNullCheckOp1 &&
-			typeof coercedValue1 === 'string' &&
-			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(coercedValue1) &&
-			canonicalField?.type?.toLowerCase() === 'datetime'
-		) {
-			const converted = moment.tz(coercedValue1, timezone);
-			if (converted.isValid()) {
-				coercedValue1 = converted
-					.utc()
-					.toISOString()
-					.replace(/\.\d{3}Z$/, 'Z');
-			}
-		}
-		filters.push({
-			field: canonicalField?.id ?? params.filter_field,
-			op: mappedOp1,
-			...(!isNullCheckOp1 ? { value: coercedValue1 } : {}),
-			...(canonicalField?.udf ? { udf: true } : {}),
-		});
-	}
-
-	// Second filter
-	const mappedOp2 = params.filter_op_2 ? mapFilterOp(params.filter_op_2) : 'eq';
-	const isNullCheckOp2 = mappedOp2 === 'exist' || mappedOp2 === 'notExist';
-	if (
-		params.filter_field_2 &&
-		(isNullCheckOp2 || (params.filter_value_2 !== undefined && params.filter_value_2 !== ''))
-	) {
-		const canonicalField = readFieldLookup.get(params.filter_field_2.toLowerCase());
-		let coercedValue2 = coerceFilterValueByFieldType(
-			params.filter_value_2 as string | number | boolean | Array<string | number | boolean>,
-			canonicalField?.type,
-			mappedOp2,
-		);
-		if (
-			!isNullCheckOp2 &&
-			typeof coercedValue2 === 'string' &&
-			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(coercedValue2) &&
-			canonicalField?.type?.toLowerCase() === 'datetime'
-		) {
-			const converted = moment.tz(coercedValue2, timezone);
-			if (converted.isValid()) {
-				coercedValue2 = converted
-					.utc()
-					.toISOString()
-					.replace(/\.\d{3}Z$/, 'Z');
-			}
-		}
-		filters.push({
-			field: canonicalField?.id ?? params.filter_field_2,
-			op: mappedOp2,
-			...(!isNullCheckOp2 ? { value: coercedValue2 } : {}),
-			...(canonicalField?.udf ? { udf: true } : {}),
-		});
-	}
-
-	return filters;
 }
 
 /**
@@ -426,6 +141,7 @@ function buildFieldValues(
 		'offset',
 		'fields',
 		'recency',
+		'recency_field',
 		'since',
 		'until',
 		'domain',
@@ -509,269 +225,25 @@ const N8N_METADATA_FIELDS = new Set([
 	'toolCallId',
 	'operation',
 	'dryRun',
+	'recency_field',
 ]);
 
 /** Key prefixes injected by n8n that must be stripped regardless of suffix */
 const N8N_METADATA_PREFIXES = ['Prompt__'];
 
-/** Inject correlationId into a serialised envelope JSON string if defined. */
-function attachCorrelation(json: string, id: string | undefined): string {
-	if (!id) return json;
-	try {
-		const parsed = JSON.parse(json) as Record<string, unknown>;
-		return JSON.stringify({ correlationId: id, ...parsed });
-	} catch {
-		return json;
-	}
-}
-
-/** Compound operation outcomes that indicate a parent entity was not found — become ErrorEnvelope */
-const PARENT_NOT_FOUND_OUTCOMES = new Set([
-	'parent_not_found', // defensive — remapped by thin wrappers but kept for safety
-	'company_not_found', // contract, configurationItems, opportunity
-	'contract_not_found', // contractCharge, contractService
-	'ticket_not_found', // ticketCharge, ticketAdditionalConfigurationItem, ticketAdditionalContact
-	'project_not_found', // projectCharge
-	'holiday_set_not_found', // holiday
-]);
-
-/** Returns true for warnings that indicate a resolution failure affecting written data. */
-function isResolutionFailureWarning(w: string): boolean {
-	return (
-		w.startsWith('[INFRASTRUCTURE]') ||
-		w.includes('resolution failed') ||
-		w.includes('resolution error') ||
-		w.includes('Proceeding with raw values') ||
-		w.includes('Could not resolve') ||
-		w.includes('has no known entity type')
-	);
-}
-
-function summariseResolutionState(
-	resolutions: LabelResolution[],
-	warnings: string[],
-	pendingConfirmations: PendingLabelConfirmation[],
-): Record<string, unknown> {
-	const warningKinds = warnings.map((warning) =>
-		warning.startsWith('[INFRASTRUCTURE]') ? 'infrastructure' : 'resolution',
-	);
-	return {
-		resolvedFields: Array.from(new Set(resolutions.map((r) => r.field))),
-		failedFields: Array.from(
-			new Set(
-				warnings
-					.filter((w) => isResolutionFailureWarning(w))
-					.map((w) => {
-						const fieldMatch = w.match(/for (?:field )?'([^']+)'/);
-						return fieldMatch ? fieldMatch[1] : '[unknown]';
-					}),
-			),
-		),
-		pendingConfirmationFields: Array.from(new Set(pendingConfirmations.map((p) => p.field))),
-		warningKinds: Array.from(new Set(warningKinds)),
-		warningCount: warnings.length,
-		pendingConfirmationCount: pendingConfirmations.length,
-	};
-}
-
-/**
- * Pre-execution write guard. Returns a serialised ErrorEnvelope JSON string if any
- * resolution failure condition blocks the write, or null to allow execution to proceed.
- *
- * Blocking conditions:
- *  - pendingConfirmations.length > 0       (partial/ambiguous field matches)
- *  - warning matches isResolutionFailureWarning() but is not [INFRASTRUCTURE]  (no-match fields)
- *  - warning starts with [INFRASTRUCTURE]  (infra error during resolution)
- *  - impersonationFailed === true          (unresolvable impersonationResourceId string)
- */
-function buildWriteResolutionBlocker(
-	resource: string,
-	operation: string,
-	pendingConfirmations: import('../helpers/label-resolution').PendingLabelConfirmation[],
-	warnings: string[],
-	impersonationFailed: boolean,
-): string | null {
-	const unresolvedFields = warnings
-		.filter(
-			(w) =>
-				isResolutionFailureWarning(w) &&
-				!w.startsWith('[INFRASTRUCTURE]') &&
-				!w.includes('impersonation'),
-		)
-		.map((w) => {
-			const fieldMatch = w.match(/for (?:field )?'([^']+)'/);
-			return fieldMatch ? fieldMatch[1] : '[general-resolution-failure]';
-		});
-	const infraErrors = warnings.filter((w) => w.startsWith('[INFRASTRUCTURE]'));
-
-	const hasBlock =
-		pendingConfirmations.length > 0 ||
-		unresolvedFields.length > 0 ||
-		infraErrors.length > 0 ||
-		impersonationFailed;
-
-	if (!hasBlock) return null;
-	traceWriteGuard({
-		phase: 'blocked',
-		resource,
-		operation,
-		summary: {
-			blockerTypes: [
-				...(pendingConfirmations.length > 0 ? ['ambiguous'] : []),
-				...(unresolvedFields.length > 0 ? ['unresolved'] : []),
-				...(infraErrors.length > 0 ? ['infra'] : []),
-				...(impersonationFailed ? ['impersonation'] : []),
-			],
-			unresolvedFields,
-			infraErrorsCount: infraErrors.length,
-			ambiguousFieldsCount: pendingConfirmations.length,
-			impersonationFailure: impersonationFailed,
-		},
-	});
-
-	const parts: string[] = [];
-	if (pendingConfirmations.length > 0) {
-		const fields = pendingConfirmations.map((p) => `'${p.field}'`).join(', ');
-		parts.push(`Ambiguous matches for field(s) ${fields} — multiple candidates found.`);
-	}
-	if (unresolvedFields.length > 0) {
-		parts.push(`No match found for field(s): ${unresolvedFields.map((f) => `'${f}'`).join(', ')}.`);
-	}
-	if (infraErrors.length > 0) {
-		parts.push(`Resolution infrastructure error(s) prevented field lookup.`);
-	}
-	if (impersonationFailed) {
-		parts.push(`'impersonationResourceId' could not be resolved to a numeric resource ID.`);
-	}
-
-	const ctx: Record<string, unknown> = {};
-	if (pendingConfirmations.length > 0) ctx.pendingConfirmations = pendingConfirmations;
-	if (unresolvedFields.length > 0) ctx.unresolvedFields = unresolvedFields;
-	if (infraErrors.length > 0) ctx.infraErrors = infraErrors;
-	if (impersonationFailed) ctx.impersonationFailed = true;
-
-	return JSON.stringify(
-		wrapError(
-			resource,
-			operation,
-			ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
-			`Write blocked: ${parts.join(' ')} Resolve all field references before retrying.`,
-			`Call autotask_${resource} with operation 'describeFields' to inspect field metadata, then retry with exact IDs or unambiguous labels.`,
-			ctx,
-		),
-	);
-}
-
-/**
- * Construct a ResultPayload. Derives needsUserConfirmation and safeToContinue automatically.
- * Callers never set those two flags directly.
- */
-function buildResultPayload(
-	kind: ResultKind,
-	data: unknown,
-	flags: Partial<
-		Omit<import('./error-formatter').ResultFlags, 'needsUserConfirmation' | 'safeToContinue'>
-	>,
-	extras: {
-		warnings?: string[];
-		pendingConfirmations?: import('../helpers/label-resolution').PendingLabelConfirmation[];
-		appliedResolutions?: import('../helpers/label-resolution').LabelResolution[];
-		pagination?: PaginationInfo;
-		notes?: string[];
-	} = {},
-): ResultPayload {
-	const pendingConfirmations = extras.pendingConfirmations ?? [];
-	const warnings = extras.warnings ?? [];
-	const appliedResolutions = extras.appliedResolutions ?? [];
-	const needsUserConfirmation = pendingConfirmations.length > 0;
-	const partial = flags.partial ?? false;
-
-	return {
-		kind,
-		data,
-		flags: {
-			mutated: flags.mutated ?? false,
-			retryable: flags.retryable ?? true,
-			partial,
-			truncated: flags.truncated ?? false,
-			needsUserConfirmation,
-			safeToContinue: !needsUserConfirmation && !partial,
-			...(flags.dryRunOnly ? { dryRunOnly: true } : {}),
-		},
-		warnings,
-		pendingConfirmations,
-		appliedResolutions,
-		...(extras.pagination ? { pagination: extras.pagination } : {}),
-		...(extras.notes?.length ? { notes: extras.notes } : {}),
-	};
-}
 
 /** Extract the canonical created-entity numeric ID from a compound creator result. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildCompoundEntityId(resource: string, result: any): number | undefined {
-	switch (resource) {
-		case 'contractCharge':
-		case 'ticketCharge':
-		case 'projectCharge':
-			return result.chargeId;
-		case 'configurationItems':
-			return result.configurationItemId;
-		case 'timeEntry':
-			return result.timeEntryId;
-		case 'contractService':
-			return result.contractServiceId;
-		case 'contract':
-			return result.contractId;
-		case 'opportunity':
-			return result.opportunityId;
-		case 'expenseItem':
-			return result.expenseItemId;
-		case 'ticketAdditionalConfigurationItem':
-			return result.ticketAdditionalConfigurationItemId;
-		case 'ticketAdditionalContact':
-			return result.ticketAdditionalContactId;
-		case 'changeRequestLink':
-			return result.linkId;
-		case 'holidaySet':
-			return result.holidaySetId;
-		case 'holiday':
-			return result.holidayId;
-		default:
-			return result.id ?? result.itemId;
-	}
+	const field = COMPOUND_REGISTRY[resource]?.entityIdField;
+	return field ? result[field] : (result.id ?? result.itemId);
 }
 
 /** Extract the canonical existing-entity numeric ID from a compound creator result (skip/update). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildCompoundExistingId(resource: string, result: any): number | undefined {
-	switch (resource) {
-		case 'contractCharge':
-		case 'ticketCharge':
-		case 'projectCharge':
-			return result.existingChargeId;
-		case 'configurationItems':
-			return result.existingConfigurationItemId;
-		case 'timeEntry':
-			return result.existingTimeEntryId;
-		case 'contractService':
-			return result.existingContractServiceId;
-		case 'contract':
-			return result.existingContractId;
-		case 'opportunity':
-		case 'ticketAdditionalConfigurationItem':
-		case 'ticketAdditionalContact':
-			return result.existingId;
-		case 'expenseItem':
-			return result.existingExpenseItemId;
-		case 'changeRequestLink':
-			return result.existingLinkId;
-		case 'holidaySet':
-			return result.existingHolidaySetId;
-		case 'holiday':
-			return result.existingHolidayId;
-		default:
-			return result.existingId;
-	}
+	const field = COMPOUND_REGISTRY[resource]?.existingIdField;
+	return field ? result[field] : result.existingId;
 }
 
 /** Build the context block (parent/scope fields) for a compound creator result. */
@@ -891,59 +363,12 @@ export async function executeAiTool(
 	const filters = buildFilterFromParams(params, readFields, timezone);
 	const entityId = params.id !== undefined ? String(params.id) : '';
 
-	// Resolve human-readable labels to IDs for filter values on reference/picklist fields.
-	// This allows the LLM to pass e.g. filter_field="companyID", filter_value="Contoso"
-	// instead of requiring a prerequisite lookup to get the numeric ID.
-	const filterResolutions: LabelResolution[] = [];
-	const filterWarnings: string[] = [];
-	const filterPendingConfirmations: PendingLabelConfirmation[] = [];
-	for (const filter of filters) {
-		if (filter.value !== undefined && typeof filter.value === 'string') {
-			try {
-				const resolution = await resolveFilterLabelsToIds(
-					context,
-					resource,
-					filter.field,
-					filter.value,
-					readFields,
-				);
-				if (resolution.resolutions.length > 0) {
-					filter.value = resolution.values[filter.field] as string | number | boolean;
-					filterResolutions.push(...resolution.resolutions);
-				}
-				if (resolution.warnings.length > 0) {
-					filterWarnings.push(...resolution.warnings);
-				}
-				if (resolution.pendingConfirmations.length > 0) {
-					filterPendingConfirmations.push(...resolution.pendingConfirmations);
-				}
-			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
-				filterWarnings.push(`Filter label resolution failed for '${filter.field}': ${msg}`);
-			}
-		} else if (Array.isArray(filter.value)) {
-			// Attempt label resolution for in/notIn array filter values on reference/picklist fields.
-			// Each string element is resolved individually; numeric elements are kept as-is.
-			try {
-				const resolution = await resolveFilterLabelsToIds(
-					context,
-					resource,
-					filter.field,
-					filter.value,
-					readFields,
-				);
-				if (resolution.resolutions.length > 0) {
-					filter.value = resolution.values[filter.field] as Array<string | number | boolean>;
-					filterResolutions.push(...resolution.resolutions);
-				}
-				filterWarnings.push(...resolution.warnings);
-				filterPendingConfirmations.push(...resolution.pendingConfirmations);
-			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
-				filterWarnings.push(`Array filter label resolution failed for '${filter.field}': ${msg}`);
-			}
-		}
-	}
+	const {
+		resolutions: filterResolutions,
+		warnings: filterWarnings,
+		pendingConfirmations: filterPendingConfirmations,
+		unresolvedIdLikeFilters,
+	} = await resolveAndClassifyFilters(context, resource, filters, readFields);
 	traceLabelResolution({
 		phase: 'filter-resolution',
 		resource,
@@ -951,6 +376,8 @@ export async function executeAiTool(
 		correlationId,
 		summary: {
 			attempted: filters.length > 0,
+			unresolvedIdLikeFilterCount: unresolvedIdLikeFilters.length,
+			unresolvedIdLikeFilterFields: unresolvedIdLikeFilters.map((filter) => filter.field),
 			...summariseResolutionState(filterResolutions, filterWarnings, filterPendingConfirmations),
 			...(AI_TOOL_DEBUG_VERBOSE ? { filterSnapshot: redactForVerbose(filters) } : {}),
 		},
@@ -1244,6 +671,46 @@ export async function executeAiTool(
 					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
 					`Offset ${effectiveOffset} exceeds the maximum queryable range of ${MAX_QUERY_LIMIT} records. Pagination via offset is limited to the first ${MAX_QUERY_LIMIT} records.`,
 					`Use narrower filters (e.g. date ranges via since/until, or more specific filter_field/filter_value) to reduce the result set, then paginate within the narrowed results.`,
+				),
+			),
+			correlationId,
+		);
+	}
+
+	if (unresolvedIdLikeFilters.length > 0) {
+		const unresolvedSummary = unresolvedIdLikeFilters
+			.map((filter) => `${filter.field}='${String(filter.value)}'`)
+			.join(', ');
+		const hasPendingCandidates = filterPendingConfirmations.length > 0;
+		const pendingSummary = filterPendingConfirmations.map((entry) => {
+			const uniqueIds = Array.from(
+				new Set(entry.candidates.map((candidate) => String(candidate.id))),
+			);
+			return {
+				field: entry.field,
+				candidateCount: uniqueIds.length,
+				ids: uniqueIds,
+			};
+		});
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					effectiveOperation,
+					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+					`One or more ID-like filters are unresolved and still non-numeric: ${unresolvedSummary}.`,
+					hasPendingCandidates
+						? `Candidates were found during resolution. Review pendingConfirmations from this response, choose the correct numeric ID, then retry autotask_${resource} with numeric ID filter values.`
+						: `Use autotask_resource with operation 'getMany' (or the relevant entity tool) to resolve names to numeric IDs, then retry autotask_${resource} with numeric ID filter values.`,
+					{
+						unresolvedFilters: unresolvedIdLikeFilters,
+						...(hasPendingCandidates
+							? {
+									pendingConfirmations: filterPendingConfirmations,
+									pendingSummary,
+								}
+							: {}),
+					},
 				),
 			),
 			correlationId,
@@ -1666,7 +1133,19 @@ export async function executeAiTool(
 				if (Object.prototype.hasOwnProperty.call(params, name)) {
 					return params[name as keyof ToolExecutorParams];
 				}
-				return originalGetNodeParameter(name, index, fallbackValue, options);
+				// Return the caller's fallback rather than reading from the AI tool node's
+				// own n8n config. If a resource executor adds a new getNodeParameter key
+				// not listed above, it will get fallbackValue (safe) and the missing case
+				// will be discoverable — not silently use a wrong node-level config value.
+				if (process.env.N8N_AI_TOOL_STRICT_PARAMS === '1') {
+					// eslint-disable-next-line no-console
+					console.warn(
+						`[AutotaskAiTools] Unmapped getNodeParameter key "${name}" ` +
+						`for ${resource}.${effectiveOperation} — returning fallbackValue. ` +
+						`Add an explicit case to the override switch in tool-executor.ts.`,
+					);
+				}
+				return fallbackValue;
 		}
 	}) as typeof context.getNodeParameter;
 
@@ -1685,89 +1164,8 @@ export async function executeAiTool(
 				context,
 				'createIfNotExists',
 			)) as Record<string, unknown>;
-			const DEFAULT_DEDUP_FIELDS: Record<string, string[]> = {
-				contractCharge: ['name', 'datePurchased'],
-				ticketCharge: ['name', 'datePurchased'],
-				projectCharge: ['name', 'datePurchased'],
-				configurationItems: ['serialNumber'],
-				timeEntry: ['dateWorked', 'hoursWorked'],
-				contractService: ['serviceID'],
-				contract: ['contractName'],
-				expenseItem: ['expenseDate', 'description'],
-				holiday: ['holidayDate'],
-				holidaySet: ['holidaySetName'],
-				opportunity: ['title'],
-				ticketAdditionalConfigurationItem: ['configurationItemID'],
-				ticketAdditionalContact: ['contactID'],
-				changeRequestLink: ['changeRequestTicketID', 'problemOrIncidentTicketID'],
-			};
-			const dedupFields = (params.dedupFields as string[]) ?? DEFAULT_DEDUP_FIELDS[resource] ?? [];
-			const errorOnDuplicate = params.errorOnDuplicate === true;
-			const updateFields = (params.updateFields as string[] | undefined) ?? [];
-
-			const compoundOptions = {
-				createFields,
-				dedupFields,
-				errorOnDuplicate,
-				updateFields,
-				impersonationResourceId: resolvedImpersonationId,
-				proceedWithoutImpersonationIfDenied: params.proceedWithoutImpersonationIfDenied !== false,
-			};
-
-			if (resource === 'contractCharge') {
-				const { createContractChargeIfNotExists } =
-					await import('../helpers/contract-charge-creator');
-				compoundResult = await createContractChargeIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'ticketCharge') {
-				const { createTicketChargeIfNotExists } = await import('../helpers/ticket-charge-creator');
-				compoundResult = await createTicketChargeIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'projectCharge') {
-				const { createProjectChargeIfNotExists } =
-					await import('../helpers/project-charge-creator');
-				compoundResult = await createProjectChargeIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'configurationItems') {
-				const { createConfigurationItemIfNotExists } =
-					await import('../helpers/configuration-item-creator');
-				compoundResult = await createConfigurationItemIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'timeEntry') {
-				const { createTimeEntryIfNotExists } = await import('../helpers/time-entry-creator');
-				compoundResult = await createTimeEntryIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'contractService') {
-				const { createContractServiceIfNotExists } =
-					await import('../helpers/contract-service-creator');
-				compoundResult = await createContractServiceIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'contract') {
-				const { createContractIfNotExists } = await import('../helpers/contract-creator');
-				compoundResult = await createContractIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'opportunity') {
-				const { createOpportunityIfNotExists } = await import('../helpers/opportunity-creator');
-				compoundResult = await createOpportunityIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'expenseItem') {
-				const { createExpenseItemIfNotExists } = await import('../helpers/expense-item-creator');
-				compoundResult = await createExpenseItemIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'ticketAdditionalConfigurationItem') {
-				const { createTicketAdditionalCIIfNotExists } =
-					await import('../helpers/ticket-additional-ci-creator');
-				compoundResult = await createTicketAdditionalCIIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'ticketAdditionalContact') {
-				const { createTicketAdditionalContactIfNotExists } =
-					await import('../helpers/ticket-additional-contact-creator');
-				compoundResult = await createTicketAdditionalContactIfNotExists(
-					context,
-					0,
-					compoundOptions,
-				);
-			} else if (resource === 'changeRequestLink') {
-				const { createChangeRequestLinkIfNotExists } =
-					await import('../helpers/change-request-link-creator');
-				compoundResult = await createChangeRequestLinkIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'holidaySet') {
-				const { createHolidaySetIfNotExists } = await import('../helpers/holiday-set-creator');
-				compoundResult = await createHolidaySetIfNotExists(context, 0, compoundOptions);
-			} else if (resource === 'holiday') {
-				const { createHolidayIfNotExists } = await import('../helpers/holiday-creator');
-				compoundResult = await createHolidayIfNotExists(context, 0, compoundOptions);
-			} else {
+			const registryEntry = COMPOUND_REGISTRY[resource];
+			if (!registryEntry) {
 				return attachCorrelation(
 					JSON.stringify(
 						wrapError(
@@ -1781,10 +1179,25 @@ export async function executeAiTool(
 					correlationId,
 				);
 			}
+			const dedupFields = (params.dedupFields as string[]) ?? registryEntry.defaultDedupFields;
+			const errorOnDuplicate = params.errorOnDuplicate === true;
+			const updateFields = (params.updateFields as string[] | undefined) ?? [];
+
+			const compoundOptions = {
+				createFields,
+				dedupFields,
+				errorOnDuplicate,
+				updateFields,
+				impersonationResourceId: resolvedImpersonationId,
+				proceedWithoutImpersonationIfDenied: params.proceedWithoutImpersonationIfDenied !== false,
+			};
+
+			const handler = await registryEntry.getHandler();
+			compoundResult = await handler(context, 0, compoundOptions);
 
 			if (compoundResult) {
 				// Reclassify not-found outcomes as errors
-				if (PARENT_NOT_FOUND_OUTCOMES.has(compoundResult.outcome)) {
+				if (COMPOUND_PARENT_NOT_FOUND_OUTCOMES.has(compoundResult.outcome)) {
 					const parentRef =
 						compoundResult.parentLookupValue ??
 						compoundResult.companyID ??
@@ -1917,6 +1330,7 @@ export async function executeAiTool(
 			pendingConfirmations:
 				allPendingConfirmations.length > 0 ? allPendingConfirmations : undefined,
 			effectiveOffset: recencyResult.isActive ? 0 : effectiveOffset,
+			readFields,
 		};
 
 		// Apply Change Info Field aliases to ticket read results.
@@ -1937,7 +1351,7 @@ export async function executeAiTool(
 		}
 
 		// Build structured response per operation type
-		const formattedResponse = formatToolResponse(
+		const formattedResponse = dispatchOperationResponse(
 			resource,
 			effectiveOperation,
 			records,
@@ -1979,538 +1393,3 @@ export async function executeAiTool(
 	}
 }
 
-/**
- * Format the raw execution result into a consistent, structured JSON response.
- */
-function formatToolResponse(
-	resource: string,
-	operation: string,
-	records: Record<string, unknown>[],
-	params: ToolExecutorParams,
-	context: ToolResponseContext = {},
-): string {
-	const firstRecord = records[0] ?? null;
-	const extractOperationId = (record: Record<string, unknown> | null): number | string | null => {
-		if (!record) return null;
-		const idCandidate = record.itemId ?? record.id;
-		if (typeof idCandidate === 'number' || typeof idCandidate === 'string') {
-			return idCandidate;
-		}
-		return null;
-	};
-
-	switch (operation) {
-		case 'get': {
-			const entity = firstRecord;
-			if (
-				entity === null ||
-				entity === undefined ||
-				(Array.isArray(entity) && entity.length === 0) ||
-				(typeof entity === 'object' && !Array.isArray(entity) && Object.keys(entity).length === 0)
-			) {
-				const id = params.id ?? 'unknown';
-				return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
-			}
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'item',
-						entity,
-						{ mutated: false, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'getMany':
-		case 'getPosted':
-		case 'getUnposted': {
-			const hasFilters = !!(
-				params.filter_field ||
-				params.filter_field_2 ||
-				params.filtersJson ||
-				params.recency ||
-				params.since ||
-				params.until
-			);
-			if (hasFilters && records.length === 0) {
-				const filtersUsed: Record<string, unknown> = {};
-				if (params.filter_field) {
-					filtersUsed.filter_field = params.filter_field;
-					filtersUsed.filter_op = params.filter_op;
-					filtersUsed.filter_value = params.filter_value;
-				}
-				if (params.filter_field_2) {
-					filtersUsed.filter_field_2 = params.filter_field_2;
-					filtersUsed.filter_op_2 = params.filter_op_2;
-					filtersUsed.filter_value_2 = params.filter_value_2;
-				}
-				if (params.filter_logic && params.filter_logic !== 'and')
-					filtersUsed.filter_logic = params.filter_logic;
-				if (params.filtersJson) filtersUsed.filtersJson = params.filtersJson;
-				if (params.recency) filtersUsed.recency = params.recency;
-				if (params.since) filtersUsed.since = params.since;
-				if (params.until) filtersUsed.until = params.until;
-				const noResultsError = formatNoResultsFound(resource, operation, filtersUsed);
-				// Surface any filter label resolution failures in the error context so the
-				// LLM can correlate empty results with a failed label lookup.
-				const unresolvedFilterWarnings = context.resolutionWarnings ?? [];
-				if (unresolvedFilterWarnings.length > 0) {
-					noResultsError.context = {
-						...noResultsError.context,
-						filterResolutionWarnings: unresolvedFilterWarnings,
-					};
-				}
-				return JSON.stringify(noResultsError);
-			}
-
-			const total = records.length;
-			const truncated = total > MAX_RESPONSE_RECORDS;
-			const items = truncated ? records.slice(0, MAX_RESPONSE_RECORDS) : records;
-			const currentOffset = context.effectiveOffset ?? 0;
-
-			// Build pagination
-			let hasMore = false;
-			let nextOffset: number | undefined;
-			let totalAvailable: number | undefined;
-
-			if (context.recencyActive) {
-				hasMore = false;
-				if (truncated) {
-					totalAvailable = total;
-				}
-			} else if (params.returnAll) {
-				// returnAll=true: all matching API records were fetched; response may be truncated
-				// but there are no more pages — hasMore must be false.
-				hasMore = false;
-				if (truncated) {
-					totalAvailable = total;
-				}
-			} else if (truncated) {
-				totalAvailable = total;
-				const truncatedNextOffset = currentOffset + MAX_RESPONSE_RECORDS;
-				hasMore = truncatedNextOffset < MAX_QUERY_LIMIT;
-				if (hasMore) nextOffset = truncatedNextOffset;
-			} else if (items.length > 0) {
-				const requestedLimit = getEffectiveLimit(params.limit);
-				const candidateNext = currentOffset + items.length;
-				hasMore = items.length >= requestedLimit && candidateNext < MAX_QUERY_LIMIT;
-				if (hasMore) nextOffset = candidateNext;
-			}
-
-			const pagination: PaginationInfo = {
-				offset: currentOffset,
-				hasMore,
-				...(nextOffset !== undefined ? { nextOffset } : {}),
-				...(totalAvailable !== undefined ? { totalAvailable } : {}),
-			};
-
-			// Notes — informational context only
-			const notes: string[] = [];
-			if (context.recencyNote) notes.push(context.recencyNote);
-			if (truncated) {
-				if (params.returnAll) {
-					notes.push(
-						`Fetched all ${total} matching records via returnAll; showing first ${MAX_RESPONSE_RECORDS} in this response. ` +
-							`Use 'fields' to reduce payload size, or narrow filters to reduce match count.`,
-					);
-				} else {
-					notes.push(
-						hasMore
-							? `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use offset=${nextOffset} to see the next page, or use a narrower filter.`
-							: `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Offset pagination limit (${MAX_QUERY_LIMIT}) reached — use narrower filters to access more records.`,
-					);
-				}
-			}
-
-			// Warnings — actionable signals
-			const listWarnings: string[] = [...(context.resolutionWarnings ?? [])];
-			if (context.recencyWindowLimited) {
-				listWarnings.push(
-					'500 records were returned for the current recency window. Narrow recency, or provide since/until, to ensure the newest records are included.',
-				);
-			}
-
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'list',
-						{ items, count: items.length },
-						{ mutated: false, retryable: true, truncated },
-						{
-							warnings: listWarnings,
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-							pagination,
-							notes: notes.length > 0 ? notes : undefined,
-						},
-					),
-				),
-			);
-		}
-
-		case 'whoAmI': {
-			if (firstRecord === null || firstRecord === undefined) {
-				return JSON.stringify(formatNotFoundError(resource, operation, 'authenticated user'));
-			}
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'item',
-						firstRecord,
-						{ mutated: false, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'searchByDomain': {
-			if (records.length === 0) {
-				return JSON.stringify(
-					wrapError(
-						resource,
-						operation,
-						ERROR_TYPES.NO_RESULTS_FOUND,
-						'No company found matching the supplied domain.',
-						`Verify the domain and retry, or use autotask_${resource} with operation 'getMany' with a filter.`,
-					),
-				);
-			}
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'list',
-						{ items: records, count: records.length },
-						{ mutated: false, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-							pagination: { offset: 0, hasMore: false },
-						},
-					),
-				),
-			);
-		}
-
-		case 'slaHealthCheck': {
-			if (firstRecord === null || firstRecord === undefined) {
-				const identifier = params.ticketNumber ?? params.id ?? 'unknown';
-				return JSON.stringify(
-					formatNotFoundError(resource, operation, identifier as number | string),
-				);
-			}
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'item',
-						firstRecord,
-						{ mutated: false, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'summary': {
-			if (firstRecord === null || firstRecord === undefined) {
-				const identifier = params.ticketNumber ?? params.id ?? 'unknown';
-				return JSON.stringify(
-					formatNotFoundError(resource, operation, identifier as number | string),
-				);
-			}
-			const summaryRecord = firstRecord as {
-				_meta?: { countsPartial?: boolean; truncationApplied?: boolean };
-			};
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'summary',
-						firstRecord,
-						{
-							mutated: false,
-							retryable: true,
-							partial: summaryRecord._meta?.countsPartial === true,
-							truncated: summaryRecord._meta?.truncationApplied === true,
-						},
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'moveConfigurationItem': {
-			if (firstRecord === null || firstRecord === undefined) {
-				const id = params.id ?? 'unknown';
-				return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
-			}
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'mutation',
-						{ id: extractOperationId(firstRecord), entity: firstRecord },
-						{ mutated: true, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'moveToCompany': {
-			if (firstRecord === null || firstRecord === undefined) {
-				const id = params.id ?? 'unknown';
-				return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
-			}
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'mutation',
-						{ id: extractOperationId(firstRecord), entity: firstRecord },
-						{ mutated: true, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'approve':
-		case 'reject': {
-			if (firstRecord === null || firstRecord === undefined) {
-				const id = params.id ?? 'unknown';
-				return JSON.stringify(formatNotFoundError(resource, operation, id as number | string));
-			}
-			// Use params.id as canonical id — API may return { success: true } stub without an id field
-			const approveId = (params.id as number | undefined) ?? extractOperationId(firstRecord);
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'mutation',
-						{ id: approveId, entity: firstRecord },
-						{ mutated: true, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'transferOwnership': {
-			if (firstRecord === null || firstRecord === undefined) {
-				return JSON.stringify(
-					wrapError(
-						resource,
-						operation,
-						ERROR_TYPES.ENTITY_NOT_FOUND,
-						'Transfer ownership returned no result.',
-						`Verify source and destination resource IDs, then retry.`,
-					),
-				);
-			}
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'mutation',
-						{ id: extractOperationId(firstRecord), entity: firstRecord },
-						{ mutated: true, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'count': {
-			const countValue = records[0]?.count ?? records.length;
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload('count', { count: countValue }, { mutated: false, retryable: true }),
-				),
-			);
-		}
-
-		case 'create': {
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'mutation',
-						{ id: extractOperationId(firstRecord), entity: firstRecord },
-						{ mutated: true, retryable: false },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'update': {
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'mutation',
-						{ id: extractOperationId(firstRecord), entity: firstRecord },
-						{ mutated: true, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'delete': {
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'mutation',
-						{ id: params.id, deleted: true },
-						{ mutated: true, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'getByResource': {
-			const entity = firstRecord;
-			if (
-				entity === null ||
-				entity === undefined ||
-				(typeof entity === 'object' &&
-					!Array.isArray(entity) &&
-					Object.keys(entity as object).length === 0)
-			) {
-				const rid = params.resourceID ?? 'unknown';
-				return JSON.stringify(formatNotFoundError(resource, operation, rid as number | string));
-			}
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'item',
-						entity,
-						{ mutated: false, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		case 'getByYear': {
-			const entity = firstRecord;
-			if (
-				entity === null ||
-				entity === undefined ||
-				(typeof entity === 'object' &&
-					!Array.isArray(entity) &&
-					Object.keys(entity as object).length === 0)
-			) {
-				const rid = params.resourceID ?? 'unknown';
-				const yr = params.year ?? 'unknown';
-				return JSON.stringify(
-					formatNotFoundError(resource, operation, `resource ${rid}, year ${yr}`),
-				);
-			}
-			return JSON.stringify(
-				wrapSuccess(
-					resource,
-					operation,
-					buildResultPayload(
-						'item',
-						entity,
-						{ mutated: false, retryable: true },
-						{
-							warnings: context.resolutionWarnings ?? [],
-							pendingConfirmations: context.pendingConfirmations ?? [],
-							appliedResolutions: context.resolutions ?? [],
-						},
-					),
-				),
-			);
-		}
-
-		default:
-			return JSON.stringify(
-				wrapError(
-					resource,
-					operation,
-					ERROR_TYPES.INVALID_OPERATION,
-					`Unknown operation '${operation}'.`,
-					`Use a supported operation for autotask_${resource}.`,
-				),
-			);
-	}
-}

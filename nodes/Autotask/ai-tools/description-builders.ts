@@ -1,6 +1,12 @@
 import type { FieldMeta } from '../helpers/aiHelper';
 import { getEntityMetadata } from '../constants/entities';
+import { getAiIdentityHint } from '../constants/ai-identity';
 import { AI_TOOL_DEBUG_VERBOSE, redactForVerbose, traceDescriptionBuild } from './debug-trace';
+
+export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
+
+const DESCRIPTION_TEMPLATE_CACHE_MAX = 600;
+const descriptionTemplateCache = new Map<string, string>();
 
 function listFilterableFields(readFields: FieldMeta[], max = 12): string {
 	return readFields
@@ -8,6 +14,17 @@ function listFilterableFields(readFields: FieldMeta[], max = 12): string {
 		.slice(0, max)
 		.map((field) => field.id)
 		.join(', ');
+}
+
+function listDateTimeFieldHint(readFields: FieldMeta[]): string {
+	const dateFields = readFields
+		.filter((field) => !field.udf && field.type.toLowerCase().includes('date'))
+		.map((field) => field.id);
+	if (dateFields.length === 0) return '';
+	return (
+		`Date/time fields available for recency/since/until: ${dateFields.join(', ')}. ` +
+		`Use recency_field to specify which date field to filter on — choose the field that best matches the query intent. `
+	);
 }
 
 function getParentRequirement(resourceName: string): string | null {
@@ -18,6 +35,44 @@ function getParentRequirement(resourceName: string): string | null {
 /** Snippet injected into tool descriptions that reference date/time so the AI uses actual "now" instead of training cutoff. */
 export function dateTimeReferenceSnippet(referenceUtc: string): string {
 	return `Reference: current UTC date-time when these tools were loaded is ${referenceUtc}. Use this for "today", "recent", or when choosing since/until or recency — do not assume a different date. `;
+}
+
+function getDescriptionFieldSignature(fields: FieldMeta[]): string {
+	return fields
+		.map((field) =>
+			[
+				field.id,
+				field.required ? '1' : '0',
+				field.type ?? '',
+				field.isPickList ? '1' : '0',
+				field.isReference ? '1' : '0',
+				field.referencesEntity ?? '',
+				Array.isArray(field.allowedValues) ? field.allowedValues.length : 0,
+			].join(':'),
+		)
+		.sort()
+		.join('|');
+}
+
+function getDescriptionTemplateCacheKey(
+	resource: string,
+	operations: string[],
+	readFields: FieldMeta[],
+	writeFields: FieldMeta[],
+	supportsImpersonation: boolean,
+): string {
+	const opSig = [...operations].sort().join(',');
+	const readSig = getDescriptionFieldSignature(readFields);
+	const writeSig = getDescriptionFieldSignature(writeFields);
+	return `${resource}|${opSig}|imp:${supportsImpersonation ? '1' : '0'}|r:${readSig}|w:${writeSig}`;
+}
+
+function setDescriptionTemplateCache(key: string, value: string): void {
+	if (descriptionTemplateCache.size >= DESCRIPTION_TEMPLATE_CACHE_MAX) {
+		const firstKey = descriptionTemplateCache.keys().next().value as string | undefined;
+		if (firstKey) descriptionTemplateCache.delete(firstKey);
+	}
+	descriptionTemplateCache.set(key, value);
 }
 
 /** Rule for getMany/count/getPosted/getUnposted: how recency and since/until interact. */
@@ -42,6 +97,7 @@ export function buildGetManyDescription(
 	referenceUtc?: string,
 ): string {
 	const fieldList = listFilterableFields(readFields);
+	const dateFieldHint = listDateTimeFieldHint(readFields);
 	const ref = referenceUtc
 		? dateTimeReferenceSnippet(referenceUtc) + RECENCY_VS_SINCE_UNTIL_RULE
 		: '';
@@ -59,6 +115,7 @@ export function buildGetManyDescription(
 		`If results are unexpectedly empty, check API user security permissions before retrying. ` +
 		`Name-based filter resolution: for reference and picklist filter fields, you can pass a human-readable name as filter_value (e.g. filter_field='companyID', filter_value='Contoso') — the tool auto-resolves names to IDs. ` +
 		`API ordering: records always return in ascending ID order (oldest first). No server-side sort is available. ` +
+		dateFieldHint +
 		`For all matching records, use returnAll=true with a tight filter. ` +
 		`For complex filters (3+ conditions, nested OR/IN), use filtersJson with the Autotask IFilterCondition JSON array. ` +
 		`Always provide at least one filter when possible. ` +
@@ -340,6 +397,41 @@ export function buildUnifiedDescription(
 	referenceUtc: string,
 	supportsImpersonation: boolean,
 ): string {
+	const template = buildUnifiedDescriptionTemplate(
+		resourceLabel,
+		resource,
+		operations,
+		readFields,
+		writeFields,
+		supportsImpersonation,
+	);
+	return injectDescriptionReferenceUtc(template, referenceUtc);
+}
+
+export function injectDescriptionReferenceUtc(template: string, referenceUtc: string): string {
+	return template.split(DESCRIPTION_REFERENCE_PLACEHOLDER).join(referenceUtc);
+}
+
+export function buildUnifiedDescriptionTemplate(
+	resourceLabel: string,
+	resource: string,
+	operations: string[],
+	readFields: FieldMeta[],
+	writeFields: FieldMeta[],
+	supportsImpersonation: boolean,
+): string {
+	const cacheKey = getDescriptionTemplateCacheKey(
+		resource,
+		operations,
+		readFields,
+		writeFields,
+		supportsImpersonation,
+	);
+	const cached = descriptionTemplateCache.get(cacheKey);
+	if (cached) {
+		return cached;
+	}
+
 	traceDescriptionBuild({
 		phase: 'build-start',
 		resource,
@@ -375,10 +467,18 @@ export function buildUnifiedDescription(
 		);
 	}
 
+	const aiDescription = getEntityMetadata(resource)?.aiDescription;
+	if (aiDescription) {
+		sections.push(aiDescription);
+	}
+	const identityHint = getAiIdentityHint(resource);
+	if (identityHint) {
+		sections.push(identityHint);
+	}
 	sections.push(
 		`Perform operations on Autotask ${resourceLabel} records.`,
 		`Required: 'operation' field — one of: ${allOps.join(', ')}.`,
-		dateTimeReferenceSnippet(referenceUtc),
+		dateTimeReferenceSnippet(DESCRIPTION_REFERENCE_PLACEHOLDER),
 	);
 
 	for (const op of operations) {
@@ -391,7 +491,9 @@ export function buildUnifiedDescription(
 				summary = `operation '${op}': Resolve the authenticated ${resourceLabel} record.`;
 				break;
 			case 'getMany':
-				summary = `operation '${op}': Search records with up to two filters (AND/OR via filter_logic). Use filter_field/filter_value. Supports name-based resolution for reference/picklist filter values.`;
+				summary =
+					`operation '${op}': Search records with up to two filters (AND/OR via filter_logic). Use filter_field/filter_value. Supports name-based resolution for reference/picklist filter values. ` +
+					listDateTimeFieldHint(readFields);
 				break;
 			case 'count':
 				summary = `operation '${op}': Count records matching optional filters.`;
@@ -471,6 +573,7 @@ export function buildUnifiedDescription(
 
 	const combined = sections.join(' ');
 	const output = truncateDescription(combined);
+	setDescriptionTemplateCache(cacheKey, output);
 	traceDescriptionBuild({
 		phase: 'build-complete',
 		resource,

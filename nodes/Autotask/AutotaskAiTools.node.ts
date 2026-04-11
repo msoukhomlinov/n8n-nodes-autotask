@@ -1,6 +1,7 @@
 import { NodeOperationError } from 'n8n-workflow';
 import type {
 	IDataObject,
+	ICredentialDataDecryptedObject,
 	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	INodeType,
@@ -11,17 +12,22 @@ import type {
 	SupplyData,
 } from 'n8n-workflow';
 import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/resource-operations';
-import { describeResource } from './helpers/aiHelper';
+import { describeResource, type FieldMeta } from './helpers/aiHelper';
 import { executeAiTool, type ToolExecutorParams } from './ai-tools/tool-executor';
-import { buildUnifiedDescription } from './ai-tools/description-builders';
+import {
+	buildUnifiedDescriptionTemplate,
+	injectDescriptionReferenceUtc,
+} from './ai-tools/description-builders';
 import { RuntimeDynamicStructuredTool, runtimeZod, getLazyLogWrapper } from './ai-tools/runtime';
 import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
 import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
 import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
+import { computeMetadataRevision } from './helpers/cache/init';
+import { hashCachePayload } from './helpers/cache/service';
 import {
 	AI_TOOL_DEBUG_VERBOSE,
 	redactForVerbose,
-	safeKeys,
+	safeSchemaKeys,
 	traceError,
 	traceExecutor,
 	traceToolBuild,
@@ -61,6 +67,204 @@ const SUPPORTED_TOOL_OPERATIONS = [
 	'reject',
 ];
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
+const TOOL_BUILD_CACHE_TTL_MS = 90_000;
+const METADATA_CACHE_TTL_MS = 90_000;
+const MAX_CACHE_ENTRIES = 250;
+
+interface MetadataCacheEntry {
+	readFields: FieldMeta[];
+	writeFields: FieldMeta[];
+	metadataHash: string;
+	expiresAt: number;
+}
+
+interface ArtifactCacheEntry {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	schema: any;
+	descriptionTemplate: string;
+	allAllowedOps: string[];
+	expiresAt: number;
+}
+
+/** Minimal interface for calling safeParse on a Zod schema without importing zod types. */
+interface ZodSafeParseable {
+	safeParse(input: unknown):
+		| { success: true; data: Record<string, unknown> }
+		| { success: false; error: { message: string } };
+}
+
+const metadataCache = new Map<string, MetadataCacheEntry>();
+const artifactCache = new Map<string, ArtifactCacheEntry>();
+
+function getOpsSignature(operations: string[]): string {
+	return [...operations].sort().join(',');
+}
+
+function getMetadataCacheKey(
+	credentialIdentity: string,
+	resource: string,
+	needsReadFields: boolean,
+	needsWriteFields: boolean,
+): string {
+	return `${credentialIdentity}|${resource}|read:${needsReadFields ? '1' : '0'}|write:${needsWriteFields ? '1' : '0'}`;
+}
+
+function getArtifactCacheKey(
+	credentialIdentity: string,
+	resource: string,
+	effectiveOps: string[],
+	allowWriteOperations: boolean,
+	supportsImpersonation: boolean,
+	metadataHash: string,
+): string {
+	return `${credentialIdentity}|${resource}|ops:${getOpsSignature(effectiveOps)}|allowWrite:${allowWriteOperations ? '1' : '0'}|imp:${supportsImpersonation ? '1' : '0'}|meta:${metadataHash}`;
+}
+
+function getCachedEntry<T extends { expiresAt: number }>(cache: Map<string, T>, key: string): T | undefined {
+	const hit = cache.get(key);
+	if (!hit) return undefined;
+	if (hit.expiresAt <= Date.now()) {
+		cache.delete(key);
+		return undefined;
+	}
+	return hit;
+}
+
+function setCachedEntry<T extends { expiresAt: number }>(
+	cache: Map<string, T>,
+	key: string,
+	value: T,
+	maxEntries: number,
+): void {
+	if (cache.size >= maxEntries) {
+		const firstKey = cache.keys().next().value as string | undefined;
+		if (firstKey) cache.delete(firstKey);
+	}
+	cache.set(key, value);
+}
+
+function getReferenceUtcNow(): string {
+	return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+function getMetadataNeeds(operations: string[]): { needsReadFields: boolean; needsWriteFields: boolean } {
+	const needsReadFields = operations.some((op) =>
+		[
+			'get',
+			'getMany',
+			'getPosted',
+			'getUnposted',
+			'count',
+			'whoAmI',
+			'searchByDomain',
+			'getByResource',
+			'getByYear',
+		].includes(op),
+	);
+	const needsWriteFields = operations.some((op) => ['create', 'createIfNotExists', 'update'].includes(op));
+	return { needsReadFields, needsWriteFields };
+}
+
+async function resolveCredentialIdentity(
+	context: ISupplyDataFunctions | IExecuteFunctions,
+): Promise<string | null> {
+	try {
+		const credentials = (await context.getCredentials(
+			'autotaskApi',
+		)) as ICredentialDataDecryptedObject;
+		return hashCachePayload({
+			username: credentials.Username,
+			integrationCode: credentials.APIIntegrationcode,
+			zone: credentials.zone,
+			customZoneUrl: credentials.customZoneUrl,
+		}).slice(0, 16);
+	} catch {
+		return null;
+	}
+}
+
+async function resolveMetadataForTool(
+	context: ISupplyDataFunctions | IExecuteFunctions,
+	resource: string,
+	operations: string[],
+	credentialIdentity: string | null,
+	itemIndex?: number,
+): Promise<{
+	readFields: FieldMeta[];
+	writeFields: FieldMeta[];
+	metadataHash: string;
+	cacheHit: boolean;
+	durationMs: number;
+}> {
+	const { needsReadFields, needsWriteFields } = getMetadataNeeds(operations);
+
+	if (credentialIdentity !== null) {
+		const cacheKey = getMetadataCacheKey(credentialIdentity, resource, needsReadFields, needsWriteFields);
+		const cached = getCachedEntry(metadataCache, cacheKey);
+		if (cached) {
+			return {
+				readFields: cached.readFields,
+				writeFields: cached.writeFields,
+				metadataHash: cached.metadataHash,
+				cacheHit: true,
+				durationMs: 0,
+			};
+		}
+	}
+
+	const metadataStart = Date.now();
+	const [readDescribe, writeDescribe] = await Promise.all([
+		needsReadFields
+			? describeResource(context as unknown as ILoadOptionsFunctions, resource, 'read')
+			: Promise.resolve(undefined),
+		needsWriteFields
+			? describeResource(context as unknown as ILoadOptionsFunctions, resource, 'write')
+			: Promise.resolve(undefined),
+	]);
+	const durationMs = Date.now() - metadataStart;
+	const readFields = readDescribe?.fields ?? [];
+	const writeFields = writeDescribe?.fields ?? [];
+	const metadataHash = computeMetadataRevision(
+		readFields as unknown as Array<Record<string, unknown>>,
+		writeFields as unknown as Array<Record<string, unknown>>,
+	);
+
+	if (credentialIdentity !== null) {
+		setCachedEntry(
+			metadataCache,
+			getMetadataCacheKey(credentialIdentity, resource, needsReadFields, needsWriteFields),
+			{
+				readFields,
+				writeFields,
+				metadataHash,
+				expiresAt: Date.now() + METADATA_CACHE_TTL_MS,
+			},
+			MAX_CACHE_ENTRIES,
+		);
+	}
+
+	traceToolBuild({
+		phase: 'metadata-fetched',
+		resource,
+		itemIndex,
+		durationMs,
+		summary: {
+			readMetadataFetched: needsReadFields,
+			writeMetadataFetched: needsWriteFields,
+			readFieldCount: readFields.length,
+			writeFieldCount: writeFields.length,
+			cacheHit: false,
+			metadataHash,
+		},
+	});
+	return {
+		readFields,
+		writeFields,
+		metadataHash,
+		cacheHit: false,
+		durationMs,
+	};
+}
 
 function formatResourceName(value: string): string {
 	return (
@@ -188,9 +392,11 @@ export class AutotaskAiTools implements INodeType {
 			);
 		}
 
+		const supplyStart = Date.now();
 		const resourceLabel = formatResourceName(resource);
-		const referenceUtc = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+		const referenceUtc = getReferenceUtcNow();
 		const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
+		const credentialIdentity = await resolveCredentialIdentity(this);
 		// Trace tool-construction decisions to understand what the AI can see.
 		traceToolBuild({
 			phase: 'supplyData-start',
@@ -202,80 +408,125 @@ export class AutotaskAiTools implements INodeType {
 				effectiveOperations: effectiveOps,
 				writeOpsAllowed: allowWriteOperations,
 				supportsImpersonation,
+				credentialIdentity,
 			},
 		});
-
-		// Fetch field metadata once — reused by schema + description + executor
-		const needsReadFields = effectiveOps.some((op) =>
-			[
-				'get',
-				'getMany',
-				'getPosted',
-				'getUnposted',
-				'count',
-				'whoAmI',
-				'searchByDomain',
-				'getByResource',
-				'getByYear',
-			].includes(op),
-		);
-		const needsWriteFields = effectiveOps.some((op) =>
-			['create', 'createIfNotExists', 'update'].includes(op),
-		);
-
-		// eslint-disable-next-line @typescript-eslint/no-this-alias
-		const supplyDataContext = this;
-
-		const [readDescribe, writeDescribe] = await Promise.all([
-			needsReadFields
-				? describeResource(supplyDataContext as unknown as ILoadOptionsFunctions, resource, 'read')
-				: Promise.resolve(undefined),
-			needsWriteFields
-				? describeResource(supplyDataContext as unknown as ILoadOptionsFunctions, resource, 'write')
-				: Promise.resolve(undefined),
-		]);
-		traceToolBuild({
-			phase: 'metadata-fetched',
-			resource,
-			itemIndex,
-			summary: {
-				readMetadataFetched: needsReadFields,
-				writeMetadataFetched: needsWriteFields,
-				readFieldCount: readDescribe?.fields?.length ?? 0,
-				writeFieldCount: writeDescribe?.fields?.length ?? 0,
-			},
-		});
-
-		const schema = buildUnifiedSchema(
-			resource,
-			effectiveOps,
-			readDescribe?.fields ?? [],
-			writeDescribe?.fields ?? [],
-		);
-
-		const description = buildUnifiedDescription(
-			resourceLabel,
-			resource,
-			effectiveOps,
-			readDescribe?.fields ?? [],
-			writeDescribe?.fields ?? [],
-			referenceUtc,
-			supportsImpersonation,
-		);
 
 		const allAllowedOps = [
 			...new Set([...effectiveOps, 'describeFields', 'listPicklistValues', 'describeOperation']),
 		];
+		// eslint-disable-next-line @typescript-eslint/no-this-alias
+		const supplyDataContext = this;
+		const metadata = await resolveMetadataForTool(
+			supplyDataContext,
+			resource,
+			effectiveOps,
+			credentialIdentity,
+			itemIndex,
+		);
+		if (metadata.cacheHit) {
+			traceToolBuild({
+				phase: 'metadata-cache-hit',
+				resource,
+				itemIndex,
+				summary: {
+					readFieldCount: metadata.readFields.length,
+					writeFieldCount: metadata.writeFields.length,
+					metadataHash: metadata.metadataHash,
+				},
+			});
+		}
+
+		const cachedArtifact = credentialIdentity !== null
+			? getCachedEntry(artifactCache, getArtifactCacheKey(
+				credentialIdentity,
+				resource,
+				effectiveOps,
+				allowWriteOperations,
+				supportsImpersonation,
+				metadata.metadataHash,
+			))
+			: undefined;
+
+		let schema: unknown;
+		let descriptionTemplate: string;
+		let schemaBuildDurationMs = 0;
+		let descriptionBuildDurationMs = 0;
+		if (cachedArtifact) {
+			schema = cachedArtifact.schema;
+			descriptionTemplate = cachedArtifact.descriptionTemplate;
+			traceToolBuild({
+				phase: 'artifact-cache-hit',
+				resource,
+				itemIndex,
+				summary: {
+					allAllowedOps: cachedArtifact.allAllowedOps,
+				},
+			});
+		} else {
+			const schemaBuildStart = Date.now();
+			schema = buildUnifiedSchema(resource, effectiveOps, metadata.readFields, metadata.writeFields);
+			schemaBuildDurationMs = Date.now() - schemaBuildStart;
+
+			const descriptionBuildStart = Date.now();
+			descriptionTemplate = buildUnifiedDescriptionTemplate(
+				resourceLabel,
+				resource,
+				effectiveOps,
+				metadata.readFields,
+				metadata.writeFields,
+				supportsImpersonation,
+			);
+			descriptionBuildDurationMs = Date.now() - descriptionBuildStart;
+
+			if (credentialIdentity !== null) {
+				setCachedEntry(
+					artifactCache,
+					getArtifactCacheKey(
+						credentialIdentity,
+						resource,
+						effectiveOps,
+						allowWriteOperations,
+						supportsImpersonation,
+						metadata.metadataHash,
+					),
+					{
+						schema,
+						descriptionTemplate,
+						allAllowedOps,
+						expiresAt: Date.now() + TOOL_BUILD_CACHE_TTL_MS,
+					},
+					MAX_CACHE_ENTRIES,
+				);
+				traceToolBuild({
+					phase: 'artifact-cache-store',
+					resource,
+					itemIndex,
+					summary: {
+						schemaBuildDurationMs,
+						descriptionBuildDurationMs,
+					},
+				});
+			}
+		}
+
+		const description = injectDescriptionReferenceUtc(descriptionTemplate, referenceUtc);
+		const schemaKeys = safeSchemaKeys(schema);
 		traceToolBuild({
 			phase: 'tool-built',
 			resource,
 			itemIndex,
+			durationMs: Date.now() - supplyStart,
 			summary: {
 				toolName: `autotask_${resource}`,
 				allAllowedOps,
-				schemaFieldCount: safeKeys(schema).length,
-				schemaTopLevelKeys: safeKeys(schema),
+				schemaFieldCount: schemaKeys.length,
+				schemaTopLevelKeys: schemaKeys,
 				descriptionLength: description.length,
+				metadataCacheHit: metadata.cacheHit,
+				metadataDurationMs: metadata.durationMs,
+				schemaBuildDurationMs,
+				descriptionBuildDurationMs,
 				...(AI_TOOL_DEBUG_VERBOSE ? { descriptionPreview: redactForVerbose(description) } : {}),
 			},
 		});
@@ -315,8 +566,8 @@ export class AutotaskAiTools implements INodeType {
 					operation,
 					rawParams as unknown as ToolExecutorParams,
 					{
-						readFields: readDescribe?.fields ?? [],
-						writeFields: writeDescribe?.fields ?? [],
+						readFields: metadata.readFields,
+						writeFields: metadata.writeFields,
 						allAllowedOps,
 					},
 				);
@@ -413,33 +664,80 @@ export class AutotaskAiTools implements INodeType {
 		const allAllowedOps = [
 			...new Set([...effectiveOps, 'describeFields', 'listPicklistValues', 'describeOperation']),
 		];
+		const credentialIdentity = await resolveCredentialIdentity(this);
+		const metadata = await resolveMetadataForTool(this, resource, effectiveOps, credentialIdentity);
+		if (metadata.cacheHit) {
+			traceToolBuild({
+				phase: 'metadata-cache-hit',
+				resource,
+				summary: {
+					path: 'execute',
+					readFieldCount: metadata.readFields.length,
+					writeFieldCount: metadata.writeFields.length,
+					metadataHash: metadata.metadataHash,
+				},
+			});
+		}
 
-		// Fetch field metadata for label resolution and field validation (mirrors supplyData)
-		const needsReadFields = effectiveOps.some((op) =>
-			[
-				'get',
-				'getMany',
-				'getPosted',
-				'getUnposted',
-				'count',
-				'whoAmI',
-				'searchByDomain',
-				'getByResource',
-				'getByYear',
-			].includes(op),
-		);
-		const needsWriteFields = effectiveOps.some((op) =>
-			['create', 'createIfNotExists', 'update'].includes(op),
-		);
-
-		const [readDescribe, writeDescribe] = await Promise.all([
-			needsReadFields
-				? describeResource(this as unknown as ILoadOptionsFunctions, resource, 'read')
-				: Promise.resolve(undefined),
-			needsWriteFields
-				? describeResource(this as unknown as ILoadOptionsFunctions, resource, 'write')
-				: Promise.resolve(undefined),
-		]);
+		// Retrieve (or cold-build) the Zod schema so execute() can strip unknown keys
+		// from item.json — the same protection supplyData()->func() gets from parseAsync automatically.
+		const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
+		let zodSchema: ZodSafeParseable;
+		{
+			const cachedArtifact = credentialIdentity !== null
+				? getCachedEntry(artifactCache, getArtifactCacheKey(
+					credentialIdentity,
+					resource,
+					effectiveOps,
+					allowWriteOperations,
+					supportsImpersonation,
+					metadata.metadataHash,
+				))
+				: undefined;
+			if (cachedArtifact) {
+				zodSchema = cachedArtifact.schema as ZodSafeParseable;
+			} else {
+				// Cold-start: supplyData() hasn't run yet (Agent V3 first invocation).
+				// Build the schema on demand and cache it for subsequent calls.
+				const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
+				const schema = buildUnifiedSchema(
+					resource, effectiveOps, metadata.readFields, metadata.writeFields,
+				);
+				zodSchema = schema as ZodSafeParseable;
+				if (credentialIdentity !== null) {
+					const resourceLabel = formatResourceName(resource);
+					const descriptionTemplate = buildUnifiedDescriptionTemplate(
+						resourceLabel,
+						resource,
+						effectiveOps,
+						metadata.readFields,
+						metadata.writeFields,
+						supportsImpersonation,
+					);
+					const allAllowedOpsCold = [
+						...new Set([...effectiveOps, 'describeFields', 'listPicklistValues', 'describeOperation']),
+					];
+					setCachedEntry(
+						artifactCache,
+						getArtifactCacheKey(
+							credentialIdentity,
+							resource,
+							effectiveOps,
+							allowWriteOperations,
+							supportsImpersonation,
+							metadata.metadataHash,
+						),
+						{
+							schema,
+							descriptionTemplate,
+							allAllowedOps: allAllowedOpsCold,
+							expiresAt: Date.now() + TOOL_BUILD_CACHE_TTL_MS,
+						},
+						MAX_CACHE_ENTRIES,
+					);
+				}
+			}
+		}
 
 		const response: INodeExecutionData[] = [];
 
@@ -481,15 +779,33 @@ export class AutotaskAiTools implements INodeType {
 			const operation = requestedOp;
 
 			try {
+				// Zod strips unknown keys (Prompt__*, sessionId, chatInput, etc.)
+				// mirroring what supplyData()->func() gets from parseAsync automatically.
+				const parseResult = zodSchema.safeParse(item.json);
+				if (!parseResult.success) {
+					response.push({
+						json: {
+							...wrapError(
+								resource,
+								operation,
+								ERROR_TYPES.INVALID_INPUT,
+								`Input validation failed: ${parseResult.error.message}`,
+								`Check parameter names and types. Use autotask_${resource} with operation 'describeFields' to see valid fields.`,
+							),
+						},
+						pairedItem: { item: itemIndex },
+					});
+					continue;
+				}
 				const params: ToolExecutorParams = {
-					...(item.json as Record<string, unknown>),
+					...parseResult.data,
 					resource,
 					operation,
 				} as unknown as ToolExecutorParams;
 
 				const resultJson = await executeAiTool(this, resource, operation, params, {
-					readFields: readDescribe?.fields ?? [],
-					writeFields: writeDescribe?.fields ?? [],
+					readFields: metadata.readFields,
+					writeFields: metadata.writeFields,
 					allAllowedOps,
 				});
 				let parsed: IDataObject;

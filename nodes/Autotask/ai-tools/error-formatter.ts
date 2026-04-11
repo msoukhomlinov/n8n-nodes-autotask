@@ -57,6 +57,8 @@ export interface ResultPayload {
 	pendingConfirmations: PendingLabelConfirmation[];
 	/** Always present. Labels auto-resolved to IDs for this operation. */
 	appliedResolutions: LabelResolution[];
+	/** Optional compact identity metadata for user-meaningful identifiers. */
+	meaningfulIdentity?: Record<string, unknown>;
 	/** Present only for list kind. */
 	pagination?: PaginationInfo;
 	/** Informational only: pagination hints, recency context, query behaviour notes. */
@@ -99,6 +101,7 @@ export const ERROR_TYPES = {
 	INVALID_FILTER_CONSTRAINT: 'INVALID_FILTER_CONSTRAINT',
 	MISSING_REQUIRED_FIELDS: 'MISSING_REQUIRED_FIELDS',
 	WRITE_RESOLUTION_INCOMPLETE: 'WRITE_RESOLUTION_INCOMPLETE',
+	INVALID_INPUT: 'INVALID_INPUT',
 } as const;
 
 // ---------------------------------------------------------------------------
