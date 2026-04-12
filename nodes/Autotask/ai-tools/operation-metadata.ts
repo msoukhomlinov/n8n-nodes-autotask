@@ -40,7 +40,7 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		supportsFilters: true,
 		responseKind: 'list',
 		docsFragment:
-			'Search records with up to two filters (AND/OR via filter_logic). Supports name-based resolution for reference/picklist filter values.',
+			'Search records with up to two filters (AND/OR via filter_logic). Use filter_field/filter_value. Supports name-based resolution for reference/picklist filter values.',
 	},
 	{
 		name: 'getPosted',
@@ -146,7 +146,7 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		supportsFilters: false,
 		responseKind: 'summary',
 		docsFragment:
-			"Get a compact ticket summary ('id' or 'ticketNumber' required), including computed values and optional child counts.",
+			"Get a compact ticket summary ('id' or 'ticketNumber' required). Computed values, child counts, relationships.",
 	},
 	{
 		name: 'getByResource',
@@ -155,7 +155,7 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		supportsFilters: false,
 		responseKind: 'item',
 		docsFragment:
-			"Get record(s) for a specific resource using 'resourceID' (name or numeric ID, auto-resolved).",
+			"Get record(s) for a specific resource. Provide 'resourceID' as a name or numeric ID (auto-resolved). Use for operations that are scoped to a parent resource rather than queried by their own ID.",
 	},
 	{
 		name: 'getByYear',
@@ -164,7 +164,7 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		supportsFilters: false,
 		responseKind: 'item',
 		docsFragment:
-			"Get the time-off balance for a specific calendar year using 'resourceID' and 'year'.",
+			"Get the time-off balance for a specific calendar year. Provide 'resourceID' (name or numeric ID, auto-resolved) and 'year' as an integer (e.g. 2024).",
 	},
 	{
 		name: 'approve',

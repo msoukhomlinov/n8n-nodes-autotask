@@ -3,7 +3,6 @@ import { FilterOperators } from '../constants/filters';
 import type { RuntimeZod } from './runtime';
 import { IDENTIFIER_PAIR_OPERATIONS } from '../constants/resource-operations';
 import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
-import { validateOperationContract } from './operation-contracts';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 
 /** Maximum number of picklist values to inline in a field description */

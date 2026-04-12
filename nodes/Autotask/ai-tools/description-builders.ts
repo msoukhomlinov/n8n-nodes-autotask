@@ -480,7 +480,9 @@ export function buildUnifiedDescriptionTemplate(
 			? `operation '${op}': ${metadata.docsFragment}`
 			: `operation '${op}': Perform ${op} on ${resourceLabel}.`;
 
-		if (op === 'create') {
+		if (op === 'whoAmI') {
+			summary = `operation '${op}': Resolve the authenticated ${resourceLabel} record.`;
+		} else if (op === 'create') {
 			summary = `operation '${op}': ${metadata?.docsFragment ?? 'Create a new record.'} ${buildRequiredFieldsSummary(writeFields)} Populate every optional field for which you already have data — do not omit known information. Supports name-based resolution for picklist/reference fields.`;
 		} else if (op === 'update') {
 			if (resource === 'resourceTimeOffAdditional') {

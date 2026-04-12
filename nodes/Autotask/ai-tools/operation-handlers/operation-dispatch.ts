@@ -98,7 +98,7 @@ export function dispatchOperationResponse(
 						return { ok: true, id: fallbackId };
 					}
 				}
-				if (record === null) {
+				if (record === null || record === undefined) {
 					return {
 						ok: false,
 						errorType: ERROR_TYPES.ENTITY_NOT_FOUND,
@@ -322,7 +322,6 @@ export function dispatchOperationResponse(
 					validation.errorType ?? ERROR_TYPES.API_ERROR,
 					validation.message ?? `${resource}.${operation} failed validation.`,
 					validation.hint ?? `Retry autotask_${resource} with operation '${operation}'.`,
-					validation.context,
 				),
 			);
 		}
