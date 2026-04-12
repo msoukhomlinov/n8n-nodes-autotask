@@ -60,7 +60,7 @@ import {
 	COMPOUND_REGISTRY,
 	COMPOUND_PARENT_NOT_FOUND_OUTCOMES,
 } from '../constants/compound-registry';
-import { validateOperationContract } from './operation-contracts';
+import { validateOperationContract, hasProvidedValue, type OperationContractViolation } from './operation-contracts';
 
 export interface ToolExecutorParams {
 	resource: string;
@@ -282,6 +282,17 @@ function buildCompoundContext(resource: string, result: any): Record<string, unk
 		default:
 			return undefined;
 	}
+}
+
+function buildContractViolationNextAction(
+	resource: string,
+	operation: string,
+	violations: OperationContractViolation[],
+): string {
+	return (
+		`Call autotask_${resource} with operation '${operation}' and ensure: ` +
+		violations.map((v) => v.message).join(' ')
+	);
 }
 
 /**
@@ -726,7 +737,90 @@ export async function executeAiTool(
 					effectiveOperation,
 					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
 					message,
-					`Call autotask_${resource} with operation '${effectiveOperation}' and provide arguments that satisfy the operation contract.`,
+					buildContractViolationNextAction(resource, effectiveOperation, contractViolations),
+				),
+			),
+			correlationId,
+		);
+	}
+
+	// Pre-flight: filter cross-validation (list operations)
+	const isListOperation = ['getMany', 'count', 'getPosted', 'getUnposted'].includes(effectiveOperation);
+	if (isListOperation) {
+		const p = params as Record<string, unknown>;
+		const hasFiltersJson = hasProvidedValue(p.filtersJson);
+		const hasFlatFilter1 =
+			hasProvidedValue(p.filter_field) ||
+			hasProvidedValue(p.filter_op) ||
+			hasProvidedValue(p.filter_value);
+		const hasFlatFilter2 =
+			hasProvidedValue(p.filter_field_2) ||
+			hasProvidedValue(p.filter_op_2) ||
+			hasProvidedValue(p.filter_value_2);
+
+		const filterErrors: string[] = [];
+
+		if (hasFiltersJson && (hasFlatFilter1 || hasFlatFilter2)) {
+			filterErrors.push(`Operation '${effectiveOperation}' does not allow mixing 'filtersJson' with flat filter fields.`);
+		}
+		if (hasProvidedValue(p.filter_field) && !hasProvidedValue(p.filter_value)) {
+			filterErrors.push(`Operation '${effectiveOperation}' requires 'filter_value' when 'filter_field' is provided.`);
+		}
+		if (!hasProvidedValue(p.filter_field) && hasProvidedValue(p.filter_value)) {
+			filterErrors.push(`Operation '${effectiveOperation}' does not allow 'filter_value' without 'filter_field'.`);
+		}
+		if (hasFlatFilter2) {
+			const hasFilter2Field = hasProvidedValue(p.filter_field_2);
+			const hasFilter2Value = hasProvidedValue(p.filter_value_2);
+			if (!hasFilter2Field || !hasFilter2Value) {
+				filterErrors.push(
+					`Operation '${effectiveOperation}' requires both 'filter_field_2' and 'filter_value_2' when using a second filter.`,
+				);
+			}
+			if (!hasFlatFilter1) {
+				filterErrors.push(`Operation '${effectiveOperation}' does not allow a second filter without the first filter.`);
+			}
+		}
+		if (hasProvidedValue(p.filter_logic) && !(hasFlatFilter1 && hasFlatFilter2)) {
+			filterErrors.push(`Operation '${effectiveOperation}' does not allow 'filter_logic' unless both filter pairs are present.`);
+		}
+		if (hasProvidedValue(p.recency) && (hasProvidedValue(p.since) || hasProvidedValue(p.until))) {
+			filterErrors.push(`Operation '${effectiveOperation}' does not allow 'recency' together with 'since' or 'until'.`);
+		}
+		if (hasProvidedValue(p.until) && !hasProvidedValue(p.since) && !hasProvidedValue(p.recency)) {
+			filterErrors.push(`Operation '${effectiveOperation}' requires 'since' or 'recency' when 'until' is provided.`);
+		}
+
+		if (filterErrors.length > 0) {
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						effectiveOperation,
+						ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+						filterErrors.join(' '),
+						`Call autotask_${resource} with operation '${effectiveOperation}' and fix the filter parameter issues: ${filterErrors.join(' ')}`,
+					),
+				),
+				correlationId,
+			);
+		}
+	}
+
+	// Pre-flight: reject rejectReason (when rejectReasonPolicy is mandatory)
+	if (
+		effectiveOperation === 'reject' &&
+		(params as Record<string, unknown>).rejectReasonPolicy === 'mandatory' &&
+		!hasProvidedValue((params as Record<string, unknown>).rejectReason)
+	) {
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					effectiveOperation,
+					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+					"Operation 'reject' requires 'rejectReason' when rejectReasonPolicy is 'mandatory'.",
+					`Call autotask_${resource} with operation 'reject' and include 'rejectReason'.`,
 				),
 			),
 			correlationId,
