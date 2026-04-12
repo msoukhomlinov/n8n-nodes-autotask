@@ -2,6 +2,18 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.9.1] — 2026-04-12
+
+### Fixed
+
+- **schema-generator**: Removed `.superRefine()` from top-level Zod schema — restores `ZodObject` shape required by n8n's `normalizeToolSchema` `instanceof` check. `superRefine` produced `ZodEffects` which silently corrupted the schema for MCP Trigger and Agent V3 execution paths. The `readOnlySchemaCache` no longer caches a corrupted type.
+- **operation-contracts**: `hasProvidedValue` now rejects non-positive numbers (`id: 0`, `id: -1`), restoring the `id > 0` guard from the old identifier-pair pre-flight.
+- **operation-contracts**: `getXorMessage` no longer hardcodes "numeric Ticket ID" — derives the entity label dynamically from the resource name.
+- **operation-contracts**: Added module-load self-consistency assertion — throws on startup if any contract has a field in both `requiredFields` and `forbiddenFields`, or an `xorGroup` with fewer than 2 members.
+- **tool-executor**: Filter cross-validation (filtersJson/flat conflicts, filter pair integrity, recency/since/until conflicts) migrated from the removed `superRefine` block — enforced on both MCP and Agent V3 execution paths.
+- **tool-executor**: `reject` + `rejectReasonPolicy=mandatory` pre-flight now runs correctly (was unreachable dead code inside `superRefine`'s list-operation early-return guard).
+- **tool-executor**: Contract violation `nextAction` messages now include specific violation details instead of the generic "provide arguments that satisfy the operation contract" phrase.
+
 ## [Unreleased]
 
 ### Changed
