@@ -172,7 +172,6 @@ export function summariseResponseEnvelope(serialized: string): Record<string, un
 		let resultKind: string;
 		if (isError) resultKind = 'error';
 		else if (typeof parsed.matchCount === 'number') resultKind = 'count';
-		else if (parsed.dryRun === true) resultKind = 'dryRun';
 		else if (records !== undefined) resultKind = 'list';
 		else if (ticketSummary !== undefined) resultKind = 'ticketSummary';
 		else if (parsed.outcome !== undefined) resultKind = 'compound';
