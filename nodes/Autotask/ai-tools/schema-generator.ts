@@ -3,6 +3,7 @@ import { FilterOperators } from '../constants/filters';
 import type { RuntimeZod } from './runtime';
 import { IDENTIFIER_PAIR_OPERATIONS } from '../constants/resource-operations';
 import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
+import { validateOperationContract } from './operation-contracts';
 
 /** Maximum number of picklist values to inline in a field description */
 const MAX_INLINE_PICKLIST_VALUES = 8;
@@ -222,7 +223,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// operation — required enum
 		let operationDesc = `Operation to perform. One of: ${allOps.join(', ')}`;
 		if (hasIdPairOps && idPairConfig) {
-			operationDesc += ` — NOTE: ${idPairOps.join(' and ')} each require either 'id' (numeric) or '${idPairConfig.altIdField}' (${idPairConfig.altIdFormat}); calls with neither identifier are rejected immediately.`;
+			operationDesc += ` — NOTE: ${idPairOps.join(' and ')} require exactly one identifier: 'id' (numeric) or '${idPairConfig.altIdField}' (${idPairConfig.altIdFormat}).`;
 		}
 		shape.operation = rz.enum(allOps).describe(operationDesc);
 		const hasSearchByDomain = operations.includes('searchByDomain');
@@ -245,7 +246,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				idDesc += ` Required for: ${strictIdOps.join(', ')}.`;
 			}
 			if (hasIdPairOps && idPairConfig) {
-				idDesc += ` For ${idPairOps.join(', ')}: provide 'id' OR '${idPairConfig.altIdField}' — exactly one must be present; calls with neither identifier are rejected immediately with INVALID_FILTER_CONSTRAINT.`;
+				idDesc += ` For ${idPairOps.join(', ')}: provide exactly one identifier: 'id' OR '${idPairConfig.altIdField}'.`;
 			}
 			shape.id = rz.number().optional().describe(idDesc);
 		}
@@ -440,7 +441,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.optional()
 				.describe(
-					`Alternative identifier for ${idPairOps.join(', ')}. Format: ${idPairConfig.altIdFormat} (e.g. ${idPairConfig.altIdExample}). Provide this OR numeric 'id' — exactly one MUST be present for these operations; calls with neither identifier are rejected immediately.`,
+					`Alternative identifier for ${idPairOps.join(', ')}. Format: ${idPairConfig.altIdFormat} (e.g. ${idPairConfig.altIdExample}). Provide this OR numeric 'id' (exactly one).`,
 				);
 		}
 
@@ -929,7 +930,23 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				exposesImpersonationResourceId: Boolean(shape.impersonationResourceId),
 			},
 		});
-		const schema = rz.object(shape);
+		const schema = rz.object(shape).superRefine((input: Record<string, unknown>, ctx: unknown) => {
+			const operationValue = input.operation;
+			if (typeof operationValue !== 'string') return;
+			const violations = validateOperationContract(resource, operationValue, input);
+			if (violations.length === 0) return;
+			for (const violation of violations) {
+				(
+					ctx as {
+						addIssue: (issue: { code: 'custom'; message: string; path?: string[] }) => void;
+					}
+				).addIssue({
+					code: 'custom',
+					message: violation.message,
+					path: violation.path,
+				});
+			}
+		});
 		if (isReadOnlyOpsSet) {
 			const cacheKey = getReadOnlySchemaCacheKey(resource, operations, readFields);
 			setReadOnlySchemaCache(cacheKey, schema);

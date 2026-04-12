@@ -64,6 +64,7 @@ import {
 	COMPOUND_REGISTRY,
 	COMPOUND_PARENT_NOT_FOUND_OUTCOMES,
 } from '../constants/compound-registry';
+import { validateOperationContract } from './operation-contracts';
 
 export interface ToolExecutorParams {
 	resource: string;
@@ -709,28 +710,25 @@ export async function executeAiTool(
 		return attachCorrelation(JSON.stringify(idValidation.error), correlationId);
 	}
 
-	// Pre-flight: operations using the identifier-pair pattern (id OR altIdField) require at least one.
-	// This returns a structured error before the runtime handler throws an unhandled exception.
-	const idPairConfig = getIdentifierPairConfig(resource, effectiveOperation);
-	if (idPairConfig) {
-		const hasId = typeof params.id === 'number' && params.id > 0;
-		const hasAltId =
-			typeof params[idPairConfig.altIdField as keyof typeof params] === 'string' &&
-			(params[idPairConfig.altIdField as keyof typeof params] as string).trim() !== '';
-		if (!hasId && !hasAltId) {
-			return attachCorrelation(
-				JSON.stringify(
-					wrapError(
-						resource,
-						operation,
-						ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
-						`${effectiveOperation} requires a ticket identifier: provide 'id' (numeric Ticket ID) or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`,
-						`Call autotask_${resource} with operation '${effectiveOperation}' and include either 'id' (numeric Ticket ID) or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`,
-					),
+	const contractViolations = validateOperationContract(
+		resource,
+		effectiveOperation,
+		params as Record<string, unknown>,
+	);
+	if (contractViolations.length > 0) {
+		const message = contractViolations.map((violation) => violation.message).join(' ');
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					effectiveOperation,
+					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+					message,
+					`Call autotask_${resource} with operation '${effectiveOperation}' and provide arguments that satisfy the operation contract.`,
 				),
-				correlationId,
-			);
-		}
+			),
+			correlationId,
+		);
 	}
 
 	if (
@@ -937,7 +935,7 @@ export async function executeAiTool(
 		name: string,
 		index: number,
 		fallbackValue?: unknown,
-		options?: IGetNodeParameterOptions,
+		_options?: IGetNodeParameterOptions,
 	): unknown => {
 		switch (name) {
 			case 'resource':
@@ -1114,7 +1112,6 @@ export async function executeAiTool(
 				// not listed above, it will get fallbackValue (safe) and the missing case
 				// will be discoverable — not silently use a wrong node-level config value.
 				if (process.env.N8N_AI_TOOL_STRICT_PARAMS === '1') {
-					// eslint-disable-next-line no-console
 					console.warn(
 						`[AutotaskAiTools] Unmapped getNodeParameter key "${name}" ` +
 						`for ${resource}.${effectiveOperation} — returning fallbackValue. ` +
@@ -1128,9 +1125,6 @@ export async function executeAiTool(
 	try {
 		// Compound operation short-circuit: createIfNotExists bypasses the standard executor
 		if (effectiveOperation === 'createIfNotExists') {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let compoundResult: any;
-
 			// createFields comes from fieldValues (already validated + label-resolved above)
 			// Convert date fields from user timezone to UTC before passing to compound helpers,
 			// which bypass CreateOperation.execute() and therefore convertDatesToUTC.
@@ -1169,7 +1163,8 @@ export async function executeAiTool(
 			};
 
 			const handler = await registryEntry.getHandler();
-			compoundResult = await handler(context, 0, compoundOptions);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const compoundResult: any = await handler(context, 0, compoundOptions);
 
 			if (compoundResult) {
 				// Reclassify not-found outcomes as errors
@@ -1356,4 +1351,3 @@ export async function executeAiTool(
 		context.getNodeParameter = originalGetNodeParameter;
 	}
 }
-

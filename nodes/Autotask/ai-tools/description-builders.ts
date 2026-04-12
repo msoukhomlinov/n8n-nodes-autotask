@@ -2,6 +2,7 @@ import type { FieldMeta } from '../helpers/aiHelper';
 import { getEntityMetadata } from '../constants/entities';
 import { getAiIdentityHint } from '../constants/ai-identity';
 import { AI_TOOL_DEBUG_VERBOSE, redactForVerbose, traceDescriptionBuild } from './debug-trace';
+import { getOperationContractRuleText } from './operation-contracts';
 
 export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
 
@@ -286,9 +287,11 @@ export function buildCompanySearchByDomainDescription(resourceName: string): str
 }
 
 export function buildTicketSummaryDescription(resourceName: string): string {
+	const ruleText = getOperationContractRuleText(resourceName, 'summary');
+	const identifierRule = ruleText.length > 0 ? `${ruleText.join(' ')} ` : '';
 	return (
 		'Get a compact, type-aware summary of any Autotask ticket. ' +
-		`Requires 'id' (numeric Ticket ID) or 'ticketNumber' (format T{date}.{seq}, e.g. T20240615.0001) — calls with neither identifier are rejected immediately. ` +
+		identifierRule +
 		'Automatically detects ticket type (Service Request, Incident, Problem, Change Request, Alert) and prioritises the most relevant fields. ' +
 		'Filters out null and empty fields to reduce noise. ' +
 		"Includes a 'computed' block with pre-calculated values: ageHours, daysSinceLastActivity, isAssigned; for open tickets: isOverdue, plus hoursUntilDue (not yet overdue) or hoursOverdue (past due); when SLA is assigned: slaStatus, slaNextMilestoneDueHours, slaEarliestBreachHours. " +
@@ -302,8 +305,10 @@ export function buildTicketSummaryDescription(resourceName: string): string {
 }
 
 export function buildTicketSlaHealthCheckDescription(resourceName: string): string {
+	const ruleText = getOperationContractRuleText(resourceName, 'slaHealthCheck');
+	const identifierRule = ruleText.length > 0 ? `${ruleText.join(' ')} ` : '';
 	return (
-		`Run an SLA health check on a ticket — provide either 'id' (numeric Ticket ID) or 'ticketNumber' (format T{date}.{seq}, e.g. T20240615.0001); calls with neither identifier are rejected immediately. ` +
+		`Run an SLA health check on a ticket. ${identifierRule}` +
 		'Returns first-response, resolution-plan, and resolution milestone timing and status in consistent hours (2 decimal places). ' +
 		"Use 'ticketFields' to limit which ticket fields are returned in the ticket section. " +
 		'Includes wallClockRemainingHours, where negative values indicate overdue milestones. ' +
@@ -624,10 +629,6 @@ const DEDUP_NOTES = [
 	'errorOnDuplicate: when true, errors on duplicate instead of skipping. Default false.',
 	'updateFields: field names to compare against the duplicate — values that differ cause an update. Requires errorOnDuplicate=false.',
 	'Returns outcome: created, skipped, updated, or a resource-specific not_found variant.',
-];
-const IDENTIFIER_PAIR_NOTES = [
-	"Requires either 'id' (numeric entity ID) or the alternative string identifier (e.g. 'ticketNumber' with format T{date}.{seq}).",
-	'Calls with neither identifier are rejected immediately with INVALID_FILTER_CONSTRAINT.',
 ];
 const LIST_ADVANCED_NOTES = [
 	'filtersJson: JSON array of Autotask IFilterCondition objects for 3+ conditions or nested OR. Mutually exclusive with flat filter_field triplets. No label resolution — pass numeric IDs.',
@@ -1117,22 +1118,23 @@ function getOperationPurpose(
 	}
 }
 
-function getOperationNotes(operation: string): string[] {
+function getOperationNotes(resource: string, operation: string): string[] {
+	const contractNotes = getOperationContractRuleText(resource, operation);
 	switch (operation) {
 		case 'create':
 		case 'update':
-			return [...LABEL_RESOLUTION_NOTES];
+			return [...contractNotes, ...LABEL_RESOLUTION_NOTES];
 		case 'createIfNotExists':
-			return [...LABEL_RESOLUTION_NOTES, ...DEDUP_NOTES];
+			return [...contractNotes, ...LABEL_RESOLUTION_NOTES, ...DEDUP_NOTES];
 		case 'slaHealthCheck':
 		case 'summary':
-			return [...IDENTIFIER_PAIR_NOTES];
+			return [...contractNotes];
 		case 'getMany':
 		case 'getPosted':
 		case 'getUnposted':
-			return [...LIST_ADVANCED_NOTES];
+			return [...contractNotes, ...LIST_ADVANCED_NOTES];
 		default:
-			return [];
+			return [...contractNotes];
 	}
 }
 
@@ -1163,6 +1165,6 @@ export function buildOperationDoc(
 		parameters = READ_OP_PARAMS[targetOperation] ?? { required: [], optional: [] };
 	}
 
-	const notes = getOperationNotes(targetOperation);
+	const notes = getOperationNotes(resource, targetOperation);
 	return { operation: targetOperation, purpose, parameters, notes };
 }
