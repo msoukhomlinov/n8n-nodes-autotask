@@ -3,6 +3,7 @@ import { FilterOperators } from '../constants/filters';
 import type { RuntimeZod } from './runtime';
 import { IDENTIFIER_PAIR_OPERATIONS } from '../constants/resource-operations';
 import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
+import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 
 /** Maximum number of picklist values to inline in a field description */
 const MAX_INLINE_PICKLIST_VALUES = 8;
@@ -164,6 +165,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		readFields: FieldMeta[],
 		writeFields: FieldMeta[],
 	) {
+		const operationMetadata = operations
+			.map((operation) => getOperationMetadata(operation))
+			.filter((metadata): metadata is NonNullable<typeof metadata> => metadata !== undefined);
 		const isReadOnlyOpsSet = writeFields.length === 0;
 		if (isReadOnlyOpsSet) {
 			const cacheKey = getReadOnlySchemaCacheKey(resource, operations, readFields);
@@ -184,11 +188,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			summary: {
 				operations,
 				hasListFamilyOps: operations.some((op) =>
-					['getMany', 'count', 'getPosted', 'getUnposted'].includes(op),
+					getOperationMetadata(op)?.supportsFilters === true,
 				),
-				hasWriteFamilyOps: operations.some((op) =>
-					['create', 'createIfNotExists', 'update', 'delete'].includes(op),
-				),
+				hasWriteFamilyOps: operations.some((op) => isWriteOperation(op)),
 				hasIdentifierPairOps: Boolean(IDENTIFIER_PAIR_OPERATIONS[resource]),
 				readFields: summariseFields(readFields),
 				writeFields: summariseFields(writeFields),
@@ -200,14 +202,10 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const shape: Record<string, any> = {};
 
-		const hasGetFamily = operations.some((op) =>
-			['get', 'whoAmI', 'getMany', 'count', 'getPosted', 'getUnposted', 'searchByDomain'].includes(
-				op,
-			),
+		const hasGetFamily = operationMetadata.some((metadata) =>
+			['item', 'list', 'count'].includes(metadata.responseKind),
 		);
-		const hasListFamily = operations.some((op) =>
-			['getMany', 'count', 'getPosted', 'getUnposted'].includes(op),
-		);
+		const hasListFamily = operationMetadata.some((metadata) => metadata.supportsFilters);
 		const hasGetOrDelete = operations.some((op) => ['get', 'delete'].includes(op));
 		const hasUpdate = operations.includes('update');
 		const hasCreate = operations.includes('create');
