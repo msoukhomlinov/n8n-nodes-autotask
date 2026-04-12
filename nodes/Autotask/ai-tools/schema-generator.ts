@@ -101,6 +101,18 @@ export function mapFilterOp(op: string): string {
 }
 
 export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
+	const hasProvidedValue = (value: unknown): boolean => {
+		if (value === undefined || value === null) return false;
+		if (typeof value === 'string') return value.trim() !== '';
+		if (Array.isArray(value)) return value.length > 0;
+		return true;
+	};
+
+	const issueMessage = (
+		type: 'MISSING_REQUIRED_FIELDS' | 'INVALID_FILTER_CONSTRAINT',
+		message: string,
+	): string => `${type}: ${message}`;
+
 	// Enum constants using runtime zod (ensures instanceof checks pass in all n8n versions)
 	const rFilterOpEnum = rz.enum([
 		'eq',
@@ -276,6 +288,12 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.optional()
 				.describe('Reason for rejecting the time off request. Recommended for audit trail.');
+			shape.rejectReasonPolicy = rz
+				.enum(['optional', 'mandatory'])
+				.optional()
+				.describe(
+					"Reject-reason policy for reject operation. When 'mandatory', rejectReason must be provided.",
+				);
 		}
 
 		// fields — column selection
@@ -903,19 +921,141 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			},
 		});
 		const schema = rz.object(shape).superRefine((input: Record<string, unknown>, ctx: unknown) => {
-			const operationValue = input.operation;
-			if (typeof operationValue !== 'string') return;
-			const violations = validateOperationContract(resource, operationValue, input);
-			if (violations.length === 0) return;
-			for (const violation of violations) {
+			const addIssue = (issue: { code: 'custom'; message: string; path?: string[] }) =>
 				(
 					ctx as {
 						addIssue: (issue: { code: 'custom'; message: string; path?: string[] }) => void;
 					}
-				).addIssue({
+				).addIssue(issue);
+			const operationValue = input.operation;
+			if (typeof operationValue !== 'string') return;
+			const violations = validateOperationContract(resource, operationValue, input);
+			for (const violation of violations) {
+				addIssue({
 					code: 'custom',
-					message: violation.message,
+					message: issueMessage('MISSING_REQUIRED_FIELDS', violation.message),
 					path: violation.path,
+				});
+			}
+
+			const isListOperation = ['getMany', 'count', 'getPosted', 'getUnposted'].includes(
+				operationValue,
+			);
+			if (!isListOperation) return;
+
+			const hasFiltersJson = hasProvidedValue(input.filtersJson);
+			const hasFlatFilter1 =
+				hasProvidedValue(input.filter_field) ||
+				hasProvidedValue(input.filter_op) ||
+				hasProvidedValue(input.filter_value);
+			const hasFlatFilter2 =
+				hasProvidedValue(input.filter_field_2) ||
+				hasProvidedValue(input.filter_op_2) ||
+				hasProvidedValue(input.filter_value_2);
+
+			if (hasFiltersJson && (hasFlatFilter1 || hasFlatFilter2)) {
+				addIssue({
+					code: 'custom',
+					message: issueMessage(
+						'INVALID_FILTER_CONSTRAINT',
+						`Operation '${operationValue}' does not allow mixing 'filtersJson' with flat filter fields.`,
+					),
+					path: ['filtersJson'],
+				});
+			}
+
+			if (hasProvidedValue(input.filter_field) && !hasProvidedValue(input.filter_value)) {
+				addIssue({
+					code: 'custom',
+					message: issueMessage(
+						'MISSING_REQUIRED_FIELDS',
+						`Operation '${operationValue}' requires 'filter_value' when 'filter_field' is provided.`,
+					),
+					path: ['filter_value'],
+				});
+			}
+
+			if (!hasProvidedValue(input.filter_field) && hasProvidedValue(input.filter_value)) {
+				addIssue({
+					code: 'custom',
+					message: issueMessage(
+						'INVALID_FILTER_CONSTRAINT',
+						`Operation '${operationValue}' does not allow 'filter_value' without 'filter_field'.`,
+					),
+					path: ['filter_field'],
+				});
+			}
+
+			if (hasFlatFilter2) {
+				const hasFilter2Field = hasProvidedValue(input.filter_field_2);
+				const hasFilter2Value = hasProvidedValue(input.filter_value_2);
+				if (!hasFilter2Field || !hasFilter2Value) {
+					addIssue({
+						code: 'custom',
+						message: issueMessage(
+							'MISSING_REQUIRED_FIELDS',
+							`Operation '${operationValue}' requires both 'filter_field_2' and 'filter_value_2' when using a second filter.`,
+						),
+						path: !hasFilter2Field ? ['filter_field_2'] : ['filter_value_2'],
+					});
+				}
+				if (!hasFlatFilter1) {
+					addIssue({
+						code: 'custom',
+						message: issueMessage(
+							'INVALID_FILTER_CONSTRAINT',
+							`Operation '${operationValue}' does not allow a second filter without the first filter.`,
+						),
+						path: ['filter_field_2'],
+					});
+				}
+			}
+
+			if (hasProvidedValue(input.filter_logic) && !(hasFlatFilter1 && hasFlatFilter2)) {
+				addIssue({
+					code: 'custom',
+					message: issueMessage(
+						'INVALID_FILTER_CONSTRAINT',
+						`Operation '${operationValue}' does not allow 'filter_logic' unless both filter pairs are present.`,
+					),
+					path: ['filter_logic'],
+				});
+			}
+
+			if (hasProvidedValue(input.recency) && (hasProvidedValue(input.since) || hasProvidedValue(input.until))) {
+				addIssue({
+					code: 'custom',
+					message: issueMessage(
+						'INVALID_FILTER_CONSTRAINT',
+						`Operation '${operationValue}' does not allow 'recency' together with 'since' or 'until'.`,
+					),
+					path: ['recency'],
+				});
+			}
+
+			if (hasProvidedValue(input.until) && !hasProvidedValue(input.since) && !hasProvidedValue(input.recency)) {
+				addIssue({
+					code: 'custom',
+					message: issueMessage(
+						'MISSING_REQUIRED_FIELDS',
+						`Operation '${operationValue}' requires 'since' or 'recency' when 'until' is provided.`,
+					),
+					path: ['since'],
+				});
+			}
+
+			if (
+				operationValue === 'reject' &&
+				input.rejectReasonPolicy === 'mandatory' &&
+				!hasProvidedValue(input.rejectReason)
+			) {
+				addIssue({
+					code: 'custom',
+					message: issueMessage(
+						'MISSING_REQUIRED_FIELDS',
+						"Operation 'reject' requires 'rejectReason' when rejectReasonPolicy is 'mandatory'.",
+					),
+					path: ['rejectReason'],
 				});
 			}
 		});
