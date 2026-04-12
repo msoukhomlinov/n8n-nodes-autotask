@@ -69,10 +69,11 @@ export const OPERATION_CONTRACTS: ResourceOperationContracts = {
 	},
 };
 
-function hasProvidedValue(value: unknown): boolean {
+export function hasProvidedValue(value: unknown): boolean {
 	if (value === undefined || value === null) return false;
 	if (typeof value === 'string') return value.trim() !== '';
-	if (typeof value === 'number') return Number.isFinite(value);
+	if (Array.isArray(value)) return value.length > 0;
+	if (typeof value === 'number') return Number.isFinite(value) && value > 0;
 	return true;
 }
 
@@ -88,8 +89,9 @@ function getXorMessage(resource: string, operation: string, fields: string[]): s
 		fields.includes('id') &&
 		fields.includes(idPairConfig.altIdField)
 	) {
+		const entityLabel = resource.charAt(0).toUpperCase() + resource.slice(1);
 		return (
-			`Operation '${operation}' requires exactly one identifier: either 'id' (numeric Ticket ID) ` +
+			`Operation '${operation}' requires exactly one identifier: either 'id' (numeric ${entityLabel} ID) ` +
 			`or '${idPairConfig.altIdField}' (format ${idPairConfig.altIdFormat}, e.g. ${idPairConfig.altIdExample}).`
 		);
 	}
@@ -170,3 +172,28 @@ export function getOperationContractRuleText(resource: string, operation: string
 
 	return lines;
 }
+
+function assertContractRegistryConsistency(): void {
+	for (const [resourceKey, ops] of Object.entries(OPERATION_CONTRACTS)) {
+		for (const [opKey, contract] of Object.entries(ops)) {
+			const required = new Set(contract.requiredFields ?? []);
+			const forbidden = new Set(contract.forbiddenFields ?? []);
+			for (const field of required) {
+				if (forbidden.has(field)) {
+					throw new Error(
+						`operation-contracts: '${resourceKey}.${opKey}' has '${field}' in both requiredFields and forbiddenFields — this is a contradiction.`,
+					);
+				}
+			}
+			for (const group of contract.xorGroups ?? []) {
+				if (group.length < 2) {
+					throw new Error(
+						`operation-contracts: '${resourceKey}.${opKey}' has an xorGroup with fewer than 2 members — XOR requires at least two fields.`,
+					);
+				}
+			}
+		}
+	}
+}
+
+assertContractRegistryConsistency();
