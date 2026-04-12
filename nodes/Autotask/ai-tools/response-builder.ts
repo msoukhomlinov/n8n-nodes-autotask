@@ -295,28 +295,6 @@ export function buildCompoundResponse(
     return response;
 }
 
-export function buildDryRunResponse(
-    resource: string,
-    operation: string,
-    resolvedFieldValues: Record<string, unknown>,
-    context: ToolResponseContext = {},
-): Record<string, unknown> {
-    const resolvedLabels = toResolvedLabels(context.resolutions);
-    const fieldCount = Object.keys(resolvedFieldValues).length;
-    const labelCount = resolvedLabels.length;
-    const summary = `Dry run: ${labelCount} label${labelCount !== 1 ? 's' : ''} resolved, ${fieldCount} field${fieldCount !== 1 ? 's' : ''} validated. No API call made.`;
-    return {
-        summary,
-        resource,
-        operation: `${resource}.${operation}`,
-        dryRun: true,
-        resolvedFieldValues,
-        resolvedLabels,
-        pendingConfirmations: context.pendingConfirmations ?? [],
-        warnings: context.resolutionWarnings ?? [],
-    };
-}
-
 type MetadataPayload =
     | { kind: 'describeFields'; fields: FieldMeta[]; mode: string }
     | { kind: 'listPicklistValues'; fieldId: string; picklistValues: unknown[] }
