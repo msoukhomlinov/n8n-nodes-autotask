@@ -335,7 +335,6 @@ export function buildContactMoveToCompanyDescription(resourceName: string): stri
 	return (
 		'Move a contact to another company by cloning the contact record and optional related data. ' +
 		'Supports duplicate email safeguards, optional company note and attachment copy, contact group copy, and configurable source/destination audit notes. ' +
-		'Supports dry run planning which returns source contact details, the destination payload, location resolution, duplicate check result, and planned counts without writing. ' +
 		'Supports optional impersonation for write attribution with optional fallback when impersonation is denied. ' +
 		`If field names or expected behaviour are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
 	);
@@ -345,8 +344,7 @@ export function buildResourceTransferOwnershipDescription(resourceName: string):
 	return (
 		'Transfer ownership and assignments from a source resource to a receiving resource. ' +
 		'Supports companies, opportunities, tickets, tasks, projects, task secondary resources, service call assignments, and appointments. ' +
-		'Supports dry run planning, due-window filtering, status filtering, and optional audit notes. ' +
-		'Dry run returns full item lists per entity type with key identifying fields (e.g. id, title, status) plus source/destination resource context. ' +
+		'Supports due-window filtering, status filtering, and optional audit notes. ' +
 		"Use dueWindowPreset for convenient date ranges, or dueWindowPreset='custom' with dueBeforeCustom for exact cut-offs. " +
 		'By default, only open/active-style work is targeted by excluding terminal statuses. ' +
 		`If field names or expected behaviour are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
@@ -622,7 +620,6 @@ const WRITE_OPS_WITH_FIELD_METADATA = new Set(['create', 'update', 'createIfNotE
 const LABEL_RESOLUTION_NOTES = [
 	'Name-based resolution: picklist and reference fields accept human-readable names (e.g. "Will Spence") — auto-resolved to numeric IDs before writing.',
 	"Use operation='describeFields' with mode='write' to discover available field names and types.",
-	'Pass dryRun=true to resolve labels and validate fields without making an API call.',
 ];
 const DEDUP_NOTES = [
 	'dedupFields: array of field names for duplicate detection. Empty = skip dedup, always create.',
@@ -842,11 +839,6 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 		],
 		optional: [
 			{
-				field: 'dryRun',
-				type: 'boolean',
-				description: 'Return plan without mutations (default false).',
-			},
-			{
 				field: 'destinationCompanyLocationId',
 				type: 'number',
 				description: 'Optional destination location ID.',
@@ -876,11 +868,6 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'destinationCompanyId', type: 'number', description: 'Destination company ID.' },
 		],
 		optional: [
-			{
-				field: 'dryRun',
-				type: 'boolean',
-				description: 'Return plan without mutations (default false).',
-			},
 			{
 				field: 'skipIfDuplicateEmailFound',
 				type: 'boolean',
@@ -913,11 +900,6 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			},
 		],
 		optional: [
-			{
-				field: 'dryRun',
-				type: 'boolean',
-				description: 'Return plan without mutations (default false).',
-			},
 			{ field: 'includeTickets', type: 'boolean', description: 'Include tickets (default false).' },
 			{
 				field: 'includeProjects',
@@ -1054,7 +1036,6 @@ function buildWriteParams(
 			type: 'number | string',
 			description: 'Resource ID or name for write attribution (auto-resolved).',
 		},
-		{ field: 'dryRun', type: 'boolean', description: 'Validate without writing (default false).' },
 	);
 	return { required, optional };
 }
