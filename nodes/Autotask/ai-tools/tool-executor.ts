@@ -32,7 +32,6 @@ import { buildRecencyFilters, type RecencyBuildResult } from './recency';
 import {
 	attachCorrelation,
 	buildMetadataResponse,
-	buildDryRunResponse,
 	buildCompoundResponse,
 	type ToolResponseContext,
 } from './response-builder';
@@ -211,7 +210,7 @@ function normaliseOperation(operation: string): string {
 	}
 }
 
-/** n8n framework fields injected into every tool call — must not reach API request bodies */
+/** n8n framework fields injected into every tool call — must not reach API request bodies. */
 const N8N_METADATA_FIELDS = new Set([
 	'sessionId',
 	'action',
@@ -221,7 +220,7 @@ const N8N_METADATA_FIELDS = new Set([
 	'toolName',
 	'toolCallId',
 	'operation',
-	'dryRun',
+	'dryRun', // Defensive strip: AI/MCP no longer accepts dry-run, but ignore if injected.
 ]);
 
 /** Key prefixes injected by n8n that must be stripped regardless of suffix */
@@ -911,26 +910,6 @@ export async function executeAiTool(
 		);
 		if (blocker !== null) return attachCorrelation(blocker, correlationId);
 	}
-
-	if (rawParams.dryRun === true) {
-		const dryRunResponse = JSON.stringify(
-			buildDryRunResponse(resource, effectiveOperation, fieldValues, {
-				resolutions: labelResolutions,
-				resolutionWarnings: labelWarnings,
-				pendingConfirmations: labelPendingConfirmations,
-			}),
-		);
-		traceResponse({
-			phase: 'dry-run',
-			resource,
-			operation: effectiveOperation,
-			correlationId,
-			durationMs: Date.now() - startedAt,
-			summary: summariseResponseEnvelope(dryRunResponse),
-		});
-		return attachCorrelation(dryRunResponse, correlationId);
-	}
-
 	context.getNodeParameter = ((
 		name: string,
 		index: number,
@@ -1096,13 +1075,6 @@ export async function executeAiTool(
 				// redundant — the AI tool already ensures only the configured resource's
 				// operations reach executeAiTool(). Empty array disables the allowlist check.
 				return '[]';
-			case 'allowDryRunForWrites':
-				// The AI path manages its own dry-run response contract: params.dryRun is
-				// stripped from API bodies via N8N_METADATA_FIELDS. This must remain true
-				// to allow the downstream executor to process dryRun calls that originate
-				// from the AI schema (currently exposed on moveToCompany / moveConfigurationItem
-				// / transferOwnership; extending to all write ops is a follow-on task).
-				return true;
 			default:
 				if (Object.prototype.hasOwnProperty.call(params, name)) {
 					return params[name as keyof ToolExecutorParams];
