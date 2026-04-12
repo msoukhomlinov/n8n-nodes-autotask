@@ -18,6 +18,11 @@ import {
 	buildUnifiedDescriptionTemplate,
 	injectDescriptionReferenceUtc,
 } from './ai-tools/description-builders';
+import {
+	SUPPORTED_TOOL_OPERATIONS,
+	getOperationMetadata,
+	isWriteOperation,
+} from './ai-tools/operation-metadata';
 import { RuntimeDynamicStructuredTool, runtimeZod, getLazyLogWrapper } from './ai-tools/runtime';
 import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
 import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
@@ -33,39 +38,6 @@ import {
 	traceToolBuild,
 } from './ai-tools/debug-trace';
 
-const WRITE_OPERATIONS = [
-	'create',
-	'createIfNotExists',
-	'moveToCompany',
-	'moveConfigurationItem',
-	'transferOwnership',
-	'update',
-	'approve',
-	'reject',
-	'delete',
-];
-const SUPPORTED_TOOL_OPERATIONS = [
-	'get',
-	'getMany',
-	'searchByDomain',
-	'getPosted',
-	'getUnposted',
-	'getByResource',
-	'getByYear',
-	'count',
-	'create',
-	'moveToCompany',
-	'moveConfigurationItem',
-	'transferOwnership',
-	'update',
-	'delete',
-	'whoAmI',
-	'slaHealthCheck',
-	'summary',
-	'createIfNotExists',
-	'approve',
-	'reject',
-];
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
 const TOOL_BUILD_CACHE_TTL_MS = 90_000;
 const METADATA_CACHE_TTL_MS = 90_000;
@@ -383,7 +355,7 @@ export class AutotaskAiTools implements INodeType {
 		}
 
 		const effectiveOps = operations.filter(
-			(op) => !WRITE_OPERATIONS.includes(op) || allowWriteOperations,
+			(op) => !isWriteOperation(op) || allowWriteOperations,
 		);
 		if (effectiveOps.length === 0) {
 			throw new NodeOperationError(
@@ -539,7 +511,7 @@ export class AutotaskAiTools implements INodeType {
 			func: async (rawParams: Record<string, unknown>) => {
 				const operation = rawParams.operation as string;
 				if (!operation || !allAllowedOps.includes(operation)) {
-					if (operation && WRITE_OPERATIONS.includes(operation) && !allowWriteOperations) {
+					if (operation && isWriteOperation(operation) && !allowWriteOperations) {
 						return JSON.stringify(
 							wrapError(
 								resource,
@@ -616,7 +588,7 @@ export class AutotaskAiTools implements INodeType {
 
 		// Pick the first permitted operation as the default for test execution
 		const effectiveOps = operations.filter(
-			(op) => !WRITE_OPERATIONS.includes(op) || allowWriteOperations,
+			(op) => !isWriteOperation(op) || allowWriteOperations,
 		);
 		if (effectiveOps.length === 0) {
 			throw new NodeOperationError(
@@ -747,7 +719,7 @@ export class AutotaskAiTools implements INodeType {
 
 			const requestedOp = (item.json.operation as string) || effectiveOps[0];
 			if (requestedOp && !allAllowedOps.includes(requestedOp)) {
-				if (WRITE_OPERATIONS.includes(requestedOp) && !allowWriteOperations) {
+				if (isWriteOperation(requestedOp) && !allowWriteOperations) {
 					response.push({
 						json: {
 							...wrapError(
@@ -871,34 +843,12 @@ async function getToolResourceOperations(
 	const ops = getResourceOperations(resource);
 	const options: INodePropertyOptions[] = [];
 
-	const opLabels: Record<string, string> = {
-		get: 'Get by ID',
-		whoAmI: 'Who am I',
-		getMany: 'Get many (with filters)',
-		searchByDomain: 'Search by domain',
-		slaHealthCheck: 'SLA health check',
-		summary: 'Ticket summary',
-		getPosted: 'Get posted time entries',
-		getUnposted: 'Get unposted time entries',
-		count: 'Count',
-		create: 'Create',
-		moveToCompany: 'Move contact to company',
-		moveConfigurationItem: 'Move configuration item (clone to company)',
-		transferOwnership: 'Transfer ownership',
-		update: 'Update',
-		delete: 'Delete',
-		createIfNotExists: 'Create If Not Exists (idempotent)',
-		getByResource: 'Get by resource',
-		getByYear: 'Get by resource and year',
-		approve: 'Approve time off request',
-		reject: 'Reject time off request',
-	};
-
 	for (const op of ops) {
 		if (!SUPPORTED_TOOL_OPERATIONS.includes(op)) continue;
-		if (WRITE_OPERATIONS.includes(op) && !allowWriteOperations) continue;
+		if (isWriteOperation(op) && !allowWriteOperations) continue;
+		const metadata = getOperationMetadata(op);
 		options.push({
-			name: opLabels[op] ?? op,
+			name: metadata?.label ?? op,
 			value: op,
 			description: `${op} operation`,
 		});

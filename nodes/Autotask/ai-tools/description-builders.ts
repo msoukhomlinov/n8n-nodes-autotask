@@ -3,6 +3,7 @@ import { getEntityMetadata } from '../constants/entities';
 import { getAiIdentityHint } from '../constants/ai-identity';
 import { AI_TOOL_DEBUG_VERBOSE, redactForVerbose, traceDescriptionBuild } from './debug-trace';
 import { getOperationContractRuleText } from './operation-contracts';
+import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 
 export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
 
@@ -445,18 +446,7 @@ export function buildUnifiedDescriptionTemplate(
 			supportsImpersonation,
 		},
 	});
-	const hasWriteOps = operations.some(
-		(op) =>
-			op === 'create' ||
-			op === 'update' ||
-			op === 'delete' ||
-			op === 'createIfNotExists' ||
-			op === 'approve' ||
-			op === 'reject' ||
-			op === 'moveToCompany' ||
-			op === 'moveConfigurationItem' ||
-			op === 'transferOwnership',
-	);
+	const hasWriteOps = operations.some((op) => isWriteOperation(op));
 	const allOps = [
 		...new Set([...operations, 'describeFields', 'listPicklistValues', 'describeOperation']),
 	];
@@ -485,77 +475,23 @@ export function buildUnifiedDescriptionTemplate(
 	);
 
 	for (const op of operations) {
-		let summary: string;
-		switch (op) {
-			case 'get':
-				summary = `operation '${op}': Retrieve a single record by numeric 'id'.`;
-				break;
-			case 'whoAmI':
-				summary = `operation '${op}': Resolve the authenticated ${resourceLabel} record.`;
-				break;
-			case 'getMany':
-				summary =
-					`operation '${op}': Search records with up to two filters (AND/OR via filter_logic). Use filter_field/filter_value. Supports name-based resolution for reference/picklist filter values. ` +
-					listDateTimeFieldHint(readFields);
-				break;
-			case 'count':
-				summary = `operation '${op}': Count records matching optional filters.`;
-				break;
-			case 'searchByDomain':
-				summary = `operation '${op}': Search companies by domain string.`;
-				break;
-			case 'slaHealthCheck':
-				summary = `operation '${op}': Run SLA health check for a ticket using 'id' or 'ticketNumber'.`;
-				break;
-			case 'summary':
-				summary = `operation '${op}': Get a compact ticket summary ('id' or 'ticketNumber' required). Computed values, child counts, relationships.`;
-				break;
-			case 'getPosted':
-				summary = `operation '${op}': Get posted time entries with optional filters.`;
-				break;
-			case 'getUnposted':
-				summary = `operation '${op}': Get unposted time entries with optional filters.`;
-				break;
-			case 'create': {
-				summary = `operation '${op}': Create a new record. ${buildRequiredFieldsSummary(writeFields)} Populate every optional field for which you already have data — do not omit known information. Supports name-based resolution for picklist/reference fields.`;
-				break;
+		const metadata = getOperationMetadata(op);
+		let summary = metadata
+			? `operation '${op}': ${metadata.docsFragment}`
+			: `operation '${op}': Perform ${op} on ${resourceLabel}.`;
+
+		if (op === 'create') {
+			summary = `operation '${op}': ${metadata?.docsFragment ?? 'Create a new record.'} ${buildRequiredFieldsSummary(writeFields)} Populate every optional field for which you already have data — do not omit known information. Supports name-based resolution for picklist/reference fields.`;
+		} else if (op === 'update') {
+			if (resource === 'resourceTimeOffAdditional') {
+				summary = `operation '${op}': Update time-off additional quotas for a resource. Provide 'resourceID' (name or numeric ID, auto-resolved) and the fields to change (annual/additional hours per category). Supports name-based resolution.`;
+			} else {
+				summary = `operation '${op}': ${metadata?.docsFragment ?? "Update a record by numeric 'id'."} Supports name-based resolution for picklist/reference fields.`;
 			}
-			case 'update':
-				if (resource === 'resourceTimeOffAdditional') {
-					summary = `operation '${op}': Update time-off additional quotas for a resource. Provide 'resourceID' (name or numeric ID, auto-resolved) and the fields to change (annual/additional hours per category). Supports name-based resolution.`;
-				} else {
-					summary = `operation '${op}': Update a record by numeric 'id'. Provide only fields to change. Supports name-based resolution for picklist/reference fields.`;
-				}
-				break;
-			case 'delete':
-				summary = `operation '${op}': Delete a record by numeric 'id'.`;
-				break;
-			case 'moveToCompany':
-				summary = `operation '${op}': Move a contact to another company.`;
-				break;
-			case 'moveConfigurationItem':
-				summary = `operation '${op}': Clone a configuration item to a different company.`;
-				break;
-			case 'transferOwnership':
-				summary = `operation '${op}': Transfer ownership from source resource to destination resource.`;
-				break;
-			case 'createIfNotExists':
-				summary = buildCreateIfNotExistsDescription(resource);
-				break;
-			case 'getByResource':
-				summary = `operation '${op}': Get record(s) for a specific resource. Provide 'resourceID' as a name or numeric ID (auto-resolved). Use for operations that are scoped to a parent resource rather than queried by their own ID.`;
-				break;
-			case 'getByYear':
-				summary = `operation '${op}': Get the time-off balance for a specific calendar year. Provide 'resourceID' (name or numeric ID, auto-resolved) and 'year' as an integer (e.g. 2024).`;
-				break;
-			case 'approve':
-				summary = `operation '${op}': Approve a pending time off request by numeric 'id'. Changes the request status to approved.`;
-				break;
-			case 'reject':
-				summary = `operation '${op}': Reject a pending time off request by numeric 'id'. Provide an optional 'rejectReason' string to record the reason for rejection.`;
-				break;
-			default:
-				summary = `operation '${op}': Perform ${op} on ${resourceLabel}.`;
+		} else if (op === 'createIfNotExists') {
+			summary = `operation '${op}': ${buildCreateIfNotExistsDescription(resource)}`;
+		} else if (op === 'getMany') {
+			summary = `operation '${op}': ${metadata?.docsFragment ?? ''} ${listDateTimeFieldHint(readFields)}`;
 		}
 		sections.push(summary);
 	}
