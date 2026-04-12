@@ -701,7 +701,7 @@ export async function executeAiTool(
 					`One or more ID-like filters are unresolved and still non-numeric: ${unresolvedSummary}.`,
 					hasPendingCandidates
 						? `Candidates were found during resolution. Review pendingConfirmations from this response, choose the correct numeric ID, then retry autotask_${resource} with numeric ID filter values.`
-						: `Use autotask_resource with operation 'getMany' (or the relevant entity tool) to resolve names to numeric IDs, then retry autotask_${resource} with numeric ID filter values.`,
+						: `Use autotask_${resource} with operation 'getMany' to resolve names to numeric IDs, then retry autotask_${resource} with numeric ID filter values.`,
 					{
 						unresolvedFilters: unresolvedIdLikeFilters,
 						unresolvedFilterDetails: unresolvedIdLikeFilterDetails,
