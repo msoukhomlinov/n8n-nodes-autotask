@@ -55,10 +55,7 @@ import {
 	traceResponse,
 	traceToolCall,
 } from './debug-trace';
-import {
-	buildWriteResolutionBlocker,
-	summariseResolutionState,
-} from './write-guard';
+import { buildWriteResolutionBlocker, summariseResolutionState } from './write-guard';
 import {
 	COMPOUND_REGISTRY,
 	COMPOUND_PARENT_NOT_FOUND_OUTCOMES,
@@ -225,7 +222,6 @@ const N8N_METADATA_FIELDS = new Set([
 
 /** Key prefixes injected by n8n that must be stripped regardless of suffix */
 const N8N_METADATA_PREFIXES = ['Prompt__'];
-
 
 /** Extract the canonical created-entity numeric ID from a compound creator result. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -582,9 +578,9 @@ export async function executeAiTool(
 			recencyFilters: summariseFilters(recencyResult.filters),
 			recencyDateRange: recencyResult.isActive
 				? {
-					from: recencyResult.filters.find((f) => f.op === 'gte')?.value,
-					to: recencyResult.filters.find((f) => f.op === 'lte')?.value,
-				  }
+						from: recencyResult.filters.find((f) => f.op === 'gte')?.value,
+						to: recencyResult.filters.find((f) => f.op === 'lte')?.value,
+					}
 				: undefined,
 			filtersJsonUsed: Boolean(params.filtersJson),
 			combinedStrategy: params.filtersJson
@@ -624,13 +620,14 @@ export async function executeAiTool(
 	const supportsOffsetPagination = ['getMany', 'getPosted', 'getUnposted'].includes(
 		effectiveOperation,
 	);
-	const queryLimit = recencyResult.isActive
-		? RECENCY_OVER_REQUEST_LIMIT
-		: effectiveOffset > 0 && supportsOffsetPagination
-			? Math.min(effectiveOffset + effectiveLimit, MAX_QUERY_LIMIT)
-			: params.returnAll === true
-				? MAX_QUERY_LIMIT
-				: effectiveLimit;
+	const queryLimit =
+		recencyResult.isActive && params.returnAll !== true
+			? RECENCY_OVER_REQUEST_LIMIT
+			: effectiveOffset > 0 && supportsOffsetPagination
+				? Math.min(effectiveOffset + effectiveLimit, MAX_QUERY_LIMIT)
+				: params.returnAll === true
+					? undefined
+					: effectiveLimit;
 	traceFilterBuild({
 		phase: 'pagination-plan',
 		resource,
@@ -948,7 +945,10 @@ export async function executeAiTool(
 				}
 				// Always apply bounded query limits for list/count style operations.
 				// Note: offset is applied client-side only (slice after fetch), not sent to API.
-				if (['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation)) {
+				if (
+					['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation) &&
+					queryLimit !== undefined
+				) {
 					data.limit = queryLimit;
 				}
 				if (effectiveOperation === 'searchByDomain') {
@@ -985,7 +985,7 @@ export async function executeAiTool(
 			case 'returnAll':
 				return params.returnAll === true;
 			case 'maxRecords':
-				return params.returnAll === true
+				return params.returnAll === true || queryLimit === undefined
 					? undefined // executeScopedQuery handles full pagination internally; MaxRecords is ignored
 					: queryLimit;
 			case 'bodyJson':
@@ -1086,8 +1086,8 @@ export async function executeAiTool(
 				if (process.env.N8N_AI_TOOL_STRICT_PARAMS === '1') {
 					console.warn(
 						`[AutotaskAiTools] Unmapped getNodeParameter key "${name}" ` +
-						`for ${resource}.${effectiveOperation} — returning fallbackValue. ` +
-						`Add an explicit case to the override switch in tool-executor.ts.`,
+							`for ${resource}.${effectiveOperation} — returning fallbackValue. ` +
+							`Add an explicit case to the override switch in tool-executor.ts.`,
 					);
 				}
 				return fallbackValue;
@@ -1186,11 +1186,16 @@ export async function executeAiTool(
 
 				return attachCorrelation(
 					JSON.stringify(
-						buildCompoundResponse(resource, 'createIfNotExists', compoundData as Parameters<typeof buildCompoundResponse>[2], {
-							resolutions: labelResolutions,
-							resolutionWarnings: allWarnings,
-							pendingConfirmations: labelPendingConfirmations,
-						}),
+						buildCompoundResponse(
+							resource,
+							'createIfNotExists',
+							compoundData as Parameters<typeof buildCompoundResponse>[2],
+							{
+								resolutions: labelResolutions,
+								resolutionWarnings: allWarnings,
+								pendingConfirmations: labelPendingConfirmations,
+							},
+						),
 					),
 					correlationId,
 				);
@@ -1254,6 +1259,7 @@ export async function executeAiTool(
 			recencyNote: recencyResult.note ?? recencyOffsetNote,
 			recencyWindowLimited:
 				recencyResult.isActive &&
+				params.returnAll !== true &&
 				supportsListResponse &&
 				fetchedRecords.length >= RECENCY_OVER_REQUEST_LIMIT,
 			resolutions: allResolutions.length > 0 ? allResolutions : undefined,
@@ -1262,6 +1268,14 @@ export async function executeAiTool(
 				allPendingConfirmations.length > 0 ? allPendingConfirmations : undefined,
 			effectiveOffset: recencyResult.isActive ? 0 : effectiveOffset,
 			readFields,
+			serverCap: queryLimit ?? MAX_QUERY_LIMIT,
+			clientCap: 100,
+			serverCapReached: Boolean(
+				supportsListResponse &&
+				queryLimit !== undefined &&
+				recencyResult.isActive &&
+				fetchedRecords.length >= queryLimit,
+			),
 		};
 
 		// Apply Change Info Field aliases to ticket read results.
