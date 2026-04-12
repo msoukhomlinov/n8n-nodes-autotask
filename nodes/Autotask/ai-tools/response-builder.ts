@@ -219,6 +219,28 @@ export function buildListResponse(
 	const opPrefix =
 		operation === 'getPosted' ? 'posted ' : operation === 'getUnposted' ? 'unposted ' : '';
 	const summary = `Found ${count} ${opPrefix}${resource} records — ${terminationSignal}.`;
+
+	// Detect all-null ID fields when hasMore=true — guide LLM to use exist filter instead of paginating.
+	// Capped at 2 hints: entities like timeEntry have many legitimately-null FK fields; emitting all
+	// would flood the LLM with irrelevant suggestions. Placed in notes[] (not warnings[]) because
+	// these are query-strategy hints, not data-quality errors.
+	const nullIdHints: string[] = [];
+	if (pagination.hasMore && count > 0) {
+		const firstRecord = records[0];
+		const candidateIdFields = Object.keys(firstRecord).filter(
+			(k) => k !== 'id' && k.endsWith('ID') && !k.startsWith('_'),
+		);
+		for (const field of candidateIdFields) {
+			if (nullIdHints.length >= 2) break;
+			if (records.every((r) => r[field] === null || r[field] === undefined)) {
+				nullIdHints.push(
+					`All returned records have ${field}=null. ` +
+					`To find only records with a non-null ${field}, add filter_field='${field}', filter_op='exist' (no filter_value needed) instead of paginating.`,
+				);
+			}
+		}
+	}
+
 	const response: Record<string, unknown> = {
 		summary,
 		resource,
@@ -237,7 +259,8 @@ export function buildListResponse(
 	};
 	if (pagination.nextOffset !== undefined) response.nextOffset = pagination.nextOffset;
 	if (pagination.totalAvailable !== undefined) response.totalAvailable = pagination.totalAvailable;
-	if (pagination.notes && pagination.notes.length > 0) response.notes = pagination.notes;
+	const allNotes = [...(pagination.notes ?? []), ...nullIdHints];
+	if (allNotes.length > 0) response.notes = allNotes;
 	return response;
 }
 

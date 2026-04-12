@@ -108,7 +108,7 @@ const baseFields: INodeProperties[] = [
 			loadOptionsMethod: 'getSelectColumns',
 			loadOptionsDependsOn: ['resource'],
 		},
-		description: 'Choose from the list, or specify IDs using an expression',
+		description: 'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 		hint: 'Fields to compare against the duplicate. If values differ, the duplicate will be updated. Ignored when "Error on Duplicate" is enabled.',
 	},
 	{

@@ -252,6 +252,7 @@ function formatResourceName(value: string): string {
 // Node class
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line @n8n/community-nodes/node-usable-as-tool
 export class AutotaskAiTools implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Autotask AI Tools',

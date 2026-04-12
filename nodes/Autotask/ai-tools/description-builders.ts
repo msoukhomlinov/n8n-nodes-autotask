@@ -109,6 +109,7 @@ export function buildGetManyDescription(
 		`Search ${resourceLabel} records with up to two filters (AND by default; set filter_logic='or' for either-match). ` +
 		`Example: filter_field='companyName', filter_op='contains', filter_value='Acme'. ` +
 		`Use filter_value as true/false for boolean fields, and use arrays (or comma-separated values) for in/notIn operators. ` +
+		`Use exist/notExist operators (no filter_value needed) to filter by non-null/null — e.g., filter_op='exist' returns records where the field is populated, filter_op='notExist' returns records where it is null. Essential for narrowing results to records linked to a specific parent entity. ` +
 		`UDF filtering supports one UDF field per query. ` +
 		`Filterable fields include: ${fieldList}. ` +
 		`IMPORTANT: The Autotask API always returns records in ascending ID order (oldest first). Without recency or since, limit=1 returns the OLDEST record, not the newest. ` +
