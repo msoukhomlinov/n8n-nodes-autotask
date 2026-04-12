@@ -6,6 +6,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Fixed
 
+- **tool/execute**: Removed stale `dryRun` suggestion from write-blocked safety gate error message — AI agents cannot use `dryRun` (removed from schema in v2.9.0, stripped via `N8N_METADATA_FIELDS`), so the hint caused an unactionable retry loop.
 - **schema-generator**: Removed `.superRefine()` from top-level Zod schema — restores `ZodObject` shape required by n8n's `normalizeToolSchema` `instanceof` check. `superRefine` produced `ZodEffects` which silently corrupted the schema for MCP Trigger and Agent V3 execution paths. The `readOnlySchemaCache` no longer caches a corrupted type.
 - **operation-contracts**: `hasProvidedValue` now rejects non-positive numbers (`id: 0`, `id: -1`), restoring the `id > 0` guard from the old identifier-pair pre-flight.
 - **operation-contracts**: `getXorMessage` no longer hardcodes "numeric Ticket ID" — derives the entity label dynamically from the resource name.

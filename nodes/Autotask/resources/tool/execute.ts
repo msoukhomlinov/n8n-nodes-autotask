@@ -681,8 +681,7 @@ async function applySafetyGates(
 					`Write operations are disabled for safety.\n\n` +
 					`Operation "${targetResource}.${resourceOperation}" is not permitted.\n\n` +
 					`To fix:\n` +
-					`• Enable "Allow Write Operations" to permit write operations\n` +
-					`• Or set dryRun to true for validation without execution`,
+					`• Enable "Allow Write Operations" to permit write operations`,
 				);
 			}
 		}
