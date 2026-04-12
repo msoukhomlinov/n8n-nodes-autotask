@@ -477,13 +477,6 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 						'When true and impersonation is set, retry without impersonation if denied (default true).',
 					);
 			}
-			if (!shape.dryRun)
-				shape.dryRun = rz
-					.boolean()
-					.optional()
-					.describe(
-						'When true, resolves labels and validates fields but makes no API call (default false). Returns a summary of resolved field values.',
-					);
 		}
 
 		// moveConfigurationItem fields
@@ -502,11 +495,6 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.positive()
 					.optional()
 					.describe('Destination company ID.');
-			if (!shape.dryRun)
-				shape.dryRun = rz
-					.boolean()
-					.optional()
-					.describe('When true, return a plan without mutations (default false).');
 			shape.destinationCompanyLocationId = rz
 				.number()
 				.int()
@@ -613,11 +601,6 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.positive()
 					.optional()
 					.describe('Destination company ID for the cloned contact.');
-			if (!shape.dryRun)
-				shape.dryRun = rz
-					.boolean()
-					.optional()
-					.describe('When true, returns a plan without mutations (default false).');
 			shape.destinationCompanyLocationId = rz
 				.number()
 				.int()
@@ -682,11 +665,6 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.positive()
 					.optional()
 					.describe('Receiving resource ID. Must be active.');
-			if (!shape.dryRun)
-				shape.dryRun = rz
-					.boolean()
-					.optional()
-					.describe('When true, returns a plan without mutations (default false).');
 			shape.includeTickets = rz
 				.boolean()
 				.optional()
@@ -867,13 +845,6 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 						'When true and impersonation is set, retry without impersonation if denied (default true).',
 					);
 			}
-			if (!shape.dryRun)
-				shape.dryRun = rz
-					.boolean()
-					.optional()
-					.describe(
-						'When true, resolves labels and validates fields but makes no API call (default false). Returns a summary of resolved field values.',
-					);
 		}
 
 		// describeFields fields
@@ -926,7 +897,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				exposesFiltersJson: Boolean(shape.filtersJson),
 				exposesReturnAll: Boolean(shape.returnAll),
 				exposesOutputMode: Boolean(shape.outputMode),
-				exposesDryRun: Boolean(shape.dryRun),
+				// AI schema no longer exposes dryRun (UI-node dry-run remains in non-AI paths).
+				exposesDryRun: false,
 				exposesImpersonationResourceId: Boolean(shape.impersonationResourceId),
 			},
 		});
