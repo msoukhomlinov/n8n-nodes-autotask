@@ -22,6 +22,10 @@ export interface FilterResolutionResult {
     warnings: string[];
     pendingConfirmations: PendingLabelConfirmation[];
     unresolvedIdLikeFilters: ToolFilter[];
+    unresolvedIdLikeFilterDetails: Array<{
+        field: string;
+        unresolvedElements: Array<string | number | boolean>;
+    }>;
 }
 
 interface ToolExecutorFilterParams {
@@ -232,15 +236,38 @@ export async function resolveAndClassifyFilters(
         }),
     );
 
+    const unresolvedIdLikeFilterDetails: Array<{
+        field: string;
+        unresolvedElements: Array<string | number | boolean>;
+    }> = [];
     const unresolvedIdLikeFilters = filters.filter((filter) => {
-        if (typeof filter.value !== 'string') return false;
-        if (filter.value.trim() === '') return false;
-        if (isLikelyId(filter.value)) return false;
-        return isLikelyReferenceIdFilterField(filter.field, resource, readFields);
+        if (!isLikelyReferenceIdFilterField(filter.field, resource, readFields)) return false;
+
+        const unresolvedElements: Array<string | number | boolean> = [];
+        if (typeof filter.value === 'string') {
+            if (filter.value.trim() !== '' && !isLikelyId(filter.value)) {
+                unresolvedElements.push(filter.value);
+            }
+        } else if (Array.isArray(filter.value) && (filter.op === 'in' || filter.op === 'notIn')) {
+            for (const element of filter.value) {
+                if (typeof element !== 'string') continue;
+                if (element.trim() === '') continue;
+                if (!isLikelyId(element)) unresolvedElements.push(element);
+            }
+        }
+
+        if (unresolvedElements.length === 0) return false;
+        unresolvedIdLikeFilterDetails.push({
+            field: filter.field,
+            unresolvedElements: Array.from(new Set(unresolvedElements)),
+        });
+        return true;
     });
-    for (const unresolved of unresolvedIdLikeFilters) {
+    for (const unresolved of unresolvedIdLikeFilterDetails) {
         allWarnings.push(
-            `Unresolved ID-like filter '${unresolved.field}' has non-numeric value '${String(unresolved.value)}'.`,
+            `Unresolved ID-like filter '${unresolved.field}' has non-numeric value(s): ${unresolved.unresolvedElements
+                .map((value) => `'${String(value)}'`)
+                .join(', ')}.`,
         );
     }
 
@@ -250,5 +277,6 @@ export async function resolveAndClassifyFilters(
         warnings: allWarnings,
         pendingConfirmations: allPendingConfirmations,
         unresolvedIdLikeFilters,
+        unresolvedIdLikeFilterDetails,
     };
 }

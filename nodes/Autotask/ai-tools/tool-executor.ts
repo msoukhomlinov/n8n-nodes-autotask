@@ -344,6 +344,7 @@ export async function executeAiTool(
 		warnings: filterWarnings,
 		pendingConfirmations: filterPendingConfirmations,
 		unresolvedIdLikeFilters,
+		unresolvedIdLikeFilterDetails,
 	} = await resolveAndClassifyFilters(context, resource, filters, readFields);
 	traceLabelResolution({
 		phase: 'filter-resolution',
@@ -354,6 +355,7 @@ export async function executeAiTool(
 			attempted: filters.length > 0,
 			unresolvedIdLikeFilterCount: unresolvedIdLikeFilters.length,
 			unresolvedIdLikeFilterFields: unresolvedIdLikeFilters.map((filter) => filter.field),
+			unresolvedIdLikeFilterDetails,
 			...summariseResolutionState(filterResolutions, filterWarnings, filterPendingConfirmations),
 			...(AI_TOOL_DEBUG_VERBOSE ? { filterSnapshot: redactForVerbose(filters) } : {}),
 		},
@@ -662,8 +664,11 @@ export async function executeAiTool(
 	}
 
 	if (unresolvedIdLikeFilters.length > 0) {
-		const unresolvedSummary = unresolvedIdLikeFilters
-			.map((filter) => `${filter.field}='${String(filter.value)}'`)
+		const unresolvedSummary = unresolvedIdLikeFilterDetails
+			.map(
+				(detail) =>
+					`${detail.field}=[${detail.unresolvedElements.map((value) => `'${String(value)}'`).join(', ')}]`,
+			)
 			.join(', ');
 		const hasPendingCandidates = filterPendingConfirmations.length > 0;
 		const pendingSummary = filterPendingConfirmations.map((entry) => {
@@ -688,6 +693,7 @@ export async function executeAiTool(
 						: `Use autotask_resource with operation 'getMany' (or the relevant entity tool) to resolve names to numeric IDs, then retry autotask_${resource} with numeric ID filter values.`,
 					{
 						unresolvedFilters: unresolvedIdLikeFilters,
+						unresolvedFilterDetails: unresolvedIdLikeFilterDetails,
 						...(hasPendingCandidates
 							? {
 									pendingConfirmations: filterPendingConfirmations,
