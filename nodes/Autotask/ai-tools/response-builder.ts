@@ -142,7 +142,7 @@ export function computeListContinuation(
 		};
 	}
 
-	if (recordsMatched > recordsReturned) {
+	if (recordsMatched > recordsReturned && !recencyActive) {
 		const truncatedNextOffset = currentOffset + clientCap;
 		if (truncatedNextOffset < maxQueryLimit) {
 			continuation = { hasMore: true, nextOffset: truncatedNextOffset };

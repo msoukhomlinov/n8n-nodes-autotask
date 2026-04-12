@@ -42,7 +42,6 @@ interface MutationValidationResult {
 	errorType?: string;
 	message?: string;
 	hint?: string;
-	context?: Record<string, unknown>;
 }
 
 export function dispatchOperationResponse(
@@ -92,15 +91,18 @@ export function dispatchOperationResponse(
 			case 'reject': {
 				const fallbackId = params.id;
 				if (recordId !== null) return { ok: true, id: recordId };
-				if (
-					record === null ||
-					record === undefined ||
-					isEmptyObjectRecord(record) ||
-					record.success === true
-				) {
+				if (isEmptyObjectRecord(record) || record?.success === true) {
 					if (fallbackId !== undefined && fallbackId !== null) {
 						return { ok: true, id: fallbackId };
 					}
+				}
+				if (record === null) {
+					return {
+						ok: false,
+						errorType: ERROR_TYPES.ENTITY_NOT_FOUND,
+						message: `No ${resource} found with id ${fallbackId ?? 'unknown'}.`,
+						hint: `Use autotask_${resource} with operation 'getMany' to locate a valid record, then retry ${op}.`,
+					};
 				}
 				return {
 					ok: false,
@@ -429,7 +431,6 @@ export function dispatchOperationResponse(
 						validation.errorType ?? ERROR_TYPES.API_ERROR,
 						validation.message ?? `${resource}.${operation} failed validation.`,
 						validation.hint ?? `Retry autotask_${resource} with operation '${operation}'.`,
-						validation.context,
 					),
 				);
 			}
