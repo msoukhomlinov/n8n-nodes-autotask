@@ -36,6 +36,15 @@ interface OperationResponseParams {
 	until?: string;
 }
 
+interface MutationValidationResult {
+	ok: boolean;
+	id?: number | string;
+	errorType?: string;
+	message?: string;
+	hint?: string;
+	context?: Record<string, unknown>;
+}
+
 export function dispatchOperationResponse(
 	resource: string,
 	operation: string,
@@ -49,6 +58,116 @@ export function dispatchOperationResponse(
 		if (!record) return null;
 		const candidate = record.itemId ?? record.id;
 		return typeof candidate === 'number' || typeof candidate === 'string' ? candidate : null;
+	};
+	const isEmptyObjectRecord = (record: Record<string, unknown> | null): boolean =>
+		record !== null && !Array.isArray(record) && Object.keys(record).length === 0;
+
+	const validateMutationSuccess = (
+		op: string,
+		record: Record<string, unknown> | null,
+	): MutationValidationResult => {
+		const recordId = extractId(record);
+		switch (op) {
+			case 'create': {
+				if (recordId !== null) return { ok: true, id: recordId };
+				return {
+					ok: false,
+					errorType: ERROR_TYPES.API_ERROR,
+					message: `Create ${resource} did not return a created entity ID.`,
+					hint: `Retry autotask_${resource} with operation 'create'. If it persists, inspect API response shape for ${resource}.create.`,
+				};
+			}
+			case 'update': {
+				const fallbackId = params.id;
+				if (recordId !== null) return { ok: true, id: recordId };
+				if (fallbackId !== undefined && fallbackId !== null) return { ok: true, id: fallbackId };
+				return {
+					ok: false,
+					errorType: ERROR_TYPES.API_ERROR,
+					message: `Update ${resource} succeeded but no target ID could be confirmed.`,
+					hint: `Call autotask_${resource} with operation 'update' and include a numeric 'id'.`,
+				};
+			}
+			case 'approve':
+			case 'reject': {
+				const fallbackId = params.id;
+				if (recordId !== null) return { ok: true, id: recordId };
+				if (
+					record === null ||
+					record === undefined ||
+					isEmptyObjectRecord(record) ||
+					record.success === true
+				) {
+					if (fallbackId !== undefined && fallbackId !== null) {
+						return { ok: true, id: fallbackId };
+					}
+				}
+				return {
+					ok: false,
+					errorType: ERROR_TYPES.API_ERROR,
+					message: `${op === 'approve' ? 'Approve' : 'Reject'} ${resource} returned an unverifiable success payload.`,
+					hint: `Call autotask_${resource} with operation '${op}' and include a numeric 'id'.`,
+				};
+			}
+			case 'moveToCompany': {
+				const movedId = record?.newContactId;
+				if (typeof movedId === 'number' && movedId > 0) return { ok: true, id: movedId };
+				const sourceContactId = record?.sourceContactId;
+				const markedSuccess = record?.success === true;
+				const isDryRun = record?.dryRun === true;
+				const isSkipped = record?.skipped === true;
+				if (
+					markedSuccess &&
+					(isDryRun || isSkipped) &&
+					typeof sourceContactId === 'number' &&
+					sourceContactId > 0
+				) {
+					return { ok: true, id: sourceContactId };
+				}
+				return {
+					ok: false,
+					errorType: ERROR_TYPES.API_ERROR,
+					message: `moveToCompany did not return 'newContactId'.`,
+					hint: `Retry the move, then verify contact-mover output includes 'newContactId' (or sourceContactId for dry run/skip).`,
+				};
+			}
+			case 'moveConfigurationItem': {
+				const movedId = record?.newConfigurationItemId;
+				if (typeof movedId === 'number' && movedId > 0) return { ok: true, id: movedId };
+				const runId = record?.runId;
+				if (record?.dryRun === true && typeof runId === 'string' && runId.trim() !== '') {
+					return { ok: true, id: runId };
+				}
+				return {
+					ok: false,
+					errorType: ERROR_TYPES.API_ERROR,
+					message: `moveConfigurationItem did not return 'newConfigurationItemId'.`,
+					hint: `Retry the move, then verify migration output includes 'newConfigurationItemId' (or runId for dry run).`,
+				};
+			}
+			case 'transferOwnership': {
+				const runId = record?.runId;
+				const summaryCounts = record?.summaryCounts;
+				if (typeof runId === 'string' && runId.trim() !== '' && summaryCounts !== undefined) {
+					return { ok: true, id: runId };
+				}
+				return {
+					ok: false,
+					errorType: ERROR_TYPES.API_ERROR,
+					message: `transferOwnership did not return expected run summary fields (runId, summaryCounts).`,
+					hint: `Retry transferOwnership and inspect work-reassigner response integrity.`,
+				};
+			}
+			default: {
+				if (recordId !== null) return { ok: true, id: recordId };
+				return {
+					ok: false,
+					errorType: ERROR_TYPES.API_ERROR,
+					message: `${resource}.${op} returned an unsupported mutation response shape.`,
+					hint: `Use a supported mutation operation for autotask_${resource}.`,
+				};
+			}
+		}
 	};
 
 	switch (operation) {
@@ -301,44 +420,28 @@ export function dispatchOperationResponse(
 		case 'transferOwnership':
 		case 'create':
 		case 'update': {
-			const isNullReturningOp =
-				operation === 'moveConfigurationItem' ||
-				operation === 'moveToCompany' ||
-				operation === 'approve' ||
-				operation === 'reject' ||
-				operation === 'transferOwnership';
-
-			if (isNullReturningOp && (firstRecord === null || firstRecord === undefined)) {
-				const id = params.id ?? 'unknown';
-				if (operation === 'transferOwnership') {
-					return JSON.stringify(
-						wrapError(
-							resource,
-							operation,
-							ERROR_TYPES.ENTITY_NOT_FOUND,
-							`Transfer ownership returned no result.`,
-							`Verify source and destination resource IDs, then retry.`,
-						),
-					);
-				}
+			const validation = validateMutationSuccess(operation, firstRecord);
+			if (!validation.ok) {
 				return JSON.stringify(
 					wrapError(
 						resource,
 						operation,
-						ERROR_TYPES.ENTITY_NOT_FOUND,
-						`No ${resource} found with id ${id}.`,
-						`Use autotask_${resource} with operation 'getMany' and the 'filter_field'/'filter_value' parameters to locate a valid record, extract its numeric 'id', then retry.`,
+						validation.errorType ?? ERROR_TYPES.API_ERROR,
+						validation.message ?? `${resource}.${operation} failed validation.`,
+						validation.hint ?? `Retry autotask_${resource} with operation '${operation}'.`,
+						validation.context,
 					),
 				);
 			}
 
-			const id =
-				operation === 'approve' || operation === 'reject'
-					? ((params.id as number | undefined) ?? extractId(firstRecord) ?? 'unknown')
-					: (extractId(firstRecord) ?? 'unknown');
-
 			return JSON.stringify(
-				buildMutationResponse(resource, operation, id, firstRecord ?? undefined, context),
+				buildMutationResponse(
+					resource,
+					operation,
+					validation.id ?? 'unknown',
+					firstRecord ?? undefined,
+					context,
+				),
 			);
 		}
 
