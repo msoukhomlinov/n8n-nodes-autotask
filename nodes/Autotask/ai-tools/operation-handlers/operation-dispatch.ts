@@ -57,6 +57,16 @@ export function dispatchOperationResponse(
 
 	const extractId = (record: Record<string, unknown> | null): number | string | null => {
 		if (!record) return null;
+		// autotaskApiRequest wraps POST/PUT/PATCH responses as { item: { id|itemId: N } }
+		// (helpers/http/request.ts). Check the wrapped form first, then top-level as fallback.
+		const inner = record.item;
+		if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+			const innerRecord = inner as Record<string, unknown>;
+			const wrappedCandidate = innerRecord.itemId ?? innerRecord.id;
+			if (typeof wrappedCandidate === 'number' || typeof wrappedCandidate === 'string') {
+				return wrappedCandidate;
+			}
+		}
 		const candidate = record.itemId ?? record.id;
 		return typeof candidate === 'number' || typeof candidate === 'string' ? candidate : null;
 	};
@@ -326,8 +336,20 @@ export function dispatchOperationResponse(
 			);
 		}
 
+		// Unwrap the { item: { id: N } } envelope produced by autotaskApiRequest so
+		// response.record contains entity fields directly, not nested under .item.
+		const mutationRecord =
+			firstRecord !== null &&
+			typeof firstRecord === 'object' &&
+			!Array.isArray(firstRecord) &&
+			firstRecord.item !== null &&
+			typeof firstRecord.item === 'object' &&
+			!Array.isArray(firstRecord.item)
+				? (firstRecord.item as Record<string, unknown>)
+				: firstRecord ?? undefined;
+
 		return JSON.stringify(
-			buildMutationResponse(resource, operation, validation.id ?? 'unknown', firstRecord ?? undefined, context),
+			buildMutationResponse(resource, operation, validation.id ?? 'unknown', mutationRecord, context),
 		);
 	}
 

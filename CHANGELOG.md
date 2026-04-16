@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.9.1] — 2026-04-17
+
+### Fixed
+
+- **AI tools — false-negative on all `create` operations**: `extractId` in `operation-dispatch.ts` only inspected `record.itemId ?? record.id` at the top level, but `autotaskApiRequest` wraps POST/PUT/PATCH responses as `{ item: { id: N } }` (helpers/http/request.ts). All `create` operations across all resources (`contact`, `ticket`, `company`, `project`, etc.) returned `"Create <resource> did not return a created entity ID."` despite the entity being successfully created in Autotask. `update` and `reject` masked the same bug via a `params.id` fallback but produced a wrong `response.record` shape (`{ item: { id: N } }` leaked into the mutation envelope). Fix: `extractId` now checks the wrapped `record.item.{id,itemId}` shape first and falls back to top-level. The mutation branch also unwraps `firstRecord` before `buildMutationResponse` so `response.record` contains entity fields directly. Standard node response shape is unchanged.
+
 ## [Unreleased]
 
 ### Fixed
