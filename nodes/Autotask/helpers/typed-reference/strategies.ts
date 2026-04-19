@@ -24,7 +24,7 @@ export const TYPED_REFERENCE_STRATEGIES: Record<string, TypedReferenceStrategy> 
 		companionFieldName: 'projectLookupField',
 		searchableFields: ['projectName', 'description'],
 		defaultSearchField: 'projectName',
-		formatHint: 'tenant-configurable (e.g. P{YYYYMMDD}.{seq})',
+		formatHint: 'tenant-configurable',
 		exampleValue: 'P20240615.0010',
 		formatCandidateDisplayName: (e) => {
 			const parts = [e.projectNumber, e.projectName].filter(Boolean).map(String);

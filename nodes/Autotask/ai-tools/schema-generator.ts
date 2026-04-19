@@ -70,6 +70,7 @@ function buildFieldDescription(field: FieldMeta, prefix?: string): string {
 		}
 	}
 	if (field.isReference && field.referencesEntity) {
+		// Registry keys are lowercase; .toLowerCase() normalises referencesEntity (always lowercase from aiHelper, but defensive).
 		const strategy = TYPED_REFERENCE_STRATEGIES[field.referencesEntity.toLowerCase()];
 		if (strategy) {
 			parts.push(
