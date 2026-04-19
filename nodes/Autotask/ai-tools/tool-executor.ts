@@ -20,6 +20,7 @@ import {
 	type LabelResolution,
 	type PendingLabelConfirmation,
 } from '../helpers/label-resolution';
+import { TYPED_REFERENCE_COMPANION_FIELDS } from '../helpers/typed-reference';
 import {
 	applyChangeInfoAliases,
 	buildAliasMap,
@@ -119,7 +120,7 @@ function buildFieldValues(
 ): Record<string, unknown> {
 	const result: Record<string, unknown> = {};
 	const writeFieldLookup = buildFieldLookup(writeFields);
-	const exclude = new Set([
+	const exclude = new Set<string>([
 		...excludeKeys,
 		'resource',
 		'operation',
@@ -149,6 +150,9 @@ function buildFieldValues(
 		'targetOperation',
 		'filtersJson',
 		'returnAll',
+		// Companion fields for typed-reference resolution (ticketLookupField, projectLookupField, ...).
+		// These are schema fields consumed by the resolver, never sent to the API.
+		...Array.from(TYPED_REFERENCE_COMPANION_FIELDS),
 	]);
 	for (const [key, value] of Object.entries(params)) {
 		if (value !== undefined && value !== null && value !== '' && !exclude.has(key)) {
@@ -886,7 +890,12 @@ export async function executeAiTool(
 		Object.keys(fieldValues).length > 0
 	) {
 		try {
-			const resolution = await resolveLabelsToIds(context, resource, fieldValues as IDataObject);
+			const resolution = await resolveLabelsToIds(
+				context,
+				resource,
+				fieldValues as IDataObject,
+				params as IDataObject,
+			);
 			// Replace fieldValues entries with resolved IDs in-place
 			for (const [key, value] of Object.entries(resolution.values)) {
 				fieldValues[key] = value;
@@ -1039,16 +1048,19 @@ export async function executeAiTool(
 						: Object.keys(fieldValues).length > 0
 							? fieldValues
 							: {};
-				if (effectiveOperation === 'slaHealthCheck') {
+				const identifierPairConfig = getIdentifierPairConfig(resource, effectiveOperation);
+				if (identifierPairConfig) {
 					if (params.id !== undefined) {
 						data.id = params.id;
 					}
-					if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim() !== '') {
-						data.ticketNumber = params.ticketNumber.trim();
+					const altField = identifierPairConfig.altIdField;
+					const altVal = (params as Record<string, unknown>)[altField];
+					if (typeof altVal === 'string' && altVal.trim() !== '') {
+						data[altField] = altVal.trim();
 					}
-					if (selectedSlaTicketColumns.length > 0) {
-						data.slaTicketFields = selectedSlaTicketColumns;
-					}
+				}
+				if (effectiveOperation === 'slaHealthCheck' && selectedSlaTicketColumns.length > 0) {
+					data.slaTicketFields = selectedSlaTicketColumns;
 				}
 				// Always apply bounded query limits for list/count style operations.
 				// Note: offset is applied client-side only (slice after fetch), not sent to API.

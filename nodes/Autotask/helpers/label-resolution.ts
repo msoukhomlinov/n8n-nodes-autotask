@@ -84,6 +84,7 @@ export async function resolveLabelsToIds(
     context: IExecuteFunctions,
     resource: string,
     rawValues: IDataObject,
+    siblingValues?: IDataObject,
 ): Promise<LabelResolutionResult> {
     const values: IDataObject = { ...rawValues };
     const resolutions: LabelResolution[] = [];
