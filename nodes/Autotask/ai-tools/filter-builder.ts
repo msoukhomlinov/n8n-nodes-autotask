@@ -4,10 +4,10 @@ import { mapFilterOp } from './schema-generator';
 import { getReferencedEntity, type FieldMeta } from '../helpers/aiHelper';
 import {
     resolveFilterLabelsToIds,
-    isLikelyId,
     type LabelResolution,
     type PendingLabelConfirmation,
 } from '../helpers/label-resolution';
+import { isLikelyId } from '../helpers/id-utils';
 
 export interface ToolFilter {
     field: string;

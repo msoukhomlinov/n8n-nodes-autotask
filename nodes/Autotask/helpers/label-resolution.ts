@@ -2,6 +2,8 @@ import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { describeResource, getReferencedEntity, listPicklistValues } from './aiHelper';
 import { EntityValueHelper } from './entity-values/value-helper';
 import { PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../constants/field.constants';
+import { isLikelyId } from './id-utils';
+export { isLikelyId } from './id-utils';
 
 export interface LabelResolution {
     field: string;
@@ -22,18 +24,6 @@ export interface LabelResolutionResult {
     resolutions: LabelResolution[];
     warnings: string[];
     pendingConfirmations: PendingLabelConfirmation[];
-}
-
-// Shared utility: detects whether a value looks like a valid Autotask numeric ID.
-// Autotask IDs are positive integers (>0). Uses parseInt round-trip to reject
-// zero-padded strings like "00123".
-export function isLikelyId(v: unknown): boolean {
-    if (typeof v === 'number') return Number.isInteger(v) && v > 0;
-    if (typeof v === 'string' && /^\d+$/.test(v)) {
-        const n = parseInt(v, 10);
-        return n > 0 && String(n) === v;
-    }
-    return false;
 }
 
 function inferReferenceEntityFromField(fieldId: string, resource: string): string | undefined {
