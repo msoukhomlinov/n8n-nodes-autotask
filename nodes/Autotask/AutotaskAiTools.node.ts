@@ -260,18 +260,13 @@ function formatResourceName(value: string): string {
 /**
  * Pre-parse normalisation for Agent V3 `execute()` path.
  *
- * 1. Strips n8n framework metadata (`sessionId`, `chatInput`, `Prompt__*`, etc.) — operation is preserved as a required schema field.
- *    so it never reaches `safeParse` — prevents false "unknown key" noise in
- *    error messages, and mirrors what `supplyData() → func()` does via Zod
- *    `.strip()` semantics.
- * 2. Converts `null` → `undefined` for every remaining field. LLMs (especially
- *    weaker ones) frequently emit JSON `null` for "not applicable" fields
- *    (e.g. `{ "id": null, "ticketNumber": "T20240615.0674" }`). Our schema
- *    uses `.optional()` on most fields — which accepts `undefined` but REJECTS
- *    `null`. Normalising here lets the schema treat "not provided" uniformly
- *    regardless of how the LLM spelled it. Fields declared `.nullish()` in
- *    schema-generator.ts still accept null natively; normalising `null → undefined`
- *    is additionally defensive for any field that slips back to `.optional()`.
+ * 1. Strips n8n framework metadata (`sessionId`, `chatInput`, `Prompt__*`, etc.) — except `operation`,
+ *    which is preserved because it is a required Zod schema field. This prevents false "unknown key"
+ *    noise in error messages and mirrors what `supplyData() → func()` does via Zod `.strip()` semantics.
+ * 2. Converts `null` → `undefined` for every remaining field. LLMs (especially weaker ones like Qwen)
+ *    frequently emit JSON `null` for "not applicable" fields (e.g. `{ "id": null, "ticketNumber": "T20240615.0674" }`).
+ *    Our schema uses `.nullish()` on all optional fields (v2.10+), which accepts both `null` and `undefined`;
+ *    this normalisation is belt-and-braces, ensuring uniform "not provided" handling regardless of how the LLM spells it.
  */
 function stripAndNormaliseItemJson(itemJson: Record<string, unknown>): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
