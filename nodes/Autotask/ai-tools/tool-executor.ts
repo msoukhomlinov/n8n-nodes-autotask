@@ -151,7 +151,7 @@ function buildFieldValues(
 		'returnAll',
 	]);
 	for (const [key, value] of Object.entries(params)) {
-		if (value !== undefined && value !== '' && !exclude.has(key)) {
+		if (value !== undefined && value !== null && value !== '' && !exclude.has(key)) {
 			const canonicalField = writeFieldLookup.get(key.toLowerCase());
 			result[canonicalField?.id ?? key] = value;
 		}
@@ -324,6 +324,13 @@ export async function executeAiTool(
 			continue;
 		}
 		(params as Record<string, unknown>)[key] = value;
+	}
+	// Normalise null → undefined for all params: null from the LLM (via .nullish() schema fields)
+	// must be treated as "field not provided" — never forwarded to API bodies or filter coercion.
+	for (const key of Object.keys(params)) {
+		if ((params as Record<string, unknown>)[key] === null) {
+			delete (params as Record<string, unknown>)[key];
+		}
 	}
 	const normalisedOperation = normaliseOperation(operation);
 	traceToolCall({

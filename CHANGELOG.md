@@ -2,12 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [2.10.0] — TBD
+## [2.10.0] — 2026-04-19
 
 ### Fixed
 
 - **AI tools — `.optional()` fields now use `.nullish()` for LLM null safety**: LLM models like Qwen emit JSON `null` for unused optional fields instead of omitting them. Pre-v2.10.0, schema fields were declared `rz.number().optional()` which accepts `undefined` but rejects `null`, causing false-negative Zod parse failures. All 101 optional schema fields now use `.nullish()` (which accepts both `null` and `undefined`). This resolves identifier-pair operations (`ticket.summary`, `ticket.slaHealthCheck`) and mutation operations failing silently with non-frontier LLMs.
 - **Agent V3 `execute()` path — pre-normalisation + contract error surfacing**: When Zod schema parse fails in the `execute()` path, operation-contract violations (required fields, xor groups, forbidden fields) are now validated and surfaced with human-readable error messages, replacing opaque Zod type errors. Pre-parse normalisation (metadata stripping + `null→undefined` coercion) ensures consistent parse input across both `execute()` and `supplyData()→func()` paths.
+- **AI tools — null fields now treated as omitted (not as explicit null updates)**: Downstream handlers (`buildFieldValues()` on write ops, `coerceFilterValueByFieldType()` on filters) did not treat null as "field omitted" after schema change to `.nullish()`. This caused write operations to send explicit `null` values to the API (unintended field clears) and filter operations to crash on null. Fix: Entry-point normalisation in `executeAiTool()` now deletes null-valued params before processing; `buildFieldValues()` explicitly filters `value !== null`. Both P1 (filter safety) and P2 (write field data integrity) issues identified by Codex review are resolved.
 
 ### Changed
 
