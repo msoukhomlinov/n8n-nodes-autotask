@@ -4,6 +4,10 @@ import { EntityValueHelper } from './entity-values/value-helper';
 import { PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../constants/field.constants';
 import { isLikelyId } from './id-utils';
 export { isLikelyId } from './id-utils';
+import {
+    tryResolveTypedReference,
+    TYPED_REFERENCE_COMPANION_FIELDS,
+} from './typed-reference';
 
 export interface LabelResolution {
     field: string;
@@ -178,6 +182,41 @@ export async function resolveLabelsToIds(
         if (field.isReference && field.referencesEntity) {
             const label = String(provided).trim();
             if (label === '') continue;
+
+            // Typed-reference fast path (ticket numbers, project numbers, etc.).
+            // Short-circuits the expensive EntityValueHelper full-list scan when the
+            // referenced entity has a registered strategy.
+            const typed = await tryResolveTypedReference(
+                context,
+                field.referencesEntity,
+                label,
+                siblingValues ?? {},
+            );
+            if (typed.status === 'resolved') {
+                values[key] = typed.id;
+                resolutions.push({
+                    field: field.id,
+                    from: label,
+                    to: typed.id,
+                    method: 'reference',
+                });
+                continue;
+            }
+            if (typed.status === 'pending') {
+                pendingConfirmations.push({
+                    field: field.id,
+                    label,
+                    candidates: typed.candidates,
+                    fieldType: 'reference',
+                });
+                pendingFieldIds.add(field.id);
+                continue;
+            }
+            if (typed.status === 'miss') {
+                warnings.push(typed.warning);
+                continue;
+            }
+            // 'skip' → fall through to existing EntityValueHelper path (unchanged).
             try {
                 const helper = new EntityValueHelper(context, field.referencesEntity);
 
@@ -267,6 +306,12 @@ export async function resolveLabelsToIds(
                 `or use autotask_${resource} with operation 'describeFields' to inspect.`,
             );
         }
+    }
+
+    // Belt-and-suspenders: drop companion fields from resolved values in case
+    // buildFieldValues's exclude set was bypassed (e.g. future call sites).
+    for (const companionField of TYPED_REFERENCE_COMPANION_FIELDS) {
+        delete (values as Record<string, unknown>)[companionField];
     }
 
     return { values, resolutions, warnings, pendingConfirmations };
