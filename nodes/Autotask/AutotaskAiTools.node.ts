@@ -276,7 +276,8 @@ function formatResourceName(value: string): string {
 function stripAndNormaliseItemJson(itemJson: Record<string, unknown>): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(itemJson)) {
-		if (N8N_METADATA_FIELDS.has(key)) continue;
+		// operation is a required schema field — NEVER strip it
+		if (key !== 'operation' && N8N_METADATA_FIELDS.has(key)) continue;
 		if (N8N_METADATA_PREFIXES.some((p) => key.startsWith(p))) continue;
 		out[key] = value === null ? undefined : value;
 	}
