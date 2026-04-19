@@ -208,7 +208,7 @@ function normaliseOperation(operation: string): string {
 }
 
 /** n8n framework fields injected into every tool call — must not reach API request bodies. */
-const N8N_METADATA_FIELDS = new Set([
+export const N8N_METADATA_FIELDS = new Set([
 	'sessionId',
 	'action',
 	'chatInput',
@@ -221,7 +221,7 @@ const N8N_METADATA_FIELDS = new Set([
 ]);
 
 /** Key prefixes injected by n8n that must be stripped regardless of suffix */
-const N8N_METADATA_PREFIXES = ['Prompt__'];
+export const N8N_METADATA_PREFIXES = ['Prompt__'];
 
 /** Extract the canonical created-entity numeric ID from a compound creator result. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
