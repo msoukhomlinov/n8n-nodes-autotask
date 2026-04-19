@@ -11,8 +11,10 @@ export const TYPED_REFERENCE_STRATEGIES: Record<string, TypedReferenceStrategy> 
 		defaultSearchField: 'title',
 		formatHint: 'T{YYYYMMDD}.{seq4}',
 		exampleValue: 'T20240615.0674',
-		formatCandidateDisplayName: (e) =>
-			`${String(e.ticketNumber ?? '')} — ${String(e.title ?? '')}`.trim(),
+		formatCandidateDisplayName: (e) => {
+			const parts = [e.ticketNumber, e.title].filter(Boolean).map(String);
+			return parts.join(' — ') || '(unnamed)';
+		},
 	},
 	project: {
 		entityType: 'project',
@@ -24,8 +26,10 @@ export const TYPED_REFERENCE_STRATEGIES: Record<string, TypedReferenceStrategy> 
 		defaultSearchField: 'projectName',
 		formatHint: 'tenant-configurable (e.g. P{YYYYMMDD}.{seq})',
 		exampleValue: 'P20240615.0010',
-		formatCandidateDisplayName: (e) =>
-			`${String(e.projectNumber ?? '')} — ${String(e.projectName ?? '')}`.trim(),
+		formatCandidateDisplayName: (e) => {
+			const parts = [e.projectNumber, e.projectName].filter(Boolean).map(String);
+			return parts.join(' — ') || '(unnamed)';
+		},
 	},
 };
 

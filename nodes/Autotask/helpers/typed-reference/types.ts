@@ -1,7 +1,8 @@
 import type { IDataObject } from 'n8n-workflow';
 
 export interface TypedReferenceStrategy {
-	/** Entity type key matching referencesEntity values — lowercase, e.g. 'ticket', 'project' */
+	/** Entity type key — same as the TYPED_REFERENCE_STRATEGIES registry key (lowercase, e.g. 'ticket', 'project').
+	 *  Included in the value object for self-describing error messages; must match `referencesEntity` values from describeResource(). */
 	entityType: string;
 	/** Autotask REST endpoint for queries — e.g. 'Tickets/query' */
 	queryEndpoint: string;
