@@ -260,7 +260,7 @@ function formatResourceName(value: string): string {
 /**
  * Pre-parse normalisation for Agent V3 `execute()` path.
  *
- * 1. Strips n8n framework metadata (`sessionId`, `operation`, `Prompt__*`, etc.)
+ * 1. Strips n8n framework metadata (`sessionId`, `chatInput`, `Prompt__*`, etc.) — operation is preserved as a required schema field.
  *    so it never reaches `safeParse` — prevents false "unknown key" noise in
  *    error messages, and mirrors what `supplyData() → func()` does via Zod
  *    `.strip()` semantics.
