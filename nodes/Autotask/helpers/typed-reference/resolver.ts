@@ -21,9 +21,17 @@ export async function tryResolveTypedReference(
 
     // Path A: regex match → exact numberField lookup
     if (strategy.numberPattern?.test(label)) {
-        const result = await queryExact(ctx, strategy, label);
-        if (result.length === 1) {
-            return { status: 'resolved', id: result[0].id as string | number, method: 'number-exact' };
+        try {
+            const result = await queryExact(ctx, strategy, label);
+            const id = result[0]?.id;
+            if (result.length === 1 && id != null) {
+                return { status: 'resolved', id: id as string | number, method: 'number-exact' };
+            }
+        } catch (err) {
+            return {
+                status: 'miss',
+                warning: `[INFRASTRUCTURE] Failed to look up ${strategy.entityType} by ${strategy.numberField}: ${String(err)}`,
+            };
         }
         return {
             status: 'miss',
@@ -33,11 +41,16 @@ export async function tryResolveTypedReference(
 
     // Path B: non-regex, non-numeric → try numberField eq first (project pattern)
     if (!strategy.numberPattern) {
-        const result = await queryExact(ctx, strategy, label);
-        if (result.length === 1) {
-            return { status: 'resolved', id: result[0].id as string | number, method: 'number-exact' };
+        try {
+            const result = await queryExact(ctx, strategy, label);
+            const id = result[0]?.id;
+            if (result.length === 1 && id != null) {
+                return { status: 'resolved', id: id as string | number, method: 'number-exact' };
+            }
+            // fall through to companion/default search
+        } catch {
+            // Infrastructure error on exact lookup — fall through to search path
         }
-        // fall through to companion/default search
     }
 
     // Path C: companion or default search field
@@ -56,9 +69,18 @@ export async function tryResolveTypedReference(
         };
     }
 
-    const candidates = await querySearch(ctx, strategy, searchField, label);
-    if (candidates.length === 1) {
-        return { status: 'resolved', id: candidates[0].id as string | number, method: 'search-unique' };
+    let candidates: IDataObject[];
+    try {
+        candidates = await querySearch(ctx, strategy, searchField, label);
+    } catch (err) {
+        return {
+            status: 'miss',
+            warning: `[INFRASTRUCTURE] Failed to search ${strategy.entityType} by ${searchField}: ${String(err)}`,
+        };
+    }
+    const uniqueId = candidates[0]?.id;
+    if (candidates.length === 1 && uniqueId != null) {
+        return { status: 'resolved', id: uniqueId as string | number, method: 'search-unique' };
     }
     if (candidates.length > 1) {
         return {

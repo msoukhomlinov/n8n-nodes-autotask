@@ -25,7 +25,7 @@ export interface TypedReferenceStrategy {
 }
 
 export type TypedResolutionOutcome =
-	| { status: 'resolved'; id: string | number; method: 'number-exact' | 'search-exact' | 'search-unique' }
+	| { status: 'resolved'; id: string | number; method: 'number-exact' | 'search-unique' }
 	| { status: 'pending'; candidates: Array<{ id: string | number; displayName: string }> }
 	| { status: 'miss'; warning: string }
 	| { status: 'skip' };
