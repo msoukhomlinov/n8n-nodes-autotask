@@ -896,16 +896,17 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// Typed-reference companion fields (ticketLookupField, projectLookupField, …).
 		// Emitted outside the hasCreate||hasUpdate block so they are available on
 		// read-only tools too — the filter path uses them on getMany.
+		const allFields = [...writeFields, ...readFields];
 		for (const strategy of Object.values(TYPED_REFERENCE_STRATEGIES)) {
-			const hasMatchingField = [...writeFields, ...readFields].some(
+			const hasMatchingField = allFields.some(
 				(f) =>
 					f.isReference &&
 					f.referencesEntity?.toLowerCase() === strategy.entityType,
 			);
 			if (!hasMatchingField) continue;
-			if (shape[strategy.companionFieldName]) continue; // de-dup guard
+			if (strategy.companionFieldName in shape) continue; // de-dup guard
 			shape[strategy.companionFieldName] = rz
-				.enum(strategy.searchableFields as [string, ...string[]])
+				.enum(strategy.searchableFields)
 				.nullish()
 				.describe(
 					`Search field for ${strategy.entityType} lookup when ${strategy.entityType}ID is a non-numeric label. ` +

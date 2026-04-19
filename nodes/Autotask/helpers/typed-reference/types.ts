@@ -12,8 +12,8 @@ export interface TypedReferenceStrategy {
 	numberPattern?: RegExp;
 	/** Top-level Zod schema field name for the search companion — e.g. 'ticketLookupField' */
 	companionFieldName: string;
-	/** Valid values for the companion enum field */
-	searchableFields: string[];
+	/** Valid values for the companion enum field — must be non-empty (enforced by tuple type) */
+	searchableFields: [string, ...string[]];
 	/** Fallback search field when companion not supplied. When undefined, miss on no numberField match. */
 	defaultSearchField?: string;
 	/** Format description for LLM-facing schema hints */
