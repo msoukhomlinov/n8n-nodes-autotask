@@ -4,6 +4,7 @@ import type { RuntimeZod } from './runtime';
 import { IDENTIFIER_PAIR_OPERATIONS } from '../constants/resource-operations';
 import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
+import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
 
 /** Maximum number of picklist values to inline in a field description */
 const MAX_INLINE_PICKLIST_VALUES = 8;
@@ -891,6 +892,27 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			.describe(
 				"For describeOperation: the operation name to document (e.g. 'create', 'createIfNotExists', 'getMany', 'slaHealthCheck').",
 			);
+
+		// Typed-reference companion fields (ticketLookupField, projectLookupField, …).
+		// Emitted outside the hasCreate||hasUpdate block so they are available on
+		// read-only tools too — the filter path uses them on getMany.
+		for (const strategy of Object.values(TYPED_REFERENCE_STRATEGIES)) {
+			const hasMatchingField = [...writeFields, ...readFields].some(
+				(f) =>
+					f.isReference &&
+					f.referencesEntity?.toLowerCase() === strategy.entityType,
+			);
+			if (!hasMatchingField) continue;
+			if (shape[strategy.companionFieldName]) continue; // de-dup guard
+			shape[strategy.companionFieldName] = rz
+				.enum(strategy.searchableFields as [string, ...string[]])
+				.nullish()
+				.describe(
+					`Search field for ${strategy.entityType} lookup when ${strategy.entityType}ID is a non-numeric label. ` +
+					`E.g. set to '${strategy.searchableFields[0]}' to find by name. ` +
+					`Not needed when supplying a ${strategy.entityType} number (${strategy.exampleValue}).`,
+				);
+		}
 
 		traceSchemaBuild({
 			phase: 'build-complete',
