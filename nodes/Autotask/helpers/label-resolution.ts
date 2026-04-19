@@ -332,6 +332,7 @@ export async function resolveFilterLabelsToIds(
     filterField: string,
     filterValue: string | number | boolean | Array<string | number | boolean>,
     readFields: Array<{ id: string; isPickList?: boolean; isReference?: boolean; referencesEntity?: string; allowedValues?: Array<{ id: string | number; label: string }> }>,
+    siblingValues?: IDataObject,
 ): Promise<LabelResolutionResult> {
     const values: IDataObject = { [filterField]: filterValue };
     const resolutions: LabelResolution[] = [];
@@ -363,7 +364,14 @@ export async function resolveFilterLabelsToIds(
                 resolvedArray.push(element as string | number | boolean);
                 continue;
             }
-            const elementResult = await resolveFilterLabelsToIds(context, resource, filterField, element, readFields);
+            const elementResult = await resolveFilterLabelsToIds(
+                context,
+                resource,
+                filterField,
+                element,
+                readFields,
+                siblingValues,
+            );
             if (elementResult.resolutions.length > 0) {
                 resolvedArray.push(elementResult.values[filterField] as string | number);
                 resolutions.push(...elementResult.resolutions);
@@ -454,6 +462,38 @@ export async function resolveFilterLabelsToIds(
     const referenceEntity = field?.isReference ? field.referencesEntity : undefined;
     const effectiveReferenceEntity = referenceEntity ?? (hasReferenceFallback ? inferredReferenceEntity : undefined);
     if (effectiveReferenceEntity) {
+        // Typed-reference fast path (ticket numbers, project numbers, etc.).
+        // siblingValues is undefined on standard-node call sites; resolver falls back to strategy.defaultSearchField.
+        const typed = await tryResolveTypedReference(
+            context,
+            effectiveReferenceEntity,
+            label,
+            siblingValues ?? {},
+        );
+        if (typed.status === 'resolved') {
+            values[filterField] = typed.id;
+            resolutions.push({
+                field: filterField,
+                from: label,
+                to: typed.id,
+                method: 'reference',
+            });
+            return { values, resolutions, warnings, pendingConfirmations };
+        }
+        if (typed.status === 'pending') {
+            pendingConfirmations.push({
+                field: filterField,
+                label,
+                candidates: typed.candidates,
+                fieldType: 'reference',
+            });
+            return { values, resolutions, warnings, pendingConfirmations };
+        }
+        if (typed.status === 'miss') {
+            warnings.push(typed.warning);
+            return { values, resolutions, warnings, pendingConfirmations };
+        }
+        // 'skip' → fall through to existing EntityValueHelper path (unchanged).
         try {
             const helper = new EntityValueHelper(context, effectiveReferenceEntity);
 

@@ -175,6 +175,7 @@ export async function resolveAndClassifyFilters(
     resource: string,
     filters: ToolFilter[],
     readFields: FieldMeta[],
+    siblingValues?: import('n8n-workflow').IDataObject,
 ): Promise<FilterResolutionResult> {
     const allResolutions: LabelResolution[] = [];
     const allWarnings: string[] = [];
@@ -194,6 +195,7 @@ export async function resolveAndClassifyFilters(
                         filter.field,
                         filter.value,
                         readFields,
+                        siblingValues,
                     );
                     if (resolution.resolutions.length > 0) {
                         filter.value = resolution.values[filter.field] as string | number | boolean;
@@ -218,6 +220,7 @@ export async function resolveAndClassifyFilters(
                         filter.field,
                         filter.value,
                         readFields,
+                        siblingValues,
                     );
                     if (resolution.resolutions.length > 0) {
                         filter.value = resolution.values[filter.field] as Array<

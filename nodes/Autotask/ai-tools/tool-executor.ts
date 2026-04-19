@@ -367,7 +367,13 @@ export async function executeAiTool(
 		pendingConfirmations: filterPendingConfirmations,
 		unresolvedIdLikeFilters,
 		unresolvedIdLikeFilterDetails,
-	} = await resolveAndClassifyFilters(context, resource, filters, readFields);
+	} = await resolveAndClassifyFilters(
+		context,
+		resource,
+		filters,
+		readFields,
+		params as IDataObject,
+	);
 	traceLabelResolution({
 		phase: 'filter-resolution',
 		resource,
