@@ -220,7 +220,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// operation — required enum
 		let operationDesc = `Operation to perform. One of: ${allOps.join(', ')}`;
 		if (hasIdPairOps && idPairConfig) {
-			operationDesc += ` — NOTE: ${idPairOps.join(' and ')} require exactly one identifier: 'id' (numeric) or '${idPairConfig.altIdField}' (${idPairConfig.altIdFormat}).`;
+			operationDesc +=
+				` — NOTE: ${idPairOps.join(' and ')} require EXACTLY ONE identifier: either 'id' (numeric) OR '${idPairConfig.altIdField}' (${idPairConfig.altIdFormat}).` +
+				` Send only the field you are using — OMIT the other entirely (do not send the unused field as null).`;
 		}
 		shape.operation = rz.enum(allOps).describe(operationDesc);
 		const hasSearchByDomain = operations.includes('searchByDomain');
@@ -243,7 +245,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				idDesc += ` Required for: ${strictIdOps.join(', ')}.`;
 			}
 			if (hasIdPairOps && idPairConfig) {
-				idDesc += ` For ${idPairOps.join(', ')}: provide exactly one identifier: 'id' OR '${idPairConfig.altIdField}'.`;
+				idDesc +=
+					` For ${idPairOps.join(', ')}: supply EITHER 'id' (numeric) OR '${idPairConfig.altIdField}' — never both.` +
+					` When using '${idPairConfig.altIdField}', OMIT the 'id' field entirely (do not send id=null).`;
 			}
 			shape.id = rz.number().nullish().describe(idDesc);
 		}
@@ -444,7 +448,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe(
-					`Alternative identifier for ${idPairOps.join(', ')}. Format: ${idPairConfig.altIdFormat} (e.g. ${idPairConfig.altIdExample}). Provide this OR numeric 'id' (exactly one).`,
+					`Alternative identifier for ${idPairOps.join(', ')}. Format: ${idPairConfig.altIdFormat} (e.g. ${idPairConfig.altIdExample}).` +
+						` Supply EITHER this field OR numeric 'id' — never both.` +
+						` When using '${idPairConfig.altIdField}', OMIT the 'id' field entirely (do not send id=null).`,
 				);
 		}
 
