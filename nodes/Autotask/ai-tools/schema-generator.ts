@@ -70,7 +70,16 @@ function buildFieldDescription(field: FieldMeta, prefix?: string): string {
 		}
 	}
 	if (field.isReference && field.referencesEntity) {
-		parts.push(`(references ${field.referencesEntity} — accepts ID or name)`);
+		const strategy = TYPED_REFERENCE_STRATEGIES[field.referencesEntity.toLowerCase()];
+		if (strategy) {
+			parts.push(
+				`(references ${field.referencesEntity}: numeric ID, ` +
+				`or ${strategy.numberField} ${strategy.formatHint} — e.g. ${strategy.exampleValue} — for auto-lookup, ` +
+				`or a text fragment with ${strategy.companionFieldName}='${strategy.searchableFields[0]}' to search by ${strategy.searchableFields[0]})`,
+			);
+		} else {
+			parts.push(`(references ${field.referencesEntity} — accepts ID or name)`);
+		}
 	}
 	return parts.join(' ');
 }

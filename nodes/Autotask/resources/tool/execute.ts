@@ -4,6 +4,7 @@ import { validateParameters } from '../../helpers/aiHelper';
 import { createDryRunResponse } from '../../helpers/dry-run';
 import { buildEntityUrl } from '../../helpers/http/request';
 import { AUTOTASK_ENTITIES } from '../../constants/entities';
+import { getIdentifierPairConfig } from '../../constants/resource-operations';
 import { isCommonOperation, getCommonOpContext } from '../../helpers/common-operations-context';
 import { executeCommonOperation } from '../../operations/common/common-operations-handler';
 import { applyChangeInfoAliases, buildAliasMap, shouldApplyAliases } from '../../helpers/change-info-aliases';
@@ -437,18 +438,18 @@ export async function executeToolOperation(
 					return requestData.id;
 				}
 				return fallbackValue;
-			case 'ticketIdentifierType':
-				if (resourceOperation === 'slaHealthCheck') {
-					if (
-						Object.prototype.hasOwnProperty.call(requestData, 'ticketNumber') &&
-						typeof requestData.ticketNumber === 'string' &&
-						requestData.ticketNumber.trim() !== ''
-					) {
-						return 'ticketNumber';
+			case 'ticketIdentifierType': {
+				const ipc = getIdentifierPairConfig(canonicalResource, resourceOperation);
+				if (ipc) {
+					const altField = ipc.altIdField;
+					const altVal = requestData[altField as keyof typeof requestData];
+					if (typeof altVal === 'string' && altVal.trim() !== '') {
+						return altField;
 					}
 					return 'id';
 				}
 				return fallbackValue;
+			}
 			// Map requestData to the format existing executors expect
 			case 'fields':
 			case 'filters':
