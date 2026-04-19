@@ -13,7 +13,12 @@ import type {
 } from 'n8n-workflow';
 import { RESOURCE_OPERATIONS_MAP, getResourceOperations } from './constants/resource-operations';
 import { describeResource, type FieldMeta } from './helpers/aiHelper';
-import { executeAiTool, type ToolExecutorParams } from './ai-tools/tool-executor';
+import {
+	executeAiTool,
+	type ToolExecutorParams,
+	N8N_METADATA_FIELDS,
+	N8N_METADATA_PREFIXES,
+} from './ai-tools/tool-executor';
 import {
 	buildUnifiedDescriptionTemplate,
 	injectDescriptionReferenceUtc,
@@ -27,6 +32,10 @@ import { RuntimeDynamicStructuredTool, runtimeZod, getLazyLogWrapper } from './a
 import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
 import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
 import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
+import {
+	validateOperationContract,
+	type OperationContractViolation,
+} from './ai-tools/operation-contracts';
 import { computeMetadataRevision } from './helpers/cache/init';
 import { hashCachePayload } from './helpers/cache/service';
 import {
@@ -246,6 +255,28 @@ function formatResourceName(value: string): string {
 			.replace(/([A-Z])/g, ' $1')
 			.trim()
 	);
+}
+
+/**
+ * Pre-parse normalisation for Agent V3 `execute()` path.
+ *
+ * 1. Strips n8n framework metadata (`sessionId`, `chatInput`, `Prompt__*`, etc.) — except `operation`,
+ *    which is preserved because it is a required Zod schema field. This prevents false "unknown key"
+ *    noise in error messages and mirrors what `supplyData() → func()` does via Zod `.strip()` semantics.
+ * 2. Converts `null` → `undefined` for every remaining field. LLMs (especially weaker ones like Qwen)
+ *    frequently emit JSON `null` for "not applicable" fields (e.g. `{ "id": null, "ticketNumber": "T20240615.0674" }`).
+ *    Our schema uses `.nullish()` on all optional fields (v2.10+), which accepts both `null` and `undefined`;
+ *    this normalisation is belt-and-braces, ensuring uniform "not provided" handling regardless of how the LLM spells it.
+ */
+function stripAndNormaliseItemJson(itemJson: Record<string, unknown>): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(itemJson)) {
+		// operation is a required schema field — NEVER strip it
+		if (key !== 'operation' && N8N_METADATA_FIELDS.has(key)) continue;
+		if (N8N_METADATA_PREFIXES.some((p) => key.startsWith(p))) continue;
+		out[key] = value === null ? undefined : value;
+	}
+	return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -752,18 +783,49 @@ export class AutotaskAiTools implements INodeType {
 			const operation = requestedOp;
 
 			try {
-				// Zod strips unknown keys (Prompt__*, sessionId, chatInput, etc.)
-				// mirroring what supplyData()->func() gets from parseAsync automatically.
-				const parseResult = zodSchema.safeParse(item.json);
+				// Pre-normalise: strip framework metadata and coerce null→undefined
+				// BEFORE Zod parsing. Prevents:
+				//   - "unknown key" noise from Prompt__*, sessionId, etc.
+				//   - Parse failures when the LLM emits JSON null for "not applicable"
+				//     fields whose schema is .optional() (not .nullish()).
+				// Normalised output becomes the input to the Zod schema, which now
+				// uses .nullish() on optional fields (see schema-generator.ts),
+				// so null is also accepted at the schema level — the undefined
+				// coercion here is belt-and-braces.
+				const normalisedJson = stripAndNormaliseItemJson(item.json);
+				// Zod strips any remaining unknown keys (defensive).
+				const parseResult = zodSchema.safeParse(normalisedJson);
 				if (!parseResult.success) {
+					// Surface operation-contract violations (required/forbidden/xor)
+					// when Zod parse fails. The Zod message alone says things like
+					// "Expected number, received null" which doesn't tell the LLM
+					// *why* the field matters. The contract registry knows which
+					// fields are required for each operation — so run it against
+					// the normalised input (same shape Zod just tried to parse)
+					// and prepend those human-readable rules when they exist.
+					// This is defense in depth: Zod catches type errors; the contract
+					// check catches semantic/required-field violations that produce
+					// a clearer, more actionable error message for the LLM.
+					const contractViolations: OperationContractViolation[] =
+						validateOperationContract(resource, operation, normalisedJson);
+					const zodMessage = parseResult.error.message;
+					const contractMessage = contractViolations
+						.map((v) => v.message)
+						.join(' ');
+					const combinedSummary = contractViolations.length > 0
+						? `${contractMessage} (Zod details: ${zodMessage})`
+						: `Input validation failed: ${zodMessage}`;
+					const nextAction = contractViolations.length > 0
+						? `Call autotask_${resource} with operation '${operation}' and supply the missing/correct fields: ${contractMessage}`
+						: `Check parameter names and types. Use autotask_${resource} with operation 'describeFields' to see valid fields.`;
 					response.push({
 						json: {
 							...wrapError(
 								resource,
 								operation,
 								ERROR_TYPES.INVALID_INPUT,
-								`Input validation failed: ${parseResult.error.message}`,
-								`Check parameter names and types. Use autotask_${resource} with operation 'describeFields' to see valid fields.`,
+								combinedSummary,
+								nextAction,
 							),
 						},
 						pairedItem: { item: itemIndex },

@@ -2,6 +2,17 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.10.0] — TBD
+
+### Fixed
+
+- **AI tools — `.optional()` fields now use `.nullish()` for LLM null safety**: LLM models like Qwen emit JSON `null` for unused optional fields instead of omitting them. Pre-v2.10.0, schema fields were declared `rz.number().optional()` which accepts `undefined` but rejects `null`, causing false-negative Zod parse failures. All 101 optional schema fields now use `.nullish()` (which accepts both `null` and `undefined`). This resolves identifier-pair operations (`ticket.summary`, `ticket.slaHealthCheck`) and mutation operations failing silently with non-frontier LLMs.
+- **Agent V3 `execute()` path — pre-normalisation + contract error surfacing**: When Zod schema parse fails in the `execute()` path, operation-contract violations (required fields, xor groups, forbidden fields) are now validated and surfaced with human-readable error messages, replacing opaque Zod type errors. Pre-parse normalisation (metadata stripping + `null→undefined` coercion) ensures consistent parse input across both `execute()` and `supplyData()→func()` paths.
+
+### Changed
+
+- **Identifier-pair field descriptions now explicit about omission**: Schema descriptions for `id`, `ticketNumber`, and `operation` enum now instruct the LLM to OMIT the unused field entirely instead of sending `null`. This reduces incorrect dual-identifier inputs at the LLM level.
+
 ## [2.9.1] — 2026-04-17
 
 ### Fixed
