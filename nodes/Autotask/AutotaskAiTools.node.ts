@@ -32,6 +32,10 @@ import { RuntimeDynamicStructuredTool, runtimeZod, getLazyLogWrapper } from './a
 import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
 import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
 import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
+import {
+	validateOperationContract,
+	type OperationContractViolation,
+} from './ai-tools/operation-contracts';
 import { computeMetadataRevision } from './helpers/cache/init';
 import { hashCachePayload } from './helpers/cache/service';
 import {
@@ -796,14 +800,36 @@ export class AutotaskAiTools implements INodeType {
 				// Zod strips any remaining unknown keys (defensive).
 				const parseResult = zodSchema.safeParse(normalisedJson);
 				if (!parseResult.success) {
+					// Surface operation-contract violations (required/forbidden/xor)
+					// when Zod parse fails. The Zod message alone says things like
+					// "Expected number, received null" which doesn't tell the LLM
+					// *why* the field matters. The contract registry knows which
+					// fields are required for each operation — so run it against
+					// the normalised input (same shape Zod just tried to parse)
+					// and prepend those human-readable rules when they exist.
+					// This is defense in depth: Zod catches type errors; the contract
+					// check catches semantic/required-field violations that produce
+					// a clearer, more actionable error message for the LLM.
+					const contractViolations: OperationContractViolation[] =
+						validateOperationContract(resource, operation, normalisedJson);
+					const zodMessage = parseResult.error.message;
+					const contractMessage = contractViolations
+						.map((v) => v.message)
+						.join(' ');
+					const combinedSummary = contractViolations.length > 0
+						? `${contractMessage} (Zod details: ${zodMessage})`
+						: `Input validation failed: ${zodMessage}`;
+					const nextAction = contractViolations.length > 0
+						? `Call autotask_${resource} with operation '${operation}' and supply the missing/correct fields: ${contractMessage}`
+						: `Check parameter names and types. Use autotask_${resource} with operation 'describeFields' to see valid fields.`;
 					response.push({
 						json: {
 							...wrapError(
 								resource,
 								operation,
 								ERROR_TYPES.INVALID_INPUT,
-								`Input validation failed: ${parseResult.error.message}`,
-								`Check parameter names and types. Use autotask_${resource} with operation 'describeFields' to see valid fields.`,
+								combinedSummary,
+								nextAction,
 							),
 						},
 						pairedItem: { item: itemIndex },
