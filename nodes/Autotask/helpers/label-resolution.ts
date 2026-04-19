@@ -186,6 +186,8 @@ export async function resolveLabelsToIds(
             // Typed-reference fast path (ticket numbers, project numbers, etc.).
             // Short-circuits the expensive EntityValueHelper full-list scan when the
             // referenced entity has a registered strategy.
+            // siblingValues is undefined on standard-node call sites (no companion field
+            // available there), so the resolver falls back to strategy.defaultSearchField.
             const typed = await tryResolveTypedReference(
                 context,
                 field.referencesEntity,
