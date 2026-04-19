@@ -1,5 +1,5 @@
 import moment from 'moment-timezone';
-import type { IExecuteFunctions } from 'n8n-workflow';
+import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { mapFilterOp } from './schema-generator';
 import { getReferencedEntity, type FieldMeta } from '../helpers/aiHelper';
 import {
@@ -175,7 +175,7 @@ export async function resolveAndClassifyFilters(
     resource: string,
     filters: ToolFilter[],
     readFields: FieldMeta[],
-    siblingValues?: import('n8n-workflow').IDataObject,
+    siblingValues?: IDataObject,
 ): Promise<FilterResolutionResult> {
     const allResolutions: LabelResolution[] = [];
     const allWarnings: string[] = [];
