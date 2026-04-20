@@ -73,13 +73,18 @@ function buildFieldDescription(field: FieldMeta, prefix?: string): string {
 		// Registry keys are lowercase; .toLowerCase() normalises referencesEntity (always lowercase from aiHelper, but defensive).
 		const strategy = TYPED_REFERENCE_STRATEGIES[field.referencesEntity.toLowerCase()];
 		if (strategy) {
+			// Branch on numberPattern presence:
+			// - ticket: has numberPattern → "ticketNumber e.g. T20240615.0674"
+			// - project: no numberPattern (tenant-configurable) → "project number e.g. P20240615.0010"
+			const numberClause = strategy.numberPattern
+				? `${strategy.numberField} e.g. ${strategy.exampleValue}`
+				: `${strategy.entityType} number e.g. ${strategy.exampleValue}`;
 			parts.push(
-				`(references ${field.referencesEntity}: numeric ID, ` +
-				`or ${strategy.numberField} ${strategy.formatHint} — e.g. ${strategy.exampleValue} — for auto-lookup, ` +
-				`or a text fragment with ${strategy.companionFieldName}='${strategy.searchableFields[0]}' to search by ${strategy.searchableFields[0]})`,
+				`(ref→${field.referencesEntity}: ID, name, or ${numberClause} — ` +
+				`or use ${strategy.companionFieldName} to control search field)`,
 			);
 		} else {
-			parts.push(`(references ${field.referencesEntity} — accepts ID or name)`);
+			parts.push(`(ref→${field.referencesEntity}: ID or name)`);
 		}
 	}
 	return parts.join(' ');
