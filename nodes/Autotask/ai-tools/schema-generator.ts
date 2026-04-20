@@ -146,10 +146,19 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 	const rRecencyEnum = rz.enum([
 		'last_15m',
 		'last_1h',
+		'last_2h',
+		'last_3h',
 		'last_4h',
+		'last_6h',
+		'last_8h',
 		'last_12h',
 		'last_24h',
+		'last_1d',
+		'last_2d',
 		'last_3d',
+		'last_4d',
+		'last_5d',
+		'last_6d',
 		'last_7d',
 		'last_14d',
 		'last_30d',
@@ -310,13 +319,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		if (hasListFamily) {
 			const fieldNames = readFields.filter((f) => !f.udf).map((f) => f.id);
 			const filterFieldDesc =
-				"Field to filter on. Use operation 'describeFields' to see valid field names.";
+				"Field to filter on. Use operation 'describeFields' to see valid field names. Do NOT use this for date fields — use recency or since/until instead.";
 			shape.filter_field =
 				fieldNames.length > 0
 					? rz
 							.enum(fieldNames as [string, ...string[]])
 							.nullish()
-							.describe('Field to filter on')
+							.describe("Field to filter on. Do NOT use this for date fields — use recency or since/until instead.")
 					: rz.string().nullish().describe(filterFieldDesc);
 			shape.filter_op = rFilterOpEnum.nullish().describe('Filter operator (default: eq)');
 			shape.filter_value = rFilterValueSchema.nullish();
@@ -324,7 +333,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe(
-					'Second filter field — same valid values as filter_field.',
+					'Second filter field — same valid values as filter_field. Do NOT use this for date fields — use recency or since/until instead.',
 				);
 			shape.filter_op_2 = rFilterOpEnum.nullish().describe('Second filter operator');
 			shape.filter_value_2 = rFilterValueSchema.nullish().describe('Second filter value');
