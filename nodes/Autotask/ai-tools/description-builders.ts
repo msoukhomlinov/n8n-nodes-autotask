@@ -488,21 +488,24 @@ export function buildUnifiedDescriptionTemplate(
 		if (op === 'whoAmI') {
 			summary = `operation '${op}': Resolve the authenticated ${resourceLabel} record.`;
 		} else if (op === 'create') {
-			summary = `operation '${op}': ${metadata?.docsFragment ?? 'Create a new record.'} ${buildRequiredFieldsSummary(writeFields)} Supports name-based resolution for picklist/reference fields.`;
+			summary = `operation '${op}': ${metadata?.docsFragment ?? 'Create a new record.'} ${buildRequiredFieldsSummary(writeFields)}`;
 		} else if (op === 'update') {
 			if (resource === 'resourceTimeOffAdditional') {
-				summary = `operation '${op}': Update time-off additional quotas for a resource. Provide 'resourceID' (name or numeric ID, auto-resolved) and the fields to change (annual/additional hours per category). Supports name-based resolution.`;
+				summary = `operation '${op}': Update time-off additional quotas for a resource. Provide 'resourceID' (name or numeric ID, auto-resolved) and the fields to change (annual/additional hours per category).`;
 			} else {
-				summary = `operation '${op}': ${metadata?.docsFragment ?? "Update a record by numeric 'id'."} Supports name-based resolution for picklist/reference fields.`;
+				summary = `operation '${op}': ${metadata?.docsFragment ?? "Update a record by numeric 'id'."}`;
 			}
 		} else if (op === 'createIfNotExists') {
 			summary = `operation '${op}': ${buildCreateIfNotExistsDescription(resource)}`;
 		} else if (op === 'getMany') {
-			summary = `operation '${op}': ${metadata?.docsFragment ?? ''} ${listDateTimeFieldHint(readFields)}`;
+			summary = `operation '${op}': ${metadata?.docsFragment ?? ''}`.trim();
 		}
 		sections.push(summary);
 	}
 
+	sections.push(
+		`Name-based resolution (create/update/filters): picklist/reference values accept human-readable names, auto-resolved to IDs.`,
+	);
 	sections.push(
 		`operation 'describeFields': List all field IDs, types, and metadata. Use mode 'read' or 'write'.`,
 	);
