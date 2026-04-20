@@ -29,14 +29,24 @@ import {
 import { buildOperationDoc } from './description-builders';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
 import { getConfiguredTimezone, convertDatesToUTC } from '../helpers/date-time/utils';
-import { buildRecencyFilters, type RecencyBuildResult } from './recency';
+import {
+	buildRecencyFilters,
+	type RecencyBuildResult,
+	AUTO_RETURN_ALL_WINDOW_MS,
+	formatRecencyWindowLabel,
+} from './recency';
 import {
 	attachCorrelation,
 	buildMetadataResponse,
 	buildCompoundResponse,
 	type ToolResponseContext,
 } from './response-builder';
-import { dispatchOperationResponse } from './operation-handlers/operation-dispatch';
+import {
+	dispatchOperationResponse,
+	MAX_RESPONSE_RECORDS,
+} from './operation-handlers/operation-dispatch';
+import { CountOperation } from '../operations/base/count-operation';
+import type { IAutotaskEntity } from '../types';
 import {
 	buildFieldLookup,
 	buildFilterFromParams,
@@ -300,6 +310,34 @@ function buildContractViolationNextAction(
 	);
 }
 
+// Used for count-injection. Must NOT route through executeToolOperation — the two would
+// share (and race on) the same context.getNodeParameter override.
+async function executeCountOperation(
+	resource: string,
+	filters: unknown[],
+	context: IExecuteFunctions,
+): Promise<number | null> {
+	try {
+		const scopedContext = Object.create(context) as IExecuteFunctions;
+		scopedContext.getNodeParameter = ((
+			name: string,
+			_index: number,
+			fallback?: unknown,
+		): unknown => {
+			if (name === 'filtersFromTool') return filters;
+			if (name === 'returnAll') return false;
+			if (name === 'id') return null;
+			return context.getNodeParameter(name, 0, fallback);
+		}) as IExecuteFunctions['getNodeParameter'];
+		const countOp = new CountOperation<IAutotaskEntity>(resource, scopedContext);
+		return await countOp.execute(0);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.debug('[executeCountOperation] count call failed:', message);
+		return null;
+	}
+}
+
 /**
  * Execute an Autotask operation by routing to the existing tool executor
  * with getNodeParameter overridden to map flat AI tool params.
@@ -534,6 +572,14 @@ export async function executeAiTool(
 		);
 	}
 
+	const isShortWindow =
+		recencyResult.isActive &&
+		recencyResult.windowMs !== null &&
+		recencyResult.windowMs <= AUTO_RETURN_ALL_WINDOW_MS;
+
+	const effectiveReturnAll = params.returnAll === true || isShortWindow;
+	const autoReturnAll = isShortWindow && params.returnAll !== true;
+
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let combinedFilters: any[];
 	if (params.filtersJson) {
@@ -652,11 +698,11 @@ export async function executeAiTool(
 		effectiveOperation,
 	);
 	const queryLimit =
-		recencyResult.isActive && params.returnAll !== true
+		recencyResult.isActive && !effectiveReturnAll
 			? RECENCY_OVER_REQUEST_LIMIT
 			: effectiveOffset > 0 && supportsOffsetPagination
 				? Math.min(effectiveOffset + effectiveLimit, MAX_QUERY_LIMIT)
-				: params.returnAll === true
+				: effectiveReturnAll
 					? undefined
 					: effectiveLimit;
 	traceFilterBuild({
@@ -668,7 +714,7 @@ export async function executeAiTool(
 			effectiveLimit,
 			effectiveOffset,
 			queryLimit,
-			returnAll: params.returnAll === true,
+			returnAll: effectiveReturnAll,
 			recencyActive: recencyResult.isActive,
 			offsetIgnoredDueToRecency: recencyResult.isActive && effectiveOffset > 0,
 			offsetExceedsApiCap,
@@ -677,7 +723,7 @@ export async function executeAiTool(
 		},
 	});
 
-	if (supportsOffsetPagination && offsetExceedsApiCap && !params.returnAll) {
+	if (supportsOffsetPagination && offsetExceedsApiCap && !effectiveReturnAll) {
 		return attachCorrelation(
 			JSON.stringify(
 				wrapError(
@@ -1109,9 +1155,9 @@ export async function executeAiTool(
 					? combinedFilters
 					: undefined;
 			case 'returnAll':
-				return params.returnAll === true;
+				return effectiveReturnAll;
 			case 'maxRecords':
-				return params.returnAll === true || queryLimit === undefined
+				return effectiveReturnAll || queryLimit === undefined
 					? undefined // executeScopedQuery handles full pagination internally; MaxRecords is ignored
 					: queryLimit;
 			case 'bodyJson':
@@ -1338,9 +1384,52 @@ export async function executeAiTool(
 				selectedColumnsCount: selectedColumns.length,
 			},
 		});
-		const result = await executeToolOperation.call(context);
+		const needsParallelCount =
+			effectiveOperation === 'getMany' &&  // excludes getPosted/getUnposted (cross-entity join; wrong total)
+			recencyResult.isActive && !isShortWindow && !effectiveReturnAll;
+		const [result, parallelCountResult] = await Promise.all([
+			executeToolOperation.call(context),
+			needsParallelCount
+				? executeCountOperation(resource, combinedFilters, context)
+				: Promise.resolve<number | null>(null),
+		]);
 		const items = result[0] ?? [];
 		const fetchedRecords = items.map((item) => item.json);
+		const returnedCount = Math.min(fetchedRecords.length, MAX_RESPONSE_RECORDS);
+		const isProbablyTruncated =
+			fetchedRecords.length > MAX_RESPONSE_RECORDS ||
+			(queryLimit !== undefined && fetchedRecords.length >= queryLimit);
+		let injectedCount: number | null = null;
+		let countQueryFailed = false;
+		const countInjectionWarnings: string[] = [];
+		if (needsParallelCount) {
+			// Path A — parallel count completed alongside fetch
+			injectedCount = isProbablyTruncated ? parallelCountResult : null;
+			if (isProbablyTruncated && parallelCountResult === null) {
+				countQueryFailed = true;
+				countInjectionWarnings.push(
+					'Count query failed — total matching records unknown for this response.',
+				);
+			}
+		} else if (effectiveOperation === 'getMany' && isProbablyTruncated && !effectiveReturnAll) {
+			// Path B — non-recency truncation: sequential count fetch now that we know we need it
+			// effectiveOperation guard excludes getPosted/getUnposted (cross-entity join; wrong total)
+			injectedCount = await executeCountOperation(resource, combinedFilters, context);
+			if (injectedCount === null) {
+				countQueryFailed = true;
+				countInjectionWarnings.push(
+					'Count query failed — total matching records unknown for this response.',
+				);
+			}
+		}
+		// Injection guard: count must never be less than what we already returned.
+		// Uses returnedCount (post-cap), NOT fetchedRecords.length (pre-cap).
+		if (injectedCount !== null && injectedCount < returnedCount) {
+			injectedCount = null;
+			countInjectionWarnings.push(
+				'Count result inconsistent with fetch — total unavailable (records may have changed between calls).',
+			);
+		}
 		let records = fetchedRecords;
 		const supportsListResponse = ['getMany', 'getPosted', 'getUnposted'].includes(
 			effectiveOperation,
@@ -1349,7 +1438,7 @@ export async function executeAiTool(
 		// compatible with recency (recency re-sorts the full window), so ignore offset here.
 		// returnAll bypasses the effectiveLimit cap — return all records in the recency window.
 		if (recencyResult.isActive && supportsListResponse) {
-			const recencySliceLimit = params.returnAll ? fetchedRecords.length : effectiveLimit;
+			const recencySliceLimit = effectiveReturnAll ? fetchedRecords.length : effectiveLimit;
 			records = fetchedRecords.slice().reverse().slice(0, recencySliceLimit);
 		} else if (effectiveOffset > 0 && supportsListResponse) {
 			records = fetchedRecords.slice(effectiveOffset, effectiveOffset + effectiveLimit);
@@ -1379,28 +1468,55 @@ export async function executeAiTool(
 			recencyResult.isActive && effectiveOffset > 0
 				? 'Offset is ignored when recency or since/until is active (recency re-sorts results by date).'
 				: undefined;
+		// Raw date-pair detection: two filter triplets on the same date field with gte+lte or gt+lt.
+		// filtersJson is opaque and intentionally skipped.
+		const rawDatePairWarnings: string[] = [];
+		if (!params.filtersJson && params.filter_field && params.filter_field_2) {
+			const sameField = params.filter_field === params.filter_field_2;
+			const opsSet = new Set([params.filter_op, params.filter_op_2]);
+			const isRange =
+				(opsSet.has('gte') && opsSet.has('lte')) || (opsSet.has('gt') && opsSet.has('lt'));
+			if (sameField && isRange) {
+				const fieldMeta = readFields.find(
+					(f) => f.id.toLowerCase() === (params.filter_field as string).toLowerCase(),
+				);
+				if (fieldMeta && fieldMeta.type.toLowerCase().includes('date')) {
+					rawDatePairWarnings.push(
+						`Filtering a date field (${params.filter_field}) with gte+lte or gt+lt is discouraged. ` +
+						`Use recency (e.g. last_7d, last_30d) or since/until for date ranges — they encode the time window more clearly.`,
+					);
+				}
+			}
+		}
+		const mergedWarnings = [...allWarnings, ...countInjectionWarnings, ...rawDatePairWarnings];
 		const responseContext: ToolResponseContext = {
 			recencyActive: recencyResult.isActive,
 			recencyNote: recencyResult.note ?? recencyOffsetNote,
 			recencyWindowLimited:
 				recencyResult.isActive &&
-				params.returnAll !== true &&
+				!effectiveReturnAll &&
 				supportsListResponse &&
 				fetchedRecords.length >= RECENCY_OVER_REQUEST_LIMIT,
 			resolutions: allResolutions.length > 0 ? allResolutions : undefined,
-			resolutionWarnings: allWarnings.length > 0 ? allWarnings : undefined,
+			resolutionWarnings: mergedWarnings.length > 0 ? mergedWarnings : undefined,
 			pendingConfirmations:
 				allPendingConfirmations.length > 0 ? allPendingConfirmations : undefined,
 			effectiveOffset: recencyResult.isActive ? 0 : effectiveOffset,
 			readFields,
 			serverCap: queryLimit ?? MAX_QUERY_LIMIT,
-			clientCap: 100,
+			clientCap: MAX_RESPONSE_RECORDS,
 			serverCapReached: Boolean(
 				supportsListResponse &&
 				queryLimit !== undefined &&
 				recencyResult.isActive &&
 				fetchedRecords.length >= queryLimit,
 			),
+			// New fields for count injection + completeness framing
+			injectedTotalAvailable: injectedCount ?? undefined,
+			autoReturnAll,
+			wasReturnAll: effectiveReturnAll,
+			windowLabel: params.recency ? formatRecencyWindowLabel(params.recency) ?? undefined : undefined,
+			countQueryFailed: countQueryFailed || undefined,
 		};
 
 		// Apply Change Info Field aliases to ticket read results.
