@@ -227,11 +227,12 @@ export function buildListResponse(
 	const totalKnown = pagination.totalAvailable !== undefined;
 	const total = totalKnown ? (pagination.totalAvailable as number) : count;
 
-	// When totalAvailable is known (via injection or returnAll-cap), it is authoritative — use it
-	// to determine completeness rather than isTruncated (which is set before injection runs).
-	const isIncomplete =
-		pagination.hasMore === true ||
-		(totalKnown ? total > count : pagination.isTruncated === true);
+	// When totalAvailable is known and total <= count, the injected count is authoritative —
+	// override even hasMore=true (which computeListContinuation sets before injection runs).
+	const completeByCount = totalKnown && total <= count;
+	const isIncomplete = completeByCount
+		? false
+		: pagination.hasMore === true || (totalKnown ? total > count : pagination.isTruncated === true);
 	const completenessVerdict: 'complete' | 'incomplete' = isIncomplete ? 'incomplete' : 'complete';
 
 	// Offset-adjusted deficit: "more not shown" = total - offset - count (not total - count)
@@ -260,6 +261,11 @@ export function buildListResponse(
 		summary =
 			`Found ${count} of ${formattedTotal} ${opPrefix}${resource} records${windowSuffix} — ${formattedDeficit} fetched but omitted from payload. ` +
 			`Use 'fields' to shrink rows, or narrow filters.`;
+	} else if (totalKnown && context.recencyActive) {
+		// Recency active + server cap hit — offset pagination is disabled for recency, so guide accordingly
+		summary =
+			`Found ${count} of ${formattedTotal} ${opPrefix}${resource} records${windowSuffix} — ${formattedDeficit} more not shown. ` +
+			`Narrow the recency window (e.g. last_7d) or add filters.`;
 	} else if (totalKnown) {
 		// Truncated + count known + offset cap hit
 		summary =
