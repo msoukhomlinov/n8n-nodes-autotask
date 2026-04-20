@@ -364,13 +364,7 @@ export function buildResourceTransferOwnershipDescription(resourceName: string):
 }
 
 function buildCreateIfNotExistsDescription(resource: string): string {
-	return (
-		`Idempotent creation for ${resource}. Checks for duplicates using configurable dedupFields before creating. ` +
-		`Pass the same fields as the create operation, plus dedupFields (array of API field names for duplicate detection) ` +
-		`and errorOnDuplicate (boolean, default false). Use describeFields first to discover available field names. ` +
-		`Use updateFields to specify fields to compare against the duplicate — when values differ the duplicate will be updated (outcome: updated). Requires errorOnDuplicate to be false. ` +
-		`Returns outcome: created, skipped, updated, or a resource-specific not_found variant.`
-	);
+	return `Idempotent create for ${resource} using dedupFields (array of API field names); optional updateFields for upsert; errorOnDuplicate (default false). Pass same fields as create. Outcomes: created, skipped, updated.`;
 }
 
 export function buildDescribeFieldsDescription(resourceLabel: string): string {
@@ -494,7 +488,7 @@ export function buildUnifiedDescriptionTemplate(
 		if (op === 'whoAmI') {
 			summary = `operation '${op}': Resolve the authenticated ${resourceLabel} record.`;
 		} else if (op === 'create') {
-			summary = `operation '${op}': ${metadata?.docsFragment ?? 'Create a new record.'} ${buildRequiredFieldsSummary(writeFields)} Populate every optional field for which you already have data — do not omit known information. Supports name-based resolution for picklist/reference fields.`;
+			summary = `operation '${op}': ${metadata?.docsFragment ?? 'Create a new record.'} ${buildRequiredFieldsSummary(writeFields)} Supports name-based resolution for picklist/reference fields.`;
 		} else if (op === 'update') {
 			if (resource === 'resourceTimeOffAdditional') {
 				summary = `operation '${op}': Update time-off additional quotas for a resource. Provide 'resourceID' (name or numeric ID, auto-resolved) and the fields to change (annual/additional hours per category). Supports name-based resolution.`;
