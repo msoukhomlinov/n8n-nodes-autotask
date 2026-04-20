@@ -14,11 +14,11 @@ const readOnlySchemaCache = new Map<string, unknown>();
 
 /** Shared impersonationResourceId field description — used at all 5 schema insertion sites. */
 const IMPERSONATION_RESOURCE_ID_DESCRIBE =
-	'Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name (e.g. "Bob Smith"), or email address — names and emails are auto-resolved to resource IDs.';
+	'Resource ID, name, or email to impersonate for write attribution (auto-resolved).';
 
 /** Shared proceedWithoutImpersonationIfDenied description — used at all 5 schema insertion sites. */
 const IMPERSONATION_PROCEED_DESCRIBE =
-	'When true and impersonation is set, retry without impersonation if denied (default true).';
+	'If impersonation denied, retry without it (default true).';
 
 function getSchemaFieldSignature(fields: FieldMeta[]): string {
 	return fields
@@ -806,21 +806,21 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.array(rz.string())
 					.nullish()
 					.describe(
-						'Field names for duplicate detection. Use describeFields to discover available field names. Empty = skip dedup, always create.',
+						'Field names for duplicate detection (use describeFields to discover). Empty = always create.',
 					);
 			if (!shape.updateFields)
 				shape.updateFields = rz
 					.array(rz.string())
 					.nullish()
 					.describe(
-						'Field names to compare against the duplicate record. If a value differs from the desired value, the duplicate will be updated. Leave empty to skip update comparison. Ignored when errorOnDuplicate is true.',
+						'Field names to update if a duplicate differs from the target. Empty = skip update. Ignored when errorOnDuplicate is true.',
 					);
 			if (!shape.errorOnDuplicate)
 				shape.errorOnDuplicate = rz
 					.boolean()
 					.nullish()
 					.describe(
-						'When true, throw an error if a duplicate is found instead of returning a skipped outcome. Default false.',
+						"If true, error on duplicate instead of returning outcome: skipped. Default false.",
 					);
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
