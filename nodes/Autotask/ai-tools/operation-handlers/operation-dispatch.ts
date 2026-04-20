@@ -277,8 +277,9 @@ export function dispatchOperationResponse(
 
 		// Count-injection override: executor-supplied total takes precedence over fetched-count heuristic.
 		// When the sequential/parallel count query succeeded, its result is the authoritative totalAvailable.
-		if ((context as ToolResponseContext & { injectedTotalAvailable?: number }).injectedTotalAvailable !== undefined) {
-			totalAvailable = (context as ToolResponseContext & { injectedTotalAvailable?: number }).injectedTotalAvailable;
+		const injectedTotal = (context as ToolResponseContext & { injectedTotalAvailable?: number }).injectedTotalAvailable;
+		if (injectedTotal !== undefined) {
+			totalAvailable = injectedTotal;
 		}
 
 		const notes: string[] = [];
