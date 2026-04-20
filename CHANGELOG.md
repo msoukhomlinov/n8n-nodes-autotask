@@ -4,6 +4,14 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [2.10.0] — 2026-04-19
 
+### Added
+
+- **AI tools — automatic ID enrichment of response records**: Records returned by AI tool operations are now automatically enriched with human-readable fields when they contain `ticketID` or `taskID`. Records with `ticketID` gain `ticketNumber` and `ticketTitle`; records with `taskID` gain `taskTitle`, `taskProjectNumber`, and `taskProjectName`. Enrichment applies to all `records[]` and `record{}` response shapes including compound (`createIfNotExists`) results. Single insertion point in `tool-executor.ts`: `enrichResponseJson()` is called between `dispatchOperationResponse` and `attachCorrelation` on the main happy-path, and between `buildCompoundResponse` and `attachCorrelation` on the compound path. Failure-safe — outer try/catch returns the original JSON on any panic.
+- **Module-level in-memory enrichment cache** (1800 s TTL) with in-flight request coalescing via `Map<string, Promise<...>>` — no CacheService dependency. Shared across all tool invocations in the same process.
+- **`EntityValueHelper.getValuesByIds()` optional `includeFields` parameter**: Callers can now pass a list of field names to restrict which fields the Autotask API returns, reducing response payload size. Used by the enrichment engine to fetch only the required fields per entity type.
+
+> ⚠️ **Behavioural note:** List and single-record operation responses will now include additional fields (`ticketNumber`, `ticketTitle`, `taskTitle`, `taskProjectNumber`, `taskProjectName`) when records reference tickets or tasks. LLM prompts or downstream automations that depend on the **absence** of these fields should be reviewed.
+
 ### Changed
 
 - **AI tools — typed-reference auto-resolution for ticket and project references**: Any reference field whose `referencesEntity` is `ticket` or `project` now auto-resolves human-readable identifiers on both write and filter paths. Ticket numbers matching `T{YYYYMMDD}.{seq4}` (e.g. `T20240615.0674`) resolve via a single `Tickets/query { ticketNumber eq }` lookup. Project numbers resolve via `Projects/query { projectNumber eq }`. When a human-readable string doesn't match the number format, an optional companion field (`ticketLookupField: 'title' | 'description'` or `projectLookupField: 'projectName' | 'description'`) switches the lookup to a `contains` search on the chosen field. Eliminates the previous fall-through to `EntityValueHelper`, which fetched the full entity list and rarely matched on non-numeric label fields. Registry-driven via `helpers/typed-reference/` — adding Contract, Company, etc. in future releases is a one-entry change.

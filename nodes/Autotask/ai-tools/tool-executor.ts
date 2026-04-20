@@ -62,6 +62,7 @@ import {
 	COMPOUND_PARENT_NOT_FOUND_OUTCOMES,
 } from '../constants/compound-registry';
 import { validateOperationContract, hasProvidedValue, type OperationContractViolation } from './operation-contracts';
+import { enrichResponseJson } from '../helpers/enrichment';
 
 export interface ToolExecutorParams {
 	resource: string;
@@ -1309,21 +1310,20 @@ export async function executeAiTool(
 					compoundData.fieldsCompared = compoundResult.fieldsCompared;
 				if (compoundContext !== undefined) compoundData.context = compoundContext;
 
-				return attachCorrelation(
-					JSON.stringify(
-						buildCompoundResponse(
-							resource,
-							'createIfNotExists',
-							compoundData as Parameters<typeof buildCompoundResponse>[2],
-							{
-								resolutions: labelResolutions,
-								resolutionWarnings: allWarnings,
-								pendingConfirmations: labelPendingConfirmations,
-							},
-						),
+				const compoundJson = JSON.stringify(
+					buildCompoundResponse(
+						resource,
+						'createIfNotExists',
+						compoundData as Parameters<typeof buildCompoundResponse>[2],
+						{
+							resolutions: labelResolutions,
+							resolutionWarnings: allWarnings,
+							pendingConfirmations: labelPendingConfirmations,
+						},
 					),
-					correlationId,
 				);
+				const enrichedCompoundJson = await enrichResponseJson(compoundJson, context);
+				return attachCorrelation(enrichedCompoundJson, correlationId);
 			}
 		}
 
@@ -1440,7 +1440,8 @@ export async function executeAiTool(
 				noResultsClassification: records.length === 0 ? 'empty' : 'non-empty',
 			},
 		});
-		return attachCorrelation(formattedResponse, correlationId);
+		const enrichedResponse = await enrichResponseJson(formattedResponse, context);
+		return attachCorrelation(enrichedResponse, correlationId);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		traceError({
