@@ -15,6 +15,12 @@ export interface ToolResponseContext {
 	serverCap?: number;
 	clientCap?: number;
 	serverCapReached?: boolean;
+	// --- new fields for count injection + window framing ---
+	injectedTotalAvailable?: number;   // total from count query (sequential or parallel)
+	autoReturnAll?: boolean;           // true when executor auto-set returnAll (user did NOT set it)
+	wasReturnAll?: boolean;            // effectiveReturnAll — true for BOTH user-set and auto; used for payload-cap vs offset-cap summary distinction
+	windowLabel?: string;              // "in the last 7 days" — omitted for since/until paths
+	countQueryFailed?: boolean;        // true when executeCountOperation returned null due to error
 }
 
 export function attachCorrelation(json: string, id: string | undefined): string {
@@ -71,6 +77,12 @@ export function toResolvedLabels(resolutions?: LabelResolution[]): ResolvedLabel
 export interface ListPaginationState {
 	hasMore: boolean;
 	nextOffset?: number;
+	/**
+	 * True total records matching filters. Populated by either:
+	 *  - returnAll-cap path: fetched count when payload is capped at 100
+	 *  - count-injection path: parallel/sequential CountOperation result
+	 * Absent when response is complete or count query failed.
+	 */
 	totalAvailable?: number;
 	notes?: string[];
 	continuation?: ListContinuationPointer | null;
@@ -208,17 +220,55 @@ export function buildListResponse(
 	context: ToolResponseContext = {},
 ): Record<string, unknown> {
 	const count = records.length;
-	let terminationSignal: string;
-	if (pagination.totalAvailable !== undefined) {
-		terminationSignal = `truncated — ${pagination.totalAvailable} total matched, limit reached. Use narrower filters`;
-	} else if (pagination.hasMore) {
-		terminationSignal = `more available. Use nextOffset: ${pagination.nextOffset} to continue`;
-	} else {
-		terminationSignal = 'complete set, no further calls needed';
-	}
+	const offset = context.effectiveOffset ?? 0;
 	const opPrefix =
 		operation === 'getPosted' ? 'posted ' : operation === 'getUnposted' ? 'unposted ' : '';
-	const summary = `Found ${count} ${opPrefix}${resource} records — ${terminationSignal}.`;
+	const windowSuffix = context.windowLabel ? ` ${context.windowLabel}` : '';
+	const totalKnown = pagination.totalAvailable !== undefined;
+	const total = totalKnown ? (pagination.totalAvailable as number) : count;
+
+	// Completeness derivation — runs before nextOffset suppression
+	const isIncomplete =
+		pagination.isTruncated === true ||
+		pagination.hasMore === true ||
+		(totalKnown && total > count);
+	const completenessVerdict: 'complete' | 'incomplete' = isIncomplete ? 'incomplete' : 'complete';
+
+	// Offset-adjusted deficit: "more not shown" = total - offset - count (not total - count)
+	const deficit = totalKnown ? Math.max(0, total - offset - count) : 0;
+	const formattedTotal = totalKnown ? total.toLocaleString('en-US') : '';
+	const formattedDeficit = deficit.toLocaleString('en-US');
+
+	// Summary template selection — branches matching spec summary templates
+	let summary: string;
+	if (context.countQueryFailed === true && pagination.hasMore) {
+		// Count query failed — total unknown but pagination still possible
+		summary =
+			`Found ${count} ${opPrefix}${resource} records${windowSuffix} — more available but total unknown (count query failed). ` +
+			`Use nextOffset: ${pagination.nextOffset} to continue.`;
+	} else if (!isIncomplete) {
+		// Complete — no truncation, covers all cases (plain, auto-returnAll-complete, since/until-complete)
+		const totalPart = totalKnown ? ` of ${formattedTotal}` : ` of ${count}`;
+		summary = `Found ${count}${totalPart} ${opPrefix}${resource} records${windowSuffix} — complete set, no further calls needed.`;
+	} else if (pagination.hasMore) {
+		// Truncated + count known + can paginate
+		summary =
+			`Found ${count} of ${formattedTotal} ${opPrefix}${resource} records${windowSuffix} — ${formattedDeficit} more not shown. ` +
+			`Use nextOffset: ${pagination.nextOffset} or narrower filters.`;
+	} else if (totalKnown && context.wasReturnAll === true && pagination.isTruncated && !pagination.hasMore) {
+		// returnAll (user-set OR auto) hit payload cap — data was fetched but capped at 100 rows for response
+		summary =
+			`Found ${count} of ${formattedTotal} ${opPrefix}${resource} records${windowSuffix} — ${formattedDeficit} fetched but omitted from payload. ` +
+			`Use 'fields' to shrink rows, or narrow filters.`;
+	} else if (totalKnown) {
+		// Truncated + count known + offset cap hit
+		summary =
+			`Found ${count} of ${formattedTotal} ${opPrefix}${resource} records${windowSuffix} — ${formattedDeficit} more not shown. ` +
+			`Offset cap reached — narrow filters to see the rest.`;
+	} else {
+		// Fallback — truncated but no total
+		summary = `Found ${count} ${opPrefix}${resource} records${windowSuffix} — more available but total unknown.`;
+	}
 
 	// Detect all-null ID fields when hasMore=true — guide LLM to use exist filter instead of paginating.
 	// Capped at 2 hints: entities like timeEntry have many legitimately-null FK fields; emitting all
@@ -250,6 +300,7 @@ export function buildListResponse(
 		hasMore: pagination.hasMore,
 		continuation: pagination.continuation ?? null,
 		isTruncated: pagination.isTruncated ?? false,
+		completenessVerdict,
 		truncationReason: pagination.truncationReason ?? null,
 		serverCap: pagination.serverCap,
 		clientCap: pagination.clientCap,
@@ -257,7 +308,10 @@ export function buildListResponse(
 		pendingConfirmations: context.pendingConfirmations ?? [],
 		warnings: context.resolutionWarnings ?? [],
 	};
-	if (pagination.nextOffset !== undefined) response.nextOffset = pagination.nextOffset;
+	// Suppress nextOffset when complete — calling for another page is guaranteed empty
+	if (pagination.nextOffset !== undefined && completenessVerdict === 'incomplete') {
+		response.nextOffset = pagination.nextOffset;
+	}
 	if (pagination.totalAvailable !== undefined) response.totalAvailable = pagination.totalAvailable;
 	const allNotes = [...(pagination.notes ?? []), ...nullIdHints];
 	if (allNotes.length > 0) response.notes = allNotes;
