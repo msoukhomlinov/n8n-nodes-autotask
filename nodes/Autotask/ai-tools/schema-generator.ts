@@ -269,7 +269,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.union([rz.number(), rz.string()])
 				.nullish()
 				.describe(
-					'Resource ID or name. Required for getByResource and getByYear operations. Accepts a numeric ID or a human-readable name (auto-resolved).',
+					'Resource ID or name (auto-resolved). Required for getByResource and getByYear.',
 				);
 		}
 
@@ -302,7 +302,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe(
-					`Comma-separated field names to return. Omit for all fields. Call autotask_${resource} with operation 'describeFields' if unsure.`,
+					`Comma-separated field names to return. Omit for all. Call autotask_${resource} with operation 'describeFields' if unsure.`,
 				);
 		}
 
@@ -425,7 +425,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.boolean()
 				.nullish()
 				.describe(
-					'When true, includes the enriched pre-alias-rename payload: label and UDF enrichments intact, original changeInfoField{N} keys (not aliased names), no null filtering or truncation. Use _meta.aliasMap for changeInfo key mapping.',
+					'Include pre-alias-rename payload: labels/UDFs intact, raw changeInfoField{N} keys, no null filtering. Use _meta.aliasMap for changeInfo mapping.',
 				);
 			shape.summaryTextLimit = rz
 				.number()
@@ -437,7 +437,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.boolean()
 				.nullish()
 				.describe(
-					'When true, fetches child entity counts (notes, time entries, attachments, etc.) and includes the childCounts block. Default false. Set true when counts are needed — adds several parallel API calls.',
+					'Include childCounts block (notes, time entries, attachments, etc.). Default false — adds parallel API calls.',
 				);
 		}
 
