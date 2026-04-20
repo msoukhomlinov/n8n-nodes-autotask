@@ -6,11 +6,8 @@ import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
 
-/** Maximum number of picklist values to inline in a field description */
-const MAX_INLINE_PICKLIST_VALUES = 8;
-
-/** Picklist size threshold -- above this, tell LLM to use listPicklistValues */
-const LARGE_PICKLIST_THRESHOLD = 15;
+/** Picklist inlining threshold — at or below this count, inline all values; above, tell LLM to call listPicklistValues. */
+const INLINE_PICKLIST_THRESHOLD = 4;
 
 const READ_ONLY_SCHEMA_CACHE_MAX = 200;
 const readOnlySchemaCache = new Map<string, unknown>();
@@ -66,15 +63,11 @@ function buildFieldDescription(field: FieldMeta, prefix?: string): string {
 		parts.push('(required)');
 	}
 	if (field.isPickList && field.allowedValues?.length) {
-		if (field.allowedValues.length <= LARGE_PICKLIST_THRESHOLD) {
-			const vals = field.allowedValues
-				.slice(0, MAX_INLINE_PICKLIST_VALUES)
-				.map((v) => `${v.id}=${v.label}`)
-				.join(', ');
-			const suffix = field.allowedValues.length > MAX_INLINE_PICKLIST_VALUES ? ', ...' : '';
-			parts.push(`[values: ${vals}${suffix}]`);
+		if (field.allowedValues.length <= INLINE_PICKLIST_THRESHOLD) {
+			const vals = field.allowedValues.map((v) => `${v.id}=${v.label}`).join(', ');
+			parts.push(`[values: ${vals}]`);
 		} else {
-			parts.push('[large picklist -- use listPicklistValues for options]');
+			parts.push(`[${field.allowedValues.length} values — call listPicklistValues for full list]`);
 		}
 	}
 	if (field.isReference && field.referencesEntity) {

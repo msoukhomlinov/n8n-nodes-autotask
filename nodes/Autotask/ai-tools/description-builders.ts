@@ -149,7 +149,7 @@ export function buildCountDescription(resourceLabel: string, referenceUtc?: stri
 }
 
 /** Max number of picklist values to inline in the required-fields summary */
-const MAX_INLINE_REQUIRED_PICKLIST = 10;
+const MAX_INLINE_REQUIRED_PICKLIST = 4;
 
 /**
  * Build a compact required-fields summary for create/update descriptions.
@@ -168,7 +168,7 @@ function buildRequiredFieldsSummary(writeFields: FieldMeta[]): string {
 				const vals = field.allowedValues.map((v) => v.label).join('|');
 				info += ` (picklist: ${vals})`;
 			} else {
-				info += ` (picklist, ${field.allowedValues.length} values — use listPicklistValues)`;
+				info += ` [${field.allowedValues.length} values — call listPicklistValues for full list]`;
 			}
 		} else if (field.isPickList) {
 			info += ` (picklist — use listPicklistValues for options)`;
