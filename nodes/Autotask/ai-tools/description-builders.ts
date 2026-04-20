@@ -168,7 +168,7 @@ function buildRequiredFieldsSummary(writeFields: FieldMeta[]): string {
 				const vals = field.allowedValues.map((v) => v.label).join('|');
 				info += ` (picklist: ${vals})`;
 			} else {
-				info += ` [${field.allowedValues.length} values — call listPicklistValues for full list]`;
+				info += ` [${field.allowedValues.length} values; use listPicklistValues]`;
 			}
 		} else if (field.isPickList) {
 			info += ` (picklist — use listPicklistValues for options)`;
