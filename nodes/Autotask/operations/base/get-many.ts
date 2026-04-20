@@ -304,17 +304,20 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 					queryBody.MaxRecords = filters.MaxRecords;
 				}
 
-				// Check if this is a picklist query
-				if (this.options?.isPicklistQuery) {
-					// For picklist queries, don't specify IncludeFields to get all fields
-					// This avoids issues with incorrect fields being included
+				// Honour caller-supplied IncludeFields first — even for picklist queries.
+				// Callers (e.g. enrichment) that pass an explicit IncludeFields list know
+				// exactly which fields they need and have already merged in required display fields.
+				if (filters.IncludeFields && filters.IncludeFields.length > 0) {
+					queryBody.IncludeFields = filters.IncludeFields;
+					console.debug(`[GetManyOperation] Using caller-supplied IncludeFields with ${filters.IncludeFields.length} fields for ${this.entityType} query`);
+				} else if (this.options?.isPicklistQuery) {
+					// For picklist queries without explicit IncludeFields, don't specify it so
+					// the API returns all fields. This avoids issues with incorrect fields being included.
 					console.debug(`[GetManyOperation] Picklist query detected for ${this.entityType} - not using IncludeFields`);
-				} else {
+				} else if (includeFields.length > 0) {
 					// For regular queries, add IncludeFields if there are specific fields to include
-					if (includeFields.length > 0) {
-						queryBody.IncludeFields = includeFields;
-						console.debug(`[GetManyOperation] Using IncludeFields with ${includeFields.length} fields for query`);
-					}
+					queryBody.IncludeFields = includeFields;
+					console.debug(`[GetManyOperation] Using IncludeFields with ${includeFields.length} fields for query`);
 				}
 
 				const response = await autotaskApiRequest.call(

@@ -72,6 +72,7 @@ Key AI Tools capabilities:
 - **Offset pagination**: List operations accept an `offset` parameter for paginating through results (up to 100 records). Responses include `hasMore` and `nextOffset` for continuation.
 - **Impersonation name resolution**: The `impersonationResourceId` parameter accepts a name or email in addition to numeric IDs.
 - **Idempotent creation**: `createIfNotExists` operations (see below) provide find-or-create semantics with configurable dedup fields.
+- **Automatic response enrichment**: Records that reference a ticket (via `ticketID`) or task (via `taskID`) are automatically enriched with human-readable fields (`ticketNumber`, `ticketTitle`, `taskTitle`, `taskProjectNumber`, `taskProjectName`). Enrichment is transparent — it requires no configuration and applies to all list, get, and compound responses.
 
 ### Supported Resources
 

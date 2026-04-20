@@ -208,8 +208,13 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	 * Retrieve entities by their IDs.
 	 *
 	 * @param ids An array of entity IDs to retrieve.
+	 * @param includeFields Optional list of fields to restrict the API response to.
+	 *                     When provided, the resulting `IncludeFields` is the union of these
+	 *                     fields, the entity's required display fields, and `id`. This lets
+	 *                     callers (e.g. response enrichment) minimise bandwidth while still
+	 *                     guaranteeing the fields they need are returned by the API.
 	 */
-	public async getValuesByIds(ids: (string | number)[]): Promise<T[]> {
+	public async getValuesByIds(ids: (string | number)[], includeFields?: string[]): Promise<T[]> {
 		if (!ids || ids.length === 0) {
 			return [];
 		}
@@ -225,6 +230,20 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 					},
 				],
 			};
+
+			// When the caller specifies includeFields, build an explicit IncludeFields that
+			// merges them with required display fields. GetManyOperation.executeQuery honours
+			// an explicit caller-supplied IncludeFields even under isPicklistQuery mode.
+			if (includeFields && includeFields.length > 0) {
+				const merged = new Set<string>(['id']);
+				for (const field of this.getRequiredDisplayFields()) {
+					merged.add(field);
+				}
+				for (const field of includeFields) {
+					if (field) merged.add(field);
+				}
+				query.IncludeFields = Array.from(merged);
+			}
 
 			console.debug(`Loading ${ids.length} reference entities for ${this.entityType} by ID`);
 
