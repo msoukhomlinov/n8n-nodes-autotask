@@ -15,6 +15,14 @@ const LARGE_PICKLIST_THRESHOLD = 15;
 const READ_ONLY_SCHEMA_CACHE_MAX = 200;
 const readOnlySchemaCache = new Map<string, unknown>();
 
+/** Shared impersonationResourceId field description — used at all 5 schema insertion sites. */
+const IMPERSONATION_RESOURCE_ID_DESCRIBE =
+	'Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name (e.g. "Bob Smith"), or email address — names and emails are auto-resolved to resource IDs.';
+
+/** Shared proceedWithoutImpersonationIfDenied description — used at all 5 schema insertion sites. */
+const IMPERSONATION_PROCEED_DESCRIBE =
+	'When true and impersonation is set, retry without impersonation if denied (default true).';
+
 function getSchemaFieldSignature(fields: FieldMeta[]): string {
 	return fields
 		.map((field) =>
@@ -234,12 +242,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		const hasIdPairOps = idPairOps.length > 0;
 
 		// operation — required enum
-		let operationDesc = `Operation to perform. One of: ${allOps.join(', ')}`;
-		if (hasIdPairOps && idPairConfig) {
-			operationDesc +=
-				` — NOTE: ${idPairOps.join(' and ')} require EXACTLY ONE identifier: either 'id' (numeric) OR '${idPairConfig.altIdField}' (${idPairConfig.altIdFormat}).` +
-				` Send only the field you are using — OMIT the other entirely (do not send the unused field as null).`;
-		}
+		// NOTE: identifier-pair disambiguation lives on the id/altIdField descriptions,
+		// not here. Runtime enforcement is via operation-contracts.ts xorGroups.
+		const operationDesc = `Operation to perform. One of: ${allOps.join(', ')}`;
 		shape.operation = rz.enum(allOps).describe(operationDesc);
 		const hasSearchByDomain = operations.includes('searchByDomain');
 		const hasMoveConfigItem = operations.includes('moveConfigurationItem');
@@ -261,9 +266,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				idDesc += ` Required for: ${strictIdOps.join(', ')}.`;
 			}
 			if (hasIdPairOps && idPairConfig) {
-				idDesc +=
-					` For ${idPairOps.join(', ')}: supply EITHER 'id' (numeric) OR '${idPairConfig.altIdField}' — never both.` +
-					` When using '${idPairConfig.altIdField}', OMIT the 'id' field entirely (do not send id=null).`;
+				idDesc += ` Omit if using '${idPairConfig.altIdField}'.`;
 			}
 			shape.id = rz.number().nullish().describe(idDesc);
 		}
@@ -491,15 +494,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.impersonationResourceId = rz
 					.union([rz.number(), rz.string()])
 					.nullish()
-					.describe(
-						'Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name (e.g. "Bob Smith"), or email address — names and emails are auto-resolved to resource IDs.',
-					);
+					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
 					.boolean()
 					.nullish()
-					.describe(
-						'When true and impersonation is set, retry without impersonation if denied (default true).',
-					);
+					.describe(IMPERSONATION_PROCEED_DESCRIBE);
 			}
 		}
 
@@ -597,15 +596,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.impersonationResourceId = rz
 					.union([rz.number(), rz.string()])
 					.nullish()
-					.describe(
-						'Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name, or email — auto-resolved.',
-					);
+					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
 					.boolean()
 					.nullish()
-					.describe(
-						'When true and impersonation is set, retry without impersonation if denied (default true).',
-					);
+					.describe(IMPERSONATION_PROCEED_DESCRIBE);
 			}
 		}
 
@@ -661,15 +656,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.impersonationResourceId = rz
 					.union([rz.number(), rz.string()])
 					.nullish()
-					.describe(
-						'Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name, or email — auto-resolved.',
-					);
+					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
 					.boolean()
 					.nullish()
-					.describe(
-						'When true and impersonation is set, retry without impersonation if denied (default true).',
-					);
+					.describe(IMPERSONATION_PROCEED_DESCRIBE);
 			}
 		}
 
@@ -800,15 +791,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.impersonationResourceId = rz
 					.union([rz.number(), rz.string()])
 					.nullish()
-					.describe(
-						'Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name, or email — auto-resolved.',
-					);
+					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
 					.boolean()
 					.nullish()
-					.describe(
-						'When true and impersonation is set, retry without impersonation if denied (default true).',
-					);
+					.describe(IMPERSONATION_PROCEED_DESCRIBE);
 			}
 		}
 
@@ -859,15 +846,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.impersonationResourceId = rz
 					.union([rz.number(), rz.string()])
 					.nullish()
-					.describe(
-						'Optional resource ID or name to impersonate for write attribution. Accepts a numeric ID, full name, or email — auto-resolved.',
-					);
+					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
 					.boolean()
 					.nullish()
-					.describe(
-						'When true and impersonation is set, retry without impersonation if denied (default true).',
-					);
+					.describe(IMPERSONATION_PROCEED_DESCRIBE);
 			}
 		}
 
