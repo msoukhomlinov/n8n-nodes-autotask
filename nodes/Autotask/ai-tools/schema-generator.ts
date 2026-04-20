@@ -173,7 +173,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		.union([rRecencyEnum, rRecencyCustomDays])
 		.nullish()
 		.describe(
-			'Preset time window (e.g. last_7d, last_30d) or custom days as last_Nd with N from 1 to 365 (e.g. last_5d, last_45d). Use EITHER recency OR since/until.',
+			'Preset time window (last_7d, last_30d) or last_Nd (N=1–365). Mutually exclusive with since/until.',
 		);
 
 	function buildUnifiedSchema(
@@ -293,7 +293,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.enum(['optional', 'mandatory'])
 				.nullish()
 				.describe(
-					"Reject-reason policy for reject operation. When 'mandatory', rejectReason must be provided.",
+					"Reject-reason policy for reject operation. 'mandatory' requires rejectReason.",
 				);
 		}
 
@@ -325,7 +325,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe(
-					'Second filter field (used with filter_op_2 and filter_value_2) — same valid values as filter_field',
+					'Second filter field — same valid values as filter_field.',
 				);
 			shape.filter_op_2 = rFilterOpEnum.nullish().describe('Second filter operator');
 			shape.filter_value_2 = rFilterValueSchema.nullish().describe('Second filter value');
@@ -333,7 +333,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.enum(['and', 'or'])
 				.nullish()
 				.describe(
-					"Logic between filter pairs. Default 'and' (both must match). Use 'or' for either-match queries (e.g. status='Open' OR status='In Progress').",
+					"Combiner between the two filter pairs: 'and' (default) or 'or'.",
 				);
 			shape.limit = rz
 				.number()
@@ -375,9 +375,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe(
-					'Range end as a date/time string in your configured timezone (e.g. 2026-01-31T17:00:00). ' +
-						'An explicit UTC offset is also accepted and respected (e.g. 2026-01-31T17:00:00Z). ' +
-						'Requires since or recency.',
+					'Range end (ISO-8601). Requires since or recency.',
 				);
 			shape.filtersJson = rz
 				.string()
@@ -402,7 +400,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.enum(['idsAndLabels', 'rawIds'])
 				.nullish()
 				.describe(
-					"Output format. 'idsAndLabels' (default) returns IDs enriched with human-readable labels and resolved picklist values. Use 'rawIds' for lighter responses when processing high-cardinality data or when labels are not needed.",
+					"'idsAndLabels' (default, enriched with labels) or 'rawIds' (lighter).",
 				);
 		}
 
