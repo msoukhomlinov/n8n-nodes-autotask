@@ -348,7 +348,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.min(0)
 				.nullish()
 				.describe(
-					'Skip first N records (for pagination, max 499). Use with limit. Response includes hasMore and nextOffset. Limited to first 500 total records — use narrower filters for larger datasets.',
+					'Skip first N records (0–499). Response includes hasMore/nextOffset. Max 500 total — narrow filters for more.',
 				);
 			shape.recency = rRecencySchema;
 			const dateFields = readFields
@@ -359,17 +359,14 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.enum(dateFields as [string, ...string[]])
 					.nullish()
 					.describe(
-						`Date/time field to use for recency/since/until filtering. Available: ${dateFields.join(', ')}. ` +
-							`Default: first available. Choose the field that best matches the query intent (e.g. a work-date field for "worked today", an activity-date for "recent activity").`,
+						`Date/time field for recency/since/until. Available: ${dateFields.join(', ')}. Default: first available.`,
 					);
 			}
 			shape.since = rz
 				.string()
 				.nullish()
 				.describe(
-					'Range start as a date/time string in your configured timezone (e.g. 2026-01-01T09:00:00). ' +
-						'An explicit UTC offset is also accepted and respected (e.g. 2026-01-01T09:00:00Z). ' +
-						'When set, recency is ignored.',
+					'Range start (ISO-8601; e.g. 2026-01-01T09:00:00 or 2026-01-01T09:00:00Z). Overrides recency.',
 				);
 			shape.until = rz
 				.string()
@@ -381,20 +378,14 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe(
-					'Advanced filter: JSON array of Autotask IFilterCondition objects. ' +
-						'Mutually exclusive with filter_field/filter_field_2. ' +
-						'Recency/since/until still apply on top when provided. ' +
-						'Label resolution is NOT applied to filtersJson values — pass numeric IDs. ' +
-						'Date/time values in filtersJson must be in UTC (e.g. 2026-01-01T00:00:00Z) — filtersJson bypasses automatic timezone conversion. ' +
-						'Example: \'[{"field":"status","op":"in","value":[1,2,3]},{"op":"or","items":[{"field":"companyID","op":"eq","value":123},{"field":"companyID","op":"eq","value":456}]}]\'',
+					'JSON array of Autotask IFilterCondition objects for complex filters. Mutually exclusive with filter_field/filter_field_2. Recency/since/until still apply. No label resolution — pass numeric IDs. Dates must be UTC (e.g. 2026-01-01T00:00:00Z). ' +
+						'\'[{"field":"status","op":"in","value":[1,2,3]},{"op":"or","items":[{"field":"companyID","op":"eq","value":123},{"field":"companyID","op":"eq","value":456}]}]\'',
 				);
 			shape.returnAll = rz
 				.boolean()
 				.nullish()
 				.describe(
-					'When true, fetches ALL records matching the filter using API-native pagination. ' +
-						'Default false returns up to limit records. Use with a tight filter — broad queries may return thousands of records. ' +
-						'Response is still subject to MAX_RESPONSE_RECORDS truncation with a note when hit.',
+					'Fetch ALL matching records (API pagination). Default false = up to limit. Use tight filters; subject to MAX_RESPONSE_RECORDS truncation.',
 				);
 			shape.outputMode = rz
 				.enum(['idsAndLabels', 'rawIds'])
@@ -457,9 +448,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe(
-					`Alternative identifier for ${idPairOps.join(', ')}. Format: ${idPairConfig.altIdFormat} (e.g. ${idPairConfig.altIdExample}).` +
-						` Supply EITHER this field OR numeric 'id' — never both.` +
-						` When using '${idPairConfig.altIdField}', OMIT the 'id' field entirely (do not send id=null).`,
+					`Alt identifier for ${idPairOps.join(', ')}. Format: ${idPairConfig.altIdFormat} (e.g. ${idPairConfig.altIdExample}). Supply EITHER this OR numeric 'id' — never both. Do not send id=null alongside this field.`,
 				);
 		}
 
