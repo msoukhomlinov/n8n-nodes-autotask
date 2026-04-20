@@ -36,7 +36,7 @@ function getParentRequirement(resourceName: string): string | null {
 
 /** Snippet injected into tool descriptions that reference date/time so the AI uses actual "now" instead of training cutoff. */
 export function dateTimeReferenceSnippet(referenceUtc: string): string {
-	return `Reference: current UTC date-time when these tools were loaded is ${referenceUtc}. Use this for "today", "recent", or when choosing since/until or recency — do not assume a different date. `;
+	return `Current UTC date-time: ${referenceUtc}. Use for recency/since/until, not training-cutoff defaults. `;
 }
 
 function getDescriptionFieldSignature(fields: FieldMeta[]): string {
@@ -460,8 +460,7 @@ export function buildUnifiedDescriptionTemplate(
 	// Safety-critical header — always first, guaranteed to survive truncation
 	if (hasWriteOps) {
 		sections.push(
-			'WRITE SAFETY: All write operations require field references to resolve exactly.' +
-				' Ambiguous, unmatched, or infrastructure-failed resolutions block execution before any mutation occurs.',
+			'WRITE SAFETY: name/reference resolutions must match exactly. Ambiguous or failed resolutions block writes.',
 		);
 	}
 
@@ -513,7 +512,7 @@ export function buildUnifiedDescriptionTemplate(
 		`operation 'listPicklistValues': Get valid values for a picklist field. Use 'fieldId' parameter.`,
 	);
 	sections.push(
-		`operation 'describeOperation': Get full documentation for a specific operation — purpose, parameters, and usage notes. Use 'targetOperation' parameter.`,
+		`operation 'describeOperation': Full docs for a given operation. Use 'targetOperation' parameter.`,
 	);
 
 	if (supportsImpersonation) {
