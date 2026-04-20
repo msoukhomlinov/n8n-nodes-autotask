@@ -2,6 +2,29 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.11.0] — 2026-04-21
+
+### Changed
+- `getMany` responses now include a `completenessVerdict` field (`'complete'` or `'incomplete'`) after `isTruncated`. When the count query confirms no more data exists (e.g. `totalAvailable === returnedCount`), verdict is `'complete'` even if `isTruncated=true`.
+- Summary line rewritten to `Found N of M ${resource} records [in the last X] — [deficit + next action]` framing. Subsumes the previous "Showing first N of M records. Use offset=X..." note.
+- Recency windows of 7 days or less (including `since`/`until` spans) now auto-enable `returnAll` behaviour, eliminating the need for LLMs to manually request full fetches for short time slices.
+- Recency enum gains 9 new granularity presets: `last_2h`, `last_3h`, `last_6h`, `last_8h`, `last_1d`, `last_2d`, `last_4d`, `last_5d`, `last_6d`.
+- `filter_field` and `filter_field_2` descriptions now explicitly direct the LLM away from date filtering (use `recency` or `since`/`until` instead).
+- `RECENCY_VS_SINCE_UNTIL_RULE` text firmed up — "never filter a date field via filter_field" added as an imperative.
+- When `completenessVerdict === 'complete'`, `nextOffset` is suppressed from the response (calling it is guaranteed to return empty).
+- `MAX_RESPONSE_RECORDS` exported from `operation-handlers/operation-dispatch.ts` for reuse.
+
+### Added
+- Count injection: truncated `getMany` responses now include a true `totalAvailable` from a `CountOperation` query (parallel for recency windows >7d, sequential for non-recency truncation). `searchByDomain`, `getPosted`, `getUnposted`, and `count` itself are excluded.
+- `completenessVerdict` field on list responses.
+- `windowLabel` field interpolated into summary for recency paths (e.g. "in the last 7 days").
+- Warning emitted when flat filter triplets target a date field with `gte`+`lte` or `gt`+`lt` operators, nudging the LLM to use `recency` or `since`/`until` instead.
+- Warning emitted when the count query fails — `totalAvailable` is absent from the response but the list fetch succeeds (graceful degradation).
+
+### Fixed
+- Recency slice now honours auto-enabled `returnAll` for short windows — previously the slice limit reverted to `effectiveLimit` (10) even when the fetch returned the full 500-record recency window.
+- `completenessVerdict` correctly set to `'complete'` when count injection confirms `totalAvailable === returnedCount` — even when `isTruncated` was set by the pre-injection heuristic.
+
 ## [2.10.0] — 2026-04-19
 
 ### Added
