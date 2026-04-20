@@ -227,11 +227,11 @@ export function buildListResponse(
 	const totalKnown = pagination.totalAvailable !== undefined;
 	const total = totalKnown ? (pagination.totalAvailable as number) : count;
 
-	// Completeness derivation — runs before nextOffset suppression
+	// When totalAvailable is known (via injection or returnAll-cap), it is authoritative — use it
+	// to determine completeness rather than isTruncated (which is set before injection runs).
 	const isIncomplete =
-		pagination.isTruncated === true ||
 		pagination.hasMore === true ||
-		(totalKnown && total > count);
+		(totalKnown ? total > count : pagination.isTruncated === true);
 	const completenessVerdict: 'complete' | 'incomplete' = isIncomplete ? 'incomplete' : 'complete';
 
 	// Offset-adjusted deficit: "more not shown" = total - offset - count (not total - count)
