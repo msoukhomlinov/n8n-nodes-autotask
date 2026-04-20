@@ -852,7 +852,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			.enum(['read', 'write'])
 			.nullish()
 			.describe(
-				"Field mode for describeFields. Use 'read' for get/getMany fields; 'write' for create/update fields.",
+				"Field mode for describeFields: 'read' for get/getMany, 'write' for create/update.",
 			);
 
 		// listPicklistValues fields
@@ -860,12 +860,12 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			.string()
 			.nullish()
 			.describe(
-				'Field ID for listPicklistValues. Required when using listPicklistValues operation.',
+				'Field ID. Required for listPicklistValues.',
 			);
 		shape.query = rz
 			.string()
 			.nullish()
-			.describe('Optional search term to filter picklist values. Used by listPicklistValues.');
+			.describe('Search term to filter picklist values.');
 		if (!shape.limit) {
 			shape.limit = rz
 				.number()
@@ -875,12 +875,12 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		shape.page = rz
 			.number()
 			.nullish()
-			.describe('Page number for listPicklistValues pagination (default 1).');
+			.describe('Page for listPicklistValues (default 1).');
 		shape.targetOperation = rz
 			.string()
 			.nullish()
 			.describe(
-				"For describeOperation: the operation name to document (e.g. 'create', 'createIfNotExists', 'getMany', 'slaHealthCheck').",
+				"For describeOperation: the operation name to document (e.g. 'create').",
 			);
 
 		// Typed-reference companion fields (ticketLookupField, projectLookupField, …).
