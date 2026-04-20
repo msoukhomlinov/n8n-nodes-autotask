@@ -325,13 +325,12 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					: rz.string().nullish().describe(filterFieldDesc);
 			shape.filter_op = rFilterOpEnum.nullish().describe('Filter operator (default: eq)');
 			shape.filter_value = rFilterValueSchema.nullish();
-			shape.filter_field_2 =
-				fieldNames.length > 0
-					? rz
-							.enum(fieldNames as [string, ...string[]])
-							.nullish()
-							.describe('Second field to filter on (optional)')
-					: rz.string().nullish().describe('Second field to filter on (optional)');
+			shape.filter_field_2 = rz
+				.string()
+				.nullish()
+				.describe(
+					'Second filter field (used with filter_op_2 and filter_value_2) — same valid values as filter_field',
+				);
 			shape.filter_op_2 = rFilterOpEnum.nullish().describe('Second filter operator');
 			shape.filter_value_2 = rFilterValueSchema.nullish().describe('Second filter value');
 			shape.filter_logic = rz
