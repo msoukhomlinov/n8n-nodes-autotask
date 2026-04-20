@@ -67,7 +67,7 @@ function buildFieldDescription(field: FieldMeta, prefix?: string): string {
 			const vals = field.allowedValues.map((v) => `${v.id}=${v.label}`).join(', ');
 			parts.push(`[values: ${vals}]`);
 		} else {
-			parts.push(`[${field.allowedValues.length} values — call listPicklistValues for full list]`);
+			parts.push(`[${field.allowedValues.length} values; use listPicklistValues]`);
 		}
 	}
 	if (field.isReference && field.referencesEntity) {
@@ -81,8 +81,7 @@ function buildFieldDescription(field: FieldMeta, prefix?: string): string {
 				? `${strategy.numberField} e.g. ${strategy.exampleValue}`
 				: `${strategy.entityType} number e.g. ${strategy.exampleValue}`;
 			parts.push(
-				`(ref→${field.referencesEntity}: ID, name, or ${numberClause} — ` +
-				`or use ${strategy.companionFieldName} to control search field)`,
+				`(ref→${field.referencesEntity}: ID/name/${numberClause}; use ${strategy.companionFieldName})`,
 			);
 		} else {
 			parts.push(`(ref→${field.referencesEntity}: ID or name)`);
