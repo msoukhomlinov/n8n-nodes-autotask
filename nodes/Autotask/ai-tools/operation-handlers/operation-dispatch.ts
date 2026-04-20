@@ -15,7 +15,7 @@ import {
 import { MAX_QUERY_LIMIT, getEffectiveLimit } from '../tool-executor';
 import { getOperationMetadata } from '../operation-metadata';
 
-const MAX_RESPONSE_RECORDS = 100;
+export const MAX_RESPONSE_RECORDS = 100;
 
 interface OperationResponseParams {
 	id?: number;
@@ -275,24 +275,16 @@ export function dispatchOperationResponse(
 
 		if (truncated) totalAvailable = total;
 
+		// Count-injection override: executor-supplied total takes precedence over fetched-count heuristic.
+		// When the sequential/parallel count query succeeded, its result is the authoritative totalAvailable.
+		if ((context as ToolResponseContext & { injectedTotalAvailable?: number }).injectedTotalAvailable !== undefined) {
+			totalAvailable = (context as ToolResponseContext & { injectedTotalAvailable?: number }).injectedTotalAvailable;
+		}
+
 		const notes: string[] = [];
 		if (context.recencyNote) notes.push(context.recencyNote);
 		if (continuationContract.truncationReason) {
 			notes.push(continuationContract.truncationReason);
-		}
-		if (truncated) {
-			if (params.returnAll) {
-				notes.push(
-					`Fetched all ${total} matching records via returnAll; showing first ${MAX_RESPONSE_RECORDS} in this response. ` +
-						`Use 'fields' to reduce payload size, or narrow filters to reduce match count.`,
-				);
-			} else {
-				notes.push(
-					hasMore
-						? `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use offset=${nextOffset} to see the next page, or use a narrower filter.`
-						: `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Offset pagination limit (${MAX_QUERY_LIMIT}) reached — use narrower filters to access more records.`,
-				);
-			}
 		}
 
 		const listWarnings: string[] = [...(context.resolutionWarnings ?? [])];
