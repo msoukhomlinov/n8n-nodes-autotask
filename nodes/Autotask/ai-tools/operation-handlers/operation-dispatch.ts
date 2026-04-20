@@ -15,7 +15,7 @@ import {
 import { MAX_QUERY_LIMIT, getEffectiveLimit } from '../tool-executor';
 import { getOperationMetadata } from '../operation-metadata';
 
-const MAX_RESPONSE_RECORDS = 100;
+export const MAX_RESPONSE_RECORDS = 100;
 
 interface OperationResponseParams {
 	id?: number;
@@ -262,7 +262,7 @@ export function dispatchOperationResponse(
 			recordsReturned: items.length,
 			recordsMatched: total,
 			requestedLimit: getEffectiveLimit(params.limit),
-			returnAll: params.returnAll === true,
+			returnAll: context.wasReturnAll === true,
 			recencyActive: context.recencyActive === true,
 			maxQueryLimit: MAX_QUERY_LIMIT,
 			serverCap: context.serverCap ?? MAX_QUERY_LIMIT,
@@ -275,24 +275,17 @@ export function dispatchOperationResponse(
 
 		if (truncated) totalAvailable = total;
 
+		// Count-injection override: executor-supplied total takes precedence over fetched-count heuristic.
+		// When the sequential/parallel count query succeeded, its result is the authoritative totalAvailable.
+		const injectedTotal = (context as ToolResponseContext & { injectedTotalAvailable?: number }).injectedTotalAvailable;
+		if (injectedTotal !== undefined) {
+			totalAvailable = injectedTotal;
+		}
+
 		const notes: string[] = [];
 		if (context.recencyNote) notes.push(context.recencyNote);
 		if (continuationContract.truncationReason) {
 			notes.push(continuationContract.truncationReason);
-		}
-		if (truncated) {
-			if (params.returnAll) {
-				notes.push(
-					`Fetched all ${total} matching records via returnAll; showing first ${MAX_RESPONSE_RECORDS} in this response. ` +
-						`Use 'fields' to reduce payload size, or narrow filters to reduce match count.`,
-				);
-			} else {
-				notes.push(
-					hasMore
-						? `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Use offset=${nextOffset} to see the next page, or use a narrower filter.`
-						: `Showing first ${MAX_RESPONSE_RECORDS} of ${total} records. Offset pagination limit (${MAX_QUERY_LIMIT}) reached — use narrower filters to access more records.`,
-				);
-			}
 		}
 
 		const listWarnings: string[] = [...(context.resolutionWarnings ?? [])];

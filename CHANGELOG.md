@@ -2,10 +2,15 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [2.10.0] — 2026-04-19
+## [2.10.0] — 2026-04-21
 
 ### Added
 
+- Count injection: truncated `getMany` responses now include a true `totalAvailable` from a `CountOperation` query (parallel for recency windows >7d, sequential for non-recency truncation). `searchByDomain`, `getPosted`, `getUnposted`, and `count` itself are excluded.
+- `completenessVerdict` field on list responses (`'complete'` or `'incomplete'`). When the count query confirms no more data exists (e.g. `totalAvailable === returnedCount`), verdict is `'complete'` even if `isTruncated=true`.
+- `windowLabel` field interpolated into summary for recency paths (e.g. "in the last 7 days").
+- Warning emitted when flat filter triplets target a date field with `gte`+`lte` or `gt`+`lt` operators, nudging the LLM to use `recency` or `since`/`until` instead.
+- Warning emitted when the count query fails — `totalAvailable` is absent from the response but the list fetch succeeds (graceful degradation).
 - **AI tools — automatic ID enrichment of response records**: Records returned by AI tool operations are now automatically enriched with human-readable fields when they contain `ticketID` or `taskID`. Records with `ticketID` gain `ticketNumber` and `ticketTitle`; records with `taskID` gain `taskTitle`, `taskProjectNumber`, and `taskProjectName`. Enrichment applies to all `records[]` and `record{}` response shapes including compound (`createIfNotExists`) results. Single insertion point in `tool-executor.ts`: `enrichResponseJson()` is called between `dispatchOperationResponse` and `attachCorrelation` on the main happy-path, and between `buildCompoundResponse` and `attachCorrelation` on the compound path. Failure-safe — outer try/catch returns the original JSON on any panic.
 - **Module-level in-memory enrichment cache** (1800 s TTL) with in-flight request coalescing via `Map<string, Promise<...>>` — no CacheService dependency. Shared across all tool invocations in the same process.
 - **`EntityValueHelper.getValuesByIds()` optional `includeFields` parameter**: Callers can now pass a list of field names to restrict which fields the Autotask API returns, reducing response payload size. Used by the enrichment engine to fetch only the required fields per entity type.
@@ -14,6 +19,13 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Changed
 
+- `getMany` summary line rewritten to `Found N of M ${resource} records [in the last X] — [deficit + next action]` framing. Subsumes the previous "Showing first N of M records. Use offset=X..." note.
+- Recency windows of 7 days or less (including `since`/`until` spans) now auto-enable `returnAll` behaviour, eliminating the need for LLMs to manually request full fetches for short time slices.
+- Recency enum gains 9 new granularity presets: `last_2h`, `last_3h`, `last_6h`, `last_8h`, `last_1d`, `last_2d`, `last_4d`, `last_5d`, `last_6d`.
+- `filter_field` and `filter_field_2` descriptions now explicitly direct the LLM away from date filtering (use `recency` or `since`/`until` instead).
+- `RECENCY_VS_SINCE_UNTIL_RULE` text firmed up — "never filter a date field via filter_field" added as an imperative.
+- When `completenessVerdict === 'complete'`, `nextOffset` is suppressed from the response (calling it is guaranteed to return empty).
+- `MAX_RESPONSE_RECORDS` exported from `operation-handlers/operation-dispatch.ts` for reuse.
 - **AI tools — typed-reference auto-resolution for ticket and project references**: Any reference field whose `referencesEntity` is `ticket` or `project` now auto-resolves human-readable identifiers on both write and filter paths. Ticket numbers matching `T{YYYYMMDD}.{seq4}` (e.g. `T20240615.0674`) resolve via a single `Tickets/query { ticketNumber eq }` lookup. Project numbers resolve via `Projects/query { projectNumber eq }`. When a human-readable string doesn't match the number format, an optional companion field (`ticketLookupField: 'title' | 'description'` or `projectLookupField: 'projectName' | 'description'`) switches the lookup to a `contains` search on the chosen field. Eliminates the previous fall-through to `EntityValueHelper`, which fetched the full entity list and rarely matched on non-numeric label fields. Registry-driven via `helpers/typed-reference/` — adding Contract, Company, etc. in future releases is a one-entry change.
 - **`ticket.summary` operation now correctly resolves ticketNumber via `IDENTIFIER_PAIR_OPERATIONS`**: Previously, only `slaHealthCheck` received the registry-driven identifier routing; `summary` was silently falling through to id-only mode. The routing in `resources/tool/execute.ts` is now fully registry-driven.
 - **Identifier-pair field descriptions now explicit about omission**: Schema descriptions for `id`, `ticketNumber`, and `operation` enum now instruct the LLM to OMIT the unused field entirely instead of sending `null`. This reduces incorrect dual-identifier inputs at the LLM level.
@@ -28,6 +40,8 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Fixed
 
+- Recency slice now honours auto-enabled `returnAll` for short windows — previously the slice limit reverted to `effectiveLimit` (10) even when the fetch returned the full 500-record recency window.
+- `completenessVerdict` correctly set to `'complete'` when count injection confirms `totalAvailable === returnedCount` — even when `isTruncated` was set by the pre-injection heuristic.
 - **Companion fields (`ticketLookupField`, `projectLookupField`) never leak to API request bodies**: Excluded from `buildFieldValues` in `tool-executor.ts` and stripped defensively after `resolveLabelsToIds` returns. They are schema-only inputs consumed by the resolver.
 - **AI tools — `.optional()` fields now use `.nullish()` for LLM null safety**: LLM models like Qwen emit JSON `null` for unused optional fields instead of omitting them. Pre-v2.10.0, schema fields were declared `rz.number().optional()` which accepts `undefined` but rejects `null`, causing false-negative Zod parse failures. All 101 optional schema fields now use `.nullish()` (which accepts both `null` and `undefined`). This resolves identifier-pair operations (`ticket.summary`, `ticket.slaHealthCheck`) and mutation operations failing silently with non-frontier LLMs.
 - **Agent V3 `execute()` path — pre-normalisation + contract error surfacing**: When Zod schema parse fails in the `execute()` path, operation-contract violations (required fields, xor groups, forbidden fields) are now validated and surfaced with human-readable error messages, replacing opaque Zod type errors. Pre-parse normalisation (metadata stripping + `null→undefined` coercion) ensures consistent parse input across both `execute()` and `supplyData()→func()` paths.

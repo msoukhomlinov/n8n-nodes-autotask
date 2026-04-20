@@ -4,15 +4,26 @@ import type { FieldMeta } from '../helpers/aiHelper';
 const RECENCY_WINDOWS_MS: Record<string, number> = {
     last_15m: 15 * 60 * 1000,
     last_1h: 60 * 60 * 1000,
+    last_2h: 2 * 60 * 60 * 1000,
+    last_3h: 3 * 60 * 60 * 1000,
     last_4h: 4 * 60 * 60 * 1000,
+    last_6h: 6 * 60 * 60 * 1000,
+    last_8h: 8 * 60 * 60 * 1000,
     last_12h: 12 * 60 * 60 * 1000,
     last_24h: 24 * 60 * 60 * 1000,
+    last_1d: 1 * 24 * 60 * 60 * 1000,
+    last_2d: 2 * 24 * 60 * 60 * 1000,
     last_3d: 3 * 24 * 60 * 60 * 1000,
+    last_4d: 4 * 24 * 60 * 60 * 1000,
+    last_5d: 5 * 24 * 60 * 60 * 1000,
+    last_6d: 6 * 24 * 60 * 60 * 1000,
     last_7d: 7 * 24 * 60 * 60 * 1000,
     last_14d: 14 * 24 * 60 * 60 * 1000,
     last_30d: 30 * 24 * 60 * 60 * 1000,
     last_90d: 90 * 24 * 60 * 60 * 1000,
 };
+
+export const AUTO_RETURN_ALL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const RECENCY_CUSTOM_DAYS_MIN = 1;
 const RECENCY_CUSTOM_DAYS_MAX = 365;
@@ -39,6 +50,7 @@ export interface RecencyBuildResult {
     filters: RecencyFilter[];
     isActive: boolean;
     note?: string;
+    windowMs: number | null;
 }
 
 export interface RecencyParams {
@@ -130,7 +142,7 @@ export function buildRecencyFilters(
     const hasRecencyInput = Boolean(recency || sinceRaw || untilRaw);
 
     if (!hasRecencyInput) {
-        return { filters: [], isActive: false };
+        return { filters: [], isActive: false, windowMs: null };
     }
 
     const preferredField = typeof params.recency_field === 'string' ? params.recency_field.trim() : undefined;
@@ -140,21 +152,23 @@ export function buildRecencyFilters(
             filters: [],
             isActive: false,
             note: 'Recency filters were ignored because no datetime field was detected for this resource.',
+            windowMs: null,
         };
     }
 
     let startIso: string | undefined;
+    let presetWindowMs: number | undefined;
     if (sinceRaw) {
         startIso = toUtcIsoSeconds(sinceRaw, 'since', timezone);
     } else if (recency) {
-        const windowMs = parseRecencyWindowMs(recency);
-        startIso = new Date(Date.now() - windowMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
+        presetWindowMs = parseRecencyWindowMs(recency);
+        startIso = new Date(Date.now() - presetWindowMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
     } else if (untilRaw) {
         throw new Error("The 'until' parameter requires either 'since' or 'recency'.");
     }
 
     if (!startIso) {
-        return { filters: [], isActive: false };
+        return { filters: [], isActive: false, windowMs: null };
     }
 
     const filters: RecencyFilter[] = [
@@ -165,8 +179,9 @@ export function buildRecencyFilters(
         },
     ];
 
+    let endIso: string | undefined;
     if (untilRaw) {
-        const endIso = toUtcIsoSeconds(untilRaw, 'until', timezone);
+        endIso = toUtcIsoSeconds(untilRaw, 'until', timezone);
         if (new Date(endIso).getTime() < new Date(startIso).getTime()) {
             throw new Error(
                 `'until' (${endIso}) must be greater than or equal to 'since' (${startIso}).`,
@@ -179,5 +194,30 @@ export function buildRecencyFilters(
         });
     }
 
-    return { filters, isActive: true };
+    let windowMs: number;
+    if (sinceRaw && endIso) {
+        windowMs = Math.min(new Date(endIso).getTime(), Date.now()) - new Date(startIso).getTime();
+    } else if (sinceRaw) {
+        windowMs = Date.now() - new Date(startIso).getTime();
+    } else {
+        // recency preset path — presetWindowMs is guaranteed set here
+        windowMs = presetWindowMs as number;
+    }
+
+    return { filters, isActive: true, windowMs };
+}
+
+export function formatRecencyWindowLabel(recency: string): string | null {
+    if (recency === 'last_15m') return 'in the last 15 minutes';
+    const hourMatch = /^last_(\d+)h$/.exec(recency);
+    if (hourMatch) {
+        const n = parseInt(hourMatch[1], 10);
+        return `in the last ${n} hour${n === 1 ? '' : 's'}`;
+    }
+    const dayMatch = /^last_(\d+)d$/.exec(recency);
+    if (dayMatch) {
+        const n = parseInt(dayMatch[1], 10);
+        return `in the last ${n} day${n === 1 ? '' : 's'}`;
+    }
+    return null;
 }

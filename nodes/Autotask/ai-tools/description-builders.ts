@@ -79,7 +79,7 @@ function setDescriptionTemplateCache(key: string, value: string): void {
 
 /** Rule for getMany/count/getPosted/getUnposted: how recency and since/until interact. */
 const RECENCY_VS_SINCE_UNTIL_RULE =
-	'Date filtering: use EITHER recency OR since/until, not both. If you provide since or until, recency is ignored (since/until take precedence). Use recency for preset windows (e.g. last_7d, last_30d) or custom days as last_Nd with N from 1 to 365 (e.g. last_5d, last_45d) to limit how far back to look. Use since/until only when you need an explicit UTC range. ';
+	"Date filtering: use recency for all 'recent'/'latest'/'today'/'this week' queries — never filter a date field via filter_field. Pick the shortest preset that covers the intent (last_1h, last_24h, last_7d, last_30d, or custom last_Nd with N 1–365). Use since/until ONLY for a fixed explicit date range. When both recency and since/until are supplied, since/until wins. ";
 
 /** Warning shared by list-family builders and LIST_ADVANCED_NOTES about API ordering. */
 const ASCENDING_ID_WARNING =
