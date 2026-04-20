@@ -81,6 +81,16 @@ function setDescriptionTemplateCache(key: string, value: string): void {
 const RECENCY_VS_SINCE_UNTIL_RULE =
 	'Date filtering: use EITHER recency OR since/until, not both. If you provide since or until, recency is ignored (since/until take precedence). Use recency for preset windows (e.g. last_7d, last_30d) or custom days as last_Nd with N from 1 to 365 (e.g. last_5d, last_45d) to limit how far back to look. Use since/until only when you need an explicit UTC range. ';
 
+/** Warning shared by list-family builders and LIST_ADVANCED_NOTES about API ordering. */
+const ASCENDING_ID_WARNING =
+	'API ordering: records always return in ascending ID order (oldest first). No server-side sort is available.';
+
+/** Template for the "call describeFields if uncertain" hint used across individual builders. */
+function describeFieldsHint(resourceName: string, mode: 'read' | 'write' | '' = ''): string {
+	const modeClause = mode ? ` (mode '${mode}')` : '';
+	return `If field names are uncertain, call autotask_${resourceName} with operation 'describeFields'${modeClause} first.`;
+}
+
 export function buildGetDescription(resourceLabel: string, resourceName: string): string {
 	return (
 		`Retrieve a single ${resourceLabel} record by numeric ID. ` +
@@ -88,7 +98,7 @@ export function buildGetDescription(resourceLabel: string, resourceName: string)
 		`If you only have a name or description, call autotask_${resourceName} with operation 'getMany' with a filter first, extract the 'id' from results, then call this. ` +
 		`Optionally use 'fields' to return only selected columns. ` +
 		`If a record should exist but response is empty, verify API user permissions (including line-of-business access). ` +
-		`Do not guess field names. Call autotask_${resourceName} with operation 'describeFields' (mode 'read') first when unsure.`
+		`Do not guess field names. ${describeFieldsHint(resourceName, 'read')}`
 	);
 }
 
@@ -117,12 +127,12 @@ export function buildGetManyDescription(
 		`When recency or since is used, the tool automatically filters by date, fetches a wide window, and returns the newest records first, trimmed to limit. ` +
 		`If results are unexpectedly empty, check API user security permissions before retrying. ` +
 		`Name-based filter resolution: for reference and picklist filter fields, you can pass a human-readable name as filter_value (e.g. filter_field='companyID', filter_value='Contoso') — the tool auto-resolves names to IDs. ` +
-		`API ordering: records always return in ascending ID order (oldest first). No server-side sort is available. ` +
+		`${ASCENDING_ID_WARNING} ` +
 		dateFieldHint +
 		`For all matching records, use returnAll=true with a tight filter. ` +
 		`For complex filters (3+ conditions, nested OR/IN), use filtersJson with the Autotask IFilterCondition JSON array. ` +
 		`Always provide at least one filter when possible. ` +
-		`If you are unsure about field names, call autotask_${resourceName} with operation 'describeFields' first.`
+		describeFieldsHint(resourceName)
 	);
 }
 
@@ -217,7 +227,7 @@ export function buildUpdateDescription(
 		`Name-based resolution: you can pass human-readable names instead of numeric IDs for picklist and reference fields. The tool auto-resolves names to IDs. ` +
 		`Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
 		`Confirm field values with user before executing when acting autonomously. ` +
-		`Call autotask_${resourceName} with operation 'describeFields' (mode 'write') to verify valid field names and required value types. ` +
+		`${describeFieldsHint(resourceName, 'write')} ` +
 		`Use autotask_${resourceName} with operation 'listPicklistValues' for picklist fields.` +
 		impersonationNote
 	);
@@ -254,7 +264,7 @@ export function buildPostedTimeEntriesDescription(
 		`IMPORTANT: The Autotask API returns records oldest first (ascending ID). Without recency or since, limit=1 returns the OLDEST entry, not the newest. ` +
 		`To get the most recent posted entries, you MUST use recency (for example 'last_24h' or 'last_7d'), or provide since/until in ISO-8601 UTC format. ` +
 		`For date-range and advanced posting filters, use the standard Time Entry node operation if needed. ` +
-		`If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
+		describeFieldsHint(resourceName)
 	);
 }
 
@@ -272,7 +282,7 @@ export function buildUnpostedTimeEntriesDescription(
 		`IMPORTANT: The Autotask API returns records oldest first (ascending ID). Without recency or since, limit=1 returns the OLDEST entry, not the newest. ` +
 		`To get the most recent unposted entries, you MUST use recency (for example 'last_24h' or 'last_7d'), or provide since/until in ISO-8601 UTC format. ` +
 		`For date-range and advanced posting filters, use the standard Time Entry node operation if needed. ` +
-		`If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
+		describeFieldsHint(resourceName)
 	);
 }
 
@@ -284,7 +294,7 @@ export function buildCompanySearchByDomainDescription(resourceName: string): str
 		'To avoid false negatives, eq/like semantics are handled safely for website matching. ' +
 		'When searchContactEmails is true (default), if no company website matches exist, the tool searches Contact.emailAddress by domain and resolves the most common canonical company name from companyID references. ' +
 		"Use the 'fields' parameter to limit which company fields are returned per result (comma-separated); omit to receive the full company entity. matchedField and matchedValue are always included to indicate which website field matched and its value. " +
-		`If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
+		describeFieldsHint(resourceName)
 	);
 }
 
@@ -302,7 +312,7 @@ export function buildTicketSummaryDescription(resourceName: string): string {
 		"Use 'summaryTextLimit' to cap description/resolution length (default 500 chars). " +
 		"Set 'includeRaw=true' to receive the full enriched payload before alias renaming — label/UDF enrichments intact, original changeInfoField{N} keys, no null filtering or text truncation. " +
 		'For full SLA milestone timing and elapsed hours, use slaHealthCheck instead. ' +
-		`If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
+		describeFieldsHint(resourceName)
 	);
 }
 
@@ -315,7 +325,7 @@ export function buildTicketSlaHealthCheckDescription(resourceName: string): stri
 		"Use 'ticketFields' to limit which ticket fields are returned in the ticket section. " +
 		'Includes wallClockRemainingHours, where negative values indicate overdue milestones. ' +
 		'This operation combines data from Ticket and ServiceLevelAgreementResults entities. ' +
-		`If field names are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
+		describeFieldsHint(resourceName)
 	);
 }
 
@@ -569,7 +579,8 @@ const DEDUP_NOTES = [
 const LIST_ADVANCED_NOTES = [
 	'filtersJson: JSON array of Autotask IFilterCondition objects for 3+ conditions or nested OR. Mutually exclusive with flat filter_field triplets. No label resolution — pass numeric IDs.',
 	'returnAll=true: fetches ALL matching records via API-native pagination. Response truncated at 100 records — use fields param to reduce payload or narrow filters.',
-	'API ordering: records always return in ascending ID order (oldest first). No server-side sort is available.',
+	ASCENDING_ID_WARNING,
+	RECENCY_VS_SINCE_UNTIL_RULE.trim(),
 ];
 
 /** Static parameter map for read and metadata operations */
