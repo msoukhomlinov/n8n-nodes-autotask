@@ -297,14 +297,18 @@ export function buildListResponse(
 		}
 	}
 
+	// When injected count confirms completeness, override pagination signals to match the verdict.
+	const effectiveHasMore = completeByCount ? false : pagination.hasMore;
+	const effectiveContinuation = completeByCount ? null : (pagination.continuation ?? null);
+
 	const response: Record<string, unknown> = {
 		summary,
 		resource,
 		operation: `${resource}.${operation}`,
 		records,
 		returnedCount: count,
-		hasMore: pagination.hasMore,
-		continuation: pagination.continuation ?? null,
+		hasMore: effectiveHasMore,
+		continuation: effectiveContinuation,
 		isTruncated: pagination.isTruncated ?? false,
 		completenessVerdict,
 		truncationReason: pagination.truncationReason ?? null,

@@ -262,7 +262,7 @@ export function dispatchOperationResponse(
 			recordsReturned: items.length,
 			recordsMatched: total,
 			requestedLimit: getEffectiveLimit(params.limit),
-			returnAll: params.returnAll === true,
+			returnAll: context.wasReturnAll === true,
 			recencyActive: context.recencyActive === true,
 			maxQueryLimit: MAX_QUERY_LIMIT,
 			serverCap: context.serverCap ?? MAX_QUERY_LIMIT,
