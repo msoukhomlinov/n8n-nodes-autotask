@@ -473,8 +473,7 @@ export function buildUnifiedDescriptionTemplate(
 		sections.push(identityHint);
 	}
 	sections.push(
-		`Perform operations on Autotask ${resourceLabel} records.`,
-		`Required: 'operation' field — one of: ${allOps.join(', ')}.`,
+		`Operations: ${allOps.join(', ')}. Set 'operation' to one.`,
 		dateTimeReferenceSnippet(DESCRIPTION_REFERENCE_PLACEHOLDER),
 	);
 
@@ -506,10 +505,10 @@ export function buildUnifiedDescriptionTemplate(
 		`Name-based resolution (create/update/filters): picklist/reference values accept human-readable names, auto-resolved to IDs.`,
 	);
 	sections.push(
-		`operation 'describeFields': List all field IDs, types, and metadata. Use mode 'read' or 'write'.`,
+		`operation 'describeFields': List field IDs/types/metadata. Use mode 'read' or 'write'.`,
 	);
 	sections.push(
-		`operation 'listPicklistValues': Get valid values for a picklist field. Use 'fieldId' parameter.`,
+		`operation 'listPicklistValues': Get valid values for a picklist field. Use 'fieldId'.`,
 	);
 	sections.push(
 		`operation 'describeOperation': Full docs for a given operation. Use 'targetOperation' parameter.`,
