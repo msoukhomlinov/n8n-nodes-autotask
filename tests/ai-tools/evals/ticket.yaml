@@ -1,0 +1,232 @@
+resource: ticket
+scenarios:
+
+  # -- Metadata / orientation -----------------------------------------------------
+  - id: ticket-meta-001
+    persona: any
+    question: "What fields are available when searching for tickets?"
+    successDefinition: >
+      LLM calls describeFields with mode='read'. Response contains fields[] non-empty,
+      each entry has id, type, and label. Required fields are identified with required=true.
+      Summary states total field count.
+
+  - id: ticket-meta-002
+    persona: any
+    question: "What values are valid for ticket status?"
+    successDefinition: >
+      LLM calls listPicklistValues with fieldId='status' (or correct casing).
+      picklistValues[] non-empty, each entry has label and value (numeric ID).
+      isActive flag present on entries, distinguishing active from inactive.
+      Summary states active value count.
+
+  - id: ticket-meta-003
+    persona: any
+    question: "How does the getMany operation work for tickets?"
+    successDefinition: >
+      LLM calls describeOperation with targetOperation='getMany'. operationDoc present
+      as object with purpose field. Summary describes the operation in plain English.
+      Response does not fabricate capabilities not in the doc.
+
+  # -- SDM ------------------------------------------------------------------------
+  - id: ticket-sdm-001
+    persona: sdm
+    question: "Show me all open tickets across the team right now"
+    successDefinition: >
+      LLM calls getMany with status filter for open state. records[] present or
+      clear empty-state error. If hasMore true, nextOffset present and actionable.
+      Summary states count + pagination signal. 'Team' scope means all tickets
+      visible to the API user — no team-specific filter required.
+
+  - id: ticket-sdm-002
+    persona: sdm
+    question: "Which high-priority tickets are closest to their due date?"
+    successDefinition: >
+      LLM calls getMany with priority filter (high/critical) and sorts or filters by
+      dueDateTime. records[] returned with dueDateTime and priority fields visible.
+      If hasMore true, nextOffset present. Summary reflects both filter conditions.
+      LLM must NOT fabricate SLA breach status — it should use the returned dueDateTime
+      values to reason about proximity to breach.
+
+  - id: ticket-sdm-003
+    persona: sdm
+    question: "How many tickets are currently open?"
+    successDefinition: >
+      LLM calls count with a status=open filter. matchCount is non-negative integer.
+      Summary states count in plain English with filter condition mentioned.
+
+  - id: ticket-sdm-004
+    persona: sdm
+    question: "Show me tickets that have no assigned resource"
+    successDefinition: >
+      LLM calls getMany using the 'notExist' operator on assignedResourceID (not eq with
+      null/empty). records[] present or NO_RESULTS_FOUND with actionable nextAction.
+      Summary explicitly reflects the unassigned filter condition.
+
+  - id: ticket-sdm-005
+    persona: sdm
+    question: "Which high-priority tickets have been open more than 7 days?"
+    successDefinition: >
+      LLM calls getMany with priority filter and createDate filter using 'lt' operator
+      with a threshold 7 days ago. records[] returned with createDate and priority visible.
+      If hasMore, nextOffset present. Both filter conditions reflected in summary.
+
+  # -- Engineer — own tickets -----------------------------------------------------
+  - id: ticket-eng-001
+    persona: engineer-own
+    question: "What tickets are currently assigned to me?"
+    successDefinition: >
+      Prerequisite: LLM already knows its own assignedResourceID (from a prior whoAmI call
+      on the resource entity — out of scope for this scenario). LLM calls getMany with
+      assignedResourceID filter. records[] returned or NO_RESULTS_FOUND. Summary states
+      count. Error guidance references valid filter parameters if zero results.
+
+  - id: ticket-eng-002
+    persona: engineer-own
+    question: "Show me my highest priority open tickets"
+    successDefinition: >
+      Prerequisite: LLM knows its assignedResourceID. LLM calls getMany with both
+      assignedResourceID and status=open and priority filter (high/critical). records[]
+      returned with priority and status fields visible. Summary reflects all three
+      filter conditions. Pagination signal (hasMore + nextOffset) correct.
+
+  - id: ticket-eng-003
+    persona: engineer-own
+    question: "Are there any tickets I haven't updated in the last 48 hours?"
+    successDefinition: >
+      Prerequisite: LLM knows its assignedResourceID. LLM calls getMany with
+      assignedResourceID filter AND lastActivityDate filter using 'lt' operator with
+      a threshold 48 hours ago. This is NOT a recency query — recency returns most-recent
+      records, not stale ones. records[] or NO_RESULTS_FOUND. Summary states timeframe
+      and count.
+
+  # -- Engineer — accepting handed-over ticket ------------------------------------
+  - id: ticket-handover-001
+    persona: engineer-handover
+    question: "Give me the full details of ticket {TEST_TICKET_NUMBER}"
+    successDefinition: >
+      LLM calls get or getMany using the ticketNumber {TEST_TICKET_NUMBER}. record{} returned
+      with at minimum: id, ticketNumber, title, status, priority, assignedResourceID,
+      companyID, createDate all present. ticketNumber in response matches {TEST_TICKET_NUMBER}.
+      Summary identifies ticket by number and title.
+
+  - id: ticket-handover-002
+    persona: engineer-handover
+    question: "What is the SLA status of ticket {TEST_TICKET_NUMBER}?"
+    successDefinition: >
+      LLM calls slaHealthCheck with ticketNumber='{TEST_TICKET_NUMBER}'. Response contains
+      record.isBreached (boolean) and record.wallClockRemainingHours (number).
+      Summary states ticket reference, hours remaining (or overdue by N hours),
+      and explicit breached/not-breached status.
+
+  - id: ticket-handover-003
+    persona: engineer-handover
+    question: "Get a summary of ticket {TEST_TICKET_NUMBER} including its current state"
+    successDefinition: >
+      LLM calls summary with ticketNumber='{TEST_TICKET_NUMBER}'. ticketSummary{} present
+      with core and computed sub-objects. Summary states ticket number, title,
+      age in hours, and SLA status. LLM does NOT need to make additional calls.
+
+  - id: ticket-handover-004
+    persona: engineer-handover
+    question: "I need to find a ticket but only have a partial title — search for tickets containing 'VPN'"
+    successDefinition: >
+      LLM calls getMany with filter_field='title', filter_op='contains', filter_value='VPN'.
+      records[] returned or NO_RESULTS_FOUND with actionable guidance. If results present,
+      title field visible in each record to confirm relevance. Summary reflects the
+      contains filter applied.
+
+  # -- Account Manager — QBR prep -------------------------------------------------
+  - id: ticket-am-qbr-001
+    persona: am-qbr
+    question: "How many tickets has Acme Corp had this quarter?"
+    successDefinition: >
+      LLM calls count with companyID filter (resolving 'Acme Corp' to a numeric ID)
+      and a createDate filter covering the current quarter. matchCount returned.
+      Summary states count + company reference + date range.
+      resolvedLabels present showing 'Acme Corp' → numeric ID resolution.
+
+  - id: ticket-am-qbr-002
+    persona: am-qbr
+    question: "Show me all high-priority tickets for Acme Corp in the last 90 days"
+    successDefinition: >
+      LLM calls getMany with companyID (resolved from 'Acme Corp'), priority filter,
+      and createDate filter for last 90 days. records[] returned. Summary states count
+      + all filter conditions. hasMore + nextOffset present if results paginated.
+      resolvedLabels present if company name was resolved.
+
+  - id: ticket-am-qbr-003
+    persona: am-qbr
+    question: "Are there any open tickets for Acme Corp right now?"
+    successDefinition: >
+      LLM calls getMany or count with companyID (resolved) + status=open filter.
+      If zero results, NO_RESULTS_FOUND error includes nextAction suggesting checking
+      status picklist values via listPicklistValues. resolvedLabels present if company
+      name resolved.
+
+  - id: ticket-am-qbr-004
+    persona: am-qbr
+    question: "Which of my accounts have the most open tickets?"
+    successDefinition: >
+      LLM must NOT fabricate aggregated data or present made-up per-account counts.
+      The Autotask API has no server-side groupBy. LLM should either: (a) explain the
+      limitation and propose running count per company individually, or (b) ask the user
+      for their account list to proceed. nextAction must be specific and actionable.
+      Any fabricated ranking or count is a failure.
+
+  # -- Account Manager — BAU ------------------------------------------------------
+  - id: ticket-am-bau-001
+    persona: am-bau
+    question: "Are there any new tickets from Acme Corp today?"
+    successDefinition: >
+      LLM calls getMany or count with companyID (resolved from 'Acme Corp') + createDate
+      filter using 'gte' or 'gt' operator with today's date. Summary states count +
+      date boundary. resolvedLabels present if company name resolved.
+
+  - id: ticket-am-bau-002
+    persona: am-bau
+    question: "Show me tickets for Acme Corp waiting on customer response"
+    successDefinition: >
+      LLM calls getMany with companyID (resolved) + status filter for a waiting/pending
+      customer state. Status picklist values vary by tenant — LLM should either call
+      listPicklistValues first to find the correct status value, or use label resolution.
+      resolvedLabels present if any labels were resolved. Summary reflects both conditions.
+
+  - id: ticket-am-bau-003
+    persona: am-bau
+    question: "Are there any escalated tickets for Acme Corp?"
+    successDefinition: >
+      LLM calls getMany with companyID (resolved) + priority filter for critical/high,
+      or an escalation-specific field if one exists. LLM should call describeFields or
+      listPicklistValues to verify field/value before filtering — guessing picklist values
+      is a failure. If zero results, NO_RESULTS_FOUND with nextAction to verify correct
+      field and picklist values.
+
+  # -- Error recovery -------------------------------------------------------------
+  - id: ticket-error-001
+    persona: any
+    question: "Show me ticket number 99999999"
+    successDefinition: >
+      LLM calls get with id=99999999. Response is ENTITY_NOT_FOUND error. LLM reads
+      nextAction and follows it — calls getMany with a filter to locate the actual ticket
+      rather than reporting failure. The follow-up getMany call (not the error itself)
+      is the success signal: LLM used nextAction to self-correct.
+
+  - id: ticket-error-002
+    persona: any
+    question: "Show me open tickets with status 'Borked'"
+    successDefinition: >
+      LLM calls getMany or count with status='Borked'. Response is either
+      INVALID_PICKLIST_VALUE or NO_RESULTS_FOUND. LLM reads nextAction and follows it —
+      calls listPicklistValues for the status field to find valid values, then retries
+      with a valid status. Recovery to a successful second call is the success signal.
+
+  # -- Multi-step -----------------------------------------------------------------
+  - id: ticket-multi-001
+    persona: engineer-handover
+    question: "Find the most recently created ticket for Acme Corp and show me its SLA status"
+    successDefinition: >
+      LLM makes two calls: (1) getMany with companyID (resolved from 'Acme Corp') and
+      recency or createDate sort to find recent tickets; (2) slaHealthCheck on the
+      returned ticket ID or ticketNumber. Final response contains record.isBreached and
+      wallClockRemainingHours. resolvedLabels present for company resolution. LLM must
+      NOT fabricate SLA data from the getMany response alone — it must call slaHealthCheck.
