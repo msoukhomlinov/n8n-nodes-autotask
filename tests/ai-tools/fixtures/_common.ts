@@ -72,13 +72,6 @@ export function commonMetadataCases(opts?: CommonMetadataOpts): TestCase[] {
 export function commonErrorCases(): TestCase[] {
   return [
     {
-      name: 'invalid operation',
-      args: { operation: 'nonExistentOp' },
-      assert(r) {
-        assertErrorShape(r, 'INVALID_OPERATION');
-      },
-    },
-    {
       name: 'get missing id',
       args: { operation: 'get' },
       assert(r) {

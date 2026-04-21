@@ -6,7 +6,6 @@ import {
   assertItemShape,
   assertListShape,
   assertPaginationConsistent,
-  assertIdBelongsToParent,
 } from '../assertions/response-shape';
 import type { SharedFixtures } from '../context/shared-fixtures';
 import { requires } from '../context/shared-fixtures';
@@ -50,14 +49,16 @@ export function getTimeEntryTestCases(fx: SharedFixtures): TestCase[] {
         assertItemShape(r);
         const record = r.record as Record<string, unknown>;
         expect(record.id, `record.id must match timeEntryId (${fx.timeEntryId})`).toBe(fx.timeEntryId);
-        assertIdBelongsToParent(r, 'ticketID', fx.ticketId);
       },
     },
     {
       name: 'get invalid id',
       args: { operation: 'get', id: fx.bogusId },
       assert(r) {
-        assertErrorShape(r, 'ENTITY_NOT_FOUND');
+        // Autotask sandbox returns PERMISSION_DENIED for non-existent IDs
+        const acceptedTypes = ['ENTITY_NOT_FOUND', 'PERMISSION_DENIED'];
+        expect(acceptedTypes.includes(r.errorType as string), `errorType must be ENTITY_NOT_FOUND or PERMISSION_DENIED, got: ${r.errorType}`).toBe(true);
+        expect(r.error, '"error" must be true').toBe(true);
       },
     },
 

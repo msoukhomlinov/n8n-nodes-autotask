@@ -145,8 +145,8 @@ export function assertErrorShape(
     expect(r.nextAction, '"nextAction" must be a string for this error type').toBeTypeOf('string');
     const nextAction = r.nextAction as string;
     expect(
-      nextAction.includes('autotask_ticket'),
-      `nextAction must reference "autotask_ticket", got: "${nextAction}"`
+      nextAction.includes('autotask_'),
+      `nextAction must reference an autotask tool (e.g. "autotask_<resource>"), got: "${nextAction}"`
     ).toBe(true);
     // Must also name a specific operation — matches patterns like: operation 'getMany', operation:"get"
     const operationPattern = /operation\s*['":]?\s*\w+/i;
