@@ -45,7 +45,7 @@ export class DeleteOperation<T extends IAutotaskEntity> extends BaseOperation {
 				// For delete operations, parent ID is optional
 				if (metadata?.childOf) {
 					try {
-						const parentIdField = `${metadata.childOf}ID`;
+						const parentIdField = metadata.parentIdField || `${metadata.childOf}ID`;
 						const parentId = await this.getParameter(parentIdField, itemIndex);
 
 						if (parentId && (typeof parentId === 'string' || typeof parentId === 'number')) {

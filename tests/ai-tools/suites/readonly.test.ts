@@ -23,6 +23,14 @@ import { allFixtureRegistrations } from '../fixtures/_index';
 
 const readonlyEndpoint = loadEndpointConfigs().find((c) => c.kind === 'readonly');
 
+// Vitest requires at least one suite per file; this placeholder satisfies that when the
+// write-block suite is inactive (read-only mode or no readonly endpoint configured).
+if (!readonlyEndpoint || isReadOnlyMode()) {
+  describe.skip('write-block assertions — skipped (no readonly endpoint or TEST_READ_ONLY_MODE=true)', () => {
+    it.skip('placeholder', () => {});
+  });
+}
+
 if (readonlyEndpoint && !isReadOnlyMode()) {
   describe('write-block assertions — readonly endpoint', () => {
     const client = new McpTestClient();
