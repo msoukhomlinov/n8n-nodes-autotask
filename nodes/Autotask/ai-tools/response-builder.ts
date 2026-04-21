@@ -587,7 +587,8 @@ export function buildTicketSummaryResponse(
 	record: Record<string, unknown>,
 	context: ToolResponseContext = {},
 ): Record<string, unknown> {
-	const core = record.core as Record<string, unknown> | undefined;
+	// TicketSummaryResult uses "summary" (ticket fields) not "core"
+	const core = (record.summary ?? record.core) as Record<string, unknown> | undefined;
 	const computed = record.computed as Record<string, unknown> | undefined;
 	const ticketNumber = core?.ticketNumber as string | undefined;
 	const title = core?.title as string | undefined;
