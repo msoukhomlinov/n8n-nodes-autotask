@@ -40,6 +40,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Fixed
 
+- **`DeleteOperation` parent-scoped URL construction for child entities**: `DeleteOperation` was deriving the parent ID field name as `` `${metadata.childOf}ID` `` (e.g. `TicketID`) instead of using `metadata.parentIdField` (e.g. `ticketID`). The case mismatch caused parameter lookup to fail, leaving `parentId` undefined and falling back to the flat `/{entity}/{id}` endpoint. For `ticketSecondaryResource` this produced `DELETE /ticketSecondaryResource/{id}` instead of the required `DELETE /Tickets/{ticketId}/SecondaryResources/{id}`, returning a 405 from the Autotask API. Fix: use `metadata.parentIdField || \`${metadata.childOf}ID\`` — the same pattern `CreateOperation` already used. Also affects `taskSecondaryResource` delete.
 - Recency slice now honours auto-enabled `returnAll` for short windows — previously the slice limit reverted to `effectiveLimit` (10) even when the fetch returned the full 500-record recency window.
 - `completenessVerdict` correctly set to `'complete'` when count injection confirms `totalAvailable === returnedCount` — even when `isTruncated` was set by the pre-injection heuristic.
 - **Companion fields (`ticketLookupField`, `projectLookupField`) never leak to API request bodies**: Excluded from `buildFieldValues` in `tool-executor.ts` and stripped defensively after `resolveLabelsToIds` returns. They are schema-only inputs consumed by the resolver.
