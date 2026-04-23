@@ -217,6 +217,10 @@ function normaliseOperation(operation: string): string {
 			return 'getByYear';
 		case 'describeoperation':
 			return 'describeOperation';
+		case 'describefields':
+			return 'describeFields';
+		case 'listpicklistvalues':
+			return 'listPicklistValues';
 		default:
 			return key;
 	}

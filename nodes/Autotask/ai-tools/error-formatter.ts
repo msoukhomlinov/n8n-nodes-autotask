@@ -33,6 +33,7 @@ export interface FlatErrorResponse {
 	operation: string;
 	summary: string;
 	nextAction: string;
+	mustRetryAfter?: string[];
 	correlationId?: string;
 }
 
@@ -44,6 +45,15 @@ export interface FlatErrorResponse {
  * (error, errorType, resource, operation, summary, nextAction, correlationId).
  * Colliding keys will silently overwrite the declared values at runtime.
  */
+const ACTIONABLE_PREFIX_TYPES = new Set<string>([
+	ERROR_TYPES.INVALID_PICKLIST_VALUE,
+	ERROR_TYPES.INVALID_FIELDS,
+	ERROR_TYPES.INVALID_WRITE_FIELDS,
+	ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+	ERROR_TYPES.ENTITY_NOT_FOUND,
+	ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+]);
+
 export function wrapError(
 	resource: string,
 	operation: string,
@@ -51,14 +61,20 @@ export function wrapError(
 	summary: string,
 	nextAction: string,
 	contextFields?: Record<string, unknown>,
+	mustRetryAfter?: string[],
 ): FlatErrorResponse {
+	const finalSummary = (nextAction && ACTIONABLE_PREFIX_TYPES.has(errorType))
+		? `REQUIRED NEXT STEP: ${nextAction} — ${summary}`
+		: summary;
+
 	return {
 		error: true,
 		errorType,
 		resource,
 		operation: `${resource}.${operation}`,
-		summary,
+		summary: finalSummary,
 		nextAction,
+		...(mustRetryAfter && mustRetryAfter.length > 0 ? { mustRetryAfter } : {}),
 		...(contextFields ?? {}),
 	} as FlatErrorResponse;
 }
@@ -82,6 +98,7 @@ export function formatFieldError(
 		`Invalid field name(s) for ${resource}.${operation}: ${invalidFields.join(', ')}`,
 		`Call autotask_${resource} with operation 'describeFields' with mode '${mode}', then retry with valid field names.`,
 		{ invalidFields, validFieldsSample },
+		['describeFields'],
 	);
 }
 
@@ -97,6 +114,7 @@ export function formatRequiredFieldsError(
 		`Missing required field(s) for ${resource}.${operation}: ${missingFields.join(', ')}`,
 		`Call autotask_${resource} with operation 'describeFields' with mode 'write' to review required fields, then retry.`,
 		{ missingFields },
+		['describeFields'],
 	);
 }
 
@@ -168,6 +186,8 @@ export function formatApiError(
 			ERROR_TYPES.INVALID_PICKLIST_VALUE,
 			message,
 			`Call autotask_${resource} with operation 'listPicklistValues' with the relevant fieldId, then retry with a valid picklist value.`,
+			undefined,
+			['listPicklistValues'],
 		);
 	}
 
@@ -207,6 +227,8 @@ export function formatNotFoundError(resource: string, operation: string, id: num
 		ERROR_TYPES.ENTITY_NOT_FOUND,
 		`No ${resource} found with id ${id}.`,
 		`Use autotask_${resource} with operation 'getMany' and the 'filter_field'/'filter_value' parameters to locate a valid record, extract its numeric 'id', then retry.`,
+		undefined,
+		['getMany'],
 	);
 }
 

@@ -141,7 +141,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			rz.array(rz.union([rz.string(), rz.number(), rz.boolean()])),
 		])
 		.describe(
-			'Filter value. Use number for numeric fields, true/false for booleans, and arrays or comma-separated values for in/notIn.',
+			"Filter value. For reference and picklist fields, pass a human-readable name (e.g. 'In Progress', 'Contoso', 'High') — auto-resolves to ID. Or pass a numeric ID directly if known.",
 		);
 	const rRecencyEnum = rz.enum([
 		'last_15m',
@@ -319,21 +319,21 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		if (hasListFamily) {
 			const fieldNames = readFields.filter((f) => !f.udf).map((f) => f.id);
 			const filterFieldDesc =
-				"Field to filter on. Use operation 'describeFields' to see valid field names. Do NOT use this for date fields — use recency or since/until instead.";
+				"Field to filter on. Use operation 'describeFields' to see valid field names. For 'older than' / upper-bound date queries use filter_field with a date field + filter_op='lt'.";
 			shape.filter_field =
 				fieldNames.length > 0
 					? rz
 							.enum(fieldNames as [string, ...string[]])
 							.nullish()
-							.describe("Field to filter on. Do NOT use this for date fields — use recency or since/until instead.")
+							.describe("Field to filter on. For 'older than' / upper-bound date queries, use a date field (createDate, lastActivityDate, dueDateTime) with filter_op='lt'.")
 					: rz.string().nullish().describe(filterFieldDesc);
-			shape.filter_op = rFilterOpEnum.nullish().describe('Filter operator (default: eq)');
+			shape.filter_op = rFilterOpEnum.nullish().describe("Filter operator. Use 'notExist' for unassigned/empty/null fields (no filter_value needed). Use 'exist' for populated fields. Other operators: eq (equals), noteq (not equals), gt/gte/lt/lte (numeric/date comparisons), contains/beginsWith/endsWith (text), in/notIn (array of values).");
 			shape.filter_value = rFilterValueSchema.nullish();
 			shape.filter_field_2 = rz
 				.string()
 				.nullish()
 				.describe(
-					'Second filter field — same valid values as filter_field. Do NOT use this for date fields — use recency or since/until instead.',
+					'Second filter field — same valid values as filter_field. Supports date fields with filter_op_2 for bounded date ranges.',
 				);
 			shape.filter_op_2 = rFilterOpEnum.nullish().describe('Second filter operator');
 			shape.filter_value_2 = rFilterValueSchema.nullish().describe('Second filter value');

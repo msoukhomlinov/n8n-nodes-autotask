@@ -7,6 +7,24 @@ import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 
 export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
 
+export function buildToolContractBlock(): string {
+	return [
+		'API CAPABILITIES: filter, count, paging only.',
+		'NO groupBy, aggregation (avg/sum/count-by), server-side sort, or cross-entity joins.',
+		"For 'which X has most Y' or 'breakdown by Z': do NOT iterate all entities.",
+		'Ask user to provide a shortlist (≤10 IDs) then run one count per ID.',
+		'',
+		'ERROR RECOVERY: When response contains "error":true, the "nextAction" field is a directive TO YOU.',
+		'Execute it on your next call before responding to the user. Never retry same failed call unchanged.',
+		'',
+		'ENTITY VERIFICATION: Before stating facts about any named person, company, or ticket,',
+		'verify it exists via a tool call. If lookup returns nothing, say so — never fabricate details.',
+		'',
+		'GROUND TRUTH: Quote status/count/SLA fields verbatim from tool responses.',
+		'Do not paraphrase or soften a "breaching" or "overdue" result.',
+	].join('\n');
+}
+
 const DESCRIPTION_TEMPLATE_CACHE_MAX = 600;
 const descriptionTemplateCache = new Map<string, string>();
 
@@ -79,7 +97,7 @@ function setDescriptionTemplateCache(key: string, value: string): void {
 
 /** Rule for getMany/count/getPosted/getUnposted: how recency and since/until interact. */
 const RECENCY_VS_SINCE_UNTIL_RULE =
-	"Date filtering: use recency for all 'recent'/'latest'/'today'/'this week' queries — never filter a date field via filter_field. Pick the shortest preset that covers the intent (last_1h, last_24h, last_7d, last_30d, or custom last_Nd with N 1–365). Use since/until ONLY for a fixed explicit date range. When both recency and since/until are supplied, since/until wins. ";
+	"Temporal filter decision tree:\n- \"recent/latest/last N days/today/this week\" → recency param (e.g. last_7d). recency = LOWER BOUND (records newer than cutoff).\n- \"since date X / after date X\" → use since= param. since is a LOWER BOUND (records >= timestamp).\n- \"fixed range e.g. Q1 2026\" → since= + until=.\n- \"older than N days / before date X / stale / not touched since X\" → filter_field with filter_op='lt' on a date field (createDate, lastActivityDate, dueDateTime). 'lt' = UPPER BOUND. Do NOT use since/until for upper-bound queries.\n- Combination (between A and B) → two filter triplets: filter_op='gt' for inner bound + filter_op='lt' for outer bound on same field. ";
 
 /** Warning shared by list-family builders and LIST_ADVANCED_NOTES about API ordering. */
 const ASCENDING_ID_WARNING =
@@ -117,16 +135,16 @@ export function buildGetManyDescription(
 	return (
 		ref +
 		`Search ${resourceLabel} records with up to two filters (AND by default; set filter_logic='or' for either-match). ` +
+		`Filtering: use human-readable names for reference/picklist fields — e.g. filter_field='status', filter_value='In Progress' (auto-resolves to ID). Or pass a numeric ID directly if known. ` +
+		`Empty/null field queries: use filter_op='notExist' (no filter_value needed) for "unassigned", "no owner", "missing field". Use filter_op='exist' for "has value". Do NOT pass filter_value=null or filter_value=0. ` +
 		`Example: filter_field='companyName', filter_op='contains', filter_value='Acme'. ` +
 		`Use filter_value as true/false for boolean fields, and use arrays (or comma-separated values) for in/notIn operators. ` +
-		`Use exist/notExist operators (no filter_value needed) to filter by non-null/null — e.g., filter_op='exist' returns records where the field is populated, filter_op='notExist' returns records where it is null. Essential for narrowing results to records linked to a specific parent entity. ` +
 		`UDF filtering supports one UDF field per query. ` +
 		`Filterable fields include: ${fieldList}. ` +
 		`IMPORTANT: The Autotask API always returns records in ascending ID order (oldest first). Without recency or since, limit=1 returns the OLDEST record, not the newest. ` +
 		`To get the most recent or latest records, you MUST use recency (for example 'last_7d') or provide since/until in ISO-8601 UTC format (for example 2026-01-01T00:00:00Z). ` +
 		`When recency or since is used, the tool automatically filters by date, fetches a wide window, and returns the newest records first, trimmed to limit. ` +
 		`If results are unexpectedly empty, check API user security permissions before retrying. ` +
-		`Name-based filter resolution: for reference and picklist filter fields, you can pass a human-readable name as filter_value (e.g. filter_field='companyID', filter_value='Contoso') — the tool auto-resolves names to IDs. ` +
 		`${ASCENDING_ID_WARNING} ` +
 		dateFieldHint +
 		`For all matching records, use returnAll=true with a tight filter. ` +
@@ -457,7 +475,10 @@ export function buildUnifiedDescriptionTemplate(
 	];
 	const sections: string[] = [];
 
-	// Safety-critical header — always first, guaranteed to survive truncation
+	// Tool contract block — always first, guaranteed to survive truncation
+	sections.push(buildToolContractBlock());
+
+	// Safety-critical header — always present for write ops
 	if (hasWriteOps) {
 		sections.push(
 			'WRITE SAFETY: name/reference resolutions must match exactly. Ambiguous or failed resolutions block writes.',
