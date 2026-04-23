@@ -2,17 +2,6 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [2.11.0] — 2026-04-23
-
-### Changed
-
-- **AI tools — tool contract block**: `buildToolContractBlock()` in `description-builders.ts` injects a fixed header as the first section of every unified tool description. Covers four directives: API capability limits (no groupBy/aggregation/cross-entity joins — ask for shortlist instead), error recovery (treat `nextAction` as a model directive, not informational), entity verification (verify named entities via tool call before asserting facts), and ground truth (quote status/SLA/count fields verbatim).
-- **AI tools — temporal filter decision tree**: `RECENCY_VS_SINCE_UNTIL_RULE` replaced with a decision tree distinguishing lower-bound (recency/`since`) from upper-bound (`filter_field` + `filter_op='lt'`) date queries. The previous "Do NOT use filter_field for date fields" restriction is removed — `filter_field` with `filter_op='lt'` is now the correct pattern for "older than N days" queries.
-- **AI tools — error recovery signals**: `wrapError()` now prefixes `summary` with `"REQUIRED NEXT STEP: ${nextAction} — "` for actionable error types (`ENTITY_NOT_FOUND`, `INVALID_PICKLIST_VALUE`, `INVALID_FIELDS`, `INVALID_WRITE_FIELDS`, `MISSING_REQUIRED_FIELDS`, `INVALID_FILTER_CONSTRAINT`). New `mustRetryAfter?: string[]` field on `FlatErrorResponse`; thin wrappers pass `['describeFields']`, `['listPicklistValues']`, or `['getMany']` as appropriate.
-- **AI tools — schema descriptions**: `filter_op` describe text now leads with `notExist`/`exist` for null-field queries; `filter_value` describe text now leads with string-label example. `filter_field` describe text updated to reflect upper-bound date query guidance.
-- **AI tools — getMany description**: `notExist`/`exist` operators elevated to standalone sentence near top; string-label filter example moved before numeric ID example; name-resolution sentence promoted to paragraph heading.
-- **AI tools — operation normalisation**: `normaliseOperation()` now handles lowercase `describefields` and `listpicklistvalues`, routing them to the correct helper operation handlers.
-
 ## [2.10.0] — 2026-04-21
 
 ### Added
