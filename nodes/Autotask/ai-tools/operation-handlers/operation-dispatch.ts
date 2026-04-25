@@ -240,6 +240,26 @@ export function dispatchOperationResponse(
 			if (unresolvedFilterWarnings.length > 0) {
 				contextFields.filterResolutionWarnings = unresolvedFilterWarnings;
 			}
+			// Hint: string fields with eq op — partial name likely needs contains
+			const stringEqFields: string[] = [];
+			for (const [fieldKey, opKey] of [
+				['filter_field', 'filter_op'],
+				['filter_field_2', 'filter_op_2'],
+			] as const) {
+				const field = typeof params[fieldKey] === 'string' ? (params[fieldKey] as string).trim() : '';
+				const op = typeof params[opKey] === 'string' ? (params[opKey] as string).toLowerCase() : 'eq';
+				const val = params[fieldKey === 'filter_field' ? 'filter_value' : 'filter_value_2'];
+				if (!field || typeof val !== 'string' || (op !== 'eq' && op !== 'equals')) continue;
+				const fieldMeta = (context.readFields ?? []).find(
+					(f) => f.id.toLowerCase() === field.toLowerCase(),
+				);
+				if (fieldMeta && fieldMeta.type.toLowerCase() === 'string') {
+					stringEqFields.push(field);
+				}
+			}
+			if (stringEqFields.length > 0) {
+				contextFields.containsHint = `${stringEqFields.map((f) => `'${f}'`).join(', ')} ${stringEqFields.length === 1 ? 'is a string field' : 'are string fields'} — if the value is a partial name, retry with filter_op='contains' for a substring match.`;
+			}
 			return JSON.stringify(
 				wrapError(
 					resource,
