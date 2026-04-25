@@ -410,10 +410,12 @@ export async function resolveFilterLabelsToIds(
 
     // Picklist resolution — also fires for integer-type fields with text values, as Autotask
     // sometimes returns isPickList: false for fields that have picklist values (e.g. status, priority).
+    const integerLikeTypes = new Set(['integer', 'number', 'long', 'decimal', 'double']);
     const isIntegerFieldWithTextValue =
-        !field?.isPickList &&
-        !field?.isReference &&
-        field?.type?.toLowerCase() === 'integer';
+        !!field &&
+        !field.isPickList &&
+        !field.isReference &&
+        integerLikeTypes.has((field.type ?? '').toLowerCase());
     if (field?.isPickList || isIntegerFieldWithTextValue) {
         let idMatch: string | number | undefined;
 
