@@ -510,14 +510,18 @@ export async function executeAiTool(
 	if (normalisedOperation === 'listPicklistValues') {
 		const fieldId = typeof params.fieldId === 'string' ? params.fieldId.trim() : '';
 		if (!fieldId) {
+			const targetOpProvided = typeof params.targetOperation === 'string' && (params.targetOperation as string).trim() !== '';
+			const hint = targetOpProvided
+				? `'targetOperation' is for the 'describeOperation' helper, not 'listPicklistValues'. Pass 'fieldId' set to the picklist field name (e.g. 'status', 'priority').`
+				: `'fieldId' is required — pass the picklist field name (e.g. 'status', 'priority').`;
 			return attachCorrelation(
 				JSON.stringify(
 					wrapError(
 						resource,
 						'listPicklistValues',
-						ERROR_TYPES.MISSING_REQUIRED_FIELD,
-						`'fieldId' is required — pass the picklist field name (e.g. 'status', 'priority').`,
-						`Call autotask_${resource} with operation 'describeFields' with mode 'read' to find picklist field names, then retry with fieldId set to the field name.`,
+						ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+						hint,
+						`Call autotask_${resource} with operation 'describeFields' to find picklist field names, then retry with fieldId='<fieldName>'.`,
 						undefined,
 						['describeFields'],
 					),

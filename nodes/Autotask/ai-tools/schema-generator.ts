@@ -382,12 +382,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe(
 					'Range end (ISO-8601). Requires since or recency.',
 				);
-			shape.filtersJson = rz
-				.string()
-				.nullish()
-				.describe(
-					'JSON array of Autotask IFilterCondition objects for complex filters. Mutually exclusive with filter_field/filter_field_2. Recency/since/until still apply. No label resolution — pass numeric IDs. Dates must be UTC (e.g. 2026-01-01T00:00:00Z). ' +
-						'\'[{"field":"status","op":"in","value":[1,2,3]},{"op":"or","items":[{"field":"companyID","op":"eq","value":123},{"field":"companyID","op":"eq","value":456}]}]\'',
+			shape.filtersJson = rz.string().nullish().describe(
+					'IMPORTANT: filtersJson does NOT auto-resolve labels. You MUST pass numeric IDs only — never string labels like "Critical" or "High". ' +
+					'Call listPicklistValues first to get IDs, then build filtersJson. ' +
+					'Use filter_field/filter_value (auto-resolves labels) for simple cases instead. ' +
+					'Format: JSON array of filter conditions. Mutually exclusive with filter_field. Recency/since/until still apply. Dates UTC.',
 				);
 			shape.returnAll = rz
 				.boolean()

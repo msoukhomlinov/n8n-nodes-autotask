@@ -21,6 +21,11 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - **AI tools — recency composability hint**: getMany description clarifies that `recency` and `filter_field`/`filter_value` are AND-combined, preventing models from abandoning recency when combining with other filters.
 - **AI tools — error recovery signal**: Actionable error responses now emit `nextAction` as the first JSON key and include `actionRequired: true`, making the recovery directive more prominent to smaller models.
 - **AI tools — `id:"null"` sentinel guard**: String sentinels (`"null"`, `"undefined"`, `""`) passed as `id` or `ticketNumber` are now normalised to absent before identifier-pair pre-flight validation, preventing spurious `INVALID_FILTER_CONSTRAINT` errors.
+- **AI tools — integer picklist filter resolution type check**: `isIntegerFieldWithTextValue` in `label-resolution.ts` now recognises n8n's mapped type `'number'` in addition to the raw API type `'integer'`, fixing a dead-code path that prevented label→ID resolution for `status`, `priority`, and other integer-type picklist fields.
+- **AI tools — `listPicklistValues` targetOperation disambiguation**: Passing `targetOperation` instead of `fieldId` to `listPicklistValues` now returns an explicit error explaining the confusion (`targetOperation` belongs to `describeOperation`) and directs the model to pass `fieldId` instead.
+- **AI tools — `slaHealthCheck`/`summary` population-level guidance**: Descriptions now explicitly state that population-level SLA queries (e.g. "how many breached this week?") should use `count`/`getMany` with `filter_field='serviceLevelAgreementHasBeenMet'` rather than calling `slaHealthCheck` without an `id`.
+- **AI tools — ENTITY_NOT_FOUND retry rule**: Tool contract block now instructs the model not to retry with the same identifier on `ENTITY_NOT_FOUND`; instead broaden the search, change the field, or ask the user.
+- **AI tools — `filtersJson` string-label warning**: `filtersJson` description now prominently states that label auto-resolution does not apply and numeric IDs must be used; directs models to call `listPicklistValues` first or use `filter_field`/`filter_value` for simple cases.
 
 ### Added
 

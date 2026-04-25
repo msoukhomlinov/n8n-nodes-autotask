@@ -16,6 +16,7 @@ export function buildToolContractBlock(): string {
 		'',
 		'ERROR RECOVERY: When response contains "error":true, the "nextAction" field is a directive TO YOU.',
 		'Execute it on your next call before responding to the user. Never retry same failed call unchanged.',
+		'On ENTITY_NOT_FOUND: do NOT retry with the same identifier — broaden search (e.g. partial name), change field, or ask user to confirm.',
 		'',
 		'ENTITY VERIFICATION: Before stating facts about any named person, company, or ticket,',
 		'verify it exists via a tool call. If lookup returns nothing, say so — never fabricate details.',
@@ -330,6 +331,7 @@ export function buildTicketSummaryDescription(resourceName: string): string {
 		"Use 'summaryTextLimit' to cap description/resolution length (default 500 chars). " +
 		"Set 'includeRaw=true' to receive the full enriched payload before alias renaming — label/UDF enrichments intact, original changeInfoField{N} keys, no null filtering or text truncation. " +
 		'For full SLA milestone timing and elapsed hours, use slaHealthCheck instead. ' +
+		"For population-level SLA queries (e.g. 'how many breached this week?'), use operation 'count' or 'getMany' with filter_field='serviceLevelAgreementHasBeenMet', filter_op='eq', filter_value=false instead. " +
 		describeFieldsHint(resourceName)
 	);
 }
@@ -343,6 +345,7 @@ export function buildTicketSlaHealthCheckDescription(resourceName: string): stri
 		"Use 'ticketFields' to limit which ticket fields are returned in the ticket section. " +
 		'Includes wallClockRemainingHours, where negative values indicate overdue milestones. ' +
 		'This operation combines data from Ticket and ServiceLevelAgreementResults entities. ' +
+		"For population-level SLA queries (e.g. 'how many breached this week?'), do NOT call slaHealthCheck without an id. Use operation 'count' or 'getMany' with filter_field='serviceLevelAgreementHasBeenMet', filter_op='eq', filter_value=false instead. " +
 		describeFieldsHint(resourceName)
 	);
 }
@@ -395,7 +398,8 @@ export function buildDescribeFieldsDescription(resourceLabel: string): string {
 export function buildListPicklistValuesDescription(resourceLabel: string): string {
 	return (
 		`List picklist values for a specific ${resourceLabel} field. ` +
-		`Use this when create or update fails due to invalid picklist values.`
+		`Use this when create or update fails due to invalid picklist values. ` +
+		`REQUIRED: 'fieldId' = picklist field name (e.g. 'status', 'priority'). Do NOT pass 'targetOperation' — that belongs to 'describeOperation'.`
 	);
 }
 
