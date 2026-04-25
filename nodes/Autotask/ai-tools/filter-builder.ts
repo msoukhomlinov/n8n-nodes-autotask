@@ -217,6 +217,12 @@ export async function resolveAndClassifyFilters(
                     if (resolution.resolutions.length > 0) {
                         filter.value = resolution.values[filter.field] as string | number | boolean;
                         allResolutions.push(...resolution.resolutions);
+                        // When picklist resolution produces a numeric ID, contains/beginsWith ops
+                        // are invalid on integer fields — auto-correct to eq.
+                        if (typeof filter.value === 'number' &&
+                            (filter.op === 'contains' || filter.op === 'beginsWith')) {
+                            filter.op = 'eq';
+                        }
                     }
                     if (resolution.warnings.length > 0) {
                         allWarnings.push(...resolution.warnings);
