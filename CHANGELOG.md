@@ -6,6 +6,12 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Fixed
 
+- **AI tools — filter-field alias map**: Common field-name mistakes are now silently corrected and a warning is returned so the model learns the canonical name (e.g. `name`→`companyName` on Company, `title`→`subject` on Ticket, `createDateTime`→`createDate`).
+- **AI tools — invalid filter_field pre-flight**: Unknown filter fields now return `INVALID_FIELDS` with field suggestions instead of silently producing 0 API results.
+- **AI tools — `notExist`/`exist` filter_value pre-flight bug**: Pre-flight no longer incorrectly requires `filter_value` for null-check operators; empty-string `filter_value` is stripped.
+- **AI tools — picklist resolution failure warning**: When a picklist filter value cannot be resolved, the warning now includes the available valid values inline, reducing unnecessary `listPicklistValues` round-trips.
+- **AI tools — `recency_field` rejection note**: When an invalid `recency_field` name is supplied, the response note now includes which field was used as fallback and what date fields are available.
+- **AI tools — `listPicklistValues` fieldId guard**: Missing or empty `fieldId` now returns a structured error with next-step guidance instead of a generic throw.
 - **AI tools — company name filter field hint**: Identity hint for the `company` resource now explicitly states that `filter_field='companyName'` is the correct field (NOT `'name'`, which does not exist) and instructs models to always use `filter_op='contains'` for name lookups since company names often include suffixes (e.g. `'(NRL)'`) that cause exact matches to fail. Fixes a dominant failure pattern where models burned all available turns attempting `name` variants before eventually calling `describeFields`.
 - **AI tools — resource name filter field hint**: Identity hint for the `resource` entity now states to use `filter_field='firstName'` and/or `filter_field_2='lastName'` (NOT `'name'`) with `filter_logic='and'` for full-name lookups.
 - **AI tools — picklist label hint in getMany**: Description now states that status, priority, and other picklist filter values accept human-readable labels and are auto-resolved to IDs — reducing unnecessary `listPicklistValues` round-trips.

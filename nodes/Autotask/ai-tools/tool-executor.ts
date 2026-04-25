@@ -391,6 +391,14 @@ export async function executeAiTool(
 			delete (params as Record<string, unknown>)[key];
 		}
 	}
+	// Strip empty-string filter values — treat as "not provided" so notExist/exist operators
+	// work without the model needing to supply a placeholder value.
+	for (const key of ['filter_value', 'filter_value_2']) {
+		const value = (params as Record<string, unknown>)[key];
+		if (typeof value === 'string' && value.trim() === '') {
+			delete (params as Record<string, unknown>)[key];
+		}
+	}
 	const normalisedOperation = normaliseOperation(operation);
 	traceToolCall({
 		phase: 'execute-start',
@@ -413,7 +421,7 @@ export async function executeAiTool(
 	const readFields = metadata.readFields ?? [];
 	const writeFields = metadata.writeFields ?? [];
 	const fieldValues = buildFieldValues(params, ['id'], writeFields);
-	const filters = buildFilterFromParams(params, readFields, timezone);
+	const filters = buildFilterFromParams(params, readFields, timezone, resource);
 	const entityId = params.id !== undefined ? String(params.id) : '';
 
 	const {
@@ -443,6 +451,14 @@ export async function executeAiTool(
 			...(AI_TOOL_DEBUG_VERBOSE ? { filterSnapshot: redactForVerbose(filters) } : {}),
 		},
 	});
+	// Surface filter-field alias corrections so the model learns canonical names
+	for (const f of filters) {
+		if (f.aliasedFrom) {
+			filterWarnings.push(
+				`Filter field '${f.aliasedFrom}' is not a real field — auto-corrected to '${f.field}'. Use '${f.field}' directly in future calls.`,
+			);
+		}
+	}
 	const selectedColumns = parseFieldsParam(params.fields);
 	const selectedSlaTicketColumns = parseFieldsParam(params.ticketFields);
 	const effectiveLimit = getEffectiveLimit(params.limit);
@@ -492,6 +508,23 @@ export async function executeAiTool(
 		}
 	}
 	if (normalisedOperation === 'listPicklistValues') {
+		const fieldId = typeof params.fieldId === 'string' ? params.fieldId.trim() : '';
+		if (!fieldId) {
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						'listPicklistValues',
+						ERROR_TYPES.MISSING_REQUIRED_FIELD,
+						`'fieldId' is required — pass the picklist field name (e.g. 'status', 'priority').`,
+						`Call autotask_${resource} with operation 'describeFields' with mode 'read' to find picklist field names, then retry with fieldId set to the field name.`,
+						undefined,
+						['describeFields'],
+					),
+				),
+				correlationId,
+			);
+		}
 		try {
 			const result = await listPicklistValues(
 				context as unknown as ILoadOptionsFunctions,
@@ -843,8 +876,9 @@ export async function executeAiTool(
 		if (hasFiltersJson && (hasFlatFilter1 || hasFlatFilter2)) {
 			filterErrors.push(`Operation '${effectiveOperation}' does not allow mixing 'filtersJson' with flat filter fields.`);
 		}
-		if (hasProvidedValue(p.filter_field) && !hasProvidedValue(p.filter_value)) {
-			filterErrors.push(`Operation '${effectiveOperation}' requires 'filter_value' when 'filter_field' is provided.`);
+		const isNullCheckOp1 = ['exist', 'notexist'].includes(String(p.filter_op ?? '').toLowerCase());
+		if (hasProvidedValue(p.filter_field) && !hasProvidedValue(p.filter_value) && !isNullCheckOp1) {
+			filterErrors.push(`Operation '${effectiveOperation}' requires 'filter_value' when 'filter_field' is provided (not needed when filter_op is 'exist' or 'notExist').`);
 		}
 		if (!hasProvidedValue(p.filter_field) && hasProvidedValue(p.filter_value)) {
 			filterErrors.push(`Operation '${effectiveOperation}' does not allow 'filter_value' without 'filter_field'.`);
@@ -852,9 +886,10 @@ export async function executeAiTool(
 		if (hasFlatFilter2) {
 			const hasFilter2Field = hasProvidedValue(p.filter_field_2);
 			const hasFilter2Value = hasProvidedValue(p.filter_value_2);
-			if (!hasFilter2Field || !hasFilter2Value) {
+			const isNullCheckOp2 = ['exist', 'notexist'].includes(String(p.filter_op_2 ?? '').toLowerCase());
+			if (!hasFilter2Field || (!hasFilter2Value && !isNullCheckOp2)) {
 				filterErrors.push(
-					`Operation '${effectiveOperation}' requires both 'filter_field_2' and 'filter_value_2' when using a second filter.`,
+					`Operation '${effectiveOperation}' requires 'filter_field_2' and 'filter_value_2' when using a second filter (filter_value_2 not needed when filter_op_2 is 'exist' or 'notExist').`,
 				);
 			}
 			if (!hasFlatFilter1) {
@@ -884,6 +919,51 @@ export async function executeAiTool(
 				),
 				correlationId,
 			);
+		}
+
+		// Pre-flight: validate filter_field names against read field metadata.
+		// Runs after alias resolution — aliased fields (e.g. name→companyName) pass cleanly here.
+		// Converts silent 0-result API responses into actionable errors with field suggestions.
+		if (readFields.length > 0 && !hasFiltersJson) {
+			const readFieldIds = new Set(readFields.map((f) => f.id.toLowerCase()));
+			const invalidFieldErrors: string[] = [];
+			for (const f of filters) {
+				if (!f.udf && !readFieldIds.has(f.field.toLowerCase())) {
+					const displayName = f.aliasedFrom
+						? `'${f.aliasedFrom}' (mapped to '${f.field}')`
+						: `'${f.field}'`;
+					const suggestions = readFields
+						.map((rf) => rf.id)
+						.filter((id) => {
+							const ll = id.toLowerCase();
+							const fl = f.field.toLowerCase();
+							return ll.startsWith(fl.slice(0, 4)) || fl.startsWith(ll.slice(0, 4));
+						})
+						.slice(0, 4);
+					invalidFieldErrors.push(
+						`${displayName} is not a valid filter field for ${resource}.` +
+						(suggestions.length > 0
+							? ` Did you mean: ${suggestions.join(', ')}?`
+							: ` Call autotask_${resource} with operation 'describeFields' to see valid fields.`),
+					);
+				}
+			}
+			if (invalidFieldErrors.length > 0) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							effectiveOperation,
+							ERROR_TYPES.INVALID_FIELDS,
+							invalidFieldErrors.join(' '),
+							`Call autotask_${resource} with operation 'describeFields' with mode 'read' to discover valid field names, then retry with corrected filter_field.`,
+							undefined,
+							['describeFields'],
+						),
+					),
+					correlationId,
+				);
+			}
 		}
 	}
 

@@ -156,6 +156,25 @@ export function buildRecencyFilters(
         };
     }
 
+    // Note when the model-supplied recency_field was rejected and a fallback was used.
+    let preferredFieldRejectionNote: string | undefined;
+    if (preferredField) {
+        const wasValid = readFields.some(
+            (f) =>
+                f.id.toLowerCase() === preferredField.toLowerCase() &&
+                f.type.toLowerCase().includes('date'),
+        );
+        if (!wasValid) {
+            const dateFields = readFields
+                .filter((f) => !f.udf && f.type.toLowerCase().includes('date'))
+                .map((f) => f.id);
+            preferredFieldRejectionNote =
+                `recency_field '${preferredField}' is not a valid date field. ` +
+                `Using '${recencyField}' instead. ` +
+                `Available date fields: ${dateFields.join(', ')}.`;
+        }
+    }
+
     let startIso: string | undefined;
     let presetWindowMs: number | undefined;
     if (sinceRaw) {
@@ -204,7 +223,7 @@ export function buildRecencyFilters(
         windowMs = presetWindowMs as number;
     }
 
-    return { filters, isActive: true, windowMs };
+    return { filters, isActive: true, windowMs, ...(preferredFieldRejectionNote ? { note: preferredFieldRejectionNote } : {}) };
 }
 
 export function formatRecencyWindowLabel(recency: string): string | null {

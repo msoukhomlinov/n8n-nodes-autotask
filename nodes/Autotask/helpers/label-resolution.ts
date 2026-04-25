@@ -436,6 +436,13 @@ export async function resolveFilterLabelsToIds(
                             candidates: subMatches.map(v => ({ id: v.id, displayName: v.label })),
                             fieldType: 'picklist',
                         });
+                    } else {
+                        const available = result.values.slice(0, 10).map(v => v.label).join(', ');
+                        warnings.push(
+                            `Picklist filter value '${label}' for '${filterField}' not found. ` +
+                            `Available: ${available}${result.values.length > 10 ? '...' : ''}. ` +
+                            `Use one of these labels or the numeric ID directly.`,
+                        );
                     }
                 }
             } catch (err) {

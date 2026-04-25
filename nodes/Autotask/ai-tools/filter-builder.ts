@@ -8,12 +8,15 @@ import {
     type PendingLabelConfirmation,
 } from '../helpers/label-resolution';
 import { isLikelyId } from '../helpers/id-utils';
+import { resolveFilterFieldAlias } from '../constants/filter-field-aliases';
 
 export interface ToolFilter {
     field: string;
     op: string;
     value?: string | number | boolean | Array<string | number | boolean>;
     udf?: boolean;
+    /** Original field name supplied by the model when an alias was applied. */
+    aliasedFrom?: string;
 }
 
 export interface FilterResolutionResult {
@@ -85,9 +88,13 @@ export function buildFilterFromParams(
     params: ToolExecutorFilterParams,
     readFields: FieldMeta[],
     timezone: string,
+    resource?: string,
 ): ToolFilter[] {
     const filters: ToolFilter[] = [];
     const readFieldLookup = buildFieldLookup(readFields);
+    const readFieldIds = readFields.length > 0
+        ? new Set(readFields.map((f) => f.id.toLowerCase()))
+        : undefined;
 
     const mappedOp1 = params.filter_op ? mapFilterOp(params.filter_op) : 'eq';
     const isNullCheckOp1 = mappedOp1 === 'exist' || mappedOp1 === 'notExist';
@@ -95,7 +102,11 @@ export function buildFilterFromParams(
         params.filter_field &&
         (isNullCheckOp1 || (params.filter_value !== undefined && params.filter_value !== ''))
     ) {
-        const canonicalField = readFieldLookup.get(params.filter_field.toLowerCase());
+        const alias1 = resource
+            ? resolveFilterFieldAlias(resource, params.filter_field, readFieldIds)
+            : { resolved: params.filter_field };
+        const effectiveField1 = alias1.resolved;
+        const canonicalField = readFieldLookup.get(effectiveField1.toLowerCase());
         let coercedValue1 = coerceFilterValueByFieldType(
             params.filter_value as string | number | boolean | Array<string | number | boolean>,
             canonicalField?.type,
@@ -116,10 +127,11 @@ export function buildFilterFromParams(
             }
         }
         filters.push({
-            field: canonicalField?.id ?? params.filter_field,
+            field: canonicalField?.id ?? effectiveField1,
             op: mappedOp1,
             ...(!isNullCheckOp1 ? { value: coercedValue1 } : {}),
             ...(canonicalField?.udf ? { udf: true } : {}),
+            ...(alias1.aliasedFrom ? { aliasedFrom: alias1.aliasedFrom } : {}),
         });
     }
 
@@ -129,7 +141,11 @@ export function buildFilterFromParams(
         params.filter_field_2 &&
         (isNullCheckOp2 || (params.filter_value_2 !== undefined && params.filter_value_2 !== ''))
     ) {
-        const canonicalField = readFieldLookup.get(params.filter_field_2.toLowerCase());
+        const alias2 = resource
+            ? resolveFilterFieldAlias(resource, params.filter_field_2, readFieldIds)
+            : { resolved: params.filter_field_2 };
+        const effectiveField2 = alias2.resolved;
+        const canonicalField = readFieldLookup.get(effectiveField2.toLowerCase());
         let coercedValue2 = coerceFilterValueByFieldType(
             params.filter_value_2 as string | number | boolean | Array<string | number | boolean>,
             canonicalField?.type,
@@ -150,10 +166,11 @@ export function buildFilterFromParams(
             }
         }
         filters.push({
-            field: canonicalField?.id ?? params.filter_field_2,
+            field: canonicalField?.id ?? effectiveField2,
             op: mappedOp2,
             ...(!isNullCheckOp2 ? { value: coercedValue2 } : {}),
             ...(canonicalField?.udf ? { udf: true } : {}),
+            ...(alias2.aliasedFrom ? { aliasedFrom: alias2.aliasedFrom } : {}),
         });
     }
 
