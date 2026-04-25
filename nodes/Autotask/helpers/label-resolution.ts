@@ -331,7 +331,7 @@ export async function resolveFilterLabelsToIds(
     resource: string,
     filterField: string,
     filterValue: string | number | boolean | Array<string | number | boolean>,
-    readFields: Array<{ id: string; isPickList?: boolean; isReference?: boolean; referencesEntity?: string; allowedValues?: Array<{ id: string | number; label: string }> }>,
+    readFields: Array<{ id: string; type?: string; isPickList?: boolean; isReference?: boolean; referencesEntity?: string; allowedValues?: Array<{ id: string | number; label: string }> }>,
     siblingValues?: IDataObject,
 ): Promise<LabelResolutionResult> {
     const values: IDataObject = { [filterField]: filterValue };
@@ -408,8 +408,13 @@ export async function resolveFilterLabelsToIds(
 
     const label = filterValue.trim();
 
-    // Picklist resolution
-    if (field?.isPickList) {
+    // Picklist resolution — also fires for integer-type fields with text values, as Autotask
+    // sometimes returns isPickList: false for fields that have picklist values (e.g. status, priority).
+    const isIntegerFieldWithTextValue =
+        !field?.isPickList &&
+        !field?.isReference &&
+        field?.type?.toLowerCase() === 'integer';
+    if (field?.isPickList || isIntegerFieldWithTextValue) {
         let idMatch: string | number | undefined;
 
         // Try inline allowed values first
