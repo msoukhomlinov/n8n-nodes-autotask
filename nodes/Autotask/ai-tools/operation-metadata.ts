@@ -40,7 +40,7 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		supportsFilters: true,
 		responseKind: 'list',
 		docsFragment:
-			'Search records with up to two filters (AND/OR via filter_logic). Use filter_field/filter_value. Supports name-based resolution for reference/picklist filter values.',
+			'Search records with up to two filters (AND/OR via filter_logic). Use filter_field/filter_value. Supports name-based resolution for reference/picklist filter values. Status, priority, and other picklist filter values accept human-readable labels — auto-resolved to IDs. recency and filter_field/filter_value are AND-combined — use both together to filter by time window AND field value simultaneously. Each filter_value pairs with the filter_field of the same index (filter_value→filter_field, filter_value_2→filter_field_2).',
 	},
 	{
 		name: 'getPosted',

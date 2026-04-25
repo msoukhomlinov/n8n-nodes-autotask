@@ -379,6 +379,18 @@ export async function executeAiTool(
 			delete (params as Record<string, unknown>)[key];
 		}
 	}
+	// Normalise sentinel-string values for identifier fields. Some LLMs pass the literal string
+	// "null", "undefined", or "" for id/ticketNumber when they mean "absent" — these are truthy
+	// and would incorrectly pass the identifier-pair XOR guard (both id and altId appearing
+	// provided). Treat them as absent before the pre-flight contract check.
+	const SENTINEL_ABSENT_STRINGS = new Set(['null', 'undefined', '']);
+	const identifierKeys = ['id', 'ticketNumber'];
+	for (const key of identifierKeys) {
+		const value = (params as Record<string, unknown>)[key];
+		if (typeof value === 'string' && SENTINEL_ABSENT_STRINGS.has(value.trim().toLowerCase())) {
+			delete (params as Record<string, unknown>)[key];
+		}
+	}
 	const normalisedOperation = normaliseOperation(operation);
 	traceToolCall({
 		phase: 'execute-start',

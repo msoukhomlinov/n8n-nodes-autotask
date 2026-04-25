@@ -135,7 +135,7 @@ export function buildGetManyDescription(
 	return (
 		ref +
 		`Search ${resourceLabel} records with up to two filters (AND by default; set filter_logic='or' for either-match). ` +
-		`Filtering: use human-readable names for reference/picklist fields — e.g. filter_field='status', filter_value='In Progress' (auto-resolves to ID). Or pass a numeric ID directly if known. ` +
+		`Filtering: use human-readable names for reference/picklist fields — e.g. filter_field='status', filter_value='In Progress' (auto-resolves to ID). Or pass a numeric ID directly if known. Pairing rule: filter_value is always the value for filter_field; filter_value_2 is always the value for filter_field_2 — never mix across pairs. ` +
 		`Empty/null field queries: use filter_op='notExist' (no filter_value needed) for "unassigned", "no owner", "missing field". Use filter_op='exist' for "has value". Do NOT pass filter_value=null or filter_value=0. ` +
 		`Example: filter_field='companyName', filter_op='contains', filter_value='Acme'. ` +
 		`Use filter_value as true/false for boolean fields, and use arrays (or comma-separated values) for in/notIn operators. ` +

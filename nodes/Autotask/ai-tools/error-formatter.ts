@@ -27,12 +27,13 @@ export const ERROR_TYPES = {
 // ---------------------------------------------------------------------------
 
 export interface FlatErrorResponse {
+	nextAction: string;
+	actionRequired?: boolean;
 	error: true;
 	errorType: string;
 	resource: string;
 	operation: string;
 	summary: string;
-	nextAction: string;
 	mustRetryAfter?: string[];
 	correlationId?: string;
 }
@@ -63,17 +64,19 @@ export function wrapError(
 	contextFields?: Record<string, unknown>,
 	mustRetryAfter?: string[],
 ): FlatErrorResponse {
-	const finalSummary = (nextAction && ACTIONABLE_PREFIX_TYPES.has(errorType))
+	const isActionable = Boolean(nextAction) && ACTIONABLE_PREFIX_TYPES.has(errorType);
+	const finalSummary = isActionable
 		? `REQUIRED NEXT STEP: ${nextAction} — ${summary}`
 		: summary;
 
 	return {
+		nextAction,
+		...(isActionable ? { actionRequired: true } : {}),
 		error: true,
 		errorType,
 		resource,
 		operation: `${resource}.${operation}`,
 		summary: finalSummary,
-		nextAction,
 		...(mustRetryAfter && mustRetryAfter.length > 0 ? { mustRetryAfter } : {}),
 		...(contextFields ?? {}),
 	} as FlatErrorResponse;
@@ -226,9 +229,7 @@ export function formatNotFoundError(resource: string, operation: string, id: num
 		operation,
 		ERROR_TYPES.ENTITY_NOT_FOUND,
 		`No ${resource} found with id ${id}.`,
-		`Use autotask_${resource} with operation 'getMany' and the 'filter_field'/'filter_value' parameters to locate a valid record, extract its numeric 'id', then retry.`,
-		undefined,
-		['getMany'],
+		`If the user supplied this ID explicitly, report to the user that no record exists with that ID. Only call getMany if you have other identifying attributes (name, company, date range, or title) to search on.`,
 	);
 }
 

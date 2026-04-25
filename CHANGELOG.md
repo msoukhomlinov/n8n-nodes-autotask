@@ -4,6 +4,15 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [2.10.0] — 2026-04-21
 
+### Fixed
+
+- **AI tools — company name filter field hint**: Identity hint for the `company` resource now explicitly states that `filter_field='companyName'` is the correct field (NOT `'name'`, which does not exist) and instructs models to always use `filter_op='contains'` for name lookups since company names often include suffixes (e.g. `'(NRL)'`) that cause exact matches to fail. Fixes a dominant failure pattern where models burned all available turns attempting `name` variants before eventually calling `describeFields`.
+- **AI tools — resource name filter field hint**: Identity hint for the `resource` entity now states to use `filter_field='firstName'` and/or `filter_field_2='lastName'` (NOT `'name'`) with `filter_logic='and'` for full-name lookups.
+- **AI tools — picklist label hint in getMany**: Description now states that status, priority, and other picklist filter values accept human-readable labels and are auto-resolved to IDs — reducing unnecessary `listPicklistValues` round-trips.
+- **AI tools — recency composability hint**: getMany description clarifies that `recency` and `filter_field`/`filter_value` are AND-combined, preventing models from abandoning recency when combining with other filters.
+- **AI tools — error recovery signal**: Actionable error responses now emit `nextAction` as the first JSON key and include `actionRequired: true`, making the recovery directive more prominent to smaller models.
+- **AI tools — `id:"null"` sentinel guard**: String sentinels (`"null"`, `"undefined"`, `""`) passed as `id` or `ticketNumber` are now normalised to absent before identifier-pair pre-flight validation, preventing spurious `INVALID_FILTER_CONSTRAINT` errors.
+
 ### Added
 
 - Count injection: truncated `getMany` responses now include a true `totalAvailable` from a `CountOperation` query (parallel for recency windows >7d, sequential for non-recency truncation). `searchByDomain`, `getPosted`, `getUnposted`, and `count` itself are excluded.
