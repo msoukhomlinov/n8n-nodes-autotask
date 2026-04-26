@@ -100,26 +100,6 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [2.9.1] — 2026-04-17
 
-### Fixed
-
-- **AI tools — False-negative on all `create` operations**: `create` operations now correctly extract the new entity ID from the wrapped `{ item: { id: N } }` response shape instead of failing with a "did not return a created entity ID" error despite a successful API write.
-- **AI tools — Mutation response shape on `update`/`reject`**: The mutation envelope now unwraps the API's `item` wrapper before assignment so `response.record` contains the entity fields directly rather than a nested `{ item: { id: N } }`.
-
-## [Unreleased]
-
-### Fixed
-
-- **tool/execute**: Removed stale `dryRun` suggestion from write-blocked safety gate error message — AI agents cannot use `dryRun` (removed from schema in v2.9.0, stripped via `N8N_METADATA_FIELDS`), so the hint caused an unactionable retry loop.
-- **schema-generator**: Removed `.superRefine()` from top-level Zod schema — restores `ZodObject` shape required by n8n's `normalizeToolSchema` `instanceof` check. `superRefine` produced `ZodEffects` which silently corrupted the schema for MCP Trigger and Agent V3 execution paths. The `readOnlySchemaCache` no longer caches a corrupted type.
-- **operation-contracts**: `hasProvidedValue` now rejects non-positive numbers (`id: 0`, `id: -1`), restoring the `id > 0` guard from the old identifier-pair pre-flight.
-- **operation-contracts**: `getXorMessage` no longer hardcodes "numeric Ticket ID" — derives the entity label dynamically from the resource name.
-- **operation-contracts**: Added module-load self-consistency assertion — throws on startup if any contract has a field in both `requiredFields` and `forbiddenFields`, or an `xorGroup` with fewer than 2 members.
-- **tool-executor**: Filter cross-validation (filtersJson/flat conflicts, filter pair integrity, recency/since/until conflicts) migrated from the removed `superRefine` block — enforced on both MCP and Agent V3 execution paths.
-- **tool-executor**: `reject` + `rejectReasonPolicy=mandatory` pre-flight now runs correctly (was unreachable dead code inside `superRefine`'s list-operation early-return guard).
-- **tool-executor**: Contract violation `nextAction` messages now include specific violation details instead of the generic "provide arguments that satisfy the operation contract" phrase.
-
-## [Unreleased]
-
 ### Changed
 
 - **Breaking: AI tool response envelope redesign (v3)**. All AI tool responses now use a flat JSON shape with `summary` always at root. Old nested `{ result: { kind, data, flags } }` shape is removed.
@@ -135,6 +115,19 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - `write-guard.ts`: `buildWriteResolutionBlocker` now produces flat error with named root fields.
 - `debug-trace.ts`: `summariseResponseEnvelope` updated to parse new flat shape.
 - `wrapError` now returns `FlatErrorResponse` (flat shape, no `schemaVersion`). All thin wrappers updated accordingly.
+
+### Fixed
+
+- **AI tools — False-negative on all `create` operations**: `create` operations now correctly extract the new entity ID from the wrapped `{ item: { id: N } }` response shape instead of failing with a "did not return a created entity ID" error despite a successful API write.
+- **AI tools — Mutation response shape on `update`/`reject`**: The mutation envelope now unwraps the API's `item` wrapper before assignment so `response.record` contains the entity fields directly rather than a nested `{ item: { id: N } }`.
+- **tool/execute**: Removed stale `dryRun` suggestion from write-blocked safety gate error message — AI agents cannot use `dryRun` (removed from schema in v2.9.0, stripped via `N8N_METADATA_FIELDS`), so the hint caused an unactionable retry loop.
+- **schema-generator**: Removed `.superRefine()` from top-level Zod schema — restores `ZodObject` shape required by n8n's `normalizeToolSchema` `instanceof` check. `superRefine` produced `ZodEffects` which silently corrupted the schema for MCP Trigger and Agent V3 execution paths. The `readOnlySchemaCache` no longer caches a corrupted type.
+- **operation-contracts**: `hasProvidedValue` now rejects non-positive numbers (`id: 0`, `id: -1`), restoring the `id > 0` guard from the old identifier-pair pre-flight.
+- **operation-contracts**: `getXorMessage` no longer hardcodes "numeric Ticket ID" — derives the entity label dynamically from the resource name.
+- **operation-contracts**: Added module-load self-consistency assertion — throws on startup if any contract has a field in both `requiredFields` and `forbiddenFields`, or an `xorGroup` with fewer than 2 members.
+- **tool-executor**: Filter cross-validation (filtersJson/flat conflicts, filter pair integrity, recency/since/until conflicts) migrated from the removed `superRefine` block — enforced on both MCP and Agent V3 execution paths.
+- **tool-executor**: `reject` + `rejectReasonPolicy=mandatory` pre-flight now runs correctly (was unreachable dead code inside `superRefine`'s list-operation early-return guard).
+- **tool-executor**: Contract violation `nextAction` messages now include specific violation details instead of the generic "provide arguments that satisfy the operation contract" phrase.
 
 ## [2.9.0] — 2026-04-10
 
