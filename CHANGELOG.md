@@ -29,6 +29,13 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Added
 
+- **AI tools — `ticket.getByCompanyAndStatus`**: New operation that filters tickets by company and optionally by status or priority in one call. Accepts company name (auto-resolved to companyID), status and priority as labels or IDs (auto-resolved), plus standard recency/limit params.
+- **AI tools — `ticket.getUnassigned`**: New operation returning open, unassigned tickets (hardcoded filters: `assignedResourceID notExist` + `status notIn [Complete, Cancelled]`). Optional: `company`, `priority`, recency params.
+- **AI tools — `ticket.getBySLAStatus`**: New operation filtering tickets by SLA state. Required: `slaStatus` enum (`breached` | `at_risk` | `compliant`). For `at_risk`, uses `resolvedDueDateTime` within a configurable `atRiskWindowHours` window (default 4h). Optional: `company`.
+- **AI tools — `ticket.getFullDetail`**: New single-record operation merging ticket fields, derived `slaStatus`, `slaBreachDateTime`, and a `summaryText` in one call. Accepts `id` or `ticketNumber` (XOR).
+- **AI tools — `ticket.countByPeriod`**: New count operation using named period presets (`today`, `this_week`, `last_7d`, `this_month`, `last_month`, `this_quarter`, `last_quarter`, `last_30d`, `last_90d`) against `createDate`. Optional: `company`, `status`, `priority`. Returns `matchCount` + `from`/`to` bounds.
+- **AI tools — `ticket.getByAge`**: New list operation returning tickets whose `createDate` is older than `olderThanDays` (required positive integer). Optional: `status`, `company`, `priority`, `returnAll`.
+
 - Count injection: truncated `getMany` responses now include a true `totalAvailable` from a `CountOperation` query (parallel for recency windows >7d, sequential for non-recency truncation). `searchByDomain`, `getPosted`, `getUnposted`, and `count` itself are excluded.
 - `completenessVerdict` field on list responses (`'complete'` or `'incomplete'`). When the count query confirms no more data exists (e.g. `totalAvailable === returnedCount`), verdict is `'complete'` even if `isTruncated=true`.
 - `windowLabel` field interpolated into summary for recency paths (e.g. "in the last 7 days").

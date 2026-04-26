@@ -37,8 +37,11 @@ import {
 } from './recency';
 import {
 	attachCorrelation,
+	buildListResponse,
+	buildItemResponse,
 	buildMetadataResponse,
 	buildCompoundResponse,
+	buildCountResponse,
 	type ToolResponseContext,
 } from './response-builder';
 import {
@@ -51,6 +54,7 @@ import {
 	buildFieldLookup,
 	buildFilterFromParams,
 	resolveAndClassifyFilters,
+	type ToolFilter,
 } from './filter-builder';
 import type { IAutotaskCredentials } from '../types/base/auth';
 import {
@@ -73,6 +77,7 @@ import {
 } from '../constants/compound-registry';
 import { validateOperationContract, hasProvidedValue, type OperationContractViolation } from './operation-contracts';
 import { enrichResponseJson } from '../helpers/enrichment';
+import { autotaskApiRequest } from '../helpers/http';
 
 export interface ToolExecutorParams {
 	resource: string;
@@ -100,6 +105,9 @@ export interface ToolExecutorParams {
 	filtersJson?: string;
 	returnAll?: boolean;
 	targetOperation?: string;
+	company?: string | number;
+	status?: string | number;
+	priority?: string | number;
 	[key: string]: string | number | boolean | Array<string | number | boolean> | undefined;
 }
 
@@ -161,6 +169,7 @@ function buildFieldValues(
 		'targetOperation',
 		'filtersJson',
 		'returnAll',
+		'company',
 		// Companion fields for typed-reference resolution (ticketLookupField, projectLookupField, ...).
 		// These are schema fields consumed by the resolver, never sent to the API.
 		...Array.from(TYPED_REFERENCE_COMPANION_FIELDS),
@@ -862,7 +871,7 @@ export async function executeAiTool(
 	}
 
 	// Pre-flight: filter cross-validation (list operations)
-	const isListOperation = ['getMany', 'count', 'getPosted', 'getUnposted'].includes(effectiveOperation);
+	const isListOperation = ['getMany', 'count', 'getPosted', 'getUnposted', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus'].includes(effectiveOperation);
 	if (isListOperation) {
 		const p = params as Record<string, unknown>;
 		const hasFiltersJson = hasProvidedValue(p.filtersJson);
@@ -1471,6 +1480,600 @@ export async function executeAiTool(
 				const enrichedCompoundJson = await enrichResponseJson(compoundJson, context);
 				return attachCorrelation(enrichedCompoundJson, correlationId);
 			}
+		}
+
+		// Short-circuit: getByCompanyAndStatus
+		if (effectiveOperation === 'getByCompanyAndStatus') {
+			const companyRaw = params.company;
+			if (companyRaw === undefined || companyRaw === null || String(companyRaw).trim() === '') {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'getByCompanyAndStatus',
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							"'company' is required for getByCompanyAndStatus.",
+							`Call autotask_${resource} with operation 'getByCompanyAndStatus' and provide 'company' as a name or numeric ID.`,
+						),
+					),
+					correlationId,
+				);
+			}
+
+			// Build synthetic filters: company is required; status and priority are optional.
+			// resolveAndClassifyFilters resolves string values to numeric IDs in-place.
+			const syntheticFilters: ToolFilter[] = [{ field: 'companyID', op: 'eq', value: companyRaw as string | number }];
+			if (params.status !== undefined && params.status !== null) {
+				syntheticFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
+			}
+			if (params.priority !== undefined && params.priority !== null) {
+				syntheticFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+			}
+
+			const {
+				resolutions: specialResolutions,
+				warnings: specialWarnings,
+				pendingConfirmations: specialPending,
+				unresolvedIdLikeFilters: specialUnresolved,
+			} = await resolveAndClassifyFilters(context, resource, syntheticFilters, readFields, params as IDataObject);
+
+			if (specialUnresolved.length > 0) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'getByCompanyAndStatus',
+							ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+							`Could not resolve: ${specialUnresolved.map((f) => `${f.field}='${String(f.value)}'`).join(', ')}`,
+							`Verify the company name is exact, or use a numeric companyID. For status/priority, call autotask_${resource} with operation 'listPicklistValues' and fieldId='status' or 'priority'.`,
+							{ pendingConfirmations: specialPending.length > 0 ? specialPending : undefined },
+						),
+					),
+					correlationId,
+				);
+			}
+
+			// After resolveAndClassifyFilters, syntheticFilters values are resolved in-place.
+			// Append recency filters (already built above) to apply date-range constraints.
+			const apiFilters: ToolFilter[] = [...syntheticFilters, ...(recencyResult.filters as ToolFilter[])];
+
+			const queryLimitForOp = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
+			const requestBody: IDataObject = { filter: apiFilters as unknown as IDataObject[] };
+			if (queryLimitForOp !== undefined) {
+				requestBody.MaxRecords = queryLimitForOp;
+			}
+
+			const gbcasResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', requestBody) as { items?: IAutotaskEntity[] };
+			const gbcasItems = Array.isArray(gbcasResponse.items) ? gbcasResponse.items as Record<string, unknown>[] : [];
+
+			const allGbcasWarnings = [...specialWarnings, ...labelWarnings];
+			const allGbcasResolutions = [...specialResolutions, ...labelResolutions];
+
+			const gbcasListJson = JSON.stringify(
+				buildListResponse(resource, 'getByCompanyAndStatus', gbcasItems, {
+					hasMore: queryLimitForOp !== undefined && gbcasItems.length >= queryLimitForOp,
+					serverCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
+					clientCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
+				}, {
+					resolutions: allGbcasResolutions.length > 0 ? allGbcasResolutions : undefined,
+					resolutionWarnings: allGbcasWarnings.length > 0 ? allGbcasWarnings : undefined,
+					pendingConfirmations: specialPending.length > 0 ? specialPending : undefined,
+				}),
+			);
+			const enrichedGbcasJson = await enrichResponseJson(gbcasListJson, context);
+			return attachCorrelation(enrichedGbcasJson, correlationId);
+		}
+
+		// Short-circuit: getUnassigned
+		if (effectiveOperation === 'getUnassigned') {
+			// Hardcoded base filters: unassigned + not complete/cancelled
+			const unassignedFilters: ToolFilter[] = [
+				{ field: 'assignedResourceID', op: 'notExist' },
+				{ field: 'status', op: 'notIn', value: [5, 8] },
+			];
+
+			// Optional: company and priority filters (resolve name→ID)
+			const optionalFilters: ToolFilter[] = [];
+			if (params.company !== undefined && params.company !== null) {
+				optionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
+			}
+			if (params.priority !== undefined && params.priority !== null) {
+				optionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+			}
+
+			let specialUnresolved: ToolFilter[] = [];
+			let specialResolutions: any[] = [];
+			let specialWarnings: string[] = [];
+			let specialPending: any[] = [];
+
+			if (optionalFilters.length > 0) {
+				const resolved = await resolveAndClassifyFilters(context, resource, optionalFilters, readFields, params as IDataObject);
+				specialUnresolved = resolved.unresolvedIdLikeFilters;
+				specialResolutions = resolved.resolutions;
+				specialWarnings = resolved.warnings;
+				specialPending = resolved.pendingConfirmations;
+			}
+
+			if (specialUnresolved.length > 0) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'getUnassigned',
+							ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+							`Could not resolve: ${specialUnresolved.map((f) => `${f.field}='${String(f.value)}'`).join(', ')}`,
+							`Verify the company name is exact or use a numeric companyID. For priority, call autotask_${resource} with operation 'listPicklistValues' and fieldId='priority'.`,
+							{ pendingConfirmations: specialPending.length > 0 ? specialPending : undefined },
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const apiFilters: ToolFilter[] = [...unassignedFilters, ...optionalFilters, ...(recencyResult.filters as ToolFilter[])];
+			const queryLimitForOp = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
+			const requestBody: IDataObject = { filter: apiFilters as unknown as IDataObject[] };
+			if (queryLimitForOp !== undefined) {
+				requestBody.MaxRecords = queryLimitForOp;
+			}
+
+			const unassignedResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', requestBody) as { items?: IAutotaskEntity[] };
+			const unassignedItems = Array.isArray(unassignedResponse.items) ? unassignedResponse.items as Record<string, unknown>[] : [];
+
+			const allUnassignedWarnings = [...specialWarnings, ...labelWarnings];
+			const allUnassignedResolutions = [...specialResolutions, ...labelResolutions];
+
+			const unassignedListJson = JSON.stringify(
+				buildListResponse(resource, 'getUnassigned', unassignedItems, {
+					hasMore: queryLimitForOp !== undefined && unassignedItems.length >= queryLimitForOp,
+					serverCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
+					clientCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
+				}, {
+					resolutions: allUnassignedResolutions.length > 0 ? allUnassignedResolutions : undefined,
+					resolutionWarnings: allUnassignedWarnings.length > 0 ? allUnassignedWarnings : undefined,
+					pendingConfirmations: specialPending.length > 0 ? specialPending : undefined,
+				}),
+			);
+			const enrichedUnassignedJson = await enrichResponseJson(unassignedListJson, context);
+			return attachCorrelation(enrichedUnassignedJson, correlationId);
+		}
+
+		// Short-circuit: getBySLAStatus
+		if (effectiveOperation === 'getBySLAStatus') {
+			const slaStatusParam = params.slaStatus as string | undefined;
+			if (!slaStatusParam || !['breached', 'at_risk', 'compliant'].includes(slaStatusParam)) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'getBySLAStatus',
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							"'slaStatus' is required: 'breached', 'at_risk', or 'compliant'.",
+							`Call autotask_${resource} with operation 'getBySLAStatus' and slaStatus set to one of: breached, at_risk, compliant.`,
+						),
+					),
+					correlationId,
+				);
+			}
+
+			// Build SLA filters based on slaStatus
+			let slaFilters: any[];
+			if (slaStatusParam === 'breached') {
+				slaFilters = [{ field: 'serviceLevelAgreementHasBeenMet', op: 'eq', value: false }];
+			} else if (slaStatusParam === 'compliant') {
+				slaFilters = [{ field: 'serviceLevelAgreementHasBeenMet', op: 'eq', value: true }];
+			} else {
+				// at_risk: within atRiskWindowHours hours of resolvedDueDateTime, not yet breached
+				const windowHours = typeof params.atRiskWindowHours === 'number' && params.atRiskWindowHours > 0
+					? params.atRiskWindowHours
+					: 4;
+				const now = new Date();
+				const windowEnd = new Date(now.getTime() + windowHours * 60 * 60 * 1000);
+				slaFilters = [{
+					op: 'and',
+					items: [
+						{ field: 'resolvedDueDateTime', op: 'gt', value: now.toISOString() },
+						{ field: 'resolvedDueDateTime', op: 'lt', value: windowEnd.toISOString() },
+						{ field: 'status', op: 'notIn', value: [5, 8] },
+					],
+				}];
+			}
+
+			// Optional company filter (resolve name→ID)
+			const slaOptionalFilters: ToolFilter[] = [];
+			if (params.company !== undefined && params.company !== null) {
+				slaOptionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
+			}
+
+			let slaSpecialUnresolved: ToolFilter[] = [];
+			let slaSpecialResolutions: any[] = [];
+			let slaSpecialWarnings: string[] = [];
+			let slaSpecialPending: any[] = [];
+
+			if (slaOptionalFilters.length > 0) {
+				const resolved = await resolveAndClassifyFilters(context, resource, slaOptionalFilters, readFields, params as IDataObject);
+				slaSpecialUnresolved = resolved.unresolvedIdLikeFilters;
+				slaSpecialResolutions = resolved.resolutions;
+				slaSpecialWarnings = resolved.warnings;
+				slaSpecialPending = resolved.pendingConfirmations;
+			}
+
+			if (slaSpecialUnresolved.length > 0) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'getBySLAStatus',
+							ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+							`Could not resolve company: '${String(params.company)}'`,
+							`Verify the company name is exact or use a numeric companyID.`,
+							{ pendingConfirmations: slaSpecialPending.length > 0 ? slaSpecialPending : undefined },
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const apiSlaFilters: any[] = [...slaFilters, ...slaOptionalFilters, ...(recencyResult.filters as any[])];
+			const queryLimitForSla = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
+			const slaSlaRequestBody: IDataObject = { filter: apiSlaFilters as IDataObject[] };
+			if (queryLimitForSla !== undefined) {
+				slaSlaRequestBody.MaxRecords = queryLimitForSla;
+			}
+
+			const slaResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', slaSlaRequestBody) as { items?: IAutotaskEntity[] };
+			const slaItems = Array.isArray(slaResponse.items) ? slaResponse.items as Record<string, unknown>[] : [];
+
+			const allSlaWarnings = [...slaSpecialWarnings, ...labelWarnings];
+			const allSlaResolutions = [...slaSpecialResolutions, ...labelResolutions];
+
+			const slaListJson = JSON.stringify(
+				buildListResponse(resource, 'getBySLAStatus', slaItems, {
+					hasMore: queryLimitForSla !== undefined && slaItems.length >= queryLimitForSla,
+					serverCap: queryLimitForSla ?? MAX_QUERY_LIMIT,
+					clientCap: queryLimitForSla ?? MAX_QUERY_LIMIT,
+				}, {
+					resolutions: allSlaResolutions.length > 0 ? allSlaResolutions : undefined,
+					resolutionWarnings: allSlaWarnings.length > 0 ? allSlaWarnings : undefined,
+					pendingConfirmations: slaSpecialPending.length > 0 ? slaSpecialPending : undefined,
+				}),
+			);
+			const enrichedSlaJson = await enrichResponseJson(slaListJson, context);
+			return attachCorrelation(enrichedSlaJson, correlationId);
+		}
+
+		// Short-circuit: getFullDetail
+		if (effectiveOperation === 'getFullDetail') {
+			let fullDetailTicketId: string | undefined;
+			if (params.id !== undefined && params.id !== null) {
+				fullDetailTicketId = String(params.id);
+			} else if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim()) {
+				const tnLookup = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', {
+					filter: [{ field: 'ticketNumber', op: 'eq', value: params.ticketNumber.trim() }],
+					MaxRecords: 1,
+				} as IDataObject) as { items?: IAutotaskEntity[] };
+				const tnItems = Array.isArray(tnLookup.items) ? tnLookup.items : [];
+				if (tnItems.length === 0) {
+					return attachCorrelation(
+						JSON.stringify(
+							wrapError(
+								resource,
+								'getFullDetail',
+								ERROR_TYPES.ENTITY_NOT_FOUND,
+								`Ticket with ticketNumber '${params.ticketNumber}' not found.`,
+								`Verify the ticket number format (e.g. T20240615.0123) and retry autotask_${resource} with operation 'getMany'.`,
+							),
+						),
+						correlationId,
+					);
+				}
+				fullDetailTicketId = String(tnItems[0].id);
+			}
+
+			if (!fullDetailTicketId) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'getFullDetail',
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							"Either 'id' (numeric) or 'ticketNumber' (e.g. T20240615.0123) is required for getFullDetail.",
+							`Call autotask_${resource} with operation 'getFullDetail' and provide 'id' or 'ticketNumber'.`,
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const fullDetailResponse = await autotaskApiRequest.call(context, 'GET', `Tickets/${fullDetailTicketId}`) as { item?: IAutotaskEntity };
+			const rawFullDetailTicket = fullDetailResponse.item;
+			if (!rawFullDetailTicket || typeof rawFullDetailTicket !== 'object') {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'getFullDetail',
+							ERROR_TYPES.ENTITY_NOT_FOUND,
+							`Ticket with ID ${fullDetailTicketId} not found.`,
+							`Verify the ticket ID and retry autotask_${resource} with operation 'getMany'.`,
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const fdTicket = rawFullDetailTicket as Record<string, unknown>;
+
+			// Derive SLA status from ticket fields — no extra API call needed
+			const fdHasSla = fdTicket.serviceLevelAgreementID !== undefined && fdTicket.serviceLevelAgreementID !== null;
+			const fdMet = fdTicket.serviceLevelAgreementHasBeenMet;
+			const fdPausedHours = fdTicket.serviceLevelAgreementPausedNextEventHours;
+			let fdSlaStatus: string;
+			if (!fdHasSla) {
+				fdSlaStatus = 'no_sla';
+			} else if (typeof fdPausedHours === 'number' && fdPausedHours > 0) {
+				fdSlaStatus = 'paused';
+			} else if (fdMet === false) {
+				fdSlaStatus = 'breached';
+			} else if (fdMet === true) {
+				fdSlaStatus = 'compliant';
+			} else {
+				fdSlaStatus = 'unknown';
+			}
+
+			// Build a simple plain-text summary from available ticket fields
+			const fdTicketNumber = fdTicket.ticketNumber ?? '';
+			const fdTitle = fdTicket.title ?? fdTicket.subject ?? '';
+			const fdStatusLabel = fdTicket.status_label ?? fdTicket.status ?? '';
+			const fdCompanyLabel = fdTicket.companyID_label ?? fdTicket.companyName ?? '';
+			const fdSummaryText = [
+				fdTicketNumber ? `Ticket ${String(fdTicketNumber)}` : `Ticket ${fullDetailTicketId}`,
+				fdTitle ? `"${String(fdTitle)}"` : '',
+				fdStatusLabel ? `[${String(fdStatusLabel)}]` : '',
+				fdCompanyLabel ? `— ${String(fdCompanyLabel)}` : '',
+			].filter(Boolean).join(' ');
+
+			const fullDetailRecord: Record<string, unknown> = {
+				...fdTicket,
+				slaStatus: fdSlaStatus,
+				slaBreachDateTime: fdTicket.resolvedDueDateTime ?? null,
+				summaryText: fdSummaryText,
+			};
+
+			const fullDetailJson = JSON.stringify(
+				buildItemResponse(resource, 'getFullDetail', fullDetailRecord),
+			);
+			const enrichedFullDetailJson = await enrichResponseJson(fullDetailJson, context);
+			return attachCorrelation(enrichedFullDetailJson, correlationId);
+		}
+
+		// Short-circuit: countByPeriod
+		if (effectiveOperation === 'countByPeriod') {
+			const validPeriods = ['today', 'this_week', 'last_7d', 'this_month', 'last_month', 'this_quarter', 'last_quarter', 'last_30d', 'last_90d'] as const;
+			const periodParam = params.period as string | undefined;
+			if (!periodParam || !(validPeriods as readonly string[]).includes(periodParam)) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'countByPeriod',
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							`'period' is required. Valid values: ${validPeriods.join(', ')}.`,
+							`Call autotask_${resource} with operation 'countByPeriod' and period set to one of the valid values.`,
+						),
+					),
+					correlationId,
+				);
+			}
+
+			function resolvePeriodBounds(period: string, now: Date): { from: string; to: string } {
+				const y = now.getUTCFullYear();
+				const m = now.getUTCMonth(); // 0-based
+				const d = now.getUTCDate();
+				switch (period) {
+					case 'today':
+						return {
+							from: new Date(Date.UTC(y, m, d)).toISOString(),
+							to: new Date(Date.UTC(y, m, d + 1)).toISOString(),
+						};
+					case 'this_week': {
+						const dow = now.getUTCDay(); // 0=Sun
+						const monday = new Date(Date.UTC(y, m, d - ((dow + 6) % 7)));
+						return {
+							from: monday.toISOString(),
+							to: new Date(monday.getTime() + 7 * 86400000).toISOString(),
+						};
+					}
+					case 'last_7d':
+						return {
+							from: new Date(now.getTime() - 7 * 86400000).toISOString(),
+							to: now.toISOString(),
+						};
+					case 'this_month':
+						return {
+							from: new Date(Date.UTC(y, m, 1)).toISOString(),
+							to: new Date(Date.UTC(y, m + 1, 1)).toISOString(),
+						};
+					case 'last_month':
+						return {
+							from: new Date(Date.UTC(y, m - 1, 1)).toISOString(),
+							to: new Date(Date.UTC(y, m, 1)).toISOString(),
+						};
+					case 'this_quarter': {
+						const qStart = Math.floor(m / 3) * 3;
+						return {
+							from: new Date(Date.UTC(y, qStart, 1)).toISOString(),
+							to: new Date(Date.UTC(y, qStart + 3, 1)).toISOString(),
+						};
+					}
+					case 'last_quarter': {
+						const lqStart = Math.floor(m / 3) * 3 - 3;
+						const lqYear = lqStart < 0 ? y - 1 : y;
+						const lqMonth = ((lqStart % 12) + 12) % 12;
+						return {
+							from: new Date(Date.UTC(lqYear, lqMonth, 1)).toISOString(),
+							to: new Date(Date.UTC(lqYear, lqMonth + 3, 1)).toISOString(),
+						};
+					}
+					case 'last_30d':
+						return {
+							from: new Date(now.getTime() - 30 * 86400000).toISOString(),
+							to: now.toISOString(),
+						};
+					case 'last_90d':
+						return {
+							from: new Date(now.getTime() - 90 * 86400000).toISOString(),
+							to: now.toISOString(),
+						};
+					default:
+						throw new Error(`Unknown period: '${period}'`);
+				}
+			}
+
+			const cbpNow = new Date();
+			const { from: cbpFrom, to: cbpTo } = resolvePeriodBounds(periodParam, cbpNow);
+
+			// Optional filters: company, status, priority
+			const cbpOptional: ToolFilter[] = [];
+			if (params.company !== undefined && params.company !== null) {
+				cbpOptional.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
+			}
+			if (params.status !== undefined && params.status !== null) {
+				cbpOptional.push({ field: 'status', op: 'eq', value: params.status as string | number });
+			}
+			if (params.priority !== undefined && params.priority !== null) {
+				cbpOptional.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+			}
+
+			let cbpResolutions: LabelResolution[] = [];
+			let cbpWarnings: string[] = [];
+			let cbpPending: PendingLabelConfirmation[] = [];
+			let cbpUnresolved: ToolFilter[] = [];
+
+			if (cbpOptional.length > 0) {
+				const cbpResolved = await resolveAndClassifyFilters(context, resource, cbpOptional, readFields, params as IDataObject);
+				cbpResolutions = cbpResolved.resolutions;
+				cbpWarnings = cbpResolved.warnings;
+				cbpPending = cbpResolved.pendingConfirmations;
+				cbpUnresolved = cbpResolved.unresolvedIdLikeFilters;
+			}
+
+			if (cbpUnresolved.length > 0) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'countByPeriod',
+							ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+							`Could not resolve: ${cbpUnresolved.map((f) => `${f.field}='${String(f.value)}'`).join(', ')}`,
+							`Verify names or use numeric IDs.`,
+							{ pendingConfirmations: cbpPending.length > 0 ? cbpPending : undefined },
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const cbpAllFilters: unknown[] = [
+				{ field: 'createDate', op: 'gte', value: cbpFrom },
+				{ field: 'createDate', op: 'lt', value: cbpTo },
+				...cbpOptional,
+			];
+
+			const cbpCount = await executeCountOperation(resource, cbpAllFilters, context);
+
+			const cbpAllWarnings = [...cbpWarnings, ...labelWarnings];
+			const cbpAllResolutions = [...cbpResolutions, ...labelResolutions];
+
+			const cbpBaseResponse = buildCountResponse(resource, 'countByPeriod', cbpCount ?? 0);
+			const cbpResponse: Record<string, unknown> = {
+				...cbpBaseResponse,
+				period: periodParam,
+				from: cbpFrom,
+				to: cbpTo,
+				...(cbpAllResolutions.length > 0 ? { resolvedLabels: cbpAllResolutions } : {}),
+				...(cbpAllWarnings.length > 0 ? { warnings: cbpAllWarnings } : {}),
+			};
+			return attachCorrelation(JSON.stringify(cbpResponse), correlationId);
+		}
+
+		// Short-circuit: getByAge
+		if (effectiveOperation === 'getByAge') {
+			const olderThanDays = params.olderThanDays;
+			if (typeof olderThanDays !== 'number' || !Number.isFinite(olderThanDays) || olderThanDays <= 0) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'getByAge',
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							"'olderThanDays' must be a positive number (e.g. 30 for tickets older than 30 days).",
+							`Call autotask_${resource} with operation 'getByAge' and provide a positive number for 'olderThanDays'.`,
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const cutoffDate = new Date(Date.now() - Math.trunc(olderThanDays) * 86400000);
+			const ageBaseFilters: ToolFilter[] = [
+				{ field: 'createDate', op: 'lt', value: cutoffDate.toISOString() },
+			];
+
+			const ageOptionalFilters: ToolFilter[] = [];
+			if (params.company !== undefined && params.company !== null) ageOptionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
+			if (params.status !== undefined && params.status !== null) ageOptionalFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
+			if (params.priority !== undefined && params.priority !== null) ageOptionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+
+			let ageResolutions: any[] = [];
+			let ageWarnings: string[] = [];
+			let agePending: any[] = [];
+			let ageUnresolved: ToolFilter[] = [];
+
+			if (ageOptionalFilters.length > 0) {
+				const ageResolved = await resolveAndClassifyFilters(context, resource, ageOptionalFilters, readFields, params as IDataObject);
+				ageResolutions = ageResolved.resolutions;
+				ageWarnings = ageResolved.warnings;
+				agePending = ageResolved.pendingConfirmations;
+				ageUnresolved = ageResolved.unresolvedIdLikeFilters;
+			}
+
+			if (ageUnresolved.length > 0) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(resource, 'getByAge', ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+							`Could not resolve: ${ageUnresolved.map((f) => `${f.field}='${String(f.value)}'`).join(', ')}`,
+							`Verify names or use numeric IDs. For status/priority, call autotask_${resource} with operation 'listPicklistValues'.`,
+							{ pendingConfirmations: agePending.length > 0 ? agePending : undefined }),
+					),
+					correlationId,
+				);
+			}
+
+			const ageAllFilters: ToolFilter[] = [...ageBaseFilters, ...ageOptionalFilters, ...(recencyResult.filters as ToolFilter[])];
+			const ageQueryLimit = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
+			const ageRequestBody: IDataObject = { filter: ageAllFilters as unknown as IDataObject[] };
+			if (ageQueryLimit !== undefined) ageRequestBody.MaxRecords = ageQueryLimit;
+
+			const ageResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', ageRequestBody) as { items?: IAutotaskEntity[] };
+			const ageItems = Array.isArray(ageResponse.items) ? ageResponse.items as Record<string, unknown>[] : [];
+
+			const ageAllWarnings = [...ageWarnings, ...labelWarnings];
+			const ageAllResolutions = [...ageResolutions, ...labelResolutions];
+
+			const ageListJson = JSON.stringify(
+				buildListResponse(resource, 'getByAge', ageItems, {
+					hasMore: ageQueryLimit !== undefined && ageItems.length >= ageQueryLimit,
+					serverCap: ageQueryLimit ?? MAX_QUERY_LIMIT,
+					clientCap: ageQueryLimit ?? MAX_QUERY_LIMIT,
+				}, {
+					resolutions: ageAllResolutions.length > 0 ? ageAllResolutions : undefined,
+					resolutionWarnings: ageAllWarnings.length > 0 ? ageAllWarnings : undefined,
+					pendingConfirmations: agePending.length > 0 ? agePending : undefined,
+				}),
+			);
+			const enrichedAgeJson = await enrichResponseJson(ageListJson, context);
+			return attachCorrelation(enrichedAgeJson, correlationId);
 		}
 
 		traceExecutor({
