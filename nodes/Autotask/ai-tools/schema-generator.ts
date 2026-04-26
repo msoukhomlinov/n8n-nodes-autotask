@@ -448,41 +448,29 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 		}
 
-		// getByCompanyAndStatus fields
-		if (hasGetByCompanyAndStatus) {
+		// getByCompanyAndStatus / getUnassigned shared fields
+		if (hasGetByCompanyAndStatus || hasGetUnassigned) {
 			if (!shape.company) {
 				shape.company = rz
 					.union([rz.number(), rz.string()])
 					.nullish()
-					.describe('Company name or numeric companyID (auto-resolved). Required for getByCompanyAndStatus.');
+					.describe(
+						hasGetByCompanyAndStatus
+							? 'Company name or numeric companyID (auto-resolved). Required for getByCompanyAndStatus; optional for other ops.'
+							: 'Company name or numeric companyID (auto-resolved). Optional — omit for all companies.',
+					);
 			}
-			if (!shape.status) {
+			if (!shape.priority) {
+				shape.priority = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe('Priority picklist label or ID (optional).');
+			}
+			if (hasGetByCompanyAndStatus && !shape.status) {
 				shape.status = rz
 					.union([rz.number(), rz.string()])
 					.nullish()
 					.describe('Status picklist label or ID (optional). Omit for all statuses.');
-			}
-			if (!shape.priority) {
-				shape.priority = rz
-					.union([rz.number(), rz.string()])
-					.nullish()
-					.describe('Priority picklist label or ID (optional).');
-			}
-		}
-
-		// getUnassigned fields
-		if (hasGetUnassigned) {
-			if (!shape.company) {
-				shape.company = rz
-					.union([rz.number(), rz.string()])
-					.nullish()
-					.describe('Company name or numeric companyID (auto-resolved). Optional — omit for all companies.');
-			}
-			if (!shape.priority) {
-				shape.priority = rz
-					.union([rz.number(), rz.string()])
-					.nullish()
-					.describe('Priority picklist label or ID (optional).');
 			}
 		}
 
