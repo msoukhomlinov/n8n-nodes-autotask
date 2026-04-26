@@ -300,6 +300,17 @@ export function buildTicketSummaryDescription(resourceName: string): string {
 	);
 }
 
+export function buildTicketGetFullDetailDescription(resourceName: string): string {
+	return (
+		"Get a ticket's complete data including SLA status and a plain-text summary in one call. " +
+		"Supply EITHER numeric 'id' OR 'ticketNumber' (e.g. T20240615.0123). " +
+		"Response includes all ticket fields, 'slaStatus' (breached/compliant/paused/no_sla/unknown), " +
+		"'slaBreachDateTime' (resolvedDueDateTime), and 'summaryText' (plain-English one-liner). " +
+		"Use this instead of calling get + slaHealthCheck separately when you need both ticket data and SLA status. " +
+		describeFieldsHint(resourceName)
+	);
+}
+
 export function buildTicketSlaHealthCheckDescription(resourceName: string): string {
 	const ruleText = getOperationContractRuleText(resourceName, 'slaHealthCheck');
 	const identifierRule = ruleText.length > 0 ? `${ruleText.join(' ')} ` : '';
@@ -311,6 +322,49 @@ export function buildTicketSlaHealthCheckDescription(resourceName: string): stri
 		'This operation combines data from Ticket and ServiceLevelAgreementResults entities. ' +
 		"For population-level SLA queries (e.g. 'how many breached this week?'), do NOT call slaHealthCheck without an id. Use operation 'count' or 'getMany' with filter_field='serviceLevelAgreementHasBeenMet', filter_op='eq', filter_value=false instead. " +
 		describeFieldsHint(resourceName)
+	);
+}
+
+export function buildTicketGetByCompanyAndStatusDescription(resource: string): string {
+	return (
+		"Filter tickets by company and optionally by status or priority. " +
+		"Required: 'company' (name or numeric ID, auto-resolved to companyID). " +
+		"Optional: 'status', 'priority' (labels or numeric IDs, auto-resolved). " +
+		"Use 'recency', 'since', or 'until' to narrow by date. " +
+		"Use 'returnAll' for full result sets."
+	);
+}
+
+export function buildTicketGetUnassignedDescription(resource: string): string {
+	return (
+		"Return open, unassigned tickets (no assigned resource, status not Complete or Cancelled). " +
+		"Optional: 'company' (name or ID, auto-resolved), 'priority' (label or ID). " +
+		"Use 'recency', 'since', or 'until' to narrow by creation date."
+	);
+}
+
+export function buildTicketCountByPeriodDescription(resource: string): string {
+	return (
+		"Count tickets created within a named time period. Required: 'period' (e.g. 'this_month', 'last_quarter'). " +
+		"Optional: 'company', 'status', 'priority' (labels or IDs, auto-resolved). " +
+		"Returns matchCount plus the period date bounds used."
+	);
+}
+
+export function buildTicketGetBySLAStatusDescription(resource: string): string {
+	return (
+		"Filter tickets by SLA state. Required: 'slaStatus' = 'breached' | 'at_risk' | 'compliant'. " +
+		"For 'at_risk': tickets whose resolvedDueDateTime is within 'atRiskWindowHours' hours from now (default 4h). " +
+		"Optional: 'company' (name or ID, auto-resolved). " +
+		"Use 'recency', 'since', or 'until' to narrow by creation date."
+	);
+}
+
+export function buildTicketGetByAgeDescription(resource: string): string {
+	return (
+		"Return tickets created more than N days ago. Required: 'olderThanDays' (positive integer). " +
+		"Optional: 'status', 'company', 'priority' (labels or IDs, auto-resolved). " +
+		"Use 'returnAll' for the full set."
 	);
 }
 
@@ -517,7 +571,7 @@ export function buildUnifiedDescriptionTemplate(
 			operationsIncluded: operations,
 			writeSafetyHeaderAdded: hasWriteOps,
 			identifierPairNoteIncluded: operations.some(
-				(op) => op === 'slaHealthCheck' || op === 'summary',
+				(op) => op === 'slaHealthCheck' || op === 'summary' || op === 'getFullDetail',
 			),
 			impersonationNoteIncluded: supportsImpersonation,
 			truncationApplied: combined.length !== output.length,
@@ -1006,6 +1060,18 @@ function getOperationPurpose(
 			return buildTicketSlaHealthCheckDescription(resource);
 		case 'summary':
 			return buildTicketSummaryDescription(resource);
+		case 'getFullDetail':
+			return buildTicketGetFullDetailDescription(resource);
+		case 'countByPeriod':
+			return buildTicketCountByPeriodDescription(resource);
+		case 'getByAge':
+			return buildTicketGetByAgeDescription(resource);
+		case 'getByCompanyAndStatus':
+			return buildTicketGetByCompanyAndStatusDescription(resource);
+		case 'getUnassigned':
+			return buildTicketGetUnassignedDescription(resource);
+		case 'getBySLAStatus':
+			return buildTicketGetBySLAStatusDescription(resource);
 		case 'moveConfigurationItem':
 			return buildConfigurationItemMoveConfigurationItemDescription(resource);
 		case 'moveToCompany':
@@ -1043,7 +1109,14 @@ function getOperationNotes(resource: string, operation: string): string[] {
 			return [...contractNotes, ...LABEL_RESOLUTION_NOTES, ...DEDUP_NOTES];
 		case 'slaHealthCheck':
 		case 'summary':
+		case 'getFullDetail':
+		case 'countByPeriod':
 			return [...contractNotes];
+		case 'getByAge':
+		case 'getByCompanyAndStatus':
+		case 'getUnassigned':
+		case 'getBySLAStatus':
+			return [...contractNotes, ...LIST_ADVANCED_NOTES];
 		case 'getMany':
 		case 'getPosted':
 		case 'getUnposted':

@@ -130,6 +130,12 @@ export function validateEntityId(
         'summary',
         'getByResource',
         'getByYear',
+        'getByCompanyAndStatus',
+        'getUnassigned',
+        'getBySLAStatus',
+        'getFullDetail',
+        'countByPeriod',
+        'getByAge',
     ];
     if (noIdOperations.includes(operation)) {
         return { valid: true };

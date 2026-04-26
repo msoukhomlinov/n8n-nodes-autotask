@@ -1,7 +1,7 @@
 import { AUTOTASK_ENTITIES } from './entities';
 import { OperationType } from '../types/base/entity-types';
 
-const AI_OPERATION_ORDER = ['get', 'whoAmI', 'getMany', 'searchByDomain', 'slaHealthCheck', 'summary', 'getPosted', 'getUnposted', 'getByResource', 'getByYear', 'count', 'create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'approve', 'reject', 'delete'] as const;
+const AI_OPERATION_ORDER = ['get', 'whoAmI', 'getMany', 'searchByDomain', 'slaHealthCheck', 'summary', 'getFullDetail', 'countByPeriod', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus', 'getPosted', 'getUnposted', 'getByResource', 'getByYear', 'count', 'create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'approve', 'reject', 'delete'] as const;
 const EXCLUDED_TOP_LEVEL_RESOURCES = new Set(['tool', 'searchFilter']);
 
 const OP_TYPE_TO_AI_OPS: Record<OperationType, string[]> = {
@@ -19,7 +19,7 @@ const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
     resource: ['whoAmI', 'transferOwnership'],
     contact: ['moveToCompany'],
     company: ['searchByDomain'],
-    ticket: ['slaHealthCheck', 'summary'],
+    ticket: ['slaHealthCheck', 'summary', 'getFullDetail', 'countByPeriod', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus'],
     configurationItems: ['moveConfigurationItem', 'createIfNotExists'],
     changeRequestLinks: ['createIfNotExists'],
     contractCharge: ['createIfNotExists'],
@@ -61,7 +61,7 @@ export interface IdentifierPairConfig {
 
 export const IDENTIFIER_PAIR_OPERATIONS: Record<string, IdentifierPairConfig> = {
     ticket: {
-        operations: ['slaHealthCheck', 'summary'],
+        operations: ['slaHealthCheck', 'summary', 'getFullDetail'],
         altIdField: 'ticketNumber',
         altIdExample: 'T20240615.0674',
         altIdFormat: 'T{date}.{seq}',

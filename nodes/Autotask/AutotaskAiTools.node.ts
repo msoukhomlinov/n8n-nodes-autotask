@@ -140,6 +140,12 @@ function getMetadataNeeds(operations: string[]): { needsReadFields: boolean; nee
 			'searchByDomain',
 			'getByResource',
 			'getByYear',
+			'getByCompanyAndStatus',
+			'getUnassigned',
+			'getBySLAStatus',
+			'getFullDetail',
+			'countByPeriod',
+			'getByAge',
 		].includes(op),
 	);
 	const needsWriteFields = operations.some((op) => ['create', 'createIfNotExists', 'update'].includes(op));

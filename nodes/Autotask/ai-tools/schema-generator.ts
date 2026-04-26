@@ -236,6 +236,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		const hasCreate = operations.includes('create');
 		const hasSlaHealthCheck = operations.includes('slaHealthCheck');
 		const hasSummary = operations.includes('summary');
+		const hasGetByCompanyAndStatus = operations.includes('getByCompanyAndStatus');
+		const hasGetUnassigned = operations.includes('getUnassigned');
 		const idPairConfig = IDENTIFIER_PAIR_OPERATIONS[resource];
 		const idPairOps = idPairConfig
 			? idPairConfig.operations.filter((op) => operations.includes(op))
@@ -444,6 +446,101 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe(
 					'Include childCounts block (notes, time entries, attachments, etc.). Default false — adds parallel API calls.',
 				);
+		}
+
+		// getByCompanyAndStatus / getUnassigned shared fields
+		if (hasGetByCompanyAndStatus || hasGetUnassigned) {
+			if (!shape.company) {
+				shape.company = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe(
+						hasGetByCompanyAndStatus
+							? 'Company name or numeric companyID (auto-resolved). Required for getByCompanyAndStatus; optional for other ops.'
+							: 'Company name or numeric companyID (auto-resolved). Optional — omit for all companies.',
+					);
+			}
+			if (!shape.priority) {
+				shape.priority = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe('Priority picklist label or ID (optional).');
+			}
+			if (hasGetByCompanyAndStatus && !shape.status) {
+				shape.status = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe('Status picklist label or ID (optional). Omit for all statuses.');
+			}
+		}
+
+		// getBySLAStatus fields
+		const hasGetBySLAStatus = operations.includes('getBySLAStatus');
+		if (hasGetBySLAStatus) {
+			if (!shape.slaStatus) {
+				shape.slaStatus = rz
+					.enum(['breached', 'at_risk', 'compliant'])
+					.nullish()
+					.describe("Required for getBySLAStatus: 'breached' (SLA missed), 'at_risk' (within atRiskWindowHours of deadline), or 'compliant' (SLA met).");
+			}
+			if (!shape.atRiskWindowHours) {
+				shape.atRiskWindowHours = rz
+					.number()
+					.positive()
+					.nullish()
+					.describe('Hours before resolvedDueDateTime to consider a ticket at-risk (default 4). Only applies when slaStatus=at_risk.');
+			}
+			if (!shape.company) {
+				shape.company = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe('Company name or numeric companyID (auto-resolved). Optional.');
+			}
+		}
+
+		// countByPeriod fields
+		const hasCountByPeriod = operations.includes('countByPeriod');
+		if (hasCountByPeriod) {
+			if (!shape.period) {
+				shape.period = rz
+					.enum(['today', 'this_week', 'last_7d', 'this_month', 'last_month', 'this_quarter', 'last_quarter', 'last_30d', 'last_90d'])
+					.nullish()
+					.describe('Required for countByPeriod: named period preset for createDate range.');
+			}
+			if (!shape.company) {
+				shape.company = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe('Company name or numeric companyID (auto-resolved). Optional.');
+			}
+			if (!shape.status) {
+				shape.status = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe('Status picklist label or ID (optional).');
+			}
+			if (!shape.priority) {
+				shape.priority = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe('Priority picklist label or ID (optional).');
+			}
+		}
+
+		// getByAge fields
+		const hasGetByAge = operations.includes('getByAge');
+		if (hasGetByAge) {
+			if (!shape.olderThanDays) {
+				shape.olderThanDays = rz
+					.number()
+					.int()
+					.positive()
+					.nullish()
+					.describe('Required for getByAge: return tickets created more than N days ago (e.g. 30 for tickets older than 30 days).');
+			}
+			if (!shape.company) shape.company = rz.union([rz.number(), rz.string()]).nullish().describe('Company name or companyID (auto-resolved).');
+			if (!shape.status) shape.status = rz.union([rz.number(), rz.string()]).nullish().describe('Status picklist label or ID (optional).');
+			if (!shape.priority) shape.priority = rz.union([rz.number(), rz.string()]).nullish().describe('Priority picklist label or ID (optional).');
 		}
 
 		// Identifier-pair altIdField (e.g. ticketNumber for slaHealthCheck + summary)
