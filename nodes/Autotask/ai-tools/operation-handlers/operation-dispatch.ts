@@ -184,7 +184,7 @@ export function dispatchOperationResponse(
 		}
 	};
 
-	if (responseKind === 'list' && operation !== 'searchByDomain') {
+	if (responseKind === 'list' && !['searchByDomain', 'searchByIdentity'].includes(operation)) {
 		const hasFilters = !!(
 			params.filter_field ||
 			params.filter_field_2 ||
@@ -246,8 +246,10 @@ export function dispatchOperationResponse(
 				['filter_field', 'filter_op'],
 				['filter_field_2', 'filter_op_2'],
 			] as const) {
-				const field = typeof params[fieldKey] === 'string' ? (params[fieldKey] as string).trim() : '';
-				const op = typeof params[opKey] === 'string' ? (params[opKey] as string).toLowerCase() : 'eq';
+				const field =
+					typeof params[fieldKey] === 'string' ? (params[fieldKey] as string).trim() : '';
+				const op =
+					typeof params[opKey] === 'string' ? (params[opKey] as string).toLowerCase() : 'eq';
 				const val = params[fieldKey === 'filter_field' ? 'filter_value' : 'filter_value_2'];
 				if (!field || typeof val !== 'string' || (op !== 'eq' && op !== 'equals')) continue;
 				const fieldMeta = (context.readFields ?? []).find(
@@ -287,8 +289,7 @@ export function dispatchOperationResponse(
 			maxQueryLimit: MAX_QUERY_LIMIT,
 			serverCap: context.serverCap ?? MAX_QUERY_LIMIT,
 			clientCap: context.clientCap ?? MAX_RESPONSE_RECORDS,
-			serverCapReached:
-				context.serverCapReached === true || context.recencyWindowLimited === true,
+			serverCapReached: context.serverCapReached === true || context.recencyWindowLimited === true,
 		});
 		const hasMore = continuationContract.continuation?.hasMore === true;
 		const nextOffset = continuationContract.continuation?.nextOffset;
@@ -297,7 +298,8 @@ export function dispatchOperationResponse(
 
 		// Count-injection override: executor-supplied total takes precedence over fetched-count heuristic.
 		// When the sequential/parallel count query succeeded, its result is the authoritative totalAvailable.
-		const injectedTotal = (context as ToolResponseContext & { injectedTotalAvailable?: number }).injectedTotalAvailable;
+		const injectedTotal = (context as ToolResponseContext & { injectedTotalAvailable?: number })
+			.injectedTotalAvailable;
 		if (injectedTotal !== undefined) {
 			totalAvailable = injectedTotal;
 		}
@@ -359,10 +361,16 @@ export function dispatchOperationResponse(
 			typeof firstRecord.item === 'object' &&
 			!Array.isArray(firstRecord.item)
 				? (firstRecord.item as Record<string, unknown>)
-				: firstRecord ?? undefined;
+				: (firstRecord ?? undefined);
 
 		return JSON.stringify(
-			buildMutationResponse(resource, operation, validation.id ?? 'unknown', mutationRecord, context),
+			buildMutationResponse(
+				resource,
+				operation,
+				validation.id ?? 'unknown',
+				mutationRecord,
+				context,
+			),
 		);
 	}
 
@@ -421,6 +429,37 @@ export function dispatchOperationResponse(
 			const resolvedLabels = toResolvedLabels(context.resolutions);
 			return JSON.stringify({
 				summary: `Found ${records.length} ${resource} records — complete set, no further calls needed.`,
+				resource,
+				operation: `${resource}.${operation}`,
+				records,
+				returnedCount: records.length,
+				hasMore: false,
+				continuation: null,
+				isTruncated: false,
+				truncationReason: null,
+				serverCap: MAX_QUERY_LIMIT,
+				clientCap: MAX_RESPONSE_RECORDS,
+				resolvedLabels,
+				pendingConfirmations: context.pendingConfirmations ?? [],
+				warnings: context.resolutionWarnings ?? [],
+			});
+		}
+
+		case 'searchByIdentity': {
+			if (records.length === 0) {
+				return JSON.stringify(
+					wrapError(
+						resource,
+						operation,
+						ERROR_TYPES.NO_RESULTS_FOUND,
+						`No ${resource} found matching the supplied identity signals.`,
+						`Retry with additional hints (companyName, email, website), or use autotask_${resource} with operation 'getMany' with a filter.`,
+					),
+				);
+			}
+			const resolvedLabels = toResolvedLabels(context.resolutions);
+			return JSON.stringify({
+				summary: `Found ${records.length} ranked ${resource} candidates — complete set, no further calls needed.`,
 				resource,
 				operation: `${resource}.${operation}`,
 				records,

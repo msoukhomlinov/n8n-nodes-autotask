@@ -32,9 +32,17 @@ const operationOptions = [
 		action: 'Count companies',
 	},
 	{
+		name: 'Search by Identity',
+		value: 'searchByIdentity',
+		description:
+			'Preferred AI search: resolve companies using company name, email, website/domain, and ranking',
+		action: 'Search companies by identity',
+	},
+	{
 		name: 'Search by Domain',
 		value: 'searchByDomain',
-		description: 'Search companies by website domain with optional contact-email fallback',
+		description:
+			'Legacy search by website domain with optional contact-email fallback (searchByIdentity is preferred)',
 		action: 'Search companies by domain',
 	},
 ];
@@ -47,9 +55,7 @@ const baseFields: INodeProperties[] = [
 		noDataExpression: true,
 		displayOptions: {
 			show: {
-				resource: [
-					'company',
-				],
+				resource: ['company'],
 			},
 		},
 		options: operationOptions,
@@ -98,6 +104,45 @@ const baseFields: INodeProperties[] = [
 				supportAutoMap: true,
 			},
 		},
+	},
+	{
+		displayName: 'Company Name',
+		name: 'companyName',
+		type: 'string',
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['company'],
+				operation: ['searchByIdentity'],
+			},
+		},
+		description: 'Optional company name to match (contains search)',
+	},
+	{
+		displayName: 'Email',
+		name: 'email',
+		type: 'string',
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['company'],
+				operation: ['searchByIdentity'],
+			},
+		},
+		description: 'Optional email used to infer domain (for example person@autotask.net)',
+	},
+	{
+		displayName: 'Website/Domain',
+		name: 'website',
+		type: 'string',
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['company'],
+				operation: ['searchByIdentity'],
+			},
+		},
+		description: 'Optional website or domain (for example https://www.autotask.net)',
 	},
 	{
 		displayName: 'Domain',
@@ -159,7 +204,8 @@ const baseFields: INodeProperties[] = [
 				operation: ['searchByDomain'],
 			},
 		},
-		description: 'Whether to search contacts by email domain when no company website matches are found',
+		description:
+			'Whether to search contacts by email domain when no company website matches are found',
 	},
 	{
 		displayName: 'Limit',
@@ -173,7 +219,7 @@ const baseFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['company'],
-				operation: ['searchByDomain'],
+				operation: ['searchByDomain', 'searchByIdentity'],
 			},
 		},
 		description: 'Max number of results to return',

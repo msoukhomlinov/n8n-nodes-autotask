@@ -59,12 +59,21 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		docsFragment: 'Get unposted time entries with optional filters.',
 	},
 	{
+		name: 'searchByIdentity',
+		isWrite: false,
+		label: 'Search by identity',
+		supportsFilters: false,
+		responseKind: 'list',
+		docsFragment:
+			'Preferred AI company resolution using companyName/email/website with ranked confidence.',
+	},
+	{
 		name: 'searchByDomain',
 		isWrite: false,
 		label: 'Search by domain',
 		supportsFilters: false,
 		responseKind: 'list',
-		docsFragment: 'Search companies by domain string.',
+		docsFragment: 'Legacy company domain search (prefer searchByIdentity for AI).',
 	},
 	{
 		name: 'count',
@@ -172,7 +181,8 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Get by company and status',
 		supportsFilters: true,
 		responseKind: 'list',
-		docsFragment: "Filter records by company (required, auto-resolved) and optionally by status or priority.",
+		docsFragment:
+			'Filter records by company (required, auto-resolved) and optionally by status or priority.',
 	},
 	{
 		name: 'getUnassigned',
@@ -180,7 +190,8 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Get unassigned open records',
 		supportsFilters: true,
 		responseKind: 'list',
-		docsFragment: "Return open, unassigned records (assigned resource absent, status not terminal).",
+		docsFragment:
+			'Return open, unassigned records (assigned resource absent, status not terminal).',
 	},
 	{
 		name: 'getBySLAStatus',
@@ -188,7 +199,8 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Get by SLA status',
 		supportsFilters: true,
 		responseKind: 'list',
-		docsFragment: "Filter tickets by SLA state: breached, at_risk (within atRiskWindowHours of deadline), or compliant.",
+		docsFragment:
+			'Filter tickets by SLA state: breached, at_risk (within atRiskWindowHours of deadline), or compliant.',
 	},
 	{
 		name: 'getFullDetail',
@@ -196,7 +208,8 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Get full detail',
 		supportsFilters: false,
 		responseKind: 'item',
-		docsFragment: "Get a record's fields plus a summary in one call (tickets also include SLA status). Requires 'id' (tickets also accept 'ticketNumber').",
+		docsFragment:
+			"Get a record's fields plus a summary in one call (tickets also include SLA status). Requires 'id' (tickets also accept 'ticketNumber').",
 	},
 	{
 		name: 'countByPeriod',
@@ -204,7 +217,8 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Count by period',
 		supportsFilters: false,
 		responseKind: 'count',
-		docsFragment: "Count records created within a named period (today, this_month, last_quarter, etc.). Optional: company, status, priority.",
+		docsFragment:
+			'Count records created within a named period (today, this_month, last_quarter, etc.). Optional: company, status, priority.',
 	},
 	{
 		name: 'getByAge',
@@ -212,7 +226,8 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Get by age',
 		supportsFilters: true,
 		responseKind: 'list',
-		docsFragment: "Return records created more than N days ago. Required: olderThanDays (positive integer). Optional: status, company, priority.",
+		docsFragment:
+			'Return records created more than N days ago. Required: olderThanDays (positive integer). Optional: status, company, priority.',
 	},
 	{
 		name: 'searchByKeyword',
@@ -237,8 +252,7 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Reject time off request',
 		supportsFilters: false,
 		responseKind: 'mutation',
-		docsFragment:
-			"Reject a pending time off request by numeric 'id', with optional rejectReason.",
+		docsFragment: "Reject a pending time off request by numeric 'id', with optional rejectReason.",
 	},
 ];
 
@@ -248,9 +262,9 @@ export const OPERATION_METADATA: Readonly<Record<string, OperationMetadata>> = O
 
 export const SUPPORTED_TOOL_OPERATIONS = OPERATION_METADATA_LIST.map((operation) => operation.name);
 
-export const WRITE_OPERATIONS = OPERATION_METADATA_LIST
-	.filter((operation) => operation.isWrite)
-	.map((operation) => operation.name);
+export const WRITE_OPERATIONS = OPERATION_METADATA_LIST.filter(
+	(operation) => operation.isWrite,
+).map((operation) => operation.name);
 
 export function getOperationMetadata(operation: string): OperationMetadata | undefined {
 	return OPERATION_METADATA[operation];

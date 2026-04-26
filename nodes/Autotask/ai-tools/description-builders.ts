@@ -123,7 +123,7 @@ function setDescriptionTemplateCache(key: string, value: string): void {
 
 /** Rule for getMany/count/getPosted/getUnposted: how recency and since/until interact. */
 const RECENCY_VS_SINCE_UNTIL_RULE =
-	"Temporal filter decision tree:\n- \"recent/latest/last N days/today/this week\" → recency param (e.g. last_7d). recency = LOWER BOUND (records newer than cutoff).\n- \"since date X / after date X\" → use since= param. since is a LOWER BOUND (records >= timestamp).\n- \"fixed range e.g. Q1 2026\" → since= + until=.\n- \"older than N days / before date X / stale / not touched since X\" → filter_field with filter_op='lt' on a date field (createDate, lastActivityDate, dueDateTime). 'lt' = UPPER BOUND. Do NOT use since/until for upper-bound queries.\n- Combination (between A and B) → two filter triplets: filter_op='gt' for inner bound + filter_op='lt' for outer bound on same field. ";
+	'Temporal filter decision tree:\n- "recent/latest/last N days/today/this week" → recency param (e.g. last_7d). recency = LOWER BOUND (records newer than cutoff).\n- "since date X / after date X" → use since= param. since is a LOWER BOUND (records >= timestamp).\n- "fixed range e.g. Q1 2026" → since= + until=.\n- "older than N days / before date X / stale / not touched since X" → filter_field with filter_op=\'lt\' on a date field (createDate, lastActivityDate, dueDateTime). \'lt\' = UPPER BOUND. Do NOT use since/until for upper-bound queries.\n- Combination (between A and B) → two filter triplets: filter_op=\'gt\' for inner bound + filter_op=\'lt\' for outer bound on same field. ';
 
 /** Warning shared by list-family builders and LIST_ADVANCED_NOTES about API ordering. */
 const ASCENDING_ID_WARNING =
@@ -303,12 +303,23 @@ export function buildUnpostedTimeEntriesDescription(
 
 export function buildCompanySearchByDomainDescription(resourceName: string): string {
 	return (
-		'Search companies by domain using website-style fields. ' +
+		'Legacy company domain search using website-style fields (preferred AI operation: searchByIdentity). ' +
 		'Input can be a bare domain or full URL; the tool normalises it to a domain fragment (for example autotask.net). ' +
 		'IMPORTANT: Autotask typically stores company websites as full URLs (for example https://www.autotask.net/), so exact operator matches can fail on bare domain input. ' +
 		'To avoid false negatives, eq/like semantics are handled safely for website matching. ' +
 		'When searchContactEmails is true (default), if no company website matches exist, the tool searches Contact.emailAddress by domain and resolves the most common canonical company name from companyID references. ' +
 		"Use the 'fields' parameter to limit which company fields are returned per result (comma-separated); omit to receive the full company entity. matchedField and matchedValue are always included to indicate which website field matched and its value. " +
+		describeFieldsHint(resourceName)
+	);
+}
+
+export function buildCompanySearchByIdentityDescription(resourceName: string): string {
+	return (
+		'Preferred AI company resolution operation. Accepts companyName, email, and website/domain, then ranks candidates by confidence. ' +
+		'Domain is normalised from website first, then email; domain matching is attempted first (company website fields, then contact-email fallback). ' +
+		'If domain signals are weak or absent, companyName contains matching is executed and merged into a confidence-ranked candidate list. ' +
+		'Use this operation as first choice for company lookup when identity hints may be incomplete or noisy. ' +
+		"Use the 'fields' parameter to limit returned company fields; omit for full records. " +
 		describeFieldsHint(resourceName)
 	);
 }
@@ -345,7 +356,7 @@ export function buildGetFullDetailDescription(resource: string): string {
 			"Supply EITHER numeric 'id' OR 'ticketNumber' (e.g. T20240615.0123). " +
 			"Response includes all ticket fields, 'slaStatus' (breached/compliant/paused/no_sla/unknown), " +
 			"'slaBreachDateTime' (resolvedDueDateTime), and 'summaryText' (plain-English one-liner). " +
-			"Use this instead of calling get + slaHealthCheck separately when you need both ticket data and SLA status. " +
+			'Use this instead of calling get + slaHealthCheck separately when you need both ticket data and SLA status. ' +
 			describeFieldsHint(resource)
 		);
 	}
@@ -421,7 +432,7 @@ export function buildCountByPeriodDescription(resource: string): string {
 	return (
 		`Count ${recordsLabel} created within a named time period. Required: 'period' (e.g. 'this_month', 'last_quarter'). ` +
 		`Optional: ${optionalHint}. ` +
-		"Returns matchCount plus the period date bounds used."
+		'Returns matchCount plus the period date bounds used.'
 	);
 }
 
@@ -453,12 +464,12 @@ export function buildGetByAgeDescription(resource: string): string {
 
 export function buildTicketSearchByKeywordDescription(_resource: string): string {
 	return (
-		"Cross-entity full-text search for tickets by keyword. " +
+		'Cross-entity full-text search for tickets by keyword. ' +
 		"Required: 'keyword' (case-insensitive contains-match). " +
 		"Always searches ticket 'title' and 'description'. " +
 		"Optional: 'includeNotes'=true to also search TicketNotes.description; 'includeTimeEntries'=true to also search TimeEntries.summaryNotes. " +
 		"Each returned ticket gets a 'matchedIn' array (e.g. ['title','notes']) indicating which sources matched. " +
-		"Per-stage cap: 200 records. " +
+		'Per-stage cap: 200 records. ' +
 		"Use 'recency', 'since', or 'until' to constrain by date (applied post-merge to merged results; use 'recency_field' to specify which date field). " +
 		"Use 'returnAll' for the full deduplicated result set."
 	);
@@ -720,7 +731,7 @@ const LIST_ADVANCED_NOTES = [
 const SEARCH_BY_KEYWORD_NOTES: readonly string[] = [
 	"Use 'limit' (default 10) or 'returnAll=true' to control result count from the merged set.",
 	"Use 'recency', 'since', or 'until' to filter by creation date — applied post-merge, not per-stage.",
-	"Per-stage cap is 200 records. If a stage hits the cap, set includeNotes/includeTimeEntries=false or narrow the keyword.",
+	'Per-stage cap is 200 records. If a stage hits the cap, set includeNotes/includeTimeEntries=false or narrow the keyword.',
 ];
 
 /** Static parameter map for read and metadata operations */
@@ -864,6 +875,36 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 				field: 'searchContactEmails',
 				type: 'boolean',
 				description: 'Fall back to contact email search if no website match (default true).',
+			},
+			{
+				field: 'fields',
+				type: 'string',
+				description: 'Comma-separated company field names to return.',
+			},
+		],
+	},
+	searchByIdentity: {
+		required: [],
+		optional: [
+			{
+				field: 'companyName',
+				type: 'string',
+				description: 'Optional company name signal (contains match).',
+			},
+			{
+				field: 'email',
+				type: 'string',
+				description: 'Optional email signal used to infer domain.',
+			},
+			{
+				field: 'website',
+				type: 'string',
+				description: 'Optional website/domain signal used for primary match.',
+			},
+			{
+				field: 'limit',
+				type: 'number',
+				description: 'Max ranked candidates to return (1-100, default 25).',
 			},
 			{
 				field: 'fields',
@@ -1120,13 +1161,11 @@ function buildWriteParams(
 			},
 		);
 	}
-	optional.push(
-		{
-			field: 'impersonationResourceId',
-			type: 'number | string',
-			description: 'Resource ID or name for write attribution (auto-resolved).',
-		},
-	);
+	optional.push({
+		field: 'impersonationResourceId',
+		type: 'number | string',
+		description: 'Resource ID or name for write attribution (auto-resolved).',
+	});
 	return { required, optional };
 }
 
@@ -1158,6 +1197,8 @@ function getOperationPurpose(
 			return buildUnpostedTimeEntriesDescription(resource);
 		case 'searchByDomain':
 			return buildCompanySearchByDomainDescription(resource);
+		case 'searchByIdentity':
+			return buildCompanySearchByIdentityDescription(resource);
 		case 'slaHealthCheck':
 			return buildTicketSlaHealthCheckDescription(resource);
 		case 'summary':

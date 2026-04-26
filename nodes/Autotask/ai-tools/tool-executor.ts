@@ -76,7 +76,11 @@ import {
 	COMPOUND_REGISTRY,
 	COMPOUND_PARENT_NOT_FOUND_OUTCOMES,
 } from '../constants/compound-registry';
-import { validateOperationContract, hasProvidedValue, type OperationContractViolation } from './operation-contracts';
+import {
+	validateOperationContract,
+	hasProvidedValue,
+	type OperationContractViolation,
+} from './operation-contracts';
 import { enrichResponseJson } from '../helpers/enrichment';
 import { autotaskApiRequest } from '../helpers/http';
 
@@ -162,9 +166,13 @@ const RESOURCE_CONVENIENCE_CONFIG: Record<string, ResourceConvenienceConfig> = {
 		supportsSLA: false,
 		getFullDetailMode: 'simple',
 		childCountEntities: [
-			{ queryEndpoint: 'TaskNotes/query',              parentField: 'taskID',    key: 'notes' },
-			{ queryEndpoint: 'TaskSecondaryResources/query', parentField: 'taskID',    key: 'secondaryResources' },
-			{ queryEndpoint: 'TimeEntries/query',            parentField: 'taskID',    key: 'timeEntries' },
+			{ queryEndpoint: 'TaskNotes/query', parentField: 'taskID', key: 'notes' },
+			{
+				queryEndpoint: 'TaskSecondaryResources/query',
+				parentField: 'taskID',
+				key: 'secondaryResources',
+			},
+			{ queryEndpoint: 'TimeEntries/query', parentField: 'taskID', key: 'timeEntries' },
 		],
 	},
 	project: {
@@ -179,10 +187,10 @@ const RESOURCE_CONVENIENCE_CONFIG: Record<string, ResourceConvenienceConfig> = {
 		supportsSLA: false,
 		getFullDetailMode: 'simple',
 		childCountEntities: [
-			{ queryEndpoint: 'ProjectNotes/query',   parentField: 'projectID', key: 'notes' },
+			{ queryEndpoint: 'ProjectNotes/query', parentField: 'projectID', key: 'notes' },
 			{ queryEndpoint: 'ProjectCharges/query', parentField: 'projectID', key: 'charges' },
-			{ queryEndpoint: 'Tasks/query',          parentField: 'projectID', key: 'tasks' },
-			{ queryEndpoint: 'Phases/query',         parentField: 'projectID', key: 'phases' },
+			{ queryEndpoint: 'Tasks/query', parentField: 'projectID', key: 'tasks' },
+			{ queryEndpoint: 'Phases/query', parentField: 'projectID', key: 'phases' },
 		],
 	},
 };
@@ -197,34 +205,26 @@ export async function resolveCompanyToProjectIdFilter(
 	operationName: string,
 	callerResource: string,
 ): Promise<
-	| { filter: ToolFilter; warning?: string }
-	| { empty: true }
-	| { error: FlatErrorResponse }
+	{ filter: ToolFilter; warning?: string } | { empty: true } | { error: FlatErrorResponse }
 > {
 	let companyId: number;
 	const raw = String(companyRaw).trim();
 	if (/^\d+$/.test(raw)) {
 		companyId = Number(raw);
 	} else {
-		const companyLookup = await autotaskApiRequest.call(
-			context, 'POST', 'Companies/query',
-			{
-				filter: [{ field: 'companyName', op: 'eq', value: raw }],
-				MaxRecords: 1,
-			} as IDataObject,
-		) as { items?: IAutotaskEntity[] };
+		const companyLookup = (await autotaskApiRequest.call(context, 'POST', 'Companies/query', {
+			filter: [{ field: 'companyName', op: 'eq', value: raw }],
+			MaxRecords: 1,
+		} as IDataObject)) as { items?: IAutotaskEntity[] };
 		const matches = Array.isArray(companyLookup.items) ? companyLookup.items : [];
 		if (matches.length === 0) {
 			// Try partial match to provide suggestions
 			try {
-				const partialLookup = await autotaskApiRequest.call(
-					context, 'POST', 'Companies/query',
-					{
-						filter: [{ field: 'companyName', op: 'contains', value: raw }],
-						MaxRecords: 5,
-						IncludeFields: ['id', 'companyName'],
-					} as IDataObject,
-				) as { items?: IAutotaskEntity[] };
+				const partialLookup = (await autotaskApiRequest.call(context, 'POST', 'Companies/query', {
+					filter: [{ field: 'companyName', op: 'contains', value: raw }],
+					MaxRecords: 5,
+					IncludeFields: ['id', 'companyName'],
+				} as IDataObject)) as { items?: IAutotaskEntity[] };
 				const partialMatches = Array.isArray(partialLookup.items) ? partialLookup.items : [];
 				const candidates = partialMatches.map((c) => ({
 					id: c.id as string | number,
@@ -256,14 +256,11 @@ export async function resolveCompanyToProjectIdFilter(
 		companyId = Number(matches[0].id);
 	}
 
-	const projectsResp = await autotaskApiRequest.call(
-		context, 'POST', 'Projects/query',
-		{
-			filter: [{ field: 'companyID', op: 'eq', value: companyId }],
-			MaxRecords: 500,
-			IncludeFields: ['id'],
-		} as IDataObject,
-	) as { items?: IAutotaskEntity[] };
+	const projectsResp = (await autotaskApiRequest.call(context, 'POST', 'Projects/query', {
+		filter: [{ field: 'companyID', op: 'eq', value: companyId }],
+		MaxRecords: 500,
+		IncludeFields: ['id'],
+	} as IDataObject)) as { items?: IAutotaskEntity[] };
 	const projectIds = (Array.isArray(projectsResp.items) ? projectsResp.items : [])
 		.map((p) => Number(p.id))
 		.filter((n) => Number.isFinite(n));
@@ -274,9 +271,10 @@ export async function resolveCompanyToProjectIdFilter(
 
 	return {
 		filter: { field: 'projectID', op: 'in', value: projectIds } as ToolFilter,
-		warning: projectIds.length >= 500
-			? `Company expanded to 500+ projects — task results may be incomplete. Narrow the search by date or status.`
-			: undefined,
+		warning:
+			projectIds.length >= 500
+				? `Company expanded to 500+ projects — task results may be incomplete. Narrow the search by date or status.`
+				: undefined,
 	};
 }
 
@@ -373,6 +371,8 @@ function normaliseOperation(operation: string): string {
 			return 'getUnposted';
 		case 'searchbydomain':
 			return 'searchByDomain';
+		case 'searchbyidentity':
+			return 'searchByIdentity';
 		case 'slahealthcheck':
 			return 'slaHealthCheck';
 		case 'moveconfigurationitem':
@@ -415,21 +415,21 @@ export const N8N_METADATA_FIELDS = new Set([
 export const N8N_METADATA_PREFIXES = ['Prompt__'];
 
 /** Extract the canonical created-entity numeric ID from a compound creator result. */
- 
+
 function buildCompoundEntityId(resource: string, result: any): number | undefined {
 	const field = COMPOUND_REGISTRY[resource]?.entityIdField;
 	return field ? result[field] : (result.id ?? result.itemId);
 }
 
 /** Extract the canonical existing-entity numeric ID from a compound creator result (skip/update). */
- 
+
 function buildCompoundExistingId(resource: string, result: any): number | undefined {
 	const field = COMPOUND_REGISTRY[resource]?.existingIdField;
 	return field ? result[field] : result.existingId;
 }
 
 /** Build the context block (parent/scope fields) for a compound creator result. */
- 
+
 function buildCompoundContext(resource: string, result: any): Record<string, unknown> | undefined {
 	switch (resource) {
 		case 'contractCharge':
@@ -682,7 +682,9 @@ export async function executeAiTool(
 	if (normalisedOperation === 'listPicklistValues') {
 		const fieldId = typeof params.fieldId === 'string' ? params.fieldId.trim() : '';
 		if (!fieldId) {
-			const targetOpProvided = typeof params.targetOperation === 'string' && (params.targetOperation as string).trim() !== '';
+			const targetOpProvided =
+				typeof params.targetOperation === 'string' &&
+				(params.targetOperation as string).trim() !== '';
 			const hint = targetOpProvided
 				? `'targetOperation' is for the 'describeOperation' helper, not 'listPicklistValues'. Pass 'fieldId' set to the picklist field name (e.g. 'status', 'priority').`
 				: `'fieldId' is required — pass the picklist field name (e.g. 'status', 'priority').`;
@@ -805,7 +807,6 @@ export async function executeAiTool(
 	const effectiveReturnAll = params.returnAll === true || isShortWindow;
 	const autoReturnAll = isShortWindow && params.returnAll !== true;
 
-	 
 	let combinedFilters: any[];
 	if (params.filtersJson) {
 		// filtersJson path — mutually exclusive with flat filter triplets
@@ -822,7 +823,7 @@ export async function executeAiTool(
 				correlationId,
 			);
 		}
-		 
+
 		let parsedFiltersJson: any[] = [];
 		try {
 			const parsed: unknown = JSON.parse(params.filtersJson as string);
@@ -1034,7 +1035,17 @@ export async function executeAiTool(
 	}
 
 	// Pre-flight: filter cross-validation (list operations)
-	const isListOperation = ['getMany', 'count', 'getPosted', 'getUnposted', 'getByAge', 'searchByKeyword', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus'].includes(effectiveOperation);
+	const isListOperation = [
+		'getMany',
+		'count',
+		'getPosted',
+		'getUnposted',
+		'getByAge',
+		'searchByKeyword',
+		'getByCompanyAndStatus',
+		'getUnassigned',
+		'getBySLAStatus',
+	].includes(effectiveOperation);
 	if (isListOperation) {
 		const p = params as Record<string, unknown>;
 		const hasFiltersJson = hasProvidedValue(p.filtersJson);
@@ -1050,36 +1061,52 @@ export async function executeAiTool(
 		const filterErrors: string[] = [];
 
 		if (hasFiltersJson && (hasFlatFilter1 || hasFlatFilter2)) {
-			filterErrors.push(`Operation '${effectiveOperation}' does not allow mixing 'filtersJson' with flat filter fields.`);
+			filterErrors.push(
+				`Operation '${effectiveOperation}' does not allow mixing 'filtersJson' with flat filter fields.`,
+			);
 		}
 		const isNullCheckOp1 = ['exist', 'notexist'].includes(String(p.filter_op ?? '').toLowerCase());
 		if (hasProvidedValue(p.filter_field) && !hasProvidedValue(p.filter_value) && !isNullCheckOp1) {
-			filterErrors.push(`Operation '${effectiveOperation}' requires 'filter_value' when 'filter_field' is provided (not needed when filter_op is 'exist' or 'notExist').`);
+			filterErrors.push(
+				`Operation '${effectiveOperation}' requires 'filter_value' when 'filter_field' is provided (not needed when filter_op is 'exist' or 'notExist').`,
+			);
 		}
 		if (!hasProvidedValue(p.filter_field) && hasProvidedValue(p.filter_value)) {
-			filterErrors.push(`Operation '${effectiveOperation}' does not allow 'filter_value' without 'filter_field'.`);
+			filterErrors.push(
+				`Operation '${effectiveOperation}' does not allow 'filter_value' without 'filter_field'.`,
+			);
 		}
 		if (hasFlatFilter2) {
 			const hasFilter2Field = hasProvidedValue(p.filter_field_2);
 			const hasFilter2Value = hasProvidedValue(p.filter_value_2);
-			const isNullCheckOp2 = ['exist', 'notexist'].includes(String(p.filter_op_2 ?? '').toLowerCase());
+			const isNullCheckOp2 = ['exist', 'notexist'].includes(
+				String(p.filter_op_2 ?? '').toLowerCase(),
+			);
 			if (!hasFilter2Field || (!hasFilter2Value && !isNullCheckOp2)) {
 				filterErrors.push(
 					`Operation '${effectiveOperation}' requires 'filter_field_2' and 'filter_value_2' when using a second filter (filter_value_2 not needed when filter_op_2 is 'exist' or 'notExist').`,
 				);
 			}
 			if (!hasFlatFilter1) {
-				filterErrors.push(`Operation '${effectiveOperation}' does not allow a second filter without the first filter.`);
+				filterErrors.push(
+					`Operation '${effectiveOperation}' does not allow a second filter without the first filter.`,
+				);
 			}
 		}
 		if (hasProvidedValue(p.filter_logic) && !(hasFlatFilter1 && hasFlatFilter2)) {
-			filterErrors.push(`Operation '${effectiveOperation}' does not allow 'filter_logic' unless both filter pairs are present.`);
+			filterErrors.push(
+				`Operation '${effectiveOperation}' does not allow 'filter_logic' unless both filter pairs are present.`,
+			);
 		}
 		if (hasProvidedValue(p.recency) && (hasProvidedValue(p.since) || hasProvidedValue(p.until))) {
-			filterErrors.push(`Operation '${effectiveOperation}' does not allow 'recency' together with 'since' or 'until'.`);
+			filterErrors.push(
+				`Operation '${effectiveOperation}' does not allow 'recency' together with 'since' or 'until'.`,
+			);
 		}
 		if (hasProvidedValue(p.until) && !hasProvidedValue(p.since) && !hasProvidedValue(p.recency)) {
-			filterErrors.push(`Operation '${effectiveOperation}' requires 'since' or 'recency' when 'until' is provided.`);
+			filterErrors.push(
+				`Operation '${effectiveOperation}' requires 'since' or 'recency' when 'until' is provided.`,
+			);
 		}
 
 		if (filterErrors.length > 0) {
@@ -1118,9 +1145,9 @@ export async function executeAiTool(
 						.slice(0, 4);
 					invalidFieldErrors.push(
 						`${displayName} is not a valid filter field for ${resource}.` +
-						(suggestions.length > 0
-							? ` Did you mean: ${suggestions.join(', ')}?`
-							: ` Call autotask_${resource} with operation 'describeFields' to see valid fields.`),
+							(suggestions.length > 0
+								? ` Did you mean: ${suggestions.join(', ')}?`
+								: ` Call autotask_${resource} with operation 'describeFields' to see valid fields.`),
 					);
 				}
 			}
@@ -1164,9 +1191,16 @@ export async function executeAiTool(
 	}
 
 	if (
-		['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(
-			effectiveOperation,
-		)
+		[
+			'get',
+			'getMany',
+			'getPosted',
+			'getUnposted',
+			'count',
+			'whoAmI',
+			'searchByDomain',
+			'searchByIdentity',
+		].includes(effectiveOperation)
 	) {
 		const udfFilters = filters.filter((filter) => filter.udf);
 		if (udfFilters.length > 1) {
@@ -1395,7 +1429,7 @@ export async function executeAiTool(
 				) {
 					data.limit = queryLimit;
 				}
-				if (effectiveOperation === 'searchByDomain') {
+				if (['searchByDomain', 'searchByIdentity'].includes(effectiveOperation)) {
 					data.limit = effectiveLimit;
 				}
 				return JSON.stringify(data);
@@ -1579,7 +1613,7 @@ export async function executeAiTool(
 			};
 
 			const handler = await registryEntry.getHandler();
-			 
+
 			const compoundResult: any = await handler(context, 0, compoundOptions);
 
 			if (compoundResult) {
@@ -1709,13 +1743,25 @@ export async function executeAiTool(
 			// resolveAndClassifyFilters resolves string values to numeric IDs in-place.
 			const syntheticFilters: ToolFilter[] = [];
 			if (cfg.companyFilterStrategy === 'direct') {
-				syntheticFilters.push({ field: 'companyID', op: 'eq', value: companyRaw as string | number });
+				syntheticFilters.push({
+					field: 'companyID',
+					op: 'eq',
+					value: companyRaw as string | number,
+				});
 			}
 			if (params.status !== undefined && params.status !== null) {
-				syntheticFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
+				syntheticFilters.push({
+					field: 'status',
+					op: 'eq',
+					value: params.status as string | number,
+				});
 			}
 			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
-				syntheticFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+				syntheticFilters.push({
+					field: 'priority',
+					op: 'eq',
+					value: params.priority as string | number,
+				});
 			}
 
 			const {
@@ -1723,7 +1769,13 @@ export async function executeAiTool(
 				warnings: specialWarningsRaw,
 				pendingConfirmations: specialPending,
 				unresolvedIdLikeFilters: specialUnresolved,
-			} = await resolveAndClassifyFilters(context, resource, syntheticFilters, readFields, params as IDataObject);
+			} = await resolveAndClassifyFilters(
+				context,
+				resource,
+				syntheticFilters,
+				readFields,
+				params as IDataObject,
+			);
 			const specialWarnings: string[] = [...specialWarningsRaw];
 
 			if (specialUnresolved.length > 0) {
@@ -1743,17 +1795,34 @@ export async function executeAiTool(
 			}
 
 			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
-			if (cfg.companyFilterStrategy === 'viaProject' && companyRaw !== undefined && companyRaw !== null) {
-				const r = await resolveCompanyToProjectIdFilter(context, companyRaw as string | number, 'getByCompanyAndStatus', resource);
+			if (
+				cfg.companyFilterStrategy === 'viaProject' &&
+				companyRaw !== undefined &&
+				companyRaw !== null
+			) {
+				const r = await resolveCompanyToProjectIdFilter(
+					context,
+					companyRaw as string | number,
+					'getByCompanyAndStatus',
+					resource,
+				);
 				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
 				if ('empty' in r) {
 					return attachCorrelation(
 						JSON.stringify(
-							buildListResponse(resource, 'getByCompanyAndStatus', [], {
-								hasMore: false, serverCap: MAX_QUERY_LIMIT, clientCap: MAX_QUERY_LIMIT,
-							}, {
-								resolutionWarnings: [`No projects found for company '${String(companyRaw)}'.`],
-							}),
+							buildListResponse(
+								resource,
+								'getByCompanyAndStatus',
+								[],
+								{
+									hasMore: false,
+									serverCap: MAX_QUERY_LIMIT,
+									clientCap: MAX_QUERY_LIMIT,
+								},
+								{
+									resolutionWarnings: [`No projects found for company '${String(companyRaw)}'.`],
+								},
+							),
 						),
 						correlationId,
 					);
@@ -1764,30 +1833,50 @@ export async function executeAiTool(
 
 			// After resolveAndClassifyFilters, syntheticFilters values are resolved in-place.
 			// Append recency filters (already built above) to apply date-range constraints.
-			const apiFilters: ToolFilter[] = [...syntheticFilters, ...(recencyResult.filters as ToolFilter[])];
+			const apiFilters: ToolFilter[] = [
+				...syntheticFilters,
+				...(recencyResult.filters as ToolFilter[]),
+			];
 
-			const queryLimitForOp = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
+			const queryLimitForOp = effectiveReturnAll
+				? undefined
+				: params.limit !== undefined
+					? getEffectiveLimit(params.limit)
+					: DEFAULT_QUERY_LIMIT;
 			const requestBody: IDataObject = { filter: apiFilters as unknown as IDataObject[] };
 			if (queryLimitForOp !== undefined) {
 				requestBody.MaxRecords = queryLimitForOp;
 			}
 
-			const gbcasResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, requestBody) as { items?: IAutotaskEntity[] };
-			const gbcasItems = Array.isArray(gbcasResponse.items) ? gbcasResponse.items as Record<string, unknown>[] : [];
+			const gbcasResponse = (await autotaskApiRequest.call(
+				context,
+				'POST',
+				cfg.queryEndpoint,
+				requestBody,
+			)) as { items?: IAutotaskEntity[] };
+			const gbcasItems = Array.isArray(gbcasResponse.items)
+				? (gbcasResponse.items as Record<string, unknown>[])
+				: [];
 
 			const allGbcasWarnings = [...specialWarnings, ...labelWarnings];
 			const allGbcasResolutions = [...specialResolutions, ...labelResolutions];
 
 			const gbcasListJson = JSON.stringify(
-				buildListResponse(resource, 'getByCompanyAndStatus', gbcasItems, {
-					hasMore: queryLimitForOp !== undefined && gbcasItems.length >= queryLimitForOp,
-					serverCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
-					clientCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
-				}, {
-					resolutions: allGbcasResolutions.length > 0 ? allGbcasResolutions : undefined,
-					resolutionWarnings: allGbcasWarnings.length > 0 ? allGbcasWarnings : undefined,
-					pendingConfirmations: specialPending.length > 0 ? specialPending : undefined,
-				}),
+				buildListResponse(
+					resource,
+					'getByCompanyAndStatus',
+					gbcasItems,
+					{
+						hasMore: queryLimitForOp !== undefined && gbcasItems.length >= queryLimitForOp,
+						serverCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
+						clientCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
+					},
+					{
+						resolutions: allGbcasResolutions.length > 0 ? allGbcasResolutions : undefined,
+						resolutionWarnings: allGbcasWarnings.length > 0 ? allGbcasWarnings : undefined,
+						pendingConfirmations: specialPending.length > 0 ? specialPending : undefined,
+					},
+				),
 			);
 			const enrichedGbcasJson = await enrichResponseJson(gbcasListJson, context);
 			return attachCorrelation(enrichedGbcasJson, correlationId);
@@ -1804,11 +1893,23 @@ export async function executeAiTool(
 
 			// Optional: company and priority filters (resolve name→ID)
 			const optionalFilters: ToolFilter[] = [];
-			if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) {
-				optionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
+			if (
+				cfg.companyFilterStrategy === 'direct' &&
+				params.company !== undefined &&
+				params.company !== null
+			) {
+				optionalFilters.push({
+					field: 'companyID',
+					op: 'eq',
+					value: params.company as string | number,
+				});
 			}
 			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
-				optionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+				optionalFilters.push({
+					field: 'priority',
+					op: 'eq',
+					value: params.priority as string | number,
+				});
 			}
 
 			let specialUnresolved: ToolFilter[] = [];
@@ -1817,7 +1918,13 @@ export async function executeAiTool(
 			let specialPending: any[] = [];
 
 			if (optionalFilters.length > 0) {
-				const resolved = await resolveAndClassifyFilters(context, resource, optionalFilters, readFields, params as IDataObject);
+				const resolved = await resolveAndClassifyFilters(
+					context,
+					resource,
+					optionalFilters,
+					readFields,
+					params as IDataObject,
+				);
 				specialUnresolved = resolved.unresolvedIdLikeFilters;
 				specialResolutions = resolved.resolutions;
 				specialWarnings = resolved.warnings;
@@ -1841,17 +1948,36 @@ export async function executeAiTool(
 			}
 
 			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
-			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
-				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'getUnassigned', resource);
+			if (
+				cfg.companyFilterStrategy === 'viaProject' &&
+				params.company !== undefined &&
+				params.company !== null
+			) {
+				const r = await resolveCompanyToProjectIdFilter(
+					context,
+					params.company as string | number,
+					'getUnassigned',
+					resource,
+				);
 				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
 				if ('empty' in r) {
 					return attachCorrelation(
 						JSON.stringify(
-							buildListResponse(resource, 'getUnassigned', [], {
-								hasMore: false, serverCap: MAX_QUERY_LIMIT, clientCap: MAX_QUERY_LIMIT,
-							}, {
-								resolutionWarnings: [`No projects found for company '${String(params.company)}'.`],
-							}),
+							buildListResponse(
+								resource,
+								'getUnassigned',
+								[],
+								{
+									hasMore: false,
+									serverCap: MAX_QUERY_LIMIT,
+									clientCap: MAX_QUERY_LIMIT,
+								},
+								{
+									resolutionWarnings: [
+										`No projects found for company '${String(params.company)}'.`,
+									],
+								},
+							),
 						),
 						correlationId,
 					);
@@ -1860,29 +1986,51 @@ export async function executeAiTool(
 				if (r.warning) specialWarnings.push(r.warning);
 			}
 
-			const apiFilters: ToolFilter[] = [...unassignedFilters, ...optionalFilters, ...(recencyResult.filters as ToolFilter[])];
-			const queryLimitForOp = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
+			const apiFilters: ToolFilter[] = [
+				...unassignedFilters,
+				...optionalFilters,
+				...(recencyResult.filters as ToolFilter[]),
+			];
+			const queryLimitForOp = effectiveReturnAll
+				? undefined
+				: params.limit !== undefined
+					? getEffectiveLimit(params.limit)
+					: DEFAULT_QUERY_LIMIT;
 			const requestBody: IDataObject = { filter: apiFilters as unknown as IDataObject[] };
 			if (queryLimitForOp !== undefined) {
 				requestBody.MaxRecords = queryLimitForOp;
 			}
 
-			const unassignedResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, requestBody) as { items?: IAutotaskEntity[] };
-			const unassignedItems = Array.isArray(unassignedResponse.items) ? unassignedResponse.items as Record<string, unknown>[] : [];
+			const unassignedResponse = (await autotaskApiRequest.call(
+				context,
+				'POST',
+				cfg.queryEndpoint,
+				requestBody,
+			)) as { items?: IAutotaskEntity[] };
+			const unassignedItems = Array.isArray(unassignedResponse.items)
+				? (unassignedResponse.items as Record<string, unknown>[])
+				: [];
 
 			const allUnassignedWarnings = [...specialWarnings, ...labelWarnings];
 			const allUnassignedResolutions = [...specialResolutions, ...labelResolutions];
 
 			const unassignedListJson = JSON.stringify(
-				buildListResponse(resource, 'getUnassigned', unassignedItems, {
-					hasMore: queryLimitForOp !== undefined && unassignedItems.length >= queryLimitForOp,
-					serverCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
-					clientCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
-				}, {
-					resolutions: allUnassignedResolutions.length > 0 ? allUnassignedResolutions : undefined,
-					resolutionWarnings: allUnassignedWarnings.length > 0 ? allUnassignedWarnings : undefined,
-					pendingConfirmations: specialPending.length > 0 ? specialPending : undefined,
-				}),
+				buildListResponse(
+					resource,
+					'getUnassigned',
+					unassignedItems,
+					{
+						hasMore: queryLimitForOp !== undefined && unassignedItems.length >= queryLimitForOp,
+						serverCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
+						clientCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
+					},
+					{
+						resolutions: allUnassignedResolutions.length > 0 ? allUnassignedResolutions : undefined,
+						resolutionWarnings:
+							allUnassignedWarnings.length > 0 ? allUnassignedWarnings : undefined,
+						pendingConfirmations: specialPending.length > 0 ? specialPending : undefined,
+					},
+				),
 			);
 			const enrichedUnassignedJson = await enrichResponseJson(unassignedListJson, context);
 			return attachCorrelation(enrichedUnassignedJson, correlationId);
@@ -1915,25 +2063,32 @@ export async function executeAiTool(
 				slaFilters = [{ field: 'serviceLevelAgreementHasBeenMet', op: 'eq', value: true }];
 			} else {
 				// at_risk: within atRiskWindowHours hours of resolvedDueDateTime, not yet breached
-				const windowHours = typeof params.atRiskWindowHours === 'number' && params.atRiskWindowHours > 0
-					? params.atRiskWindowHours
-					: 4;
+				const windowHours =
+					typeof params.atRiskWindowHours === 'number' && params.atRiskWindowHours > 0
+						? params.atRiskWindowHours
+						: 4;
 				const now = new Date();
 				const windowEnd = new Date(now.getTime() + windowHours * 60 * 60 * 1000);
-				slaFilters = [{
-					op: 'and',
-					items: [
-						{ field: 'resolvedDueDateTime', op: 'gt', value: now.toISOString() },
-						{ field: 'resolvedDueDateTime', op: 'lt', value: windowEnd.toISOString() },
-						{ field: 'status', op: 'notIn', value: cfg.terminalStatusIds },
-					],
-				}];
+				slaFilters = [
+					{
+						op: 'and',
+						items: [
+							{ field: 'resolvedDueDateTime', op: 'gt', value: now.toISOString() },
+							{ field: 'resolvedDueDateTime', op: 'lt', value: windowEnd.toISOString() },
+							{ field: 'status', op: 'notIn', value: cfg.terminalStatusIds },
+						],
+					},
+				];
 			}
 
 			// Optional company filter (resolve name→ID)
 			const slaOptionalFilters: ToolFilter[] = [];
 			if (params.company !== undefined && params.company !== null) {
-				slaOptionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
+				slaOptionalFilters.push({
+					field: 'companyID',
+					op: 'eq',
+					value: params.company as string | number,
+				});
 			}
 
 			let slaSpecialUnresolved: ToolFilter[] = [];
@@ -1942,7 +2097,13 @@ export async function executeAiTool(
 			let slaSpecialPending: any[] = [];
 
 			if (slaOptionalFilters.length > 0) {
-				const resolved = await resolveAndClassifyFilters(context, resource, slaOptionalFilters, readFields, params as IDataObject);
+				const resolved = await resolveAndClassifyFilters(
+					context,
+					resource,
+					slaOptionalFilters,
+					readFields,
+					params as IDataObject,
+				);
 				slaSpecialUnresolved = resolved.unresolvedIdLikeFilters;
 				slaSpecialResolutions = resolved.resolutions;
 				slaSpecialWarnings = resolved.warnings;
@@ -1958,36 +2119,59 @@ export async function executeAiTool(
 							ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
 							`Could not resolve company: '${String(params.company)}'`,
 							`Verify the company name is exact or use a numeric companyID.`,
-							{ pendingConfirmations: slaSpecialPending.length > 0 ? slaSpecialPending : undefined },
+							{
+								pendingConfirmations: slaSpecialPending.length > 0 ? slaSpecialPending : undefined,
+							},
 						),
 					),
 					correlationId,
 				);
 			}
 
-			const apiSlaFilters: any[] = [...slaFilters, ...slaOptionalFilters, ...(recencyResult.filters as any[])];
-			const queryLimitForSla = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
+			const apiSlaFilters: any[] = [
+				...slaFilters,
+				...slaOptionalFilters,
+				...(recencyResult.filters as any[]),
+			];
+			const queryLimitForSla = effectiveReturnAll
+				? undefined
+				: params.limit !== undefined
+					? getEffectiveLimit(params.limit)
+					: DEFAULT_QUERY_LIMIT;
 			const slaRequestBody: IDataObject = { filter: apiSlaFilters as IDataObject[] };
 			if (queryLimitForSla !== undefined) {
 				slaRequestBody.MaxRecords = queryLimitForSla;
 			}
 
-			const slaResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, slaRequestBody) as { items?: IAutotaskEntity[] };
-			const slaItems = Array.isArray(slaResponse.items) ? slaResponse.items as Record<string, unknown>[] : [];
+			const slaResponse = (await autotaskApiRequest.call(
+				context,
+				'POST',
+				cfg.queryEndpoint,
+				slaRequestBody,
+			)) as { items?: IAutotaskEntity[] };
+			const slaItems = Array.isArray(slaResponse.items)
+				? (slaResponse.items as Record<string, unknown>[])
+				: [];
 
 			const allSlaWarnings = [...slaSpecialWarnings, ...labelWarnings];
 			const allSlaResolutions = [...slaSpecialResolutions, ...labelResolutions];
 
 			const slaListJson = JSON.stringify(
-				buildListResponse(resource, 'getBySLAStatus', slaItems, {
-					hasMore: queryLimitForSla !== undefined && slaItems.length >= queryLimitForSla,
-					serverCap: queryLimitForSla ?? MAX_QUERY_LIMIT,
-					clientCap: queryLimitForSla ?? MAX_QUERY_LIMIT,
-				}, {
-					resolutions: allSlaResolutions.length > 0 ? allSlaResolutions : undefined,
-					resolutionWarnings: allSlaWarnings.length > 0 ? allSlaWarnings : undefined,
-					pendingConfirmations: slaSpecialPending.length > 0 ? slaSpecialPending : undefined,
-				}),
+				buildListResponse(
+					resource,
+					'getBySLAStatus',
+					slaItems,
+					{
+						hasMore: queryLimitForSla !== undefined && slaItems.length >= queryLimitForSla,
+						serverCap: queryLimitForSla ?? MAX_QUERY_LIMIT,
+						clientCap: queryLimitForSla ?? MAX_QUERY_LIMIT,
+					},
+					{
+						resolutions: allSlaResolutions.length > 0 ? allSlaResolutions : undefined,
+						resolutionWarnings: allSlaWarnings.length > 0 ? allSlaWarnings : undefined,
+						pendingConfirmations: slaSpecialPending.length > 0 ? slaSpecialPending : undefined,
+					},
+				),
 			);
 			const enrichedSlaJson = await enrichResponseJson(slaListJson, context);
 			return attachCorrelation(enrichedSlaJson, correlationId);
@@ -2000,11 +2184,17 @@ export async function executeAiTool(
 			let fullDetailTicketId: string | undefined;
 			if (params.id !== undefined && params.id !== null) {
 				fullDetailTicketId = String(params.id);
-			} else if (fdIdPairConfig && typeof params.ticketNumber === 'string' && params.ticketNumber.trim()) {
-				const tnLookup = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, {
-					filter: [{ field: fdIdPairConfig.altIdField, op: 'eq', value: params.ticketNumber.trim() }],
+			} else if (
+				fdIdPairConfig &&
+				typeof params.ticketNumber === 'string' &&
+				params.ticketNumber.trim()
+			) {
+				const tnLookup = (await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, {
+					filter: [
+						{ field: fdIdPairConfig.altIdField, op: 'eq', value: params.ticketNumber.trim() },
+					],
 					MaxRecords: 1,
-				} as IDataObject) as { items?: IAutotaskEntity[] };
+				} as IDataObject)) as { items?: IAutotaskEntity[] };
 				const tnItems = Array.isArray(tnLookup.items) ? tnLookup.items : [];
 				if (tnItems.length === 0) {
 					return attachCorrelation(
@@ -2045,7 +2235,11 @@ export async function executeAiTool(
 			}
 
 			const resolvedDetailId = fullDetailTicketId;
-			const fullDetailResponse = await autotaskApiRequest.call(context, 'GET', cfg.getEndpoint(resolvedDetailId)) as { item?: IAutotaskEntity };
+			const fullDetailResponse = (await autotaskApiRequest.call(
+				context,
+				'GET',
+				cfg.getEndpoint(resolvedDetailId),
+			)) as { item?: IAutotaskEntity };
 			const rawFullDetailTicket = fullDetailResponse.item;
 			if (!rawFullDetailTicket || typeof rawFullDetailTicket !== 'object') {
 				const resourceTitle = resource.charAt(0).toUpperCase() + resource.slice(1);
@@ -2069,7 +2263,9 @@ export async function executeAiTool(
 			if (cfg.getFullDetailMode === 'sla') {
 				const fdTicket = detailRecord;
 				// Derive SLA status from ticket fields — no extra API call needed
-				const fdHasSla = fdTicket.serviceLevelAgreementID !== undefined && fdTicket.serviceLevelAgreementID !== null;
+				const fdHasSla =
+					fdTicket.serviceLevelAgreementID !== undefined &&
+					fdTicket.serviceLevelAgreementID !== null;
 				const fdMet = fdTicket.serviceLevelAgreementHasBeenMet;
 				const fdPausedHours = fdTicket.serviceLevelAgreementPausedNextEventHours;
 				let fdSlaStatus: string;
@@ -2095,7 +2291,9 @@ export async function executeAiTool(
 					fdTitle ? `"${String(fdTitle)}"` : '',
 					fdStatusLabel ? `[${String(fdStatusLabel)}]` : '',
 					fdCompanyLabel ? `— ${String(fdCompanyLabel)}` : '',
-				].filter(Boolean).join(' ');
+				]
+					.filter(Boolean)
+					.join(' ');
 
 				fullDetailRecord = {
 					...fdTicket,
@@ -2112,14 +2310,14 @@ export async function executeAiTool(
 					const countResults = await Promise.all(
 						cfg.childCountEntities.map(async (entry) => {
 							try {
-								const resp = await autotaskApiRequest.call(
+								const resp = (await autotaskApiRequest.call(
 									context,
 									'POST',
 									`${entry.queryEndpoint}/count`,
 									{
 										filter: [{ field: entry.parentField, op: 'eq', value: numericId }],
 									} as IDataObject,
-								) as { queryCount?: number };
+								)) as { queryCount?: number };
 								const count = typeof resp.queryCount === 'number' ? resp.queryCount : 0;
 								return { key: entry.key, count };
 							} catch (err) {
@@ -2136,15 +2334,24 @@ export async function executeAiTool(
 						}
 					}
 				}
-				const recordTitle = (detailRecord.title ?? detailRecord.projectName ?? detailRecord.name ?? '') as string;
-				const recordStatusLabel = (detailRecord.status_label ?? detailRecord.status ?? '') as string;
-				const recordCompanyLabel = (detailRecord.companyID_label ?? detailRecord.companyName ?? '') as string;
+				const recordTitle = (detailRecord.title ??
+					detailRecord.projectName ??
+					detailRecord.name ??
+					'') as string;
+				const recordStatusLabel = (detailRecord.status_label ??
+					detailRecord.status ??
+					'') as string;
+				const recordCompanyLabel = (detailRecord.companyID_label ??
+					detailRecord.companyName ??
+					'') as string;
 				const summaryText = [
 					`${resource.charAt(0).toUpperCase()}${resource.slice(1)} ${resolvedDetailId}`,
 					recordTitle ? `"${String(recordTitle)}"` : '',
 					recordStatusLabel ? `[${String(recordStatusLabel)}]` : '',
 					recordCompanyLabel ? `— ${String(recordCompanyLabel)}` : '',
-				].filter(Boolean).join(' ');
+				]
+					.filter(Boolean)
+					.join(' ');
 				fullDetailRecord = {
 					...detailRecord,
 					...(Object.keys(childCounts).length > 0 ? { childCounts } : {}),
@@ -2163,7 +2370,17 @@ export async function executeAiTool(
 		// Short-circuit: countByPeriod
 		if (effectiveOperation === 'countByPeriod') {
 			const cfg = getConvenienceConfig(resource)!;
-			const validPeriods = ['today', 'this_week', 'last_7d', 'this_month', 'last_month', 'this_quarter', 'last_quarter', 'last_30d', 'last_90d'] as const;
+			const validPeriods = [
+				'today',
+				'this_week',
+				'last_7d',
+				'this_month',
+				'last_month',
+				'this_quarter',
+				'last_quarter',
+				'last_30d',
+				'last_90d',
+			] as const;
 			const periodParam = params.period as string | undefined;
 			if (!periodParam || !(validPeriods as readonly string[]).includes(periodParam)) {
 				return attachCorrelation(
@@ -2249,14 +2466,26 @@ export async function executeAiTool(
 
 			// Optional filters: company, status, priority
 			const cbpOptional: ToolFilter[] = [];
-			if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) {
-				cbpOptional.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
+			if (
+				cfg.companyFilterStrategy === 'direct' &&
+				params.company !== undefined &&
+				params.company !== null
+			) {
+				cbpOptional.push({
+					field: 'companyID',
+					op: 'eq',
+					value: params.company as string | number,
+				});
 			}
 			if (params.status !== undefined && params.status !== null) {
 				cbpOptional.push({ field: 'status', op: 'eq', value: params.status as string | number });
 			}
 			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
-				cbpOptional.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+				cbpOptional.push({
+					field: 'priority',
+					op: 'eq',
+					value: params.priority as string | number,
+				});
 			}
 
 			let cbpResolutions: LabelResolution[] = [];
@@ -2265,7 +2494,13 @@ export async function executeAiTool(
 			let cbpUnresolved: ToolFilter[] = [];
 
 			if (cbpOptional.length > 0) {
-				const cbpResolved = await resolveAndClassifyFilters(context, resource, cbpOptional, readFields, params as IDataObject);
+				const cbpResolved = await resolveAndClassifyFilters(
+					context,
+					resource,
+					cbpOptional,
+					readFields,
+					params as IDataObject,
+				);
 				cbpResolutions = cbpResolved.resolutions;
 				cbpWarnings = cbpResolved.warnings;
 				cbpPending = cbpResolved.pendingConfirmations;
@@ -2289,8 +2524,17 @@ export async function executeAiTool(
 			}
 
 			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
-			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
-				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'countByPeriod', resource);
+			if (
+				cfg.companyFilterStrategy === 'viaProject' &&
+				params.company !== undefined &&
+				params.company !== null
+			) {
+				const r = await resolveCompanyToProjectIdFilter(
+					context,
+					params.company as string | number,
+					'countByPeriod',
+					resource,
+				);
 				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
 				if ('empty' in r) {
 					const emptyCountResponse: Record<string, unknown> = {
@@ -2333,7 +2577,11 @@ export async function executeAiTool(
 		if (effectiveOperation === 'getByAge') {
 			const cfg = getConvenienceConfig(resource)!;
 			const olderThanDays = params.olderThanDays;
-			if (typeof olderThanDays !== 'number' || !Number.isFinite(olderThanDays) || olderThanDays <= 0) {
+			if (
+				typeof olderThanDays !== 'number' ||
+				!Number.isFinite(olderThanDays) ||
+				olderThanDays <= 0
+			) {
 				return attachCorrelation(
 					JSON.stringify(
 						wrapError(
@@ -2354,9 +2602,28 @@ export async function executeAiTool(
 			];
 
 			const ageOptionalFilters: ToolFilter[] = [];
-			if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) ageOptionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
-			if (params.status !== undefined && params.status !== null) ageOptionalFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
-			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) ageOptionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+			if (
+				cfg.companyFilterStrategy === 'direct' &&
+				params.company !== undefined &&
+				params.company !== null
+			)
+				ageOptionalFilters.push({
+					field: 'companyID',
+					op: 'eq',
+					value: params.company as string | number,
+				});
+			if (params.status !== undefined && params.status !== null)
+				ageOptionalFilters.push({
+					field: 'status',
+					op: 'eq',
+					value: params.status as string | number,
+				});
+			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null)
+				ageOptionalFilters.push({
+					field: 'priority',
+					op: 'eq',
+					value: params.priority as string | number,
+				});
 
 			let ageResolutions: any[] = [];
 			let ageWarnings: string[] = [];
@@ -2364,7 +2631,13 @@ export async function executeAiTool(
 			let ageUnresolved: ToolFilter[] = [];
 
 			if (ageOptionalFilters.length > 0) {
-				const ageResolved = await resolveAndClassifyFilters(context, resource, ageOptionalFilters, readFields, params as IDataObject);
+				const ageResolved = await resolveAndClassifyFilters(
+					context,
+					resource,
+					ageOptionalFilters,
+					readFields,
+					params as IDataObject,
+				);
 				ageResolutions = ageResolved.resolutions;
 				ageWarnings = ageResolved.warnings;
 				agePending = ageResolved.pendingConfirmations;
@@ -2374,27 +2647,50 @@ export async function executeAiTool(
 			if (ageUnresolved.length > 0) {
 				return attachCorrelation(
 					JSON.stringify(
-						wrapError(resource, 'getByAge', ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+						wrapError(
+							resource,
+							'getByAge',
+							ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
 							`Could not resolve: ${ageUnresolved.map((f) => `${f.field}='${String(f.value)}'`).join(', ')}`,
 							`Verify names or use numeric IDs. For status/priority, call autotask_${resource} with operation 'listPicklistValues'.`,
-							{ pendingConfirmations: agePending.length > 0 ? agePending : undefined }),
+							{ pendingConfirmations: agePending.length > 0 ? agePending : undefined },
+						),
 					),
 					correlationId,
 				);
 			}
 
 			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
-			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
-				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'getByAge', resource);
+			if (
+				cfg.companyFilterStrategy === 'viaProject' &&
+				params.company !== undefined &&
+				params.company !== null
+			) {
+				const r = await resolveCompanyToProjectIdFilter(
+					context,
+					params.company as string | number,
+					'getByAge',
+					resource,
+				);
 				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
 				if ('empty' in r) {
 					return attachCorrelation(
 						JSON.stringify(
-							buildListResponse(resource, 'getByAge', [], {
-								hasMore: false, serverCap: MAX_QUERY_LIMIT, clientCap: MAX_QUERY_LIMIT,
-							}, {
-								resolutionWarnings: [`No projects found for company '${String(params.company)}'.`],
-							}),
+							buildListResponse(
+								resource,
+								'getByAge',
+								[],
+								{
+									hasMore: false,
+									serverCap: MAX_QUERY_LIMIT,
+									clientCap: MAX_QUERY_LIMIT,
+								},
+								{
+									resolutionWarnings: [
+										`No projects found for company '${String(params.company)}'.`,
+									],
+								},
+							),
 						),
 						correlationId,
 					);
@@ -2403,27 +2699,48 @@ export async function executeAiTool(
 				if (r.warning) ageWarnings.push(r.warning);
 			}
 
-			const ageAllFilters: ToolFilter[] = [...ageBaseFilters, ...ageOptionalFilters, ...(recencyResult.filters as ToolFilter[])];
-			const ageQueryLimit = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
+			const ageAllFilters: ToolFilter[] = [
+				...ageBaseFilters,
+				...ageOptionalFilters,
+				...(recencyResult.filters as ToolFilter[]),
+			];
+			const ageQueryLimit = effectiveReturnAll
+				? undefined
+				: params.limit !== undefined
+					? getEffectiveLimit(params.limit)
+					: DEFAULT_QUERY_LIMIT;
 			const ageRequestBody: IDataObject = { filter: ageAllFilters as unknown as IDataObject[] };
 			if (ageQueryLimit !== undefined) ageRequestBody.MaxRecords = ageQueryLimit;
 
-			const ageResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, ageRequestBody) as { items?: IAutotaskEntity[] };
-			const ageItems = Array.isArray(ageResponse.items) ? ageResponse.items as Record<string, unknown>[] : [];
+			const ageResponse = (await autotaskApiRequest.call(
+				context,
+				'POST',
+				cfg.queryEndpoint,
+				ageRequestBody,
+			)) as { items?: IAutotaskEntity[] };
+			const ageItems = Array.isArray(ageResponse.items)
+				? (ageResponse.items as Record<string, unknown>[])
+				: [];
 
 			const ageAllWarnings = [...ageWarnings, ...labelWarnings];
 			const ageAllResolutions = [...ageResolutions, ...labelResolutions];
 
 			const ageListJson = JSON.stringify(
-				buildListResponse(resource, 'getByAge', ageItems, {
-					hasMore: ageQueryLimit !== undefined && ageItems.length >= ageQueryLimit,
-					serverCap: ageQueryLimit ?? MAX_QUERY_LIMIT,
-					clientCap: ageQueryLimit ?? MAX_QUERY_LIMIT,
-				}, {
-					resolutions: ageAllResolutions.length > 0 ? ageAllResolutions : undefined,
-					resolutionWarnings: ageAllWarnings.length > 0 ? ageAllWarnings : undefined,
-					pendingConfirmations: agePending.length > 0 ? agePending : undefined,
-				}),
+				buildListResponse(
+					resource,
+					'getByAge',
+					ageItems,
+					{
+						hasMore: ageQueryLimit !== undefined && ageItems.length >= ageQueryLimit,
+						serverCap: ageQueryLimit ?? MAX_QUERY_LIMIT,
+						clientCap: ageQueryLimit ?? MAX_QUERY_LIMIT,
+					},
+					{
+						resolutions: ageAllResolutions.length > 0 ? ageAllResolutions : undefined,
+						resolutionWarnings: ageAllWarnings.length > 0 ? ageAllWarnings : undefined,
+						pendingConfirmations: agePending.length > 0 ? agePending : undefined,
+					},
+				),
 			);
 			const enrichedAgeJson = await enrichResponseJson(ageListJson, context);
 			return attachCorrelation(enrichedAgeJson, correlationId);
@@ -2519,11 +2836,7 @@ export async function executeAiTool(
 						: String(stage1Settled.reason);
 				return attachCorrelation(
 					JSON.stringify(
-						formatApiError(
-							`Ticket search (stage 1) failed: ${msg}`,
-							resource,
-							'searchByKeyword',
-						),
+						formatApiError(`Ticket search (stage 1) failed: ${msg}`, resource, 'searchByKeyword'),
 					),
 					correlationId,
 				);
@@ -2538,9 +2851,7 @@ export async function executeAiTool(
 					stage2Settled.reason instanceof Error
 						? stage2Settled.reason.message
 						: String(stage2Settled.reason);
-				stageWarnings.push(
-					`TicketNotes search failed: ${msg}. Results omit notes-only matches.`,
-				);
+				stageWarnings.push(`TicketNotes search failed: ${msg}. Results omit notes-only matches.`);
 			}
 
 			const stage3Items: Record<string, unknown>[] =
@@ -2729,8 +3040,10 @@ export async function executeAiTool(
 			},
 		});
 		const needsParallelCount =
-			effectiveOperation === 'getMany' &&  // excludes getPosted/getUnposted (cross-entity join; wrong total)
-			recencyResult.isActive && !isShortWindow && !effectiveReturnAll;
+			effectiveOperation === 'getMany' && // excludes getPosted/getUnposted (cross-entity join; wrong total)
+			recencyResult.isActive &&
+			!isShortWindow &&
+			!effectiveReturnAll;
 		const [result, parallelCountResult] = await Promise.all([
 			executeToolOperation.call(context),
 			needsParallelCount
@@ -2827,7 +3140,7 @@ export async function executeAiTool(
 				if (fieldMeta && fieldMeta.type.toLowerCase().includes('date')) {
 					rawDatePairWarnings.push(
 						`Filtering a date field (${params.filter_field}) with gte+lte or gt+lt is discouraged. ` +
-						`Use recency (e.g. last_7d, last_30d) or since/until for date ranges — they encode the time window more clearly.`,
+							`Use recency (e.g. last_7d, last_30d) or since/until for date ranges — they encode the time window more clearly.`,
 					);
 				}
 			}
@@ -2859,7 +3172,9 @@ export async function executeAiTool(
 			injectedTotalAvailable: injectedCount ?? undefined,
 			autoReturnAll,
 			wasReturnAll: effectiveReturnAll,
-			windowLabel: params.recency ? formatRecencyWindowLabel(params.recency) ?? undefined : undefined,
+			windowLabel: params.recency
+				? (formatRecencyWindowLabel(params.recency) ?? undefined)
+				: undefined,
 			countQueryFailed: countQueryFailed || undefined,
 		};
 

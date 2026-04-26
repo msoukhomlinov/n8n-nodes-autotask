@@ -1,46 +1,85 @@
 import { AUTOTASK_ENTITIES } from './entities';
 import { OperationType } from '../types/base/entity-types';
 
-const AI_OPERATION_ORDER = ['get', 'whoAmI', 'getMany', 'searchByDomain', 'slaHealthCheck', 'summary', 'getFullDetail', 'countByPeriod', 'getByAge', 'searchByKeyword', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus', 'getPosted', 'getUnposted', 'getByResource', 'getByYear', 'count', 'create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'approve', 'reject', 'delete'] as const;
+const AI_OPERATION_ORDER = [
+	'get',
+	'whoAmI',
+	'getMany',
+	'searchByIdentity',
+	'searchByDomain',
+	'slaHealthCheck',
+	'summary',
+	'getFullDetail',
+	'countByPeriod',
+	'getByAge',
+	'searchByKeyword',
+	'getByCompanyAndStatus',
+	'getUnassigned',
+	'getBySLAStatus',
+	'getPosted',
+	'getUnposted',
+	'getByResource',
+	'getByYear',
+	'count',
+	'create',
+	'createIfNotExists',
+	'moveToCompany',
+	'moveConfigurationItem',
+	'transferOwnership',
+	'update',
+	'approve',
+	'reject',
+	'delete',
+] as const;
 const EXCLUDED_TOP_LEVEL_RESOURCES = new Set(['tool', 'searchFilter']);
 
 const OP_TYPE_TO_AI_OPS: Record<OperationType, string[]> = {
-    [OperationType.CREATE]: ['create'],
-    [OperationType.READ]: ['get'],
-    [OperationType.UPDATE]: ['update'],
-    [OperationType.DELETE]: ['delete'],
-    [OperationType.QUERY]: ['get', 'getMany'],
-    [OperationType.COUNT]: ['count'],
-    [OperationType.GET_ENTITY_INFO]: [],
-    [OperationType.GET_FIELD_INFO]: [],
+	[OperationType.CREATE]: ['create'],
+	[OperationType.READ]: ['get'],
+	[OperationType.UPDATE]: ['update'],
+	[OperationType.DELETE]: ['delete'],
+	[OperationType.QUERY]: ['get', 'getMany'],
+	[OperationType.COUNT]: ['count'],
+	[OperationType.GET_ENTITY_INFO]: [],
+	[OperationType.GET_FIELD_INFO]: [],
 };
 
 const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
-    resource: ['whoAmI', 'transferOwnership'],
-    contact: ['moveToCompany'],
-    company: ['searchByDomain'],
-    ticket: ['slaHealthCheck', 'summary', 'getFullDetail', 'countByPeriod', 'getByAge', 'searchByKeyword', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus'],
-    task: ['getFullDetail', 'countByPeriod', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned'],
-    project: ['getFullDetail', 'countByPeriod', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned'],
-    configurationItems: ['moveConfigurationItem', 'createIfNotExists'],
-    changeRequestLinks: ['createIfNotExists'],
-    contractCharge: ['createIfNotExists'],
-    ticketCharge: ['createIfNotExists'],
-    projectCharge: ['createIfNotExists'],
-    contract: ['createIfNotExists'],
-    contractService: ['createIfNotExists'],
-    expenseItem: ['createIfNotExists'],
-    holiday: ['createIfNotExists'],
-    holidaySet: ['createIfNotExists'],
-    opportunity: ['createIfNotExists'],
-    ticketAdditionalConfigurationItem: ['createIfNotExists'],
-    ticketAdditionalContact: ['createIfNotExists'],
-    timeEntry: ['getPosted', 'getUnposted', 'createIfNotExists'],
-    resourceTimeOffAdditional: ['getByResource', 'update'],
-    resourceTimeOffBalance: ['getByResource', 'getByYear'],
-    timeOffRequest: ['approve', 'reject'],
-    aiHelper: ['describeResource', 'listPicklistValues', 'validateParameters'],
-    apiThreshold: ['get'],
+	resource: ['whoAmI', 'transferOwnership'],
+	contact: ['moveToCompany'],
+	company: ['searchByIdentity', 'searchByDomain'],
+	ticket: [
+		'slaHealthCheck',
+		'summary',
+		'getFullDetail',
+		'countByPeriod',
+		'getByAge',
+		'searchByKeyword',
+		'getByCompanyAndStatus',
+		'getUnassigned',
+		'getBySLAStatus',
+	],
+	task: ['getFullDetail', 'countByPeriod', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned'],
+	project: ['getFullDetail', 'countByPeriod', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned'],
+	configurationItems: ['moveConfigurationItem', 'createIfNotExists'],
+	changeRequestLinks: ['createIfNotExists'],
+	contractCharge: ['createIfNotExists'],
+	ticketCharge: ['createIfNotExists'],
+	projectCharge: ['createIfNotExists'],
+	contract: ['createIfNotExists'],
+	contractService: ['createIfNotExists'],
+	expenseItem: ['createIfNotExists'],
+	holiday: ['createIfNotExists'],
+	holidaySet: ['createIfNotExists'],
+	opportunity: ['createIfNotExists'],
+	ticketAdditionalConfigurationItem: ['createIfNotExists'],
+	ticketAdditionalContact: ['createIfNotExists'],
+	timeEntry: ['getPosted', 'getUnposted', 'createIfNotExists'],
+	resourceTimeOffAdditional: ['getByResource', 'update'],
+	resourceTimeOffBalance: ['getByResource', 'getByYear'],
+	timeOffRequest: ['approve', 'reject'],
+	aiHelper: ['describeResource', 'listPicklistValues', 'validateParameters'],
+	apiThreshold: ['get'],
 };
 
 /**
@@ -51,114 +90,122 @@ const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
  * are automatically handled by the consumers of this registry.
  */
 export interface IdentifierPairConfig {
-    /** Operation names that use the id-OR-altId pattern. */
-    operations: string[];
-    /** The alternative identifier field name (e.g. 'ticketNumber'). */
-    altIdField: string;
-    /** A concrete example value for use in schema descriptions (e.g. 'T20240615.0674'). */
-    altIdExample: string;
-    /** Human-readable format hint (e.g. 'T{date}.{seq}'). */
-    altIdFormat: string;
+	/** Operation names that use the id-OR-altId pattern. */
+	operations: string[];
+	/** The alternative identifier field name (e.g. 'ticketNumber'). */
+	altIdField: string;
+	/** A concrete example value for use in schema descriptions (e.g. 'T20240615.0674'). */
+	altIdExample: string;
+	/** Human-readable format hint (e.g. 'T{date}.{seq}'). */
+	altIdFormat: string;
 }
 
 export const IDENTIFIER_PAIR_OPERATIONS: Record<string, IdentifierPairConfig> = {
-    ticket: {
-        operations: ['slaHealthCheck', 'summary', 'getFullDetail'],
-        altIdField: 'ticketNumber',
-        altIdExample: 'T20240615.0674',
-        altIdFormat: 'T{date}.{seq}',
-    },
+	ticket: {
+		operations: ['slaHealthCheck', 'summary', 'getFullDetail'],
+		altIdField: 'ticketNumber',
+		altIdExample: 'T20240615.0674',
+		altIdFormat: 'T{date}.{seq}',
+	},
 };
 
-export function getIdentifierPairConfig(resource: string, operation: string): IdentifierPairConfig | null {
-    const config = IDENTIFIER_PAIR_OPERATIONS[resource];
-    return (config && config.operations.includes(operation)) ? config : null;
+export function getIdentifierPairConfig(
+	resource: string,
+	operation: string,
+): IdentifierPairConfig | null {
+	const config = IDENTIFIER_PAIR_OPERATIONS[resource];
+	return config && config.operations.includes(operation) ? config : null;
 }
 
 function lowerCamelCase(value: string): string {
-    if (!value) return value;
-    return value.charAt(0).toLowerCase() + value.slice(1);
+	if (!value) return value;
+	return value.charAt(0).toLowerCase() + value.slice(1);
 }
 
 function isAiExcludedEntity(name: string, isAttachment?: boolean, parentChain?: string[]): boolean {
-    if (isAttachment) return true;
-    if (EXCLUDED_TOP_LEVEL_RESOURCES.has(lowerCamelCase(name))) return true;
-    if (!parentChain?.length) return false;
-    return /(?:ExcludedResource|Field|UdfField)$/.test(name);
+	if (isAttachment) return true;
+	if (EXCLUDED_TOP_LEVEL_RESOURCES.has(lowerCamelCase(name))) return true;
+	if (!parentChain?.length) return false;
+	return /(?:ExcludedResource|Field|UdfField)$/.test(name);
 }
 
 function toOrderedOperationList(ops: Set<string>): string[] {
-    const ordered = AI_OPERATION_ORDER.filter((op) => ops.has(op));
-    const remainder = [...ops].filter((op) => !AI_OPERATION_ORDER.includes(op as typeof AI_OPERATION_ORDER[number]));
-    return [...ordered, ...remainder];
+	const ordered = AI_OPERATION_ORDER.filter((op) => ops.has(op));
+	const remainder = [...ops].filter(
+		(op) => !AI_OPERATION_ORDER.includes(op as (typeof AI_OPERATION_ORDER)[number]),
+	);
+	return [...ordered, ...remainder];
 }
 
 function buildResourceOperationsMap(): Record<string, string[]> {
-    const map: Record<string, string[]> = {};
+	const map: Record<string, string[]> = {};
 
-    for (const entity of AUTOTASK_ENTITIES) {
-        if (isAiExcludedEntity(entity.name, entity.isAttachment, entity.parentChain)) {
-            continue;
-        }
+	for (const entity of AUTOTASK_ENTITIES) {
+		if (isAiExcludedEntity(entity.name, entity.isAttachment, entity.parentChain)) {
+			continue;
+		}
 
-        const resourceKey = entity.resourceKey ?? lowerCamelCase(entity.name);
-        const ops = new Set<string>();
+		const resourceKey = entity.resourceKey ?? lowerCamelCase(entity.name);
+		const ops = new Set<string>();
 
-        for (const opType of Object.keys(entity.operations) as OperationType[]) {
-            const mappedOperations = OP_TYPE_TO_AI_OPS[opType] ?? [];
-            for (const mappedOperation of mappedOperations) {
-                ops.add(mappedOperation);
-            }
-        }
+		for (const opType of Object.keys(entity.operations) as OperationType[]) {
+			const mappedOperations = OP_TYPE_TO_AI_OPS[opType] ?? [];
+			for (const mappedOperation of mappedOperations) {
+				ops.add(mappedOperation);
+			}
+		}
 
-        if (!ops.size) {
-            continue;
-        }
+		if (!ops.size) {
+			continue;
+		}
 
-        const specialOps = SPECIAL_AI_OPERATIONS[resourceKey] ?? [];
-        for (const specialOp of specialOps) {
-            ops.add(specialOp);
-        }
+		const specialOps = SPECIAL_AI_OPERATIONS[resourceKey] ?? [];
+		for (const specialOp of specialOps) {
+			ops.add(specialOp);
+		}
 
-        map[resourceKey] = toOrderedOperationList(ops);
-    }
+		map[resourceKey] = toOrderedOperationList(ops);
+	}
 
-    for (const [resourceKey, specialOps] of Object.entries(SPECIAL_AI_OPERATIONS)) {
-        if (!map[resourceKey]) {
-            map[resourceKey] = [...specialOps];
-        }
-    }
+	for (const [resourceKey, specialOps] of Object.entries(SPECIAL_AI_OPERATIONS)) {
+		if (!map[resourceKey]) {
+			map[resourceKey] = [...specialOps];
+		}
+	}
 
-    return map;
+	return map;
 }
 
 export const RESOURCE_OPERATIONS_MAP: Record<string, string[]> = buildResourceOperationsMap();
 
 const NORMALIZED_RESOURCE_OPERATIONS_MAP = Object.fromEntries(
-    Object.entries(RESOURCE_OPERATIONS_MAP).map(([key, value]) => [key.toLowerCase(), value]),
+	Object.entries(RESOURCE_OPERATIONS_MAP).map(([key, value]) => [key.toLowerCase(), value]),
 );
 
-const RESOURCE_ALIASES = AUTOTASK_ENTITIES.reduce<Record<string, string>>((aliases, entity) => {
-    const defaultResourceKey = lowerCamelCase(entity.name);
-    const resourceKey = entity.resourceKey ?? defaultResourceKey;
-    if (defaultResourceKey.toLowerCase() !== resourceKey.toLowerCase()) {
-        aliases[defaultResourceKey.toLowerCase()] = resourceKey;
-    }
-    return aliases;
-}, {
-    // Backward-compatible aliases not derivable from entity metadata.
-    companysiteconfiguration: 'companySiteConfigurations',
-    serviceLevelAgreementResult: 'serviceLevelAgreementResults',
-    servicecallticketresources: 'serviceCallTicketResource',
-    servicecalltaskresources: 'serviceCallTaskResource',
-});
+const RESOURCE_ALIASES = AUTOTASK_ENTITIES.reduce<Record<string, string>>(
+	(aliases, entity) => {
+		const defaultResourceKey = lowerCamelCase(entity.name);
+		const resourceKey = entity.resourceKey ?? defaultResourceKey;
+		if (defaultResourceKey.toLowerCase() !== resourceKey.toLowerCase()) {
+			aliases[defaultResourceKey.toLowerCase()] = resourceKey;
+		}
+		return aliases;
+	},
+	{
+		// Backward-compatible aliases not derivable from entity metadata.
+		companysiteconfiguration: 'companySiteConfigurations',
+		serviceLevelAgreementResult: 'serviceLevelAgreementResults',
+		servicecallticketresources: 'serviceCallTicketResource',
+		servicecalltaskresources: 'serviceCallTaskResource',
+	},
+);
 
 export function normaliseResourceName(resource: string): string {
-    const trimmed = resource.trim();
-    if (!trimmed) return resource;
-    return RESOURCE_ALIASES[trimmed.toLowerCase()] ?? trimmed;
+	const trimmed = resource.trim();
+	if (!trimmed) return resource;
+	return RESOURCE_ALIASES[trimmed.toLowerCase()] ?? trimmed;
 }
 
 export function getResourceOperations(resource: string): string[] {
-    return NORMALIZED_RESOURCE_OPERATIONS_MAP[normaliseResourceName(resource).toLowerCase()] || [];
+	return NORMALIZED_RESOURCE_OPERATIONS_MAP[normaliseResourceName(resource).toLowerCase()] || [];
 }

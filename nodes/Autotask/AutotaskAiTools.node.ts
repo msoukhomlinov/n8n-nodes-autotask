@@ -69,7 +69,9 @@ interface ArtifactCacheEntry {
 
 /** Minimal interface for calling safeParse on a Zod schema without importing zod types. */
 interface ZodSafeParseable {
-	safeParse(input: unknown):
+	safeParse(
+		input: unknown,
+	):
 		| { success: true; data: Record<string, unknown> }
 		| { success: false; error: { message: string } };
 }
@@ -101,7 +103,10 @@ function getArtifactCacheKey(
 	return `${credentialIdentity}|${resource}|ops:${getOpsSignature(effectiveOps)}|allowWrite:${allowWriteOperations ? '1' : '0'}|imp:${supportsImpersonation ? '1' : '0'}|meta:${metadataHash}`;
 }
 
-function getCachedEntry<T extends { expiresAt: number }>(cache: Map<string, T>, key: string): T | undefined {
+function getCachedEntry<T extends { expiresAt: number }>(
+	cache: Map<string, T>,
+	key: string,
+): T | undefined {
 	const hit = cache.get(key);
 	if (!hit) return undefined;
 	if (hit.expiresAt <= Date.now()) {
@@ -128,7 +133,10 @@ function getReferenceUtcNow(): string {
 	return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
-function getMetadataNeeds(operations: string[]): { needsReadFields: boolean; needsWriteFields: boolean } {
+function getMetadataNeeds(operations: string[]): {
+	needsReadFields: boolean;
+	needsWriteFields: boolean;
+} {
 	const needsReadFields = operations.some((op) =>
 		[
 			'get',
@@ -137,6 +145,7 @@ function getMetadataNeeds(operations: string[]): { needsReadFields: boolean; nee
 			'getUnposted',
 			'count',
 			'whoAmI',
+			'searchByIdentity',
 			'searchByDomain',
 			'getByResource',
 			'getByYear',
@@ -149,7 +158,9 @@ function getMetadataNeeds(operations: string[]): { needsReadFields: boolean; nee
 			'searchByKeyword',
 		].includes(op),
 	);
-	const needsWriteFields = operations.some((op) => ['create', 'createIfNotExists', 'update'].includes(op));
+	const needsWriteFields = operations.some((op) =>
+		['create', 'createIfNotExists', 'update'].includes(op),
+	);
 	return { needsReadFields, needsWriteFields };
 }
 
@@ -187,7 +198,12 @@ async function resolveMetadataForTool(
 	const { needsReadFields, needsWriteFields } = getMetadataNeeds(operations);
 
 	if (credentialIdentity !== null) {
-		const cacheKey = getMetadataCacheKey(credentialIdentity, resource, needsReadFields, needsWriteFields);
+		const cacheKey = getMetadataCacheKey(
+			credentialIdentity,
+			resource,
+			needsReadFields,
+			needsWriteFields,
+		);
 		const cached = getCachedEntry(metadataCache, cacheKey);
 		if (cached) {
 			return {
@@ -393,9 +409,7 @@ export class AutotaskAiTools implements INodeType {
 			);
 		}
 
-		const effectiveOps = operations.filter(
-			(op) => !isWriteOperation(op) || allowWriteOperations,
-		);
+		const effectiveOps = operations.filter((op) => !isWriteOperation(op) || allowWriteOperations);
 		if (effectiveOps.length === 0) {
 			throw new NodeOperationError(
 				this.getNode(),
@@ -448,16 +462,20 @@ export class AutotaskAiTools implements INodeType {
 			});
 		}
 
-		const cachedArtifact = credentialIdentity !== null
-			? getCachedEntry(artifactCache, getArtifactCacheKey(
-				credentialIdentity,
-				resource,
-				effectiveOps,
-				allowWriteOperations,
-				supportsImpersonation,
-				metadata.metadataHash,
-			))
-			: undefined;
+		const cachedArtifact =
+			credentialIdentity !== null
+				? getCachedEntry(
+						artifactCache,
+						getArtifactCacheKey(
+							credentialIdentity,
+							resource,
+							effectiveOps,
+							allowWriteOperations,
+							supportsImpersonation,
+							metadata.metadataHash,
+						),
+					)
+				: undefined;
 
 		let schema: unknown;
 		let descriptionTemplate: string;
@@ -476,7 +494,12 @@ export class AutotaskAiTools implements INodeType {
 			});
 		} else {
 			const schemaBuildStart = Date.now();
-			schema = buildUnifiedSchema(resource, effectiveOps, metadata.readFields, metadata.writeFields);
+			schema = buildUnifiedSchema(
+				resource,
+				effectiveOps,
+				metadata.readFields,
+				metadata.writeFields,
+			);
 			schemaBuildDurationMs = Date.now() - schemaBuildStart;
 
 			const descriptionBuildStart = Date.now();
@@ -626,9 +649,7 @@ export class AutotaskAiTools implements INodeType {
 		}
 
 		// Pick the first permitted operation as the default for test execution
-		const effectiveOps = operations.filter(
-			(op) => !isWriteOperation(op) || allowWriteOperations,
-		);
+		const effectiveOps = operations.filter((op) => !isWriteOperation(op) || allowWriteOperations);
 		if (effectiveOps.length === 0) {
 			throw new NodeOperationError(
 				this.getNode(),
@@ -695,16 +716,20 @@ export class AutotaskAiTools implements INodeType {
 		const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
 		let zodSchema: ZodSafeParseable;
 		{
-			const cachedArtifact = credentialIdentity !== null
-				? getCachedEntry(artifactCache, getArtifactCacheKey(
-					credentialIdentity,
-					resource,
-					effectiveOps,
-					allowWriteOperations,
-					supportsImpersonation,
-					metadata.metadataHash,
-				))
-				: undefined;
+			const cachedArtifact =
+				credentialIdentity !== null
+					? getCachedEntry(
+							artifactCache,
+							getArtifactCacheKey(
+								credentialIdentity,
+								resource,
+								effectiveOps,
+								allowWriteOperations,
+								supportsImpersonation,
+								metadata.metadataHash,
+							),
+						)
+					: undefined;
 			if (cachedArtifact) {
 				zodSchema = cachedArtifact.schema as ZodSafeParseable;
 			} else {
@@ -712,7 +737,10 @@ export class AutotaskAiTools implements INodeType {
 				// Build the schema on demand and cache it for subsequent calls.
 				const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
 				const schema = buildUnifiedSchema(
-					resource, effectiveOps, metadata.readFields, metadata.writeFields,
+					resource,
+					effectiveOps,
+					metadata.readFields,
+					metadata.writeFields,
 				);
 				zodSchema = schema as ZodSafeParseable;
 				if (credentialIdentity !== null) {
@@ -726,7 +754,12 @@ export class AutotaskAiTools implements INodeType {
 						supportsImpersonation,
 					);
 					const allAllowedOpsCold = [
-						...new Set([...effectiveOps, 'describeFields', 'listPicklistValues', 'describeOperation']),
+						...new Set([
+							...effectiveOps,
+							'describeFields',
+							'listPicklistValues',
+							'describeOperation',
+						]),
 					];
 					setCachedEntry(
 						artifactCache,
@@ -813,18 +846,21 @@ export class AutotaskAiTools implements INodeType {
 					// This is defense in depth: Zod catches type errors; the contract
 					// check catches semantic/required-field violations that produce
 					// a clearer, more actionable error message for the LLM.
-					const contractViolations: OperationContractViolation[] =
-						validateOperationContract(resource, operation, normalisedJson);
+					const contractViolations: OperationContractViolation[] = validateOperationContract(
+						resource,
+						operation,
+						normalisedJson,
+					);
 					const zodMessage = parseResult.error.message;
-					const contractMessage = contractViolations
-						.map((v) => v.message)
-						.join(' ');
-					const combinedSummary = contractViolations.length > 0
-						? `${contractMessage} (Zod details: ${zodMessage})`
-						: `Input validation failed: ${zodMessage}`;
-					const nextAction = contractViolations.length > 0
-						? `Call autotask_${resource} with operation '${operation}' and supply the missing/correct fields: ${contractMessage}`
-						: `Check parameter names and types. Use autotask_${resource} with operation 'describeFields' to see valid fields.`;
+					const contractMessage = contractViolations.map((v) => v.message).join(' ');
+					const combinedSummary =
+						contractViolations.length > 0
+							? `${contractMessage} (Zod details: ${zodMessage})`
+							: `Input validation failed: ${zodMessage}`;
+					const nextAction =
+						contractViolations.length > 0
+							? `Call autotask_${resource} with operation '${operation}' and supply the missing/correct fields: ${contractMessage}`
+							: `Check parameter names and types. Use autotask_${resource} with operation 'describeFields' to see valid fields.`;
 					response.push({
 						json: {
 							...wrapError(

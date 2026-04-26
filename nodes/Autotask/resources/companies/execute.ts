@@ -7,7 +7,10 @@ import {
 	GetManyOperation,
 	CountOperation,
 } from '../../operations/base';
-import { searchCompaniesByDomain } from '../../helpers/company-domain-search';
+import {
+	searchCompaniesByDomain,
+	searchCompaniesByIdentity,
+} from '../../helpers/company-domain-search';
 import { getSelectedColumns } from '../../operations/common/select-columns/filter-entity';
 
 const ENTITY_TYPE = 'company';
@@ -67,13 +70,35 @@ export async function executeCompanyOperation(
 				case 'searchByDomain': {
 					const domain = this.getNodeParameter('domain', i) as string;
 					const domainOperator = this.getNodeParameter('domainOperator', i, 'contains') as string;
-					const searchContactEmails = this.getNodeParameter('searchContactEmails', i, true) as boolean;
+					const searchContactEmails = this.getNodeParameter(
+						'searchContactEmails',
+						i,
+						true,
+					) as boolean;
 					const limit = this.getNodeParameter('limit', i, 25) as number;
 					const selectColumns = getSelectedColumns(this, i);
 					const response = await searchCompaniesByDomain(this, {
 						domain,
 						domainOperator,
 						searchContactEmails,
+						limit,
+						selectColumns,
+						itemIndex: i,
+					});
+					returnData.push({ json: response });
+					break;
+				}
+
+				case 'searchByIdentity': {
+					const companyName = this.getNodeParameter('companyName', i, '') as string;
+					const email = this.getNodeParameter('email', i, '') as string;
+					const website = this.getNodeParameter('website', i, '') as string;
+					const limit = this.getNodeParameter('limit', i, 25) as number;
+					const selectColumns = getSelectedColumns(this, i);
+					const response = await searchCompaniesByIdentity(this, {
+						companyName,
+						email,
+						website,
 						limit,
 						selectColumns,
 						itemIndex: i,

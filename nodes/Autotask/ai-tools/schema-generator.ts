@@ -18,8 +18,7 @@ const IMPERSONATION_RESOURCE_ID_DESCRIBE =
 	'Resource ID, name, or email to impersonate for write attribution (auto-resolved).';
 
 /** Shared proceedWithoutImpersonationIfDenied description — used at all 5 schema insertion sites. */
-const IMPERSONATION_PROCEED_DESCRIBE =
-	'If impersonation denied, retry without it (default true).';
+const IMPERSONATION_PROCEED_DESCRIBE = 'If impersonation denied, retry without it (default true).';
 
 function getSchemaFieldSignature(fields: FieldMeta[]): string {
 	return fields
@@ -37,7 +36,11 @@ function getSchemaFieldSignature(fields: FieldMeta[]): string {
 		.join('|');
 }
 
-function getReadOnlySchemaCacheKey(resource: string, operations: string[], readFields: FieldMeta[]): string {
+function getReadOnlySchemaCacheKey(
+	resource: string,
+	operations: string[],
+	readFields: FieldMeta[],
+): string {
 	const opSig = [...operations].sort().join(',');
 	return `${resource}|${opSig}|${getSchemaFieldSignature(readFields)}`;
 }
@@ -213,8 +216,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			resource,
 			summary: {
 				operations,
-				hasListFamilyOps: operations.some((op) =>
-					getOperationMetadata(op)?.supportsFilters === true,
+				hasListFamilyOps: operations.some(
+					(op) => getOperationMetadata(op)?.supportsFilters === true,
 				),
 				hasWriteFamilyOps: operations.some((op) => isWriteOperation(op)),
 				hasIdentifierPairOps: Boolean(IDENTIFIER_PAIR_OPERATIONS[resource]),
@@ -246,9 +249,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			: [];
 		const hasIdPairOps = idPairOps.length > 0;
 		const hasGetFullDetail = operations.includes('getFullDetail');
-		const fullDetailUsesIdPair = hasGetFullDetail
-			&& !!idPairConfig
-			&& idPairConfig.operations.includes('getFullDetail');
+		const fullDetailUsesIdPair =
+			hasGetFullDetail && !!idPairConfig && idPairConfig.operations.includes('getFullDetail');
 		const hasGetFullDetailIdOnly = hasGetFullDetail && !fullDetailUsesIdPair;
 
 		// operation — required enum
@@ -256,6 +258,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// not here. Runtime enforcement is via operation-contracts.ts xorGroups.
 		const operationDesc = `Operation to perform. One of: ${allOps.join(', ')}`;
 		shape.operation = rz.enum(allOps).describe(operationDesc);
+		const hasSearchByIdentity = operations.includes('searchByIdentity');
 		const hasSearchByDomain = operations.includes('searchByDomain');
 		const hasMoveConfigItem = operations.includes('moveConfigurationItem');
 		const hasMoveToCompany = operations.includes('moveToCompany');
@@ -266,7 +269,14 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		const hasGetByYear = operations.includes('getByYear');
 
 		// id — used by get, delete, update, identifier-pair ops (e.g. slaHealthCheck, summary), approve, reject, getFullDetail (id-only mode)
-		if (hasGet || hasDeleteOp || hasUpdate || hasIdPairOps || hasApproveOrReject || hasGetFullDetailIdOnly) {
+		if (
+			hasGet ||
+			hasDeleteOp ||
+			hasUpdate ||
+			hasIdPairOps ||
+			hasApproveOrReject ||
+			hasGetFullDetailIdOnly
+		) {
 			const strictIdOps: string[] = [];
 			if (hasGet) strictIdOps.push('get');
 			if (hasDeleteOp) strictIdOps.push('delete');
@@ -288,9 +298,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.resourceID = rz
 				.union([rz.number(), rz.string()])
 				.nullish()
-				.describe(
-					'Resource ID or name (auto-resolved). Required for getByResource and getByYear.',
-				);
+				.describe('Resource ID or name (auto-resolved). Required for getByResource and getByYear.');
 		}
 
 		// year — used by getByYear
@@ -311,9 +319,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.rejectReasonPolicy = rz
 				.enum(['optional', 'mandatory'])
 				.nullish()
-				.describe(
-					"Reject-reason policy for reject operation. 'mandatory' requires rejectReason.",
-				);
+				.describe("Reject-reason policy for reject operation. 'mandatory' requires rejectReason.");
 		}
 
 		// fields — column selection
@@ -337,9 +343,15 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					? rz
 							.enum(fieldNames as [string, ...string[]])
 							.nullish()
-							.describe("Field to filter on. For 'older than' / upper-bound date queries, use a date field (createDate, lastActivityDate, dueDateTime) with filter_op='lt'.")
+							.describe(
+								"Field to filter on. For 'older than' / upper-bound date queries, use a date field (createDate, lastActivityDate, dueDateTime) with filter_op='lt'.",
+							)
 					: rz.string().nullish().describe(filterFieldDesc);
-			shape.filter_op = rFilterOpEnum.nullish().describe("Filter operator. Use 'notExist' for unassigned/empty/null fields (no filter_value needed). Use 'exist' for populated fields. Other operators: eq (equals), noteq (not equals), gt/gte/lt/lte (numeric/date comparisons), contains/beginsWith/endsWith (text), in/notIn (array of values).");
+			shape.filter_op = rFilterOpEnum
+				.nullish()
+				.describe(
+					"Filter operator. Use 'notExist' for unassigned/empty/null fields (no filter_value needed). Use 'exist' for populated fields. Other operators: eq (equals), noteq (not equals), gt/gte/lt/lte (numeric/date comparisons), contains/beginsWith/endsWith (text), in/notIn (array of values).",
+				);
 			shape.filter_value = rFilterValueSchema.nullish();
 			shape.filter_field_2 = rz
 				.string()
@@ -352,9 +364,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.filter_logic = rz
 				.enum(['and', 'or'])
 				.nullish()
-				.describe(
-					"Combiner between the two filter pairs: 'and' (default) or 'or'.",
-				);
+				.describe("Combiner between the two filter pairs: 'and' (default) or 'or'.");
 			shape.limit = rz
 				.number()
 				.int()
@@ -391,10 +401,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.until = rz
 				.string()
 				.nullish()
+				.describe('Range end (ISO-8601). Requires since or recency.');
+			shape.filtersJson = rz
+				.string()
+				.nullish()
 				.describe(
-					'Range end (ISO-8601). Requires since or recency.',
-				);
-			shape.filtersJson = rz.string().nullish().describe(
 					'JSON IFilterCondition array. No label resolution — use numeric IDs (call listPicklistValues for picklist IDs). Mutually exclusive with filter_field. Dates UTC.',
 				);
 			shape.returnAll = rz
@@ -406,9 +417,30 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.outputMode = rz
 				.enum(['idsAndLabels', 'rawIds'])
 				.nullish()
-				.describe(
-					"'idsAndLabels' (default, enriched with labels) or 'rawIds' (lighter).",
-				);
+				.describe("'idsAndLabels' (default, enriched with labels) or 'rawIds' (lighter).");
+		}
+
+		// searchByIdentity fields
+		if (hasSearchByIdentity) {
+			shape.companyName = rz
+				.string()
+				.nullish()
+				.describe('Optional company name for contains matching and ranking.');
+			shape.email = rz
+				.string()
+				.nullish()
+				.describe('Optional email used to infer domain for matching.');
+			shape.website = rz
+				.string()
+				.nullish()
+				.describe('Optional website/domain used for primary domain matching.');
+			shape.limit = rz
+				.number()
+				.int()
+				.min(1)
+				.max(100)
+				.nullish()
+				.describe('Max results (1-100, default 25).');
 		}
 
 		// searchByDomain fields
@@ -426,6 +458,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.boolean()
 				.nullish()
 				.describe('When true (default), fall back to contact email search if no website match.');
+			shape.limit = rz
+				.number()
+				.int()
+				.min(1)
+				.max(100)
+				.nullish()
+				.describe('Max results (1-100, default 25).');
 		}
 
 		// slaHealthCheck fields
@@ -491,14 +530,18 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.slaStatus = rz
 					.enum(['breached', 'at_risk', 'compliant'])
 					.nullish()
-					.describe("Required for getBySLAStatus: 'breached' (SLA missed), 'at_risk' (within atRiskWindowHours of deadline), or 'compliant' (SLA met).");
+					.describe(
+						"Required for getBySLAStatus: 'breached' (SLA missed), 'at_risk' (within atRiskWindowHours of deadline), or 'compliant' (SLA met).",
+					);
 			}
 			if (!shape.atRiskWindowHours) {
 				shape.atRiskWindowHours = rz
 					.number()
 					.positive()
 					.nullish()
-					.describe('Hours before resolvedDueDateTime to consider a ticket at-risk (default 4). Only applies when slaStatus=at_risk.');
+					.describe(
+						'Hours before resolvedDueDateTime to consider a ticket at-risk (default 4). Only applies when slaStatus=at_risk.',
+					);
 			}
 			if (!shape.company) {
 				shape.company = rz
@@ -513,7 +556,17 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		if (hasCountByPeriod) {
 			if (!shape.period) {
 				shape.period = rz
-					.enum(['today', 'this_week', 'last_7d', 'this_month', 'last_month', 'this_quarter', 'last_quarter', 'last_30d', 'last_90d'])
+					.enum([
+						'today',
+						'this_week',
+						'last_7d',
+						'this_month',
+						'last_month',
+						'this_quarter',
+						'last_quarter',
+						'last_30d',
+						'last_90d',
+					])
 					.nullish()
 					.describe('Required for countByPeriod: named period preset for createDate range.');
 			}
@@ -546,11 +599,25 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.int()
 					.positive()
 					.nullish()
-					.describe('Required for getByAge: return records older than N days (e.g. 30 for records created more than 30 days ago). Positive integer.');
+					.describe(
+						'Required for getByAge: return records older than N days (e.g. 30 for records created more than 30 days ago). Positive integer.',
+					);
 			}
-			if (!shape.company) shape.company = rz.union([rz.number(), rz.string()]).nullish().describe('Company name or companyID (auto-resolved).');
-			if (!shape.status) shape.status = rz.union([rz.number(), rz.string()]).nullish().describe('Status picklist label or ID (optional).');
-			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority) shape.priority = rz.union([rz.number(), rz.string()]).nullish().describe('Priority picklist label or ID (optional).');
+			if (!shape.company)
+				shape.company = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe('Company name or companyID (auto-resolved).');
+			if (!shape.status)
+				shape.status = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe('Status picklist label or ID (optional).');
+			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority)
+				shape.priority = rz
+					.union([rz.number(), rz.string()])
+					.nullish()
+					.describe('Priority picklist label or ID (optional).');
 		}
 
 		// searchByKeyword fields
@@ -961,7 +1028,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.boolean()
 					.nullish()
 					.describe(
-						"If true, error on duplicate instead of returning outcome: skipped. Default false.",
+						'If true, error on duplicate instead of returning outcome: skipped. Default false.',
 					);
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
@@ -984,32 +1051,19 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			);
 
 		// listPicklistValues fields
-		shape.fieldId = rz
-			.string()
-			.nullish()
-			.describe(
-				'Field ID. Required for listPicklistValues.',
-			);
-		shape.query = rz
-			.string()
-			.nullish()
-			.describe('Search term to filter picklist values.');
+		shape.fieldId = rz.string().nullish().describe('Field ID. Required for listPicklistValues.');
+		shape.query = rz.string().nullish().describe('Search term to filter picklist values.');
 		if (!shape.limit) {
 			shape.limit = rz
 				.number()
 				.nullish()
 				.describe('Max results (used by listPicklistValues for pagination, default 50).');
 		}
-		shape.page = rz
-			.number()
-			.nullish()
-			.describe('Page for listPicklistValues (default 1).');
+		shape.page = rz.number().nullish().describe('Page for listPicklistValues (default 1).');
 		shape.targetOperation = rz
 			.string()
 			.nullish()
-			.describe(
-				"For describeOperation: the operation name to document (e.g. 'create').",
-			);
+			.describe("For describeOperation: the operation name to document (e.g. 'create').");
 
 		// Typed-reference companion fields (ticketLookupField, projectLookupField, …).
 		// Emitted outside the hasCreate||hasUpdate block so they are available on
@@ -1017,9 +1071,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		const allFields = [...writeFields, ...readFields];
 		for (const strategy of Object.values(TYPED_REFERENCE_STRATEGIES)) {
 			const hasMatchingField = allFields.some(
-				(f) =>
-					f.isReference &&
-					f.referencesEntity?.toLowerCase() === strategy.entityType,
+				(f) => f.isReference && f.referencesEntity?.toLowerCase() === strategy.entityType,
 			);
 			if (!hasMatchingField) continue;
 			if (strategy.companionFieldName in shape) continue; // de-dup guard
@@ -1028,8 +1080,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.nullish()
 				.describe(
 					`Search field for ${strategy.entityType} lookup when ${strategy.entityType}ID is a non-numeric label. ` +
-					`E.g. set to '${strategy.searchableFields[0]}' to find by name. ` +
-					`Not needed when supplying a ${strategy.entityType} number (${strategy.exampleValue}).`,
+						`E.g. set to '${strategy.searchableFields[0]}' to find by name. ` +
+						`Not needed when supplying a ${strategy.entityType} number (${strategy.exampleValue}).`,
 				);
 		}
 
