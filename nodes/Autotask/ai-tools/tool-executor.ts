@@ -14,6 +14,7 @@ import {
 	formatIdError,
 	wrapError,
 	ERROR_TYPES,
+	type FlatErrorResponse,
 } from './error-formatter';
 import {
 	resolveLabelsToIds,
@@ -115,6 +116,139 @@ export interface ToolExecutionMetadata {
 	readFields?: FieldMeta[];
 	writeFields?: FieldMeta[];
 	allAllowedOps?: string[];
+}
+
+interface ResourceConvenienceConfig {
+	queryEndpoint: string;
+	getEndpoint: (id: string | number) => string;
+	createDateField: string;
+	assignedField: string;
+	terminalStatusIds: number[];
+	hasPriority: boolean;
+	hasCompanyId: boolean;
+	companyFilterStrategy: 'direct' | 'viaProject';
+	supportsSLA: boolean;
+	getFullDetailMode: 'sla' | 'simple';
+	childCountEntities: Array<{
+		queryEndpoint: string;
+		parentField: string;
+		key: string;
+	}>;
+}
+
+const RESOURCE_CONVENIENCE_CONFIG: Record<string, ResourceConvenienceConfig> = {
+	ticket: {
+		queryEndpoint: 'Tickets/query',
+		getEndpoint: (id) => `Tickets/${id}`,
+		createDateField: 'createDate',
+		assignedField: 'assignedResourceID',
+		terminalStatusIds: [5, 8],
+		hasPriority: true,
+		hasCompanyId: true,
+		companyFilterStrategy: 'direct',
+		supportsSLA: true,
+		getFullDetailMode: 'sla',
+		childCountEntities: [],
+	},
+	task: {
+		queryEndpoint: 'Tasks/query',
+		getEndpoint: (id) => `Tasks/${id}`,
+		createDateField: 'createDateTime',
+		assignedField: 'assignedResourceID',
+		terminalStatusIds: [5],
+		hasPriority: false,
+		hasCompanyId: false,
+		companyFilterStrategy: 'viaProject',
+		supportsSLA: false,
+		getFullDetailMode: 'simple',
+		childCountEntities: [
+			{ queryEndpoint: 'TaskNotes/query',              parentField: 'taskID',    key: 'notes' },
+			{ queryEndpoint: 'TaskSecondaryResources/query', parentField: 'taskID',    key: 'secondaryResources' },
+			{ queryEndpoint: 'TimeEntries/query',            parentField: 'taskID',    key: 'timeEntries' },
+		],
+	},
+	project: {
+		queryEndpoint: 'Projects/query',
+		getEndpoint: (id) => `Projects/${id}`,
+		createDateField: 'createDateTime',
+		assignedField: 'projectLeadResourceID',
+		terminalStatusIds: [5],
+		hasPriority: false,
+		hasCompanyId: true,
+		companyFilterStrategy: 'direct',
+		supportsSLA: false,
+		getFullDetailMode: 'simple',
+		childCountEntities: [
+			{ queryEndpoint: 'ProjectNotes/query',   parentField: 'projectID', key: 'notes' },
+			{ queryEndpoint: 'ProjectCharges/query', parentField: 'projectID', key: 'charges' },
+			{ queryEndpoint: 'Tasks/query',          parentField: 'projectID', key: 'tasks' },
+			{ queryEndpoint: 'Phases/query',         parentField: 'projectID', key: 'phases' },
+		],
+	},
+};
+
+function getConvenienceConfig(resource: string): ResourceConvenienceConfig | undefined {
+	return RESOURCE_CONVENIENCE_CONFIG[resource];
+}
+
+export async function resolveCompanyToProjectIdFilter(
+	context: IExecuteFunctions,
+	companyRaw: string | number,
+	operationName: string,
+): Promise<
+	| { filter: ToolFilter; warning?: string }
+	| { empty: true }
+	| { error: FlatErrorResponse }
+> {
+	let companyId: number;
+	const raw = String(companyRaw).trim();
+	if (/^\d+$/.test(raw)) {
+		companyId = Number(raw);
+	} else {
+		const companyLookup = await autotaskApiRequest.call(
+			context, 'POST', 'Companies/query',
+			{
+				filter: [{ field: 'companyName', op: 'eq', value: raw }],
+				MaxRecords: 1,
+			} as IDataObject,
+		) as { items?: IAutotaskEntity[] };
+		const matches = Array.isArray(companyLookup.items) ? companyLookup.items : [];
+		if (matches.length === 0) {
+			return {
+				error: wrapError(
+					'task',
+					operationName,
+					ERROR_TYPES.ENTITY_NOT_FOUND,
+					`Company '${raw}' not found.`,
+					'Verify the company name is exact, or use a numeric companyID.',
+				),
+			};
+		}
+		companyId = Number(matches[0].id);
+	}
+
+	const projectsResp = await autotaskApiRequest.call(
+		context, 'POST', 'Projects/query',
+		{
+			filter: [{ field: 'companyID', op: 'eq', value: companyId }],
+			MaxRecords: 500,
+			IncludeFields: ['id'],
+		} as IDataObject,
+	) as { items?: IAutotaskEntity[] };
+	const projectIds = (Array.isArray(projectsResp.items) ? projectsResp.items : [])
+		.map((p) => Number(p.id))
+		.filter((n) => Number.isFinite(n));
+
+	if (projectIds.length === 0) {
+		return { empty: true };
+	}
+
+	return {
+		filter: { field: 'projectID', op: 'in', value: projectIds } as ToolFilter,
+		warning: projectIds.length >= 500
+			? `Company expanded to 500+ projects — task results may be incomplete. Narrow the search by date or status.`
+			: undefined,
+	};
 }
 
 export const DEFAULT_QUERY_LIMIT = 10;
@@ -871,7 +1005,7 @@ export async function executeAiTool(
 	}
 
 	// Pre-flight: filter cross-validation (list operations)
-	const isListOperation = ['getMany', 'count', 'getPosted', 'getUnposted', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus'].includes(effectiveOperation);
+	const isListOperation = ['getMany', 'count', 'getPosted', 'getUnposted', 'getByAge', 'searchByKeyword', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus'].includes(effectiveOperation);
 	if (isListOperation) {
 		const p = params as Record<string, unknown>;
 		const hasFiltersJson = hasProvidedValue(p.filtersJson);
@@ -1482,8 +1616,50 @@ export async function executeAiTool(
 			}
 		}
 
+		// Convenience-ops resource gate — fail fast for unsupported resources.
+		const CONVENIENCE_OPS_SET = new Set([
+			'getByCompanyAndStatus',
+			'getUnassigned',
+			'getBySLAStatus',
+			'getFullDetail',
+			'countByPeriod',
+			'getByAge',
+		]);
+		if (CONVENIENCE_OPS_SET.has(effectiveOperation)) {
+			const cfgCheck = getConvenienceConfig(resource);
+			if (!cfgCheck) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							effectiveOperation,
+							ERROR_TYPES.INVALID_OPERATION,
+							`Operation '${effectiveOperation}' is not supported for resource '${resource}'.`,
+							`This convenience operation is only available on supported resources. Use autotask_${resource} with operation 'getMany' instead.`,
+						),
+					),
+					correlationId,
+				);
+			}
+			if (effectiveOperation === 'getBySLAStatus' && !cfgCheck.supportsSLA) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							effectiveOperation,
+							ERROR_TYPES.INVALID_OPERATION,
+							`Operation 'getBySLAStatus' is only supported for tickets — '${resource}' has no SLA concept.`,
+							`Use autotask_${resource} with operation 'getMany' and date filters to find ${resource} records by status or age.`,
+						),
+					),
+					correlationId,
+				);
+			}
+		}
+
 		// Short-circuit: getByCompanyAndStatus
 		if (effectiveOperation === 'getByCompanyAndStatus') {
+			const cfg = getConvenienceConfig(resource)!;
 			const companyRaw = params.company;
 			if (companyRaw === undefined || companyRaw === null || String(companyRaw).trim() === '') {
 				return attachCorrelation(
@@ -1502,20 +1678,24 @@ export async function executeAiTool(
 
 			// Build synthetic filters: company is required; status and priority are optional.
 			// resolveAndClassifyFilters resolves string values to numeric IDs in-place.
-			const syntheticFilters: ToolFilter[] = [{ field: 'companyID', op: 'eq', value: companyRaw as string | number }];
+			const syntheticFilters: ToolFilter[] = [];
+			if (cfg.companyFilterStrategy === 'direct') {
+				syntheticFilters.push({ field: 'companyID', op: 'eq', value: companyRaw as string | number });
+			}
 			if (params.status !== undefined && params.status !== null) {
 				syntheticFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
 			}
-			if (params.priority !== undefined && params.priority !== null) {
+			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
 				syntheticFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
 			}
 
 			const {
 				resolutions: specialResolutions,
-				warnings: specialWarnings,
+				warnings: specialWarningsRaw,
 				pendingConfirmations: specialPending,
 				unresolvedIdLikeFilters: specialUnresolved,
 			} = await resolveAndClassifyFilters(context, resource, syntheticFilters, readFields, params as IDataObject);
+			const specialWarnings: string[] = [...specialWarningsRaw];
 
 			if (specialUnresolved.length > 0) {
 				return attachCorrelation(
@@ -1525,12 +1705,32 @@ export async function executeAiTool(
 							'getByCompanyAndStatus',
 							ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
 							`Could not resolve: ${specialUnresolved.map((f) => `${f.field}='${String(f.value)}'`).join(', ')}`,
-							`Verify the company name is exact, or use a numeric companyID. For status/priority, call autotask_${resource} with operation 'listPicklistValues' and fieldId='status' or 'priority'.`,
+							`Verify the company name is exact, or use a numeric companyID. For status${cfg.hasPriority ? '/priority' : ''}, call autotask_${resource} with operation 'listPicklistValues' and fieldId='status'${cfg.hasPriority ? " or 'priority'" : ''}.`,
 							{ pendingConfirmations: specialPending.length > 0 ? specialPending : undefined },
 						),
 					),
 					correlationId,
 				);
+			}
+
+			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
+			if (cfg.companyFilterStrategy === 'viaProject' && companyRaw !== undefined && companyRaw !== null) {
+				const r = await resolveCompanyToProjectIdFilter(context, companyRaw as string | number, 'getByCompanyAndStatus');
+				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
+				if ('empty' in r) {
+					return attachCorrelation(
+						JSON.stringify(
+							buildListResponse(resource, 'getByCompanyAndStatus', [], {
+								hasMore: false, serverCap: MAX_QUERY_LIMIT, clientCap: MAX_QUERY_LIMIT,
+							}, {
+								resolutionWarnings: [`No projects found for company '${String(companyRaw)}'.`],
+							}),
+						),
+						correlationId,
+					);
+				}
+				syntheticFilters.unshift(r.filter);
+				if (r.warning) specialWarnings.push(r.warning);
 			}
 
 			// After resolveAndClassifyFilters, syntheticFilters values are resolved in-place.
@@ -1543,7 +1743,7 @@ export async function executeAiTool(
 				requestBody.MaxRecords = queryLimitForOp;
 			}
 
-			const gbcasResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', requestBody) as { items?: IAutotaskEntity[] };
+			const gbcasResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, requestBody) as { items?: IAutotaskEntity[] };
 			const gbcasItems = Array.isArray(gbcasResponse.items) ? gbcasResponse.items as Record<string, unknown>[] : [];
 
 			const allGbcasWarnings = [...specialWarnings, ...labelWarnings];
@@ -1566,18 +1766,19 @@ export async function executeAiTool(
 
 		// Short-circuit: getUnassigned
 		if (effectiveOperation === 'getUnassigned') {
+			const cfg = getConvenienceConfig(resource)!;
 			// Hardcoded base filters: unassigned + not complete/cancelled
 			const unassignedFilters: ToolFilter[] = [
-				{ field: 'assignedResourceID', op: 'notExist' },
-				{ field: 'status', op: 'notIn', value: [5, 8] },
+				{ field: cfg.assignedField, op: 'notExist' },
+				{ field: 'status', op: 'notIn', value: cfg.terminalStatusIds },
 			];
 
 			// Optional: company and priority filters (resolve name→ID)
 			const optionalFilters: ToolFilter[] = [];
-			if (params.company !== undefined && params.company !== null) {
+			if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) {
 				optionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
 			}
-			if (params.priority !== undefined && params.priority !== null) {
+			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
 				optionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
 			}
 
@@ -1610,6 +1811,26 @@ export async function executeAiTool(
 				);
 			}
 
+			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
+			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
+				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'getUnassigned');
+				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
+				if ('empty' in r) {
+					return attachCorrelation(
+						JSON.stringify(
+							buildListResponse(resource, 'getUnassigned', [], {
+								hasMore: false, serverCap: MAX_QUERY_LIMIT, clientCap: MAX_QUERY_LIMIT,
+							}, {
+								resolutionWarnings: [`No projects found for company '${String(params.company)}'.`],
+							}),
+						),
+						correlationId,
+					);
+				}
+				optionalFilters.unshift(r.filter);
+				if (r.warning) specialWarnings.push(r.warning);
+			}
+
 			const apiFilters: ToolFilter[] = [...unassignedFilters, ...optionalFilters, ...(recencyResult.filters as ToolFilter[])];
 			const queryLimitForOp = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
 			const requestBody: IDataObject = { filter: apiFilters as unknown as IDataObject[] };
@@ -1617,7 +1838,7 @@ export async function executeAiTool(
 				requestBody.MaxRecords = queryLimitForOp;
 			}
 
-			const unassignedResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', requestBody) as { items?: IAutotaskEntity[] };
+			const unassignedResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, requestBody) as { items?: IAutotaskEntity[] };
 			const unassignedItems = Array.isArray(unassignedResponse.items) ? unassignedResponse.items as Record<string, unknown>[] : [];
 
 			const allUnassignedWarnings = [...specialWarnings, ...labelWarnings];
@@ -1640,6 +1861,7 @@ export async function executeAiTool(
 
 		// Short-circuit: getBySLAStatus
 		if (effectiveOperation === 'getBySLAStatus') {
+			const cfg = getConvenienceConfig(resource)!;
 			const slaStatusParam = params.slaStatus as string | undefined;
 			if (!slaStatusParam || !['breached', 'at_risk', 'compliant'].includes(slaStatusParam)) {
 				return attachCorrelation(
@@ -1674,7 +1896,7 @@ export async function executeAiTool(
 					items: [
 						{ field: 'resolvedDueDateTime', op: 'gt', value: now.toISOString() },
 						{ field: 'resolvedDueDateTime', op: 'lt', value: windowEnd.toISOString() },
-						{ field: 'status', op: 'notIn', value: [5, 8] },
+						{ field: 'status', op: 'notIn', value: cfg.terminalStatusIds },
 					],
 				}];
 			}
@@ -1721,7 +1943,7 @@ export async function executeAiTool(
 				slaRequestBody.MaxRecords = queryLimitForSla;
 			}
 
-			const slaResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', slaRequestBody) as { items?: IAutotaskEntity[] };
+			const slaResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, slaRequestBody) as { items?: IAutotaskEntity[] };
 			const slaItems = Array.isArray(slaResponse.items) ? slaResponse.items as Record<string, unknown>[] : [];
 
 			const allSlaWarnings = [...slaSpecialWarnings, ...labelWarnings];
@@ -1744,12 +1966,14 @@ export async function executeAiTool(
 
 		// Short-circuit: getFullDetail
 		if (effectiveOperation === 'getFullDetail') {
+			const cfg = getConvenienceConfig(resource)!;
+			const fdIdPairConfig = getIdentifierPairConfig(resource, 'getFullDetail');
 			let fullDetailTicketId: string | undefined;
 			if (params.id !== undefined && params.id !== null) {
 				fullDetailTicketId = String(params.id);
-			} else if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim()) {
-				const tnLookup = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', {
-					filter: [{ field: 'ticketNumber', op: 'eq', value: params.ticketNumber.trim() }],
+			} else if (fdIdPairConfig && typeof params.ticketNumber === 'string' && params.ticketNumber.trim()) {
+				const tnLookup = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, {
+					filter: [{ field: fdIdPairConfig.altIdField, op: 'eq', value: params.ticketNumber.trim() }],
 					MaxRecords: 1,
 				} as IDataObject) as { items?: IAutotaskEntity[] };
 				const tnItems = Array.isArray(tnLookup.items) ? tnLookup.items : [];
@@ -1760,8 +1984,8 @@ export async function executeAiTool(
 								resource,
 								'getFullDetail',
 								ERROR_TYPES.ENTITY_NOT_FOUND,
-								`Ticket with ticketNumber '${params.ticketNumber}' not found.`,
-								`Verify the ticket number format (e.g. T20240615.0123) and retry autotask_${resource} with operation 'getMany'.`,
+								`Ticket with ${fdIdPairConfig.altIdField} '${params.ticketNumber}' not found.`,
+								`Verify the ticket number format (e.g. ${fdIdPairConfig.altIdExample}) and retry autotask_${resource} with operation 'getMany'.`,
 							),
 						),
 						correlationId,
@@ -1771,74 +1995,138 @@ export async function executeAiTool(
 			}
 
 			if (!fullDetailTicketId) {
+				const missingMsg = fdIdPairConfig
+					? `Either 'id' (numeric) or '${fdIdPairConfig.altIdField}' (e.g. ${fdIdPairConfig.altIdExample}) is required for getFullDetail.`
+					: `'id' (numeric) is required for getFullDetail.`;
+				const missingNext = fdIdPairConfig
+					? `Call autotask_${resource} with operation 'getFullDetail' and provide 'id' or '${fdIdPairConfig.altIdField}'.`
+					: `Call autotask_${resource} with operation 'getFullDetail' and provide 'id'.`;
 				return attachCorrelation(
 					JSON.stringify(
 						wrapError(
 							resource,
 							'getFullDetail',
 							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
-							"Either 'id' (numeric) or 'ticketNumber' (e.g. T20240615.0123) is required for getFullDetail.",
-							`Call autotask_${resource} with operation 'getFullDetail' and provide 'id' or 'ticketNumber'.`,
+							missingMsg,
+							missingNext,
 						),
 					),
 					correlationId,
 				);
 			}
 
-			const fullDetailResponse = await autotaskApiRequest.call(context, 'GET', `Tickets/${fullDetailTicketId}`) as { item?: IAutotaskEntity };
+			const resolvedDetailId = fullDetailTicketId;
+			const fullDetailResponse = await autotaskApiRequest.call(context, 'GET', cfg.getEndpoint(resolvedDetailId)) as { item?: IAutotaskEntity };
 			const rawFullDetailTicket = fullDetailResponse.item;
 			if (!rawFullDetailTicket || typeof rawFullDetailTicket !== 'object') {
+				const resourceTitle = resource.charAt(0).toUpperCase() + resource.slice(1);
 				return attachCorrelation(
 					JSON.stringify(
 						wrapError(
 							resource,
 							'getFullDetail',
 							ERROR_TYPES.ENTITY_NOT_FOUND,
-							`Ticket with ID ${fullDetailTicketId} not found.`,
-							`Verify the ticket ID and retry autotask_${resource} with operation 'getMany'.`,
+							`${resourceTitle} with ID ${resolvedDetailId} not found.`,
+							`Verify the ${resource} ID and retry autotask_${resource} with operation 'getMany'.`,
 						),
 					),
 					correlationId,
 				);
 			}
 
-			const fdTicket = rawFullDetailTicket as Record<string, unknown>;
+			const detailRecord = rawFullDetailTicket as Record<string, unknown>;
 
-			// Derive SLA status from ticket fields — no extra API call needed
-			const fdHasSla = fdTicket.serviceLevelAgreementID !== undefined && fdTicket.serviceLevelAgreementID !== null;
-			const fdMet = fdTicket.serviceLevelAgreementHasBeenMet;
-			const fdPausedHours = fdTicket.serviceLevelAgreementPausedNextEventHours;
-			let fdSlaStatus: string;
-			if (!fdHasSla) {
-				fdSlaStatus = 'no_sla';
-			} else if (typeof fdPausedHours === 'number' && fdPausedHours > 0) {
-				fdSlaStatus = 'paused';
-			} else if (fdMet === false) {
-				fdSlaStatus = 'breached';
-			} else if (fdMet === true) {
-				fdSlaStatus = 'compliant';
+			let fullDetailRecord: Record<string, unknown>;
+			if (cfg.getFullDetailMode === 'sla') {
+				const fdTicket = detailRecord;
+				// Derive SLA status from ticket fields — no extra API call needed
+				const fdHasSla = fdTicket.serviceLevelAgreementID !== undefined && fdTicket.serviceLevelAgreementID !== null;
+				const fdMet = fdTicket.serviceLevelAgreementHasBeenMet;
+				const fdPausedHours = fdTicket.serviceLevelAgreementPausedNextEventHours;
+				let fdSlaStatus: string;
+				if (!fdHasSla) {
+					fdSlaStatus = 'no_sla';
+				} else if (typeof fdPausedHours === 'number' && fdPausedHours > 0) {
+					fdSlaStatus = 'paused';
+				} else if (fdMet === false) {
+					fdSlaStatus = 'breached';
+				} else if (fdMet === true) {
+					fdSlaStatus = 'compliant';
+				} else {
+					fdSlaStatus = 'unknown';
+				}
+
+				// Build a simple plain-text summary from available ticket fields
+				const fdTicketNumber = fdTicket.ticketNumber ?? '';
+				const fdTitle = fdTicket.title ?? '';
+				const fdStatusLabel = fdTicket.status_label ?? fdTicket.status ?? '';
+				const fdCompanyLabel = fdTicket.companyID_label ?? fdTicket.companyName ?? '';
+				const fdSummaryText = [
+					fdTicketNumber ? `Ticket ${String(fdTicketNumber)}` : `Ticket ${resolvedDetailId}`,
+					fdTitle ? `"${String(fdTitle)}"` : '',
+					fdStatusLabel ? `[${String(fdStatusLabel)}]` : '',
+					fdCompanyLabel ? `— ${String(fdCompanyLabel)}` : '',
+				].filter(Boolean).join(' ');
+
+				fullDetailRecord = {
+					...fdTicket,
+					slaStatus: fdSlaStatus,
+					slaBreachDateTime: fdTicket.resolvedDueDateTime ?? null,
+					summaryText: fdSummaryText,
+				};
 			} else {
-				fdSlaStatus = 'unknown';
+				// 'simple' mode — task/project. GET record + parallel child counts.
+				const childCounts: Record<string, number> = {};
+				const childCountErrors: string[] = [];
+				if (cfg.childCountEntities.length > 0) {
+					const numericId = Number(resolvedDetailId);
+					const countResults = await Promise.all(
+						cfg.childCountEntities.map(async (entry) => {
+							try {
+								const resp = await autotaskApiRequest.call(
+									context,
+									'POST',
+									entry.queryEndpoint,
+									{
+										filter: [{ field: entry.parentField, op: 'eq', value: numericId }],
+										MaxRecords: 1,
+										IncludeFields: ['id'],
+									} as IDataObject,
+								) as { items?: IAutotaskEntity[]; pageDetails?: { count?: number } };
+								const count = typeof resp.pageDetails?.count === 'number'
+									? resp.pageDetails.count
+									: (Array.isArray(resp.items) ? resp.items.length : 0);
+								return { key: entry.key, count };
+							} catch (err) {
+								const msg = err instanceof Error ? err.message : String(err);
+								return { key: entry.key, count: null as number | null, error: msg };
+							}
+						}),
+					);
+					for (const r of countResults) {
+						if (r.count !== null) {
+							childCounts[r.key] = r.count;
+						} else if ('error' in r) {
+							childCountErrors.push(`${r.key}: ${r.error}`);
+						}
+					}
+				}
+				const recordTitle = (detailRecord.title ?? detailRecord.projectName ?? detailRecord.name ?? '') as string;
+				const recordStatusLabel = (detailRecord.status_label ?? detailRecord.status ?? '') as string;
+				const recordCompanyLabel = (detailRecord.companyID_label ?? detailRecord.companyName ?? '') as string;
+				const summaryText = [
+					`${resource.charAt(0).toUpperCase()}${resource.slice(1)} ${resolvedDetailId}`,
+					recordTitle ? `"${String(recordTitle)}"` : '',
+					recordStatusLabel ? `[${String(recordStatusLabel)}]` : '',
+					recordCompanyLabel ? `— ${String(recordCompanyLabel)}` : '',
+				].filter(Boolean).join(' ');
+				fullDetailRecord = {
+					...detailRecord,
+					...(Object.keys(childCounts).length > 0 ? { childCounts } : {}),
+					summaryText,
+					...(childCountErrors.length > 0 ? { _childCountErrors: childCountErrors } : {}),
+				};
 			}
-
-			// Build a simple plain-text summary from available ticket fields
-			const fdTicketNumber = fdTicket.ticketNumber ?? '';
-			const fdTitle = fdTicket.title ?? '';
-			const fdStatusLabel = fdTicket.status_label ?? fdTicket.status ?? '';
-			const fdCompanyLabel = fdTicket.companyID_label ?? fdTicket.companyName ?? '';
-			const fdSummaryText = [
-				fdTicketNumber ? `Ticket ${String(fdTicketNumber)}` : `Ticket ${fullDetailTicketId}`,
-				fdTitle ? `"${String(fdTitle)}"` : '',
-				fdStatusLabel ? `[${String(fdStatusLabel)}]` : '',
-				fdCompanyLabel ? `— ${String(fdCompanyLabel)}` : '',
-			].filter(Boolean).join(' ');
-
-			const fullDetailRecord: Record<string, unknown> = {
-				...fdTicket,
-				slaStatus: fdSlaStatus,
-				slaBreachDateTime: fdTicket.resolvedDueDateTime ?? null,
-				summaryText: fdSummaryText,
-			};
 
 			const fullDetailJson = JSON.stringify(
 				buildItemResponse(resource, 'getFullDetail', fullDetailRecord),
@@ -1849,6 +2137,7 @@ export async function executeAiTool(
 
 		// Short-circuit: countByPeriod
 		if (effectiveOperation === 'countByPeriod') {
+			const cfg = getConvenienceConfig(resource)!;
 			const validPeriods = ['today', 'this_week', 'last_7d', 'this_month', 'last_month', 'this_quarter', 'last_quarter', 'last_30d', 'last_90d'] as const;
 			const periodParam = params.period as string | undefined;
 			if (!periodParam || !(validPeriods as readonly string[]).includes(periodParam)) {
@@ -1935,13 +2224,13 @@ export async function executeAiTool(
 
 			// Optional filters: company, status, priority
 			const cbpOptional: ToolFilter[] = [];
-			if (params.company !== undefined && params.company !== null) {
+			if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) {
 				cbpOptional.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
 			}
 			if (params.status !== undefined && params.status !== null) {
 				cbpOptional.push({ field: 'status', op: 'eq', value: params.status as string | number });
 			}
-			if (params.priority !== undefined && params.priority !== null) {
+			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
 				cbpOptional.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
 			}
 
@@ -1974,9 +2263,27 @@ export async function executeAiTool(
 				);
 			}
 
+			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
+			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
+				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'countByPeriod');
+				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
+				if ('empty' in r) {
+					const emptyCountResponse: Record<string, unknown> = {
+						...buildCountResponse(resource, 'countByPeriod', 0),
+						period: periodParam,
+						from: cbpFrom,
+						to: cbpTo,
+						warnings: [`No projects found for company '${String(params.company)}'.`],
+					};
+					return attachCorrelation(JSON.stringify(emptyCountResponse), correlationId);
+				}
+				cbpOptional.unshift(r.filter);
+				if (r.warning) cbpWarnings.push(r.warning);
+			}
+
 			const cbpAllFilters: unknown[] = [
-				{ field: 'createDate', op: 'gte', value: cbpFrom },
-				{ field: 'createDate', op: 'lt', value: cbpTo },
+				{ field: cfg.createDateField, op: 'gte', value: cbpFrom },
+				{ field: cfg.createDateField, op: 'lt', value: cbpTo },
 				...cbpOptional,
 			];
 
@@ -1999,6 +2306,7 @@ export async function executeAiTool(
 
 		// Short-circuit: getByAge
 		if (effectiveOperation === 'getByAge') {
+			const cfg = getConvenienceConfig(resource)!;
 			const olderThanDays = params.olderThanDays;
 			if (typeof olderThanDays !== 'number' || !Number.isFinite(olderThanDays) || olderThanDays <= 0) {
 				return attachCorrelation(
@@ -2017,13 +2325,13 @@ export async function executeAiTool(
 
 			const cutoffDate = new Date(Date.now() - Math.trunc(olderThanDays) * 86400000);
 			const ageBaseFilters: ToolFilter[] = [
-				{ field: 'createDate', op: 'lt', value: cutoffDate.toISOString() },
+				{ field: cfg.createDateField, op: 'lt', value: cutoffDate.toISOString() },
 			];
 
 			const ageOptionalFilters: ToolFilter[] = [];
-			if (params.company !== undefined && params.company !== null) ageOptionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
+			if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) ageOptionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
 			if (params.status !== undefined && params.status !== null) ageOptionalFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
-			if (params.priority !== undefined && params.priority !== null) ageOptionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) ageOptionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
 
 			let ageResolutions: any[] = [];
 			let ageWarnings: string[] = [];
@@ -2050,12 +2358,32 @@ export async function executeAiTool(
 				);
 			}
 
+			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
+			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
+				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'getByAge');
+				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
+				if ('empty' in r) {
+					return attachCorrelation(
+						JSON.stringify(
+							buildListResponse(resource, 'getByAge', [], {
+								hasMore: false, serverCap: MAX_QUERY_LIMIT, clientCap: MAX_QUERY_LIMIT,
+							}, {
+								resolutionWarnings: [`No projects found for company '${String(params.company)}'.`],
+							}),
+						),
+						correlationId,
+					);
+				}
+				ageOptionalFilters.unshift(r.filter);
+				if (r.warning) ageWarnings.push(r.warning);
+			}
+
 			const ageAllFilters: ToolFilter[] = [...ageBaseFilters, ...ageOptionalFilters, ...(recencyResult.filters as ToolFilter[])];
 			const ageQueryLimit = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
 			const ageRequestBody: IDataObject = { filter: ageAllFilters as unknown as IDataObject[] };
 			if (ageQueryLimit !== undefined) ageRequestBody.MaxRecords = ageQueryLimit;
 
-			const ageResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', ageRequestBody) as { items?: IAutotaskEntity[] };
+			const ageResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, ageRequestBody) as { items?: IAutotaskEntity[] };
 			const ageItems = Array.isArray(ageResponse.items) ? ageResponse.items as Record<string, unknown>[] : [];
 
 			const ageAllWarnings = [...ageWarnings, ...labelWarnings];
@@ -2074,6 +2402,293 @@ export async function executeAiTool(
 			);
 			const enrichedAgeJson = await enrichResponseJson(ageListJson, context);
 			return attachCorrelation(enrichedAgeJson, correlationId);
+		}
+
+		// Short-circuit: searchByKeyword
+		// Cross-entity full-text search across Tickets, TicketNotes, TimeEntries.
+		// Stages 1–3 run in parallel via Promise.allSettled; per-stage failures degrade gracefully.
+		// Recency is applied post-merge against the resolved recency field (default createDate).
+		if (effectiveOperation === 'searchByKeyword') {
+			const SEARCH_BY_KEYWORD_STAGE_CAP = 200;
+
+			const keywordRaw = (params as Record<string, unknown>).keyword;
+			const keyword = typeof keywordRaw === 'string' ? keywordRaw.trim() : '';
+			if (!keyword) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'searchByKeyword',
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							"'keyword' is required for searchByKeyword (non-empty string).",
+							`Call autotask_${resource} with operation 'searchByKeyword' and provide 'keyword'.`,
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const includeNotes = (params as Record<string, unknown>).includeNotes === true;
+			const includeTimeEntries = (params as Record<string, unknown>).includeTimeEntries === true;
+
+			// Stage 1: Tickets/query — title OR description contains keyword
+			const stage1Body: IDataObject = {
+				filter: [
+					{
+						op: 'or',
+						items: [
+							{ field: 'title', op: 'contains', value: keyword },
+							{ field: 'description', op: 'contains', value: keyword },
+						],
+					},
+				] as unknown as IDataObject[],
+				MaxRecords: SEARCH_BY_KEYWORD_STAGE_CAP,
+			};
+
+			// Stage 2: TicketNotes/query — description contains keyword (only if requested)
+			const stage2Body: IDataObject | null = includeNotes
+				? {
+						filter: [
+							{ field: 'description', op: 'contains', value: keyword },
+						] as unknown as IDataObject[],
+						MaxRecords: SEARCH_BY_KEYWORD_STAGE_CAP,
+					}
+				: null;
+
+			// Stage 3: TimeEntries/query — summaryNotes contains keyword (only if requested)
+			const stage3Body: IDataObject | null = includeTimeEntries
+				? {
+						filter: [
+							{ field: 'summaryNotes', op: 'contains', value: keyword },
+						] as unknown as IDataObject[],
+						MaxRecords: SEARCH_BY_KEYWORD_STAGE_CAP,
+					}
+				: null;
+
+			const [stage1Settled, stage2Settled, stage3Settled] = await Promise.allSettled([
+				autotaskApiRequest.call(context, 'POST', 'Tickets/query', stage1Body) as Promise<{
+					items?: IAutotaskEntity[];
+				}>,
+				stage2Body
+					? (autotaskApiRequest.call(context, 'POST', 'TicketNotes/query', stage2Body) as Promise<{
+							items?: IAutotaskEntity[];
+						}>)
+					: Promise.resolve<{ items?: IAutotaskEntity[] }>({ items: [] }),
+				stage3Body
+					? (autotaskApiRequest.call(context, 'POST', 'TimeEntries/query', stage3Body) as Promise<{
+							items?: IAutotaskEntity[];
+						}>)
+					: Promise.resolve<{ items?: IAutotaskEntity[] }>({ items: [] }),
+			]);
+
+			const stageWarnings: string[] = [];
+
+			const stage1Items: Record<string, unknown>[] =
+				stage1Settled.status === 'fulfilled' && Array.isArray(stage1Settled.value.items)
+					? (stage1Settled.value.items as Record<string, unknown>[])
+					: [];
+			if (stage1Settled.status === 'rejected') {
+				const msg =
+					stage1Settled.reason instanceof Error
+						? stage1Settled.reason.message
+						: String(stage1Settled.reason);
+				return attachCorrelation(
+					JSON.stringify(
+						formatApiError(
+							`Ticket search (stage 1) failed: ${msg}`,
+							resource,
+							'searchByKeyword',
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const stage2Items: Record<string, unknown>[] =
+				stage2Settled.status === 'fulfilled' && Array.isArray(stage2Settled.value.items)
+					? (stage2Settled.value.items as Record<string, unknown>[])
+					: [];
+			if (includeNotes && stage2Settled.status === 'rejected') {
+				const msg =
+					stage2Settled.reason instanceof Error
+						? stage2Settled.reason.message
+						: String(stage2Settled.reason);
+				stageWarnings.push(
+					`TicketNotes search failed: ${msg}. Results omit notes-only matches.`,
+				);
+			}
+
+			const stage3Items: Record<string, unknown>[] =
+				stage3Settled.status === 'fulfilled' && Array.isArray(stage3Settled.value.items)
+					? (stage3Settled.value.items as Record<string, unknown>[])
+					: [];
+			if (includeTimeEntries && stage3Settled.status === 'rejected') {
+				const msg =
+					stage3Settled.reason instanceof Error
+						? stage3Settled.reason.message
+						: String(stage3Settled.reason);
+				stageWarnings.push(
+					`TimeEntries search failed: ${msg}. Results omit time-entry-only matches.`,
+				);
+			}
+
+			// Build merged ticket map keyed by id (string), with matchedIn Set per record.
+			const merged = new Map<string, { record: Record<string, unknown>; matchedIn: Set<string> }>();
+
+			const lowerKeyword = keyword.toLowerCase();
+			for (const ticket of stage1Items) {
+				const id = ticket.id;
+				if (id === undefined || id === null) continue;
+				const key = String(id);
+				const matched = new Set<string>();
+				const titleVal = typeof ticket.title === 'string' ? ticket.title.toLowerCase() : '';
+				const descVal =
+					typeof ticket.description === 'string' ? ticket.description.toLowerCase() : '';
+				if (titleVal.includes(lowerKeyword)) matched.add('title');
+				if (descVal.includes(lowerKeyword)) matched.add('description');
+				if (matched.size === 0) matched.add('title');
+				merged.set(key, { record: ticket, matchedIn: matched });
+			}
+
+			// Collect ticket IDs from stages 2 and 3
+			const noteTicketIds = new Set<string>();
+			for (const note of stage2Items) {
+				const tid = note.ticketID;
+				if (tid !== undefined && tid !== null) noteTicketIds.add(String(tid));
+			}
+			const timeEntryTicketIds = new Set<string>();
+			for (const te of stage3Items) {
+				const tid = te.ticketID;
+				if (tid !== undefined && tid !== null) timeEntryTicketIds.add(String(tid));
+			}
+
+			// Stage 4: GET /Tickets/{id} for IDs from stages 2/3 not already in stage 1
+			const idsToFetch = new Set<string>();
+			for (const tid of noteTicketIds) if (!merged.has(tid)) idsToFetch.add(tid);
+			for (const tid of timeEntryTicketIds) if (!merged.has(tid)) idsToFetch.add(tid);
+
+			if (idsToFetch.size > 0) {
+				const fetched = await Promise.allSettled(
+					[...idsToFetch].map(
+						(tid) =>
+							autotaskApiRequest.call(context, 'GET', `Tickets/${tid}`) as Promise<{
+								item?: IAutotaskEntity;
+							}>,
+					),
+				);
+				let stage4Failures = 0;
+				for (const settled of fetched) {
+					if (
+						settled.status === 'fulfilled' &&
+						settled.value.item &&
+						typeof settled.value.item === 'object'
+					) {
+						const ticket = settled.value.item as Record<string, unknown>;
+						const tid = ticket.id;
+						if (tid === undefined || tid === null) continue;
+						const key = String(tid);
+						if (!merged.has(key)) {
+							merged.set(key, { record: ticket, matchedIn: new Set() });
+						}
+					} else if (settled.status === 'rejected') {
+						stage4Failures += 1;
+					}
+				}
+				if (stage4Failures > 0) {
+					stageWarnings.push(
+						`${stage4Failures} ticket fetch(es) failed during stage 4 — some matched tickets may be missing from results.`,
+					);
+				}
+			}
+
+			// Tag matchedIn for note / time-entry hits AFTER stage-4 fetches
+			for (const tid of noteTicketIds) {
+				const entry = merged.get(tid);
+				if (entry) entry.matchedIn.add('notes');
+			}
+			for (const tid of timeEntryTicketIds) {
+				const entry = merged.get(tid);
+				if (entry) entry.matchedIn.add('timeEntries');
+			}
+
+			// Materialise records with matchedIn as a stable-ordered array
+			const ORDER = ['title', 'description', 'notes', 'timeEntries'] as const;
+			let mergedRecords: Record<string, unknown>[] = [...merged.values()].map(
+				({ record, matchedIn }) => ({
+					...record,
+					matchedIn: ORDER.filter((label) => matchedIn.has(label)),
+				}),
+			);
+
+			// Post-merge recency filter applied client-side against createDate
+			if (recencyResult.isActive && recencyResult.filters.length > 0) {
+				mergedRecords = mergedRecords.filter((record) => {
+					for (const f of recencyResult.filters) {
+						const fieldVal = (record as Record<string, unknown>)[f.field];
+						if (typeof fieldVal !== 'string') return false;
+						const recordTime = Date.parse(fieldVal);
+						if (Number.isNaN(recordTime)) return false;
+						const boundTime = Date.parse(String(f.value));
+						if (Number.isNaN(boundTime)) return false;
+						if (f.op === 'gte' && recordTime < boundTime) return false;
+						if (f.op === 'lte' && recordTime > boundTime) return false;
+					}
+					return true;
+				});
+			}
+
+			const totalMerged = mergedRecords.length;
+			const sliceLimit = effectiveReturnAll
+				? mergedRecords.length
+				: params.limit !== undefined
+					? getEffectiveLimit(params.limit)
+					: DEFAULT_QUERY_LIMIT;
+			const limitedRecords = mergedRecords.slice(0, sliceLimit);
+
+			const searchSummary = {
+				keyword,
+				includeNotes,
+				includeTimeEntries,
+				stageMatchCounts: {
+					ticketTitleOrDescription: stage1Items.length,
+					ticketNotes: includeNotes ? stage2Items.length : 0,
+					timeEntries: includeTimeEntries ? stage3Items.length : 0,
+				},
+				stageCap: SEARCH_BY_KEYWORD_STAGE_CAP,
+				stageCapHit: {
+					ticketTitleOrDescription: stage1Items.length >= SEARCH_BY_KEYWORD_STAGE_CAP,
+					ticketNotes: includeNotes && stage2Items.length >= SEARCH_BY_KEYWORD_STAGE_CAP,
+					timeEntries: includeTimeEntries && stage3Items.length >= SEARCH_BY_KEYWORD_STAGE_CAP,
+				},
+				uniqueMergedTicketCount: totalMerged,
+				returnedCount: limitedRecords.length,
+			};
+
+			const allWarnings = [...stageWarnings, ...labelWarnings];
+
+			const baseResponse = buildListResponse(
+				resource,
+				'searchByKeyword',
+				limitedRecords,
+				{
+					hasMore: limitedRecords.length < totalMerged,
+					serverCap: SEARCH_BY_KEYWORD_STAGE_CAP,
+					clientCap: sliceLimit,
+				},
+				{
+					resolutions: labelResolutions.length > 0 ? labelResolutions : undefined,
+					resolutionWarnings: allWarnings.length > 0 ? allWarnings : undefined,
+				},
+			);
+
+			const responseObject: Record<string, unknown> = {
+				...baseResponse,
+				searchSummary,
+			};
+
+			const searchByKeywordJson = JSON.stringify(responseObject);
+			const enrichedSearchByKeywordJson = await enrichResponseJson(searchByKeywordJson, context);
+			return attachCorrelation(enrichedSearchByKeywordJson, correlationId);
 		}
 
 		traceExecutor({

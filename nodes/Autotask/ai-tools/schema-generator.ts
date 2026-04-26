@@ -5,6 +5,7 @@ import { IDENTIFIER_PAIR_OPERATIONS } from '../constants/resource-operations';
 import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
+import { RESOURCES_WITH_PRIORITY } from './resource-language';
 
 /** Picklist inlining threshold — at or below this count, inline all values; above, tell LLM to call listPicklistValues. */
 const INLINE_PICKLIST_THRESHOLD = 4;
@@ -243,6 +244,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			? idPairConfig.operations.filter((op) => operations.includes(op))
 			: [];
 		const hasIdPairOps = idPairOps.length > 0;
+		const hasGetFullDetail = operations.includes('getFullDetail');
+		const fullDetailUsesIdPair = hasGetFullDetail
+			&& !!idPairConfig
+			&& idPairConfig.operations.includes('getFullDetail');
+		const hasGetFullDetailIdOnly = hasGetFullDetail && !fullDetailUsesIdPair;
 
 		// operation — required enum
 		// NOTE: identifier-pair disambiguation lives on the id/altIdField descriptions,
@@ -258,12 +264,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		const hasGetByResource = operations.includes('getByResource');
 		const hasGetByYear = operations.includes('getByYear');
 
-		// id — used by get, delete, update, identifier-pair ops (e.g. slaHealthCheck, summary), approve, reject
-		if (hasGetOrDelete || hasUpdate || hasIdPairOps || hasApproveOrReject) {
+		// id — used by get, delete, update, identifier-pair ops (e.g. slaHealthCheck, summary), approve, reject, getFullDetail (id-only mode)
+		if (hasGetOrDelete || hasUpdate || hasIdPairOps || hasApproveOrReject || hasGetFullDetailIdOnly) {
 			const strictIdOps: string[] = [];
 			if (hasGetOrDelete) strictIdOps.push('get', 'delete');
 			if (hasUpdate) strictIdOps.push('update');
 			if (hasApproveOrReject) strictIdOps.push('approve', 'reject');
+			if (hasGetFullDetailIdOnly) strictIdOps.push('getFullDetail');
 			let idDesc = 'Numeric entity ID.';
 			if (strictIdOps.length > 0) {
 				idDesc += ` Required for: ${strictIdOps.join(', ')}.`;
@@ -318,7 +325,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		}
 
 		// Filter fields for list operations
-		if (hasListFamily) {
+		const hasSearchByKeywordForListShared = operations.includes('searchByKeyword');
+		if (hasListFamily || hasSearchByKeywordForListShared) {
 			const fieldNames = readFields.filter((f) => !f.udf).map((f) => f.id);
 			const filterFieldDesc =
 				"Field to filter on. Use operation 'describeFields' to see valid field names. For 'older than' / upper-bound date queries use filter_field with a date field + filter_op='lt'.";
@@ -460,7 +468,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 							: 'Company name or numeric companyID (auto-resolved). Optional — omit for all companies.',
 					);
 			}
-			if (!shape.priority) {
+			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority) {
 				shape.priority = rz
 					.union([rz.number(), rz.string()])
 					.nullish()
@@ -519,7 +527,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.nullish()
 					.describe('Status picklist label or ID (optional).');
 			}
-			if (!shape.priority) {
+			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority) {
 				shape.priority = rz
 					.union([rz.number(), rz.string()])
 					.nullish()
@@ -540,7 +548,37 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 			if (!shape.company) shape.company = rz.union([rz.number(), rz.string()]).nullish().describe('Company name or companyID (auto-resolved).');
 			if (!shape.status) shape.status = rz.union([rz.number(), rz.string()]).nullish().describe('Status picklist label or ID (optional).');
-			if (!shape.priority) shape.priority = rz.union([rz.number(), rz.string()]).nullish().describe('Priority picklist label or ID (optional).');
+			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority) shape.priority = rz.union([rz.number(), rz.string()]).nullish().describe('Priority picklist label or ID (optional).');
+		}
+
+		// searchByKeyword fields
+		const hasSearchByKeyword = operations.includes('searchByKeyword');
+		if (hasSearchByKeyword) {
+			if (!shape.keyword) {
+				shape.keyword = rz
+					.string()
+					.min(1)
+					.nullish()
+					.describe(
+						"Required for searchByKeyword: keyword to search. Matches title and description (always); TicketNotes.description if includeNotes=true; TimeEntries.summaryNotes if includeTimeEntries=true. Case-insensitive 'contains' match.",
+					);
+			}
+			if (!shape.includeNotes) {
+				shape.includeNotes = rz
+					.boolean()
+					.nullish()
+					.describe(
+						'When true, also search TicketNotes.description. Default false. Adds one parallel API call. Capped at 200 matched notes.',
+					);
+			}
+			if (!shape.includeTimeEntries) {
+				shape.includeTimeEntries = rz
+					.boolean()
+					.nullish()
+					.describe(
+						'When true, also search TimeEntries.summaryNotes. Default false. Adds one parallel API call. Capped at 200 matched time entries.',
+					);
+			}
 		}
 
 		// Identifier-pair altIdField (e.g. ticketNumber for slaHealthCheck + summary)

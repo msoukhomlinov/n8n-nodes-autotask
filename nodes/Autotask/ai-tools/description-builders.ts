@@ -7,6 +7,38 @@ import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 
 export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
 
+interface ResourceLanguageConfig {
+	label: string;
+	hasPriority: boolean;
+	terminalStatusLabel: string;
+	assignedFieldLabel: string;
+	getFullDetailMode: 'sla' | 'simple';
+}
+
+const RESOURCE_LANGUAGE_CONFIG: Record<string, ResourceLanguageConfig> = {
+	ticket: {
+		label: 'tickets',
+		hasPriority: true,
+		terminalStatusLabel: 'Complete or Cancelled',
+		assignedFieldLabel: 'assigned resource',
+		getFullDetailMode: 'sla',
+	},
+	task: {
+		label: 'tasks',
+		hasPriority: false,
+		terminalStatusLabel: 'Complete',
+		assignedFieldLabel: 'assigned resource',
+		getFullDetailMode: 'simple',
+	},
+	project: {
+		label: 'projects',
+		hasPriority: false,
+		terminalStatusLabel: 'Complete',
+		assignedFieldLabel: 'project lead',
+		getFullDetailMode: 'simple',
+	},
+};
+
 export function buildToolContractBlock(): string {
 	return [
 		'API CAPABILITIES: filter, count, paging only.',
@@ -301,13 +333,27 @@ export function buildTicketSummaryDescription(resourceName: string): string {
 }
 
 export function buildTicketGetFullDetailDescription(resourceName: string): string {
+	return buildGetFullDetailDescription(resourceName);
+}
+
+export function buildGetFullDetailDescription(resource: string): string {
+	const lang = RESOURCE_LANGUAGE_CONFIG[resource];
+	if (!lang || lang.getFullDetailMode === 'sla') {
+		// Preserve ticket prose exactly as before
+		return (
+			"Get a ticket's complete data including SLA status and a plain-text summary in one call. " +
+			"Supply EITHER numeric 'id' OR 'ticketNumber' (e.g. T20240615.0123). " +
+			"Response includes all ticket fields, 'slaStatus' (breached/compliant/paused/no_sla/unknown), " +
+			"'slaBreachDateTime' (resolvedDueDateTime), and 'summaryText' (plain-English one-liner). " +
+			"Use this instead of calling get + slaHealthCheck separately when you need both ticket data and SLA status. " +
+			describeFieldsHint(resource)
+		);
+	}
 	return (
-		"Get a ticket's complete data including SLA status and a plain-text summary in one call. " +
-		"Supply EITHER numeric 'id' OR 'ticketNumber' (e.g. T20240615.0123). " +
-		"Response includes all ticket fields, 'slaStatus' (breached/compliant/paused/no_sla/unknown), " +
-		"'slaBreachDateTime' (resolvedDueDateTime), and 'summaryText' (plain-English one-liner). " +
-		"Use this instead of calling get + slaHealthCheck separately when you need both ticket data and SLA status. " +
-		describeFieldsHint(resourceName)
+		`Get a ${resource}'s complete data plus child entity counts in one call. ` +
+		`Supply numeric 'id'. ` +
+		`Response includes all ${resource} fields, 'childCounts' (counts of related notes, time entries, etc.), and 'summaryText'. ` +
+		describeFieldsHint(resource)
 	);
 }
 
@@ -326,27 +372,55 @@ export function buildTicketSlaHealthCheckDescription(resourceName: string): stri
 }
 
 export function buildTicketGetByCompanyAndStatusDescription(resource: string): string {
+	return buildGetByCompanyAndStatusDescription(resource);
+}
+
+export function buildGetByCompanyAndStatusDescription(resource: string): string {
+	const lang = RESOURCE_LANGUAGE_CONFIG[resource];
+	const recordsLabel = lang?.label ?? `${resource} records`;
+	const optionalParts = ['status'];
+	if (lang?.hasPriority) optionalParts.push('priority');
 	return (
-		"Filter tickets by company and optionally by status or priority. " +
-		"Required: 'company' (name or numeric ID, auto-resolved to companyID). " +
-		"Optional: 'status', 'priority' (labels or numeric IDs, auto-resolved). " +
+		`Filter ${recordsLabel} by company and optionally by ${optionalParts.join(' or ')}. ` +
+		"Required: 'company' (name or numeric ID, auto-resolved). " +
+		`Optional: ${optionalParts.map((p) => `'${p}'`).join(', ')} (labels or numeric IDs, auto-resolved). ` +
 		"Use 'recency', 'since', or 'until' to narrow by date. " +
 		"Use 'returnAll' for full result sets."
 	);
 }
 
 export function buildTicketGetUnassignedDescription(resource: string): string {
+	return buildGetUnassignedDescription(resource);
+}
+
+export function buildGetUnassignedDescription(resource: string): string {
+	const lang = RESOURCE_LANGUAGE_CONFIG[resource];
+	const recordsLabel = lang?.label ?? `${resource} records`;
+	const assignedLabel = lang?.assignedFieldLabel ?? 'assigned resource';
+	const terminalLabel = lang?.terminalStatusLabel ?? 'Complete or Cancelled';
+	const optionalHint = lang?.hasPriority
+		? "'company' (name or ID, auto-resolved), 'priority' (label or ID)"
+		: "'company' (name or ID, auto-resolved)";
 	return (
-		"Return open, unassigned tickets (no assigned resource, status not Complete or Cancelled). " +
-		"Optional: 'company' (name or ID, auto-resolved), 'priority' (label or ID). " +
+		`Return open, unassigned ${recordsLabel} (no ${assignedLabel}, status not ${terminalLabel}). ` +
+		`Optional: ${optionalHint}. ` +
 		"Use 'recency', 'since', or 'until' to narrow by creation date."
 	);
 }
 
 export function buildTicketCountByPeriodDescription(resource: string): string {
+	return buildCountByPeriodDescription(resource);
+}
+
+export function buildCountByPeriodDescription(resource: string): string {
+	const lang = RESOURCE_LANGUAGE_CONFIG[resource];
+	const recordsLabel = lang?.label ?? `${resource} records`;
+	const optionalHint = lang?.hasPriority
+		? "'company', 'status', 'priority' (labels or IDs, auto-resolved)"
+		: "'company', 'status' (labels or IDs, auto-resolved)";
 	return (
-		"Count tickets created within a named time period. Required: 'period' (e.g. 'this_month', 'last_quarter'). " +
-		"Optional: 'company', 'status', 'priority' (labels or IDs, auto-resolved). " +
+		`Count ${recordsLabel} created within a named time period. Required: 'period' (e.g. 'this_month', 'last_quarter'). ` +
+		`Optional: ${optionalHint}. ` +
 		"Returns matchCount plus the period date bounds used."
 	);
 }
@@ -361,10 +435,32 @@ export function buildTicketGetBySLAStatusDescription(resource: string): string {
 }
 
 export function buildTicketGetByAgeDescription(resource: string): string {
+	return buildGetByAgeDescription(resource);
+}
+
+export function buildGetByAgeDescription(resource: string): string {
+	const lang = RESOURCE_LANGUAGE_CONFIG[resource];
+	const recordsLabel = lang?.label ?? `${resource} records`;
+	const optionalHint = lang?.hasPriority
+		? "'status', 'company', 'priority' (labels or IDs, auto-resolved)"
+		: "'status', 'company' (labels or IDs, auto-resolved)";
 	return (
-		"Return tickets created more than N days ago. Required: 'olderThanDays' (positive integer). " +
-		"Optional: 'status', 'company', 'priority' (labels or IDs, auto-resolved). " +
+		`Return ${recordsLabel} created more than N days ago. Required: 'olderThanDays' (positive integer). ` +
+		`Optional: ${optionalHint}. ` +
 		"Use 'returnAll' for the full set."
+	);
+}
+
+export function buildTicketSearchByKeywordDescription(_resource: string): string {
+	return (
+		"Cross-entity full-text search for tickets by keyword. " +
+		"Required: 'keyword' (case-insensitive contains-match). " +
+		"Always searches ticket 'title' and 'description'. " +
+		"Optional: 'includeNotes'=true to also search TicketNotes.description; 'includeTimeEntries'=true to also search TimeEntries.summaryNotes. " +
+		"Each returned ticket gets a 'matchedIn' array (e.g. ['title','notes']) indicating which sources matched. " +
+		"Per-stage cap: 200 records. " +
+		"Use 'recency', 'since', or 'until' to constrain by createDate (applied post-merge). " +
+		"Use 'returnAll' for the full deduplicated result set."
 	);
 }
 
@@ -1061,15 +1157,17 @@ function getOperationPurpose(
 		case 'summary':
 			return buildTicketSummaryDescription(resource);
 		case 'getFullDetail':
-			return buildTicketGetFullDetailDescription(resource);
+			return buildGetFullDetailDescription(resource);
 		case 'countByPeriod':
-			return buildTicketCountByPeriodDescription(resource);
+			return buildCountByPeriodDescription(resource);
 		case 'getByAge':
-			return buildTicketGetByAgeDescription(resource);
+			return buildGetByAgeDescription(resource);
+		case 'searchByKeyword':
+			return buildTicketSearchByKeywordDescription(resource);
 		case 'getByCompanyAndStatus':
-			return buildTicketGetByCompanyAndStatusDescription(resource);
+			return buildGetByCompanyAndStatusDescription(resource);
 		case 'getUnassigned':
-			return buildTicketGetUnassignedDescription(resource);
+			return buildGetUnassignedDescription(resource);
 		case 'getBySLAStatus':
 			return buildTicketGetBySLAStatusDescription(resource);
 		case 'moveConfigurationItem':
@@ -1113,6 +1211,7 @@ function getOperationNotes(resource: string, operation: string): string[] {
 		case 'countByPeriod':
 			return [...contractNotes];
 		case 'getByAge':
+		case 'searchByKeyword':
 		case 'getByCompanyAndStatus':
 		case 'getUnassigned':
 		case 'getBySLAStatus':
