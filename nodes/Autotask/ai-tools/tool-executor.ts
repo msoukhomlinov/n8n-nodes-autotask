@@ -415,21 +415,21 @@ export const N8N_METADATA_FIELDS = new Set([
 export const N8N_METADATA_PREFIXES = ['Prompt__'];
 
 /** Extract the canonical created-entity numeric ID from a compound creator result. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function buildCompoundEntityId(resource: string, result: any): number | undefined {
 	const field = COMPOUND_REGISTRY[resource]?.entityIdField;
 	return field ? result[field] : (result.id ?? result.itemId);
 }
 
 /** Extract the canonical existing-entity numeric ID from a compound creator result (skip/update). */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function buildCompoundExistingId(resource: string, result: any): number | undefined {
 	const field = COMPOUND_REGISTRY[resource]?.existingIdField;
 	return field ? result[field] : result.existingId;
 }
 
 /** Build the context block (parent/scope fields) for a compound creator result. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function buildCompoundContext(resource: string, result: any): Record<string, unknown> | undefined {
 	switch (resource) {
 		case 'contractCharge':
@@ -805,7 +805,7 @@ export async function executeAiTool(
 	const effectiveReturnAll = params.returnAll === true || isShortWindow;
 	const autoReturnAll = isShortWindow && params.returnAll !== true;
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	 
 	let combinedFilters: any[];
 	if (params.filtersJson) {
 		// filtersJson path — mutually exclusive with flat filter triplets
@@ -822,7 +822,7 @@ export async function executeAiTool(
 				correlationId,
 			);
 		}
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		 
 		let parsedFiltersJson: any[] = [];
 		try {
 			const parsed: unknown = JSON.parse(params.filtersJson as string);
@@ -1579,7 +1579,7 @@ export async function executeAiTool(
 			};
 
 			const handler = await registryEntry.getHandler();
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			 
 			const compoundResult: any = await handler(context, 0, compoundOptions);
 
 			if (compoundResult) {

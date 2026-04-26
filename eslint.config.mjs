@@ -3,7 +3,12 @@ import { configWithoutCloudSupport } from '@n8n/node-cli/eslint';
 export default [
 	...configWithoutCloudSupport,
 	{
-		ignores: ['tests/**'],
+		ignores: [
+			'tests/**',
+			'dist/**',
+			'.worktrees/**',
+			'.claude/**',
+		],
 	},
 	{
 		files: ['credentials/**/*.ts'],
@@ -17,8 +22,8 @@ export default [
 		rules: {
 			// Server-side node — console is the only logging mechanism available
 			'no-console': 'off',
-			// Many catch blocks intentionally ignore the error variable
-			'@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '.*' }],
+			// Many catch blocks intentionally ignore the error variable; vars prefixed _ are intentionally unused
+			'@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '.*' }],
 			// Duplicate imports from n8n-workflow split type-only vs value imports (required by isolatedModules)
 			'import-x/no-duplicates': 'off',
 			// Empty interfaces used as branded type aliases (JsonObject, JsonArray, IValidationRules)
@@ -40,6 +45,13 @@ export default [
 	{
 		// credential-masking deals with arbitrary error/object shapes — any is correct here
 		files: ['nodes/Autotask/helpers/security/credential-masking.ts'],
+		rules: {
+			'@typescript-eslint/no-explicit-any': 'off',
+		},
+	},
+	{
+		// tool-executor.ts uses any for dynamic dispatch over heterogeneous API response shapes
+		files: ['nodes/Autotask/ai-tools/tool-executor.ts'],
 		rules: {
 			'@typescript-eslint/no-explicit-any': 'off',
 		},

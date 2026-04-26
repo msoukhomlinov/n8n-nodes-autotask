@@ -425,7 +425,7 @@ export function buildCountByPeriodDescription(resource: string): string {
 	);
 }
 
-export function buildTicketGetBySLAStatusDescription(resource: string): string {
+export function buildTicketGetBySLAStatusDescription(_resource: string): string {
 	return (
 		"Filter tickets by SLA state. Required: 'slaStatus' = 'breached' | 'at_risk' | 'compliant'. " +
 		"For 'at_risk': tickets whose resolvedDueDateTime is within 'atRiskWindowHours' hours from now (default 4h). " +
