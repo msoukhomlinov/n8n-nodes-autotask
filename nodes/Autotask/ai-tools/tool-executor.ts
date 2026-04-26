@@ -1716,12 +1716,12 @@ export async function executeAiTool(
 
 			const apiSlaFilters: any[] = [...slaFilters, ...slaOptionalFilters, ...(recencyResult.filters as any[])];
 			const queryLimitForSla = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit) : DEFAULT_QUERY_LIMIT);
-			const slaSlaRequestBody: IDataObject = { filter: apiSlaFilters as IDataObject[] };
+			const slaRequestBody: IDataObject = { filter: apiSlaFilters as IDataObject[] };
 			if (queryLimitForSla !== undefined) {
-				slaSlaRequestBody.MaxRecords = queryLimitForSla;
+				slaRequestBody.MaxRecords = queryLimitForSla;
 			}
 
-			const slaResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', slaSlaRequestBody) as { items?: IAutotaskEntity[] };
+			const slaResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', slaRequestBody) as { items?: IAutotaskEntity[] };
 			const slaItems = Array.isArray(slaResponse.items) ? slaResponse.items as Record<string, unknown>[] : [];
 
 			const allSlaWarnings = [...slaSpecialWarnings, ...labelWarnings];
@@ -1823,7 +1823,7 @@ export async function executeAiTool(
 
 			// Build a simple plain-text summary from available ticket fields
 			const fdTicketNumber = fdTicket.ticketNumber ?? '';
-			const fdTitle = fdTicket.title ?? fdTicket.subject ?? '';
+			const fdTitle = fdTicket.title ?? '';
 			const fdStatusLabel = fdTicket.status_label ?? fdTicket.status ?? '';
 			const fdCompanyLabel = fdTicket.companyID_label ?? fdTicket.companyName ?? '';
 			const fdSummaryText = [
