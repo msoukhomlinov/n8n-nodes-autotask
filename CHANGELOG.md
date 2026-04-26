@@ -2,7 +2,7 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [2.10.0] — 2026-04-21
+## [2.10.0] — 2026-04-26
 
 ### Fixed
 
