@@ -59,12 +59,22 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		docsFragment: 'Get unposted time entries with optional filters.',
 	},
 	{
+		name: 'searchByIdentity',
+		isWrite: false,
+		label: 'Search by identity',
+		supportsFilters: false,
+		responseKind: 'list',
+		docsFragment:
+			'Preferred AI company resolution using companyName/email/website with ranked confidence.',
+	},
+	{
 		name: 'searchByDomain',
 		isWrite: false,
 		label: 'Search by domain',
 		supportsFilters: false,
 		responseKind: 'list',
-		docsFragment: 'Search companies by domain string.',
+		docsFragment:
+			'Search companies by domain string. Identifier priority: when an email or website is present, extract and use the domain first (email/user URL domain) before any company-name matching. Use company-name contains matching only as fallback.',
 	},
 	{
 		name: 'count',

@@ -116,6 +116,7 @@ export function validateEntityId(
 ): ValidationResult {
     const noIdOperations = [
         'getMany',
+        'searchByIdentity',
         'searchByDomain',
         'getPosted',
         'getUnposted',

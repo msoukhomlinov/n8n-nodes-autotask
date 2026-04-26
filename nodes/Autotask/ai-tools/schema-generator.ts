@@ -256,6 +256,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// not here. Runtime enforcement is via operation-contracts.ts xorGroups.
 		const operationDesc = `Operation to perform. One of: ${allOps.join(', ')}`;
 		shape.operation = rz.enum(allOps).describe(operationDesc);
+		const hasSearchByIdentity = operations.includes('searchByIdentity');
 		const hasSearchByDomain = operations.includes('searchByDomain');
 		const hasMoveConfigItem = operations.includes('moveConfigurationItem');
 		const hasMoveToCompany = operations.includes('moveToCompany');
@@ -411,21 +412,55 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 		}
 
+		// searchByIdentity fields
+		if (hasSearchByIdentity) {
+			shape.companyName = rz
+				.string()
+				.nullish()
+				.describe('Optional company name for contains matching and ranking.');
+			shape.email = rz
+				.string()
+				.nullish()
+				.describe('Optional email used to infer domain for matching.');
+			shape.website = rz
+				.string()
+				.nullish()
+				.describe('Optional website/domain used for primary domain matching.');
+			shape.limit = rz
+				.number()
+				.int()
+				.min(1)
+				.max(100)
+				.nullish()
+				.describe('Max results (1-100, default 25).');
+		}
+
 		// searchByDomain fields
 		if (hasSearchByDomain) {
 			shape.domain = rz
 				.string()
 				.min(1)
 				.nullish()
-				.describe('Domain to search, e.g. autotask.net or https://www.autotask.net/');
+				.describe(
+					"Domain to search. Prefer extracting domain from email/website first (e.g. email='user@domain.com' -> domain='domain.com'; website='https://www.domain.com/about' -> domain='domain.com'). Accepts bare domains or full URLs.",
+				);
 			shape.domainOperator = rz
 				.enum(['eq', 'beginsWith', 'endsWith', 'contains'])
 				.nullish()
-				.describe("Domain comparison operator (default 'contains').");
+				.describe(
+					"Domain comparison operator (default 'contains'). When a domain is available, do domain matching first; avoid strict exact-name-only matching.",
+				);
 			shape.searchContactEmails = rz
 				.boolean()
 				.nullish()
 				.describe('When true (default), fall back to contact email search if no website match.');
+			shape.limit = rz
+				.number()
+				.int()
+				.min(1)
+				.max(100)
+				.nullish()
+				.describe('Max results (1-100, default 25).');
 		}
 
 		// slaHealthCheck fields
