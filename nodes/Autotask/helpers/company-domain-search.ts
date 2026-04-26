@@ -21,6 +21,7 @@ type DomainOperator = 'eq' | 'beginsWith' | 'endsWith' | 'contains';
 
 interface DomainSearchOptions {
     domain: string;
+    companyName?: string;
     domainOperator?: string;
     searchContactEmails?: boolean;
     limit?: number;
@@ -49,7 +50,28 @@ export interface CompanyDomainSearchResult extends IDataObject {
     matchedCompanies?: number;
     companyFrequencies?: CompanyFrequency[];
     notes?: string[];
+    unresolvedSearch?: UnresolvedSearchDirective;
 }
+
+interface UnresolvedSearchDirective extends IDataObject {
+    nextAction: string;
+    retryKey: string;
+    recommendedFilters: string[];
+    terminal: boolean;
+    hint: string;
+    suggestions: string[];
+    helpfulOperations: string[];
+}
+
+interface RetryTrackerEntry {
+    identifierSignature: string;
+    attempts: number;
+    lastSeenAt: number;
+}
+
+const RETRY_TRACK_TTL_MS = 15 * 60 * 1000;
+const RETRY_TRACK_MAX_ENTRIES = 300;
+const unresolvedRetryTracker = new Map<string, RetryTrackerEntry>();
 
 function clampLimit(limit: number | undefined, fallback = DEFAULT_DOMAIN_LIMIT): number {
     if (typeof limit !== 'number' || Number.isNaN(limit)) return fallback;
@@ -79,6 +101,13 @@ function normaliseDomainInput(value: string): string {
     }
     normalised = normalised.replace(/:\d+$/, '');
     return normalised;
+}
+
+function normaliseNameInput(value: string | undefined): string {
+    return (value ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
 }
 
 function normaliseOperator(operator: string | undefined): DomainOperator {
@@ -165,12 +194,88 @@ function isValidCompanyId(value: unknown): value is string | number {
     return false;
 }
 
+function buildRetryKey(domain: string, companyName: string, operator: DomainOperator): string {
+    return `company.searchByDomain:domain=${domain || '-'}|name=${companyName || '-'}|operator=${operator}`;
+}
+
+function cleanupRetryTracker(now: number): void {
+    for (const [key, entry] of unresolvedRetryTracker) {
+        if (now - entry.lastSeenAt > RETRY_TRACK_TTL_MS) {
+            unresolvedRetryTracker.delete(key);
+        }
+    }
+    if (unresolvedRetryTracker.size <= RETRY_TRACK_MAX_ENTRIES) return;
+    const orderedByAge = Array.from(unresolvedRetryTracker.entries())
+        .sort((a, b) => a[1].lastSeenAt - b[1].lastSeenAt);
+    const overflow = unresolvedRetryTracker.size - RETRY_TRACK_MAX_ENTRIES;
+    for (let i = 0; i < overflow; i++) {
+        unresolvedRetryTracker.delete(orderedByAge[i][0]);
+    }
+}
+
+function buildUnresolvedDirective(
+    domainNormalised: string,
+    companyNameNormalised: string,
+    appliedCompanyOperator: DomainOperator,
+): UnresolvedSearchDirective {
+    const retryKey = buildRetryKey(domainNormalised, companyNameNormalised, appliedCompanyOperator);
+    const identifierSignature = `${domainNormalised}|${companyNameNormalised}`;
+    const now = Date.now();
+    cleanupRetryTracker(now);
+
+    const existing = unresolvedRetryTracker.get(retryKey);
+    let attempts = 1;
+    if (existing && existing.identifierSignature === identifierSignature) {
+        attempts = existing.attempts + 1;
+    }
+
+    unresolvedRetryTracker.set(retryKey, {
+        identifierSignature,
+        attempts,
+        lastSeenAt: now,
+    });
+
+    const terminal = attempts >= 2;
+    if (terminal) {
+        return {
+            nextAction:
+                'Stop retrying this identical company domain search. Ask the user for at least one new disambiguator (exact company name, alternate domain, city, or phone) before retrying.',
+            retryKey,
+            recommendedFilters: ['companyName:eq:<exact name>', 'phone:contains:<digits>', 'city:eq:<city>'],
+            terminal: true,
+            hint: 'Repeated unresolved search with identical identifiers. Additional input is required.',
+            suggestions: [
+                'Collect an exact legal company name and retry with companyName + domain.',
+                'Ask for an alternate domain (for example billing/helpdesk subdomain).',
+                'Use another identifier like city, phone, or account number.',
+            ],
+            helpfulOperations: ['company.getMany', 'contact.getMany'],
+        };
+    }
+
+    return {
+        nextAction:
+            'Do not immediately retry the same query. Retry once with additional filters (for example exact company name or city) or ask the user for more identifying details.',
+        retryKey,
+        recommendedFilters: ['companyName:eq:<exact name>', 'city:eq:<city>', 'phone:contains:<digits>'],
+        terminal: false,
+        hint: 'No company match found. Provide additional disambiguation before retrying.',
+        suggestions: [
+            'Provide an exact company name if known.',
+            'Try an alternate domain variation.',
+            'Add a location or phone-based filter.',
+        ],
+        helpfulOperations: ['company.getMany', 'contact.getMany'],
+    };
+}
+
 export async function searchCompaniesByDomain(
     context: IExecuteFunctions,
     options: DomainSearchOptions,
 ): Promise<CompanyDomainSearchResult> {
     const itemIndex = options.itemIndex ?? 0;
     const domainInput = options.domain;
+    const companyNameNormalised = normaliseNameInput(options.companyName);
     const domainNormalised = normaliseDomainInput(domainInput);
     const requestedOperator = options.domainOperator ?? 'contains';
     const requestedNormalisedOperator = normaliseOperator(requestedOperator);
@@ -189,6 +294,7 @@ export async function searchCompaniesByDomain(
             count: 0,
             results: [],
             notes: ['Domain is empty after normalisation.'],
+            unresolvedSearch: buildUnresolvedDirective(domainNormalised, companyNameNormalised, 'contains'),
         };
     }
 
@@ -292,6 +398,11 @@ export async function searchCompaniesByDomain(
             count: 0,
             results: [],
             notes,
+            unresolvedSearch: buildUnresolvedDirective(
+                domainNormalised,
+                companyNameNormalised,
+                appliedCompanyOperator,
+            ),
         };
     }
 
@@ -346,6 +457,11 @@ export async function searchCompaniesByDomain(
             results: [],
             matchedContacts: contactResults.length,
             notes,
+            unresolvedSearch: buildUnresolvedDirective(
+                domainNormalised,
+                companyNameNormalised,
+                appliedCompanyOperator,
+            ),
         };
     }
 
@@ -405,6 +521,11 @@ export async function searchCompaniesByDomain(
             matchedContacts: contactResults.length,
             matchedCompanies: resolvedCompanies.length,
             notes,
+            unresolvedSearch: buildUnresolvedDirective(
+                domainNormalised,
+                companyNameNormalised,
+                appliedCompanyOperator,
+            ),
         };
     }
 
