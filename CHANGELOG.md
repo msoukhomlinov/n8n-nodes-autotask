@@ -6,6 +6,9 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Fixed
 
+- **AI tools — `searchByKeyword` pagination summary**: Fixed malformed summary text when merged result set exceeds limit (was missing `totalAvailable`). `offset` is now correctly forbidden for this operation. Description no longer hardcodes `createDate`; dedicated operation notes replace shared filter notes that advertised forbidden fields.
+- **AI tools — `getFullDetail` task/project `childCounts`**: Fixed child entity counts always returning 0 or 1 — now uses `<entity>/query/count` endpoint and `queryCount` response field.
+- **AI tools — viaProject company resolution**: Company-not-found now includes partial-match suggestions. Error responses correctly attribute the calling resource (was hardcoded `'task'`). `olderThanDays` schema description no longer hardcodes "tickets". `id` field description no longer claims `delete` is required for resources that don't support delete.
 - **AI tools — filter-field alias map**: Common field-name mistakes are now silently corrected and a warning is returned so the model learns the canonical name (e.g. `name`→`companyName` on Company, `title`→`subject` on Ticket, `createDateTime`→`createDate`).
 - **AI tools — invalid filter_field pre-flight**: Unknown filter fields now return `INVALID_FIELDS` with field suggestions instead of silently producing 0 API results.
 - **AI tools — `notExist`/`exist` filter_value pre-flight bug**: Pre-flight no longer incorrectly requires `filter_value` for null-check operators; empty-string `filter_value` is stripped.

@@ -232,7 +232,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			['item', 'list', 'count'].includes(metadata.responseKind),
 		);
 		const hasListFamily = operationMetadata.some((metadata) => metadata.supportsFilters);
-		const hasGetOrDelete = operations.some((op) => ['get', 'delete'].includes(op));
+		const hasGet = operations.includes('get');
+		const hasDeleteOp = operations.includes('delete');
 		const hasUpdate = operations.includes('update');
 		const hasCreate = operations.includes('create');
 		const hasSlaHealthCheck = operations.includes('slaHealthCheck');
@@ -265,9 +266,10 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		const hasGetByYear = operations.includes('getByYear');
 
 		// id — used by get, delete, update, identifier-pair ops (e.g. slaHealthCheck, summary), approve, reject, getFullDetail (id-only mode)
-		if (hasGetOrDelete || hasUpdate || hasIdPairOps || hasApproveOrReject || hasGetFullDetailIdOnly) {
+		if (hasGet || hasDeleteOp || hasUpdate || hasIdPairOps || hasApproveOrReject || hasGetFullDetailIdOnly) {
 			const strictIdOps: string[] = [];
-			if (hasGetOrDelete) strictIdOps.push('get', 'delete');
+			if (hasGet) strictIdOps.push('get');
+			if (hasDeleteOp) strictIdOps.push('delete');
 			if (hasUpdate) strictIdOps.push('update');
 			if (hasApproveOrReject) strictIdOps.push('approve', 'reject');
 			if (hasGetFullDetailIdOnly) strictIdOps.push('getFullDetail');
@@ -544,7 +546,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.int()
 					.positive()
 					.nullish()
-					.describe('Required for getByAge: return tickets created more than N days ago (e.g. 30 for tickets older than 30 days).');
+					.describe('Required for getByAge: return records older than N days (e.g. 30 for records created more than 30 days ago). Positive integer.');
 			}
 			if (!shape.company) shape.company = rz.union([rz.number(), rz.string()]).nullish().describe('Company name or companyID (auto-resolved).');
 			if (!shape.status) shape.status = rz.union([rz.number(), rz.string()]).nullish().describe('Status picklist label or ID (optional).');

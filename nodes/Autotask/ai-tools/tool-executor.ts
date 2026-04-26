@@ -195,6 +195,7 @@ export async function resolveCompanyToProjectIdFilter(
 	context: IExecuteFunctions,
 	companyRaw: string | number,
 	operationName: string,
+	callerResource: string,
 ): Promise<
 	| { filter: ToolFilter; warning?: string }
 	| { empty: true }
@@ -214,15 +215,43 @@ export async function resolveCompanyToProjectIdFilter(
 		) as { items?: IAutotaskEntity[] };
 		const matches = Array.isArray(companyLookup.items) ? companyLookup.items : [];
 		if (matches.length === 0) {
-			return {
-				error: wrapError(
-					'task',
-					operationName,
-					ERROR_TYPES.ENTITY_NOT_FOUND,
-					`Company '${raw}' not found.`,
-					'Verify the company name is exact, or use a numeric companyID.',
-				),
-			};
+			// Try partial match to provide suggestions
+			try {
+				const partialLookup = await autotaskApiRequest.call(
+					context, 'POST', 'Companies/query',
+					{
+						filter: [{ field: 'companyName', op: 'contains', value: raw }],
+						MaxRecords: 5,
+						IncludeFields: ['id', 'companyName'],
+					} as IDataObject,
+				) as { items?: IAutotaskEntity[] };
+				const partialMatches = Array.isArray(partialLookup.items) ? partialLookup.items : [];
+				const candidates = partialMatches.map((c) => ({
+					id: c.id as string | number,
+					displayName: (c.companyName ?? c.id) as string,
+				}));
+				return {
+					error: wrapError(
+						callerResource,
+						operationName,
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`Company '${raw}' not found.`,
+						candidates.length > 0
+							? `Did you mean: ${candidates.map((c) => `'${c.displayName}'`).join(', ')}? Use the exact name or a numeric companyID.`
+							: 'Verify the company name is exact, or use a numeric companyID.',
+					),
+				};
+			} catch {
+				return {
+					error: wrapError(
+						callerResource,
+						operationName,
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`Company '${raw}' not found.`,
+						'Verify the company name is exact, or use a numeric companyID.',
+					),
+				};
+			}
 		}
 		companyId = Number(matches[0].id);
 	}
@@ -1715,7 +1744,7 @@ export async function executeAiTool(
 
 			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
 			if (cfg.companyFilterStrategy === 'viaProject' && companyRaw !== undefined && companyRaw !== null) {
-				const r = await resolveCompanyToProjectIdFilter(context, companyRaw as string | number, 'getByCompanyAndStatus');
+				const r = await resolveCompanyToProjectIdFilter(context, companyRaw as string | number, 'getByCompanyAndStatus', resource);
 				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
 				if ('empty' in r) {
 					return attachCorrelation(
@@ -1813,7 +1842,7 @@ export async function executeAiTool(
 
 			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
 			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
-				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'getUnassigned');
+				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'getUnassigned', resource);
 				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
 				if ('empty' in r) {
 					return attachCorrelation(
@@ -2086,16 +2115,12 @@ export async function executeAiTool(
 								const resp = await autotaskApiRequest.call(
 									context,
 									'POST',
-									entry.queryEndpoint,
+									`${entry.queryEndpoint}/count`,
 									{
 										filter: [{ field: entry.parentField, op: 'eq', value: numericId }],
-										MaxRecords: 1,
-										IncludeFields: ['id'],
 									} as IDataObject,
-								) as { items?: IAutotaskEntity[]; pageDetails?: { count?: number } };
-								const count = typeof resp.pageDetails?.count === 'number'
-									? resp.pageDetails.count
-									: (Array.isArray(resp.items) ? resp.items.length : 0);
+								) as { queryCount?: number };
+								const count = typeof resp.queryCount === 'number' ? resp.queryCount : 0;
 								return { key: entry.key, count };
 							} catch (err) {
 								const msg = err instanceof Error ? err.message : String(err);
@@ -2265,7 +2290,7 @@ export async function executeAiTool(
 
 			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
 			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
-				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'countByPeriod');
+				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'countByPeriod', resource);
 				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
 				if ('empty' in r) {
 					const emptyCountResponse: Record<string, unknown> = {
@@ -2360,7 +2385,7 @@ export async function executeAiTool(
 
 			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
 			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
-				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'getByAge');
+				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'getByAge', resource);
 				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
 				if ('empty' in r) {
 					return attachCorrelation(
@@ -2672,6 +2697,7 @@ export async function executeAiTool(
 				limitedRecords,
 				{
 					hasMore: limitedRecords.length < totalMerged,
+					totalAvailable: totalMerged,
 					serverCap: SEARCH_BY_KEYWORD_STAGE_CAP,
 					clientCap: sliceLimit,
 				},

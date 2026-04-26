@@ -459,7 +459,7 @@ export function buildTicketSearchByKeywordDescription(_resource: string): string
 		"Optional: 'includeNotes'=true to also search TicketNotes.description; 'includeTimeEntries'=true to also search TimeEntries.summaryNotes. " +
 		"Each returned ticket gets a 'matchedIn' array (e.g. ['title','notes']) indicating which sources matched. " +
 		"Per-stage cap: 200 records. " +
-		"Use 'recency', 'since', or 'until' to constrain by createDate (applied post-merge). " +
+		"Use 'recency', 'since', or 'until' to constrain by date (applied post-merge to merged results; use 'recency_field' to specify which date field). " +
 		"Use 'returnAll' for the full deduplicated result set."
 	);
 }
@@ -715,6 +715,12 @@ const LIST_ADVANCED_NOTES = [
 	'returnAll=true: fetches ALL matching records via API-native pagination. Response truncated at 100 records — use fields param to reduce payload or narrow filters.',
 	ASCENDING_ID_WARNING,
 	RECENCY_VS_SINCE_UNTIL_RULE.trim(),
+];
+
+const SEARCH_BY_KEYWORD_NOTES: readonly string[] = [
+	"Use 'limit' (default 10) or 'returnAll=true' to control result count from the merged set.",
+	"Use 'recency', 'since', or 'until' to filter by creation date — applied post-merge, not per-stage.",
+	"Per-stage cap is 200 records. If a stage hits the cap, set includeNotes/includeTimeEntries=false or narrow the keyword.",
 ];
 
 /** Static parameter map for read and metadata operations */
@@ -1210,8 +1216,9 @@ function getOperationNotes(resource: string, operation: string): string[] {
 		case 'getFullDetail':
 		case 'countByPeriod':
 			return [...contractNotes];
-		case 'getByAge':
 		case 'searchByKeyword':
+			return [...contractNotes, ...SEARCH_BY_KEYWORD_NOTES];
+		case 'getByAge':
 		case 'getByCompanyAndStatus':
 		case 'getUnassigned':
 		case 'getBySLAStatus':
