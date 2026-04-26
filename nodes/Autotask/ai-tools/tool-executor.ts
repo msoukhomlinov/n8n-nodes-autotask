@@ -14,6 +14,7 @@ import {
 	formatIdError,
 	wrapError,
 	ERROR_TYPES,
+	type FlatErrorResponse,
 } from './error-formatter';
 import {
 	resolveLabelsToIds,
@@ -115,6 +116,104 @@ export interface ToolExecutionMetadata {
 	readFields?: FieldMeta[];
 	writeFields?: FieldMeta[];
 	allAllowedOps?: string[];
+}
+
+interface ResourceConvenienceConfig {
+	queryEndpoint: string;
+	getEndpoint: (id: string | number) => string;
+	createDateField: string;
+	assignedField: string;
+	terminalStatusIds: number[];
+	hasPriority: boolean;
+	hasCompanyId: boolean;
+	companyFilterStrategy: 'direct' | 'viaProject';
+	supportsSLA: boolean;
+	getFullDetailMode: 'sla' | 'simple';
+	childCountEntities: Array<{
+		queryEndpoint: string;
+		parentField: string;
+		key: string;
+	}>;
+}
+
+const RESOURCE_CONVENIENCE_CONFIG: Record<string, ResourceConvenienceConfig> = {
+	ticket: {
+		queryEndpoint: 'Tickets/query',
+		getEndpoint: (id) => `Tickets/${id}`,
+		createDateField: 'createDate',
+		assignedField: 'assignedResourceID',
+		terminalStatusIds: [5, 8],
+		hasPriority: true,
+		hasCompanyId: true,
+		companyFilterStrategy: 'direct',
+		supportsSLA: true,
+		getFullDetailMode: 'sla',
+		childCountEntities: [],
+	},
+};
+
+function getConvenienceConfig(resource: string): ResourceConvenienceConfig | undefined {
+	return RESOURCE_CONVENIENCE_CONFIG[resource];
+}
+
+export async function resolveCompanyToProjectIdFilter(
+	context: IExecuteFunctions,
+	companyRaw: string | number,
+	operationName: string,
+): Promise<
+	| { filter: ToolFilter; warning?: string }
+	| { empty: true }
+	| { error: FlatErrorResponse }
+> {
+	let companyId: number;
+	const raw = String(companyRaw).trim();
+	if (/^\d+$/.test(raw)) {
+		companyId = Number(raw);
+	} else {
+		const companyLookup = await autotaskApiRequest.call(
+			context, 'POST', 'Companies/query',
+			{
+				filter: [{ field: 'companyName', op: 'eq', value: raw }],
+				MaxRecords: 1,
+			} as IDataObject,
+		) as { items?: IAutotaskEntity[] };
+		const matches = Array.isArray(companyLookup.items) ? companyLookup.items : [];
+		if (matches.length === 0) {
+			return {
+				error: wrapError(
+					'task',
+					operationName,
+					ERROR_TYPES.ENTITY_NOT_FOUND,
+					`Company '${raw}' not found.`,
+					'Verify the company name is exact, or use a numeric companyID.',
+				),
+			};
+		}
+		companyId = Number(matches[0].id);
+	}
+
+	const projectsResp = await autotaskApiRequest.call(
+		context, 'POST', 'Projects/query',
+		{
+			filter: [{ field: 'companyID', op: 'eq', value: companyId }],
+			MaxRecords: 500,
+			IncludeFields: ['id'],
+		} as IDataObject,
+	) as { items?: IAutotaskEntity[] };
+	const projectIds = (Array.isArray(projectsResp.items) ? projectsResp.items : [])
+		.map((p) => Number(p.id))
+		.filter((n) => Number.isFinite(n));
+
+	if (projectIds.length === 0) {
+		return { empty: true };
+	}
+
+	return {
+		filter: { field: 'projectID', op: 'in', value: projectIds } as ToolFilter,
+		warning: projectIds.length >= 500
+			? `Company expanded to 500+ projects — task results may be incomplete. Narrow the search by date or status.`
+			: undefined,
+	};
 }
 
 export const DEFAULT_QUERY_LIMIT = 10;
@@ -1482,8 +1581,50 @@ export async function executeAiTool(
 			}
 		}
 
+		// Convenience-ops resource gate — fail fast for unsupported resources.
+		const CONVENIENCE_OPS_SET = new Set([
+			'getByCompanyAndStatus',
+			'getUnassigned',
+			'getBySLAStatus',
+			'getFullDetail',
+			'countByPeriod',
+			'getByAge',
+		]);
+		if (CONVENIENCE_OPS_SET.has(effectiveOperation)) {
+			const cfgCheck = getConvenienceConfig(resource);
+			if (!cfgCheck) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							effectiveOperation,
+							ERROR_TYPES.INVALID_OPERATION,
+							`Operation '${effectiveOperation}' is not supported for resource '${resource}'.`,
+							`This convenience operation is only available on supported resources. Use autotask_${resource} with operation 'getMany' instead.`,
+						),
+					),
+					correlationId,
+				);
+			}
+			if (effectiveOperation === 'getBySLAStatus' && !cfgCheck.supportsSLA) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							effectiveOperation,
+							ERROR_TYPES.INVALID_OPERATION,
+							`Operation 'getBySLAStatus' is only supported for tickets — '${resource}' has no SLA concept.`,
+							`Use autotask_${resource} with operation 'getMany' and date filters to find ${resource} records by status or age.`,
+						),
+					),
+					correlationId,
+				);
+			}
+		}
+
 		// Short-circuit: getByCompanyAndStatus
 		if (effectiveOperation === 'getByCompanyAndStatus') {
+			const cfg = getConvenienceConfig(resource)!;
 			const companyRaw = params.company;
 			if (companyRaw === undefined || companyRaw === null || String(companyRaw).trim() === '') {
 				return attachCorrelation(
@@ -1502,11 +1643,14 @@ export async function executeAiTool(
 
 			// Build synthetic filters: company is required; status and priority are optional.
 			// resolveAndClassifyFilters resolves string values to numeric IDs in-place.
-			const syntheticFilters: ToolFilter[] = [{ field: 'companyID', op: 'eq', value: companyRaw as string | number }];
+			const syntheticFilters: ToolFilter[] = [];
+			if (cfg.companyFilterStrategy === 'direct') {
+				syntheticFilters.push({ field: 'companyID', op: 'eq', value: companyRaw as string | number });
+			}
 			if (params.status !== undefined && params.status !== null) {
 				syntheticFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
 			}
-			if (params.priority !== undefined && params.priority !== null) {
+			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
 				syntheticFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
 			}
 
@@ -1525,7 +1669,7 @@ export async function executeAiTool(
 							'getByCompanyAndStatus',
 							ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
 							`Could not resolve: ${specialUnresolved.map((f) => `${f.field}='${String(f.value)}'`).join(', ')}`,
-							`Verify the company name is exact, or use a numeric companyID. For status/priority, call autotask_${resource} with operation 'listPicklistValues' and fieldId='status' or 'priority'.`,
+							`Verify the company name is exact, or use a numeric companyID. For status${cfg.hasPriority ? '/priority' : ''}, call autotask_${resource} with operation 'listPicklistValues' and fieldId='status'${cfg.hasPriority ? " or 'priority'" : ''}.`,
 							{ pendingConfirmations: specialPending.length > 0 ? specialPending : undefined },
 						),
 					),
@@ -1543,7 +1687,7 @@ export async function executeAiTool(
 				requestBody.MaxRecords = queryLimitForOp;
 			}
 
-			const gbcasResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', requestBody) as { items?: IAutotaskEntity[] };
+			const gbcasResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, requestBody) as { items?: IAutotaskEntity[] };
 			const gbcasItems = Array.isArray(gbcasResponse.items) ? gbcasResponse.items as Record<string, unknown>[] : [];
 
 			const allGbcasWarnings = [...specialWarnings, ...labelWarnings];
@@ -1566,10 +1710,11 @@ export async function executeAiTool(
 
 		// Short-circuit: getUnassigned
 		if (effectiveOperation === 'getUnassigned') {
+			const cfg = getConvenienceConfig(resource)!;
 			// Hardcoded base filters: unassigned + not complete/cancelled
 			const unassignedFilters: ToolFilter[] = [
-				{ field: 'assignedResourceID', op: 'notExist' },
-				{ field: 'status', op: 'notIn', value: [5, 8] },
+				{ field: cfg.assignedField, op: 'notExist' },
+				{ field: 'status', op: 'notIn', value: cfg.terminalStatusIds },
 			];
 
 			// Optional: company and priority filters (resolve name→ID)
@@ -1577,7 +1722,7 @@ export async function executeAiTool(
 			if (params.company !== undefined && params.company !== null) {
 				optionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
 			}
-			if (params.priority !== undefined && params.priority !== null) {
+			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
 				optionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
 			}
 
@@ -1617,7 +1762,7 @@ export async function executeAiTool(
 				requestBody.MaxRecords = queryLimitForOp;
 			}
 
-			const unassignedResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', requestBody) as { items?: IAutotaskEntity[] };
+			const unassignedResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, requestBody) as { items?: IAutotaskEntity[] };
 			const unassignedItems = Array.isArray(unassignedResponse.items) ? unassignedResponse.items as Record<string, unknown>[] : [];
 
 			const allUnassignedWarnings = [...specialWarnings, ...labelWarnings];
@@ -1640,6 +1785,7 @@ export async function executeAiTool(
 
 		// Short-circuit: getBySLAStatus
 		if (effectiveOperation === 'getBySLAStatus') {
+			const cfg = getConvenienceConfig(resource)!;
 			const slaStatusParam = params.slaStatus as string | undefined;
 			if (!slaStatusParam || !['breached', 'at_risk', 'compliant'].includes(slaStatusParam)) {
 				return attachCorrelation(
@@ -1674,7 +1820,7 @@ export async function executeAiTool(
 					items: [
 						{ field: 'resolvedDueDateTime', op: 'gt', value: now.toISOString() },
 						{ field: 'resolvedDueDateTime', op: 'lt', value: windowEnd.toISOString() },
-						{ field: 'status', op: 'notIn', value: [5, 8] },
+						{ field: 'status', op: 'notIn', value: cfg.terminalStatusIds },
 					],
 				}];
 			}
@@ -1721,7 +1867,7 @@ export async function executeAiTool(
 				slaRequestBody.MaxRecords = queryLimitForSla;
 			}
 
-			const slaResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', slaRequestBody) as { items?: IAutotaskEntity[] };
+			const slaResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, slaRequestBody) as { items?: IAutotaskEntity[] };
 			const slaItems = Array.isArray(slaResponse.items) ? slaResponse.items as Record<string, unknown>[] : [];
 
 			const allSlaWarnings = [...slaSpecialWarnings, ...labelWarnings];
@@ -1744,11 +1890,12 @@ export async function executeAiTool(
 
 		// Short-circuit: getFullDetail
 		if (effectiveOperation === 'getFullDetail') {
+			const cfg = getConvenienceConfig(resource)!;
 			let fullDetailTicketId: string | undefined;
 			if (params.id !== undefined && params.id !== null) {
 				fullDetailTicketId = String(params.id);
 			} else if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim()) {
-				const tnLookup = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', {
+				const tnLookup = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, {
 					filter: [{ field: 'ticketNumber', op: 'eq', value: params.ticketNumber.trim() }],
 					MaxRecords: 1,
 				} as IDataObject) as { items?: IAutotaskEntity[] };
@@ -1785,7 +1932,8 @@ export async function executeAiTool(
 				);
 			}
 
-			const fullDetailResponse = await autotaskApiRequest.call(context, 'GET', `Tickets/${fullDetailTicketId}`) as { item?: IAutotaskEntity };
+			const resolvedDetailId = fullDetailTicketId;
+			const fullDetailResponse = await autotaskApiRequest.call(context, 'GET', cfg.getEndpoint(resolvedDetailId)) as { item?: IAutotaskEntity };
 			const rawFullDetailTicket = fullDetailResponse.item;
 			if (!rawFullDetailTicket || typeof rawFullDetailTicket !== 'object') {
 				return attachCorrelation(
@@ -1794,7 +1942,7 @@ export async function executeAiTool(
 							resource,
 							'getFullDetail',
 							ERROR_TYPES.ENTITY_NOT_FOUND,
-							`Ticket with ID ${fullDetailTicketId} not found.`,
+							`Ticket with ID ${resolvedDetailId} not found.`,
 							`Verify the ticket ID and retry autotask_${resource} with operation 'getMany'.`,
 						),
 					),
@@ -1802,43 +1950,59 @@ export async function executeAiTool(
 				);
 			}
 
-			const fdTicket = rawFullDetailTicket as Record<string, unknown>;
+			const detailRecord = rawFullDetailTicket as Record<string, unknown>;
 
-			// Derive SLA status from ticket fields — no extra API call needed
-			const fdHasSla = fdTicket.serviceLevelAgreementID !== undefined && fdTicket.serviceLevelAgreementID !== null;
-			const fdMet = fdTicket.serviceLevelAgreementHasBeenMet;
-			const fdPausedHours = fdTicket.serviceLevelAgreementPausedNextEventHours;
-			let fdSlaStatus: string;
-			if (!fdHasSla) {
-				fdSlaStatus = 'no_sla';
-			} else if (typeof fdPausedHours === 'number' && fdPausedHours > 0) {
-				fdSlaStatus = 'paused';
-			} else if (fdMet === false) {
-				fdSlaStatus = 'breached';
-			} else if (fdMet === true) {
-				fdSlaStatus = 'compliant';
+			let fullDetailRecord: Record<string, unknown>;
+			if (cfg.getFullDetailMode === 'sla') {
+				const fdTicket = detailRecord;
+				// Derive SLA status from ticket fields — no extra API call needed
+				const fdHasSla = fdTicket.serviceLevelAgreementID !== undefined && fdTicket.serviceLevelAgreementID !== null;
+				const fdMet = fdTicket.serviceLevelAgreementHasBeenMet;
+				const fdPausedHours = fdTicket.serviceLevelAgreementPausedNextEventHours;
+				let fdSlaStatus: string;
+				if (!fdHasSla) {
+					fdSlaStatus = 'no_sla';
+				} else if (typeof fdPausedHours === 'number' && fdPausedHours > 0) {
+					fdSlaStatus = 'paused';
+				} else if (fdMet === false) {
+					fdSlaStatus = 'breached';
+				} else if (fdMet === true) {
+					fdSlaStatus = 'compliant';
+				} else {
+					fdSlaStatus = 'unknown';
+				}
+
+				// Build a simple plain-text summary from available ticket fields
+				const fdTicketNumber = fdTicket.ticketNumber ?? '';
+				const fdTitle = fdTicket.title ?? '';
+				const fdStatusLabel = fdTicket.status_label ?? fdTicket.status ?? '';
+				const fdCompanyLabel = fdTicket.companyID_label ?? fdTicket.companyName ?? '';
+				const fdSummaryText = [
+					fdTicketNumber ? `Ticket ${String(fdTicketNumber)}` : `Ticket ${resolvedDetailId}`,
+					fdTitle ? `"${String(fdTitle)}"` : '',
+					fdStatusLabel ? `[${String(fdStatusLabel)}]` : '',
+					fdCompanyLabel ? `— ${String(fdCompanyLabel)}` : '',
+				].filter(Boolean).join(' ');
+
+				fullDetailRecord = {
+					...fdTicket,
+					slaStatus: fdSlaStatus,
+					slaBreachDateTime: fdTicket.resolvedDueDateTime ?? null,
+					summaryText: fdSummaryText,
+				};
 			} else {
-				fdSlaStatus = 'unknown';
+				// 'simple' mode — task/project. GET record + summaryText (no SLA).
+				const recordTitle = (detailRecord.title ?? detailRecord.projectName ?? detailRecord.name ?? '') as string;
+				const recordStatusLabel = (detailRecord.status_label ?? detailRecord.status ?? '') as string;
+				const recordCompanyLabel = (detailRecord.companyID_label ?? detailRecord.companyName ?? '') as string;
+				const summaryText = [
+					`${resource.charAt(0).toUpperCase()}${resource.slice(1)} ${resolvedDetailId}`,
+					recordTitle ? `"${String(recordTitle)}"` : '',
+					recordStatusLabel ? `[${String(recordStatusLabel)}]` : '',
+					recordCompanyLabel ? `— ${String(recordCompanyLabel)}` : '',
+				].filter(Boolean).join(' ');
+				fullDetailRecord = { ...detailRecord, summaryText };
 			}
-
-			// Build a simple plain-text summary from available ticket fields
-			const fdTicketNumber = fdTicket.ticketNumber ?? '';
-			const fdTitle = fdTicket.title ?? '';
-			const fdStatusLabel = fdTicket.status_label ?? fdTicket.status ?? '';
-			const fdCompanyLabel = fdTicket.companyID_label ?? fdTicket.companyName ?? '';
-			const fdSummaryText = [
-				fdTicketNumber ? `Ticket ${String(fdTicketNumber)}` : `Ticket ${fullDetailTicketId}`,
-				fdTitle ? `"${String(fdTitle)}"` : '',
-				fdStatusLabel ? `[${String(fdStatusLabel)}]` : '',
-				fdCompanyLabel ? `— ${String(fdCompanyLabel)}` : '',
-			].filter(Boolean).join(' ');
-
-			const fullDetailRecord: Record<string, unknown> = {
-				...fdTicket,
-				slaStatus: fdSlaStatus,
-				slaBreachDateTime: fdTicket.resolvedDueDateTime ?? null,
-				summaryText: fdSummaryText,
-			};
 
 			const fullDetailJson = JSON.stringify(
 				buildItemResponse(resource, 'getFullDetail', fullDetailRecord),
@@ -1849,6 +2013,7 @@ export async function executeAiTool(
 
 		// Short-circuit: countByPeriod
 		if (effectiveOperation === 'countByPeriod') {
+			const cfg = getConvenienceConfig(resource)!;
 			const validPeriods = ['today', 'this_week', 'last_7d', 'this_month', 'last_month', 'this_quarter', 'last_quarter', 'last_30d', 'last_90d'] as const;
 			const periodParam = params.period as string | undefined;
 			if (!periodParam || !(validPeriods as readonly string[]).includes(periodParam)) {
@@ -1941,7 +2106,7 @@ export async function executeAiTool(
 			if (params.status !== undefined && params.status !== null) {
 				cbpOptional.push({ field: 'status', op: 'eq', value: params.status as string | number });
 			}
-			if (params.priority !== undefined && params.priority !== null) {
+			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
 				cbpOptional.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
 			}
 
@@ -1975,8 +2140,8 @@ export async function executeAiTool(
 			}
 
 			const cbpAllFilters: unknown[] = [
-				{ field: 'createDate', op: 'gte', value: cbpFrom },
-				{ field: 'createDate', op: 'lt', value: cbpTo },
+				{ field: cfg.createDateField, op: 'gte', value: cbpFrom },
+				{ field: cfg.createDateField, op: 'lt', value: cbpTo },
 				...cbpOptional,
 			];
 
@@ -1999,6 +2164,7 @@ export async function executeAiTool(
 
 		// Short-circuit: getByAge
 		if (effectiveOperation === 'getByAge') {
+			const cfg = getConvenienceConfig(resource)!;
 			const olderThanDays = params.olderThanDays;
 			if (typeof olderThanDays !== 'number' || !Number.isFinite(olderThanDays) || olderThanDays <= 0) {
 				return attachCorrelation(
@@ -2017,13 +2183,13 @@ export async function executeAiTool(
 
 			const cutoffDate = new Date(Date.now() - Math.trunc(olderThanDays) * 86400000);
 			const ageBaseFilters: ToolFilter[] = [
-				{ field: 'createDate', op: 'lt', value: cutoffDate.toISOString() },
+				{ field: cfg.createDateField, op: 'lt', value: cutoffDate.toISOString() },
 			];
 
 			const ageOptionalFilters: ToolFilter[] = [];
 			if (params.company !== undefined && params.company !== null) ageOptionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
 			if (params.status !== undefined && params.status !== null) ageOptionalFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
-			if (params.priority !== undefined && params.priority !== null) ageOptionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) ageOptionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
 
 			let ageResolutions: any[] = [];
 			let ageWarnings: string[] = [];
@@ -2055,7 +2221,7 @@ export async function executeAiTool(
 			const ageRequestBody: IDataObject = { filter: ageAllFilters as unknown as IDataObject[] };
 			if (ageQueryLimit !== undefined) ageRequestBody.MaxRecords = ageQueryLimit;
 
-			const ageResponse = await autotaskApiRequest.call(context, 'POST', 'Tickets/query', ageRequestBody) as { items?: IAutotaskEntity[] };
+			const ageResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, ageRequestBody) as { items?: IAutotaskEntity[] };
 			const ageItems = Array.isArray(ageResponse.items) ? ageResponse.items as Record<string, unknown>[] : [];
 
 			const ageAllWarnings = [...ageWarnings, ...labelWarnings];
