@@ -137,6 +137,7 @@ function getMetadataNeeds(operations: string[]): { needsReadFields: boolean; nee
 			'getUnposted',
 			'count',
 			'whoAmI',
+			'searchByIdentity',
 			'searchByDomain',
 			'getByResource',
 			'getByYear',

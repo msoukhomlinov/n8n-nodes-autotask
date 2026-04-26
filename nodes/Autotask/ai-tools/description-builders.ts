@@ -304,11 +304,23 @@ export function buildUnpostedTimeEntriesDescription(
 export function buildCompanySearchByDomainDescription(resourceName: string): string {
 	return (
 		'Search companies by domain using website-style fields. ' +
+		'Identifier priority for company resolution: first extract/use domain from any provided email or website, then use company-name contains matching only as fallback. ' +
 		'Input can be a bare domain or full URL; the tool normalises it to a domain fragment (for example autotask.net). ' +
 		'IMPORTANT: Autotask typically stores company websites as full URLs (for example https://www.autotask.net/), so exact operator matches can fail on bare domain input. ' +
 		'To avoid false negatives, eq/like semantics are handled safely for website matching. ' +
 		'When searchContactEmails is true (default), if no company website matches exist, the tool searches Contact.emailAddress by domain and resolves the most common canonical company name from companyID references. ' +
 		"Use the 'fields' parameter to limit which company fields are returned per result (comma-separated); omit to receive the full company entity. matchedField and matchedValue are always included to indicate which website field matched and its value. " +
+		describeFieldsHint(resourceName)
+	);
+}
+
+export function buildCompanySearchByIdentityDescription(resourceName: string): string {
+	return (
+		'Preferred AI company resolution operation. Accepts companyName, email, and website/domain, then ranks candidates by confidence. ' +
+		'Domain is normalised from website first, then email; domain matching is attempted first (company website fields, then contact-email fallback). ' +
+		'If domain signals are weak or absent, companyName contains matching is executed and merged into a confidence-ranked candidate list. ' +
+		'Use this operation as first choice for company lookup when identity hints may be incomplete or noisy. ' +
+		"Use the 'fields' parameter to limit returned company fields; omit for full records. " +
 		describeFieldsHint(resourceName)
 	);
 }
@@ -611,6 +623,11 @@ export function buildUnifiedDescriptionTemplate(
 	if (identityHint) {
 		sections.push(identityHint);
 	}
+	if (resource === 'company') {
+		sections.push(
+			'Company identifier priority rule: derive domain from email/website first; only fall back to companyName contains matching when no domain signal is available.',
+		);
+	}
 	sections.push(
 		`Operations: ${allOps.join(', ')}. Set 'operation' to one.`,
 		dateTimeReferenceSnippet(DESCRIPTION_REFERENCE_PLACEHOLDER),
@@ -854,16 +871,52 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 	searchByDomain: {
 		required: [],
 		optional: [
-			{ field: 'domain', type: 'string', description: 'Domain to search, e.g. autotask.net.' },
+			{
+				field: 'domain',
+				type: 'string',
+				description:
+					"Domain to search. Prefer domain extracted from email/website first (e.g. email='user@domain.com' -> 'domain.com').",
+			},
 			{
 				field: 'domainOperator',
 				type: 'string',
-				description: "Operator: eq, beginsWith, endsWith, contains (default 'contains').",
+				description:
+					"Operator: eq, beginsWith, endsWith, contains (default 'contains'). Do domain matching first; avoid strict exact-name-only matching when a domain exists.",
 			},
 			{
 				field: 'searchContactEmails',
 				type: 'boolean',
 				description: 'Fall back to contact email search if no website match (default true).',
+			},
+			{
+				field: 'fields',
+				type: 'string',
+				description: 'Comma-separated company field names to return.',
+			},
+		],
+	},
+	searchByIdentity: {
+		required: [],
+		optional: [
+			{
+				field: 'companyName',
+				type: 'string',
+				description: 'Optional company name signal (contains match).',
+			},
+			{
+				field: 'email',
+				type: 'string',
+				description: 'Optional email signal used to infer domain.',
+			},
+			{
+				field: 'website',
+				type: 'string',
+				description: 'Optional website/domain signal used for primary match.',
+			},
+			{
+				field: 'limit',
+				type: 'number',
+				description: 'Max ranked candidates to return (1-100, default 25).',
 			},
 			{
 				field: 'fields',
@@ -1158,6 +1211,8 @@ function getOperationPurpose(
 			return buildUnpostedTimeEntriesDescription(resource);
 		case 'searchByDomain':
 			return buildCompanySearchByDomainDescription(resource);
+		case 'searchByIdentity':
+			return buildCompanySearchByIdentityDescription(resource);
 		case 'slaHealthCheck':
 			return buildTicketSlaHealthCheckDescription(resource);
 		case 'summary':

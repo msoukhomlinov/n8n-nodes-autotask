@@ -184,7 +184,7 @@ export function dispatchOperationResponse(
 		}
 	};
 
-	if (responseKind === 'list' && operation !== 'searchByDomain') {
+	if (responseKind === 'list' && !['searchByDomain', 'searchByIdentity'].includes(operation)) {
 		const hasFilters = !!(
 			params.filter_field ||
 			params.filter_field_2 ||
@@ -421,6 +421,37 @@ export function dispatchOperationResponse(
 			const resolvedLabels = toResolvedLabels(context.resolutions);
 			return JSON.stringify({
 				summary: `Found ${records.length} ${resource} records — complete set, no further calls needed.`,
+				resource,
+				operation: `${resource}.${operation}`,
+				records,
+				returnedCount: records.length,
+				hasMore: false,
+				continuation: null,
+				isTruncated: false,
+				truncationReason: null,
+				serverCap: MAX_QUERY_LIMIT,
+				clientCap: MAX_RESPONSE_RECORDS,
+				resolvedLabels,
+				pendingConfirmations: context.pendingConfirmations ?? [],
+				warnings: context.resolutionWarnings ?? [],
+			});
+		}
+
+		case 'searchByIdentity': {
+			if (records.length === 0) {
+				return JSON.stringify(
+					wrapError(
+						resource,
+						operation,
+						ERROR_TYPES.NO_RESULTS_FOUND,
+						`No ${resource} found matching the supplied identity signals.`,
+						`Retry with additional hints (companyName, email, website), or use autotask_${resource} with operation 'getMany' with a filter.`,
+					),
+				);
+			}
+			const resolvedLabels = toResolvedLabels(context.resolutions);
+			return JSON.stringify({
+				summary: `Found ${records.length} ranked ${resource} candidates — complete set, no further calls needed.`,
 				resource,
 				operation: `${resource}.${operation}`,
 				records,

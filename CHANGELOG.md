@@ -2,6 +2,19 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.11.0] — 2026-04-26
+
+### Added
+
+- company: new `searchByIdentity` operation — accepts partial/noisy identity signals (company name, email, website/domain), does domain-first lookup, returns ranked candidates with confidence and matchedSignals metadata
+- company: `UnresolvedSearchDirective` on `searchByDomain` no-match responses — includes retry-key tracking to detect repeated identical failed queries and escalate to terminal with actionable disambiguation guidance
+- company: `CompanyDomainResultItem` typed results from `searchCompaniesByDomain` — consistent id, companyName, matchSource, confidence fields across all match paths including contact-email fallback
+
+### Changed
+
+- company: AI tool descriptions and schema hints now explicitly state domain-first identifier priority — extract domain from email/website before falling back to name-contains matching
+- company: `searchByDomain` guidance updated to emphasise domain extraction from email (e.g. `user@domain.com` → `domain.com`) and warn against exact-name-only matching
+
 ## [2.10.0] — 2026-04-26
 
 ### Fixed

@@ -373,6 +373,8 @@ function normaliseOperation(operation: string): string {
 			return 'getUnposted';
 		case 'searchbydomain':
 			return 'searchByDomain';
+		case 'searchbyidentity':
+			return 'searchByIdentity';
 		case 'slahealthcheck':
 			return 'slaHealthCheck';
 		case 'moveconfigurationitem':
@@ -1164,7 +1166,7 @@ export async function executeAiTool(
 	}
 
 	if (
-		['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain'].includes(
+		['get', 'getMany', 'getPosted', 'getUnposted', 'count', 'whoAmI', 'searchByDomain', 'searchByIdentity'].includes(
 			effectiveOperation,
 		)
 	) {
@@ -1395,7 +1397,7 @@ export async function executeAiTool(
 				) {
 					data.limit = queryLimit;
 				}
-				if (effectiveOperation === 'searchByDomain') {
+				if (['searchByDomain', 'searchByIdentity'].includes(effectiveOperation)) {
 					data.limit = effectiveLimit;
 				}
 				return JSON.stringify(data);
