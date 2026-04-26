@@ -355,6 +355,16 @@ export class AutotaskAiTools implements INodeType {
 				description:
 					'Whether to enable mutating tools (create, createIfNotExists, moveToCompany, moveConfigurationItem, transferOwnership, update, delete). Disabled = read-only.',
 			},
+			{
+				displayName: 'Tool Description Appendix',
+				name: 'toolDescriptionAppendix',
+				type: 'string',
+				typeOptions: { rows: 3 },
+				default: '',
+				placeholder: 'e.g. Only query tickets in the MSP support queue. Never create tickets for internal IT.',
+				description:
+					'Optional text appended to the generated tool description. Use to add deployment-specific context or constraints visible to the AI agent.',
+			},
 		],
 	};
 
@@ -522,7 +532,9 @@ export class AutotaskAiTools implements INodeType {
 			}
 		}
 
-		const description = injectDescriptionReferenceUtc(descriptionTemplate, referenceUtc);
+		const appendix = (this.getNodeParameter('toolDescriptionAppendix', itemIndex, '') as string).trim();
+		const baseDescription = injectDescriptionReferenceUtc(descriptionTemplate, referenceUtc);
+		const description = appendix ? `${baseDescription}\n\n${appendix}` : baseDescription;
 		const schemaKeys = safeSchemaKeys(schema);
 		traceToolBuild({
 			phase: 'tool-built',
