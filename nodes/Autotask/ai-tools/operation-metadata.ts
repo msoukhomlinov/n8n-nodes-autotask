@@ -215,6 +215,15 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		docsFragment: "Return tickets created more than N days ago. Required: olderThanDays (positive integer). Optional: status, company, priority.",
 	},
 	{
+		name: 'searchByKeyword',
+		isWrite: false,
+		label: 'Search tickets by keyword (title, description, notes, time entries)',
+		supportsFilters: false,
+		responseKind: 'list',
+		docsFragment:
+			'Cross-entity full-text search for tickets. Matches keyword in title and description (always), and optionally in TicketNotes.description and TimeEntries.summaryNotes. Each returned ticket has a matchedIn array indicating where the keyword was found.',
+	},
+	{
 		name: 'approve',
 		isWrite: true,
 		label: 'Approve time off request',

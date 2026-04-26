@@ -318,7 +318,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		}
 
 		// Filter fields for list operations
-		if (hasListFamily) {
+		const hasSearchByKeywordForListShared = operations.includes('searchByKeyword');
+		if (hasListFamily || hasSearchByKeywordForListShared) {
 			const fieldNames = readFields.filter((f) => !f.udf).map((f) => f.id);
 			const filterFieldDesc =
 				"Field to filter on. Use operation 'describeFields' to see valid field names. For 'older than' / upper-bound date queries use filter_field with a date field + filter_op='lt'.";
@@ -541,6 +542,36 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			if (!shape.company) shape.company = rz.union([rz.number(), rz.string()]).nullish().describe('Company name or companyID (auto-resolved).');
 			if (!shape.status) shape.status = rz.union([rz.number(), rz.string()]).nullish().describe('Status picklist label or ID (optional).');
 			if (!shape.priority) shape.priority = rz.union([rz.number(), rz.string()]).nullish().describe('Priority picklist label or ID (optional).');
+		}
+
+		// searchByKeyword fields
+		const hasSearchByKeyword = operations.includes('searchByKeyword');
+		if (hasSearchByKeyword) {
+			if (!shape.keyword) {
+				shape.keyword = rz
+					.string()
+					.min(1)
+					.nullish()
+					.describe(
+						"Required for searchByKeyword: keyword to search. Matches title and description (always); TicketNotes.description if includeNotes=true; TimeEntries.summaryNotes if includeTimeEntries=true. Case-insensitive 'contains' match.",
+					);
+			}
+			if (!shape.includeNotes) {
+				shape.includeNotes = rz
+					.boolean()
+					.nullish()
+					.describe(
+						'When true, also search TicketNotes.description. Default false. Adds one parallel API call. Capped at 200 matched notes.',
+					);
+			}
+			if (!shape.includeTimeEntries) {
+				shape.includeTimeEntries = rz
+					.boolean()
+					.nullish()
+					.describe(
+						'When true, also search TimeEntries.summaryNotes. Default false. Adds one parallel API call. Capped at 200 matched time entries.',
+					);
+			}
 		}
 
 		// Identifier-pair altIdField (e.g. ticketNumber for slaHealthCheck + summary)

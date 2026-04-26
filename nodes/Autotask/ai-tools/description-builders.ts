@@ -368,6 +368,19 @@ export function buildTicketGetByAgeDescription(resource: string): string {
 	);
 }
 
+export function buildTicketSearchByKeywordDescription(_resource: string): string {
+	return (
+		"Cross-entity full-text search for tickets by keyword. " +
+		"Required: 'keyword' (case-insensitive contains-match). " +
+		"Always searches ticket 'title' and 'description'. " +
+		"Optional: 'includeNotes'=true to also search TicketNotes.description; 'includeTimeEntries'=true to also search TimeEntries.summaryNotes. " +
+		"Each returned ticket gets a 'matchedIn' array (e.g. ['title','notes']) indicating which sources matched. " +
+		"Per-stage cap: 200 records. " +
+		"Use 'recency', 'since', or 'until' to constrain by createDate (applied post-merge). " +
+		"Use 'returnAll' for the full deduplicated result set."
+	);
+}
+
 export function buildConfigurationItemMoveConfigurationItemDescription(
 	resourceName: string,
 ): string {
@@ -1066,6 +1079,8 @@ function getOperationPurpose(
 			return buildTicketCountByPeriodDescription(resource);
 		case 'getByAge':
 			return buildTicketGetByAgeDescription(resource);
+		case 'searchByKeyword':
+			return buildTicketSearchByKeywordDescription(resource);
 		case 'getByCompanyAndStatus':
 			return buildTicketGetByCompanyAndStatusDescription(resource);
 		case 'getUnassigned':
@@ -1113,6 +1128,7 @@ function getOperationNotes(resource: string, operation: string): string[] {
 		case 'countByPeriod':
 			return [...contractNotes];
 		case 'getByAge':
+		case 'searchByKeyword':
 		case 'getByCompanyAndStatus':
 		case 'getUnassigned':
 		case 'getBySLAStatus':

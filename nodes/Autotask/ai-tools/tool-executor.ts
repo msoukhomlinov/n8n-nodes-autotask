@@ -871,7 +871,7 @@ export async function executeAiTool(
 	}
 
 	// Pre-flight: filter cross-validation (list operations)
-	const isListOperation = ['getMany', 'count', 'getPosted', 'getUnposted', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus'].includes(effectiveOperation);
+	const isListOperation = ['getMany', 'count', 'getPosted', 'getUnposted', 'getByAge', 'searchByKeyword', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus'].includes(effectiveOperation);
 	if (isListOperation) {
 		const p = params as Record<string, unknown>;
 		const hasFiltersJson = hasProvidedValue(p.filtersJson);
@@ -2074,6 +2074,293 @@ export async function executeAiTool(
 			);
 			const enrichedAgeJson = await enrichResponseJson(ageListJson, context);
 			return attachCorrelation(enrichedAgeJson, correlationId);
+		}
+
+		// Short-circuit: searchByKeyword
+		// Cross-entity full-text search across Tickets, TicketNotes, TimeEntries.
+		// Stages 1–3 run in parallel via Promise.allSettled; per-stage failures degrade gracefully.
+		// Recency is applied post-merge against the resolved recency field (default createDate).
+		if (effectiveOperation === 'searchByKeyword') {
+			const SEARCH_BY_KEYWORD_STAGE_CAP = 200;
+
+			const keywordRaw = (params as Record<string, unknown>).keyword;
+			const keyword = typeof keywordRaw === 'string' ? keywordRaw.trim() : '';
+			if (!keyword) {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'searchByKeyword',
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							"'keyword' is required for searchByKeyword (non-empty string).",
+							`Call autotask_${resource} with operation 'searchByKeyword' and provide 'keyword'.`,
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const includeNotes = (params as Record<string, unknown>).includeNotes === true;
+			const includeTimeEntries = (params as Record<string, unknown>).includeTimeEntries === true;
+
+			// Stage 1: Tickets/query — title OR description contains keyword
+			const stage1Body: IDataObject = {
+				filter: [
+					{
+						op: 'or',
+						items: [
+							{ field: 'title', op: 'contains', value: keyword },
+							{ field: 'description', op: 'contains', value: keyword },
+						],
+					},
+				] as unknown as IDataObject[],
+				MaxRecords: SEARCH_BY_KEYWORD_STAGE_CAP,
+			};
+
+			// Stage 2: TicketNotes/query — description contains keyword (only if requested)
+			const stage2Body: IDataObject | null = includeNotes
+				? {
+						filter: [
+							{ field: 'description', op: 'contains', value: keyword },
+						] as unknown as IDataObject[],
+						MaxRecords: SEARCH_BY_KEYWORD_STAGE_CAP,
+					}
+				: null;
+
+			// Stage 3: TimeEntries/query — summaryNotes contains keyword (only if requested)
+			const stage3Body: IDataObject | null = includeTimeEntries
+				? {
+						filter: [
+							{ field: 'summaryNotes', op: 'contains', value: keyword },
+						] as unknown as IDataObject[],
+						MaxRecords: SEARCH_BY_KEYWORD_STAGE_CAP,
+					}
+				: null;
+
+			const [stage1Settled, stage2Settled, stage3Settled] = await Promise.allSettled([
+				autotaskApiRequest.call(context, 'POST', 'Tickets/query', stage1Body) as Promise<{
+					items?: IAutotaskEntity[];
+				}>,
+				stage2Body
+					? (autotaskApiRequest.call(context, 'POST', 'TicketNotes/query', stage2Body) as Promise<{
+							items?: IAutotaskEntity[];
+						}>)
+					: Promise.resolve<{ items?: IAutotaskEntity[] }>({ items: [] }),
+				stage3Body
+					? (autotaskApiRequest.call(context, 'POST', 'TimeEntries/query', stage3Body) as Promise<{
+							items?: IAutotaskEntity[];
+						}>)
+					: Promise.resolve<{ items?: IAutotaskEntity[] }>({ items: [] }),
+			]);
+
+			const stageWarnings: string[] = [];
+
+			const stage1Items: Record<string, unknown>[] =
+				stage1Settled.status === 'fulfilled' && Array.isArray(stage1Settled.value.items)
+					? (stage1Settled.value.items as Record<string, unknown>[])
+					: [];
+			if (stage1Settled.status === 'rejected') {
+				const msg =
+					stage1Settled.reason instanceof Error
+						? stage1Settled.reason.message
+						: String(stage1Settled.reason);
+				return attachCorrelation(
+					JSON.stringify(
+						formatApiError(
+							`Ticket search (stage 1) failed: ${msg}`,
+							resource,
+							'searchByKeyword',
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const stage2Items: Record<string, unknown>[] =
+				stage2Settled.status === 'fulfilled' && Array.isArray(stage2Settled.value.items)
+					? (stage2Settled.value.items as Record<string, unknown>[])
+					: [];
+			if (includeNotes && stage2Settled.status === 'rejected') {
+				const msg =
+					stage2Settled.reason instanceof Error
+						? stage2Settled.reason.message
+						: String(stage2Settled.reason);
+				stageWarnings.push(
+					`TicketNotes search failed: ${msg}. Results omit notes-only matches.`,
+				);
+			}
+
+			const stage3Items: Record<string, unknown>[] =
+				stage3Settled.status === 'fulfilled' && Array.isArray(stage3Settled.value.items)
+					? (stage3Settled.value.items as Record<string, unknown>[])
+					: [];
+			if (includeTimeEntries && stage3Settled.status === 'rejected') {
+				const msg =
+					stage3Settled.reason instanceof Error
+						? stage3Settled.reason.message
+						: String(stage3Settled.reason);
+				stageWarnings.push(
+					`TimeEntries search failed: ${msg}. Results omit time-entry-only matches.`,
+				);
+			}
+
+			// Build merged ticket map keyed by id (string), with matchedIn Set per record.
+			const merged = new Map<string, { record: Record<string, unknown>; matchedIn: Set<string> }>();
+
+			const lowerKeyword = keyword.toLowerCase();
+			for (const ticket of stage1Items) {
+				const id = ticket.id;
+				if (id === undefined || id === null) continue;
+				const key = String(id);
+				const matched = new Set<string>();
+				const titleVal = typeof ticket.title === 'string' ? ticket.title.toLowerCase() : '';
+				const descVal =
+					typeof ticket.description === 'string' ? ticket.description.toLowerCase() : '';
+				if (titleVal.includes(lowerKeyword)) matched.add('title');
+				if (descVal.includes(lowerKeyword)) matched.add('description');
+				if (matched.size === 0) matched.add('title');
+				merged.set(key, { record: ticket, matchedIn: matched });
+			}
+
+			// Collect ticket IDs from stages 2 and 3
+			const noteTicketIds = new Set<string>();
+			for (const note of stage2Items) {
+				const tid = note.ticketID;
+				if (tid !== undefined && tid !== null) noteTicketIds.add(String(tid));
+			}
+			const timeEntryTicketIds = new Set<string>();
+			for (const te of stage3Items) {
+				const tid = te.ticketID;
+				if (tid !== undefined && tid !== null) timeEntryTicketIds.add(String(tid));
+			}
+
+			// Stage 4: GET /Tickets/{id} for IDs from stages 2/3 not already in stage 1
+			const idsToFetch = new Set<string>();
+			for (const tid of noteTicketIds) if (!merged.has(tid)) idsToFetch.add(tid);
+			for (const tid of timeEntryTicketIds) if (!merged.has(tid)) idsToFetch.add(tid);
+
+			if (idsToFetch.size > 0) {
+				const fetched = await Promise.allSettled(
+					[...idsToFetch].map(
+						(tid) =>
+							autotaskApiRequest.call(context, 'GET', `Tickets/${tid}`) as Promise<{
+								item?: IAutotaskEntity;
+							}>,
+					),
+				);
+				let stage4Failures = 0;
+				for (const settled of fetched) {
+					if (
+						settled.status === 'fulfilled' &&
+						settled.value.item &&
+						typeof settled.value.item === 'object'
+					) {
+						const ticket = settled.value.item as Record<string, unknown>;
+						const tid = ticket.id;
+						if (tid === undefined || tid === null) continue;
+						const key = String(tid);
+						if (!merged.has(key)) {
+							merged.set(key, { record: ticket, matchedIn: new Set() });
+						}
+					} else if (settled.status === 'rejected') {
+						stage4Failures += 1;
+					}
+				}
+				if (stage4Failures > 0) {
+					stageWarnings.push(
+						`${stage4Failures} ticket fetch(es) failed during stage 4 — some matched tickets may be missing from results.`,
+					);
+				}
+			}
+
+			// Tag matchedIn for note / time-entry hits AFTER stage-4 fetches
+			for (const tid of noteTicketIds) {
+				const entry = merged.get(tid);
+				if (entry) entry.matchedIn.add('notes');
+			}
+			for (const tid of timeEntryTicketIds) {
+				const entry = merged.get(tid);
+				if (entry) entry.matchedIn.add('timeEntries');
+			}
+
+			// Materialise records with matchedIn as a stable-ordered array
+			const ORDER = ['title', 'description', 'notes', 'timeEntries'] as const;
+			let mergedRecords: Record<string, unknown>[] = [...merged.values()].map(
+				({ record, matchedIn }) => ({
+					...record,
+					matchedIn: ORDER.filter((label) => matchedIn.has(label)),
+				}),
+			);
+
+			// Post-merge recency filter applied client-side against createDate
+			if (recencyResult.isActive && recencyResult.filters.length > 0) {
+				mergedRecords = mergedRecords.filter((record) => {
+					for (const f of recencyResult.filters) {
+						const fieldVal = (record as Record<string, unknown>)[f.field];
+						if (typeof fieldVal !== 'string') return false;
+						const recordTime = Date.parse(fieldVal);
+						if (Number.isNaN(recordTime)) return false;
+						const boundTime = Date.parse(String(f.value));
+						if (Number.isNaN(boundTime)) return false;
+						if (f.op === 'gte' && recordTime < boundTime) return false;
+						if (f.op === 'lte' && recordTime > boundTime) return false;
+					}
+					return true;
+				});
+			}
+
+			const totalMerged = mergedRecords.length;
+			const sliceLimit = effectiveReturnAll
+				? mergedRecords.length
+				: params.limit !== undefined
+					? getEffectiveLimit(params.limit)
+					: DEFAULT_QUERY_LIMIT;
+			const limitedRecords = mergedRecords.slice(0, sliceLimit);
+
+			const searchSummary = {
+				keyword,
+				includeNotes,
+				includeTimeEntries,
+				stageMatchCounts: {
+					ticketTitleOrDescription: stage1Items.length,
+					ticketNotes: includeNotes ? stage2Items.length : 0,
+					timeEntries: includeTimeEntries ? stage3Items.length : 0,
+				},
+				stageCap: SEARCH_BY_KEYWORD_STAGE_CAP,
+				stageCapHit: {
+					ticketTitleOrDescription: stage1Items.length >= SEARCH_BY_KEYWORD_STAGE_CAP,
+					ticketNotes: includeNotes && stage2Items.length >= SEARCH_BY_KEYWORD_STAGE_CAP,
+					timeEntries: includeTimeEntries && stage3Items.length >= SEARCH_BY_KEYWORD_STAGE_CAP,
+				},
+				uniqueMergedTicketCount: totalMerged,
+				returnedCount: limitedRecords.length,
+			};
+
+			const allWarnings = [...stageWarnings, ...labelWarnings];
+
+			const baseResponse = buildListResponse(
+				resource,
+				'searchByKeyword',
+				limitedRecords,
+				{
+					hasMore: limitedRecords.length < totalMerged,
+					serverCap: SEARCH_BY_KEYWORD_STAGE_CAP,
+					clientCap: sliceLimit,
+				},
+				{
+					resolutions: labelResolutions.length > 0 ? labelResolutions : undefined,
+					resolutionWarnings: allWarnings.length > 0 ? allWarnings : undefined,
+				},
+			);
+
+			const responseObject: Record<string, unknown> = {
+				...baseResponse,
+				searchSummary,
+			};
+
+			const searchByKeywordJson = JSON.stringify(responseObject);
+			const enrichedSearchByKeywordJson = await enrichResponseJson(searchByKeywordJson, context);
+			return attachCorrelation(enrichedSearchByKeywordJson, correlationId);
 		}
 
 		traceExecutor({

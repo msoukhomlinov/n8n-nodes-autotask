@@ -136,6 +136,7 @@ export function validateEntityId(
         'getFullDetail',
         'countByPeriod',
         'getByAge',
+        'searchByKeyword',
     ];
     if (noIdOperations.includes(operation)) {
         return { valid: true };

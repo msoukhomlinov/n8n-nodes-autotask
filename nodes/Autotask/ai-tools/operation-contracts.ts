@@ -67,6 +67,10 @@ export const OPERATION_CONTRACTS: ResourceOperationContracts = {
 			xorGroups: [['id', 'ticketNumber']],
 			forbiddenFields: ['filter_field', 'filter_op', 'filter_value', 'filter_field_2', 'filter_op_2', 'filter_value_2'],
 		},
+		searchByKeyword: {
+			requiredFields: ['keyword'],
+			forbiddenFields: ['filter_field', 'filter_op', 'filter_value', 'filter_field_2', 'filter_op_2', 'filter_value_2', 'filter_logic', 'filtersJson'],
+		},
 	},
 };
 
