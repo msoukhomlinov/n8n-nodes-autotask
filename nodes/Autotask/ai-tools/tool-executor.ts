@@ -150,6 +150,41 @@ const RESOURCE_CONVENIENCE_CONFIG: Record<string, ResourceConvenienceConfig> = {
 		getFullDetailMode: 'sla',
 		childCountEntities: [],
 	},
+	task: {
+		queryEndpoint: 'Tasks/query',
+		getEndpoint: (id) => `Tasks/${id}`,
+		createDateField: 'createDateTime',
+		assignedField: 'assignedResourceID',
+		terminalStatusIds: [5],
+		hasPriority: false,
+		hasCompanyId: false,
+		companyFilterStrategy: 'viaProject',
+		supportsSLA: false,
+		getFullDetailMode: 'simple',
+		childCountEntities: [
+			{ queryEndpoint: 'TaskNotes/query',              parentField: 'taskID',    key: 'notes' },
+			{ queryEndpoint: 'TaskSecondaryResources/query', parentField: 'taskID',    key: 'secondaryResources' },
+			{ queryEndpoint: 'TimeEntries/query',            parentField: 'taskID',    key: 'timeEntries' },
+		],
+	},
+	project: {
+		queryEndpoint: 'Projects/query',
+		getEndpoint: (id) => `Projects/${id}`,
+		createDateField: 'createDateTime',
+		assignedField: 'projectLeadResourceID',
+		terminalStatusIds: [5],
+		hasPriority: false,
+		hasCompanyId: true,
+		companyFilterStrategy: 'direct',
+		supportsSLA: false,
+		getFullDetailMode: 'simple',
+		childCountEntities: [
+			{ queryEndpoint: 'ProjectNotes/query',   parentField: 'projectID', key: 'notes' },
+			{ queryEndpoint: 'ProjectCharges/query', parentField: 'projectID', key: 'charges' },
+			{ queryEndpoint: 'Tasks/query',          parentField: 'projectID', key: 'tasks' },
+			{ queryEndpoint: 'Phases/query',         parentField: 'projectID', key: 'phases' },
+		],
+	},
 };
 
 function getConvenienceConfig(resource: string): ResourceConvenienceConfig | undefined {
@@ -1656,10 +1691,11 @@ export async function executeAiTool(
 
 			const {
 				resolutions: specialResolutions,
-				warnings: specialWarnings,
+				warnings: specialWarningsRaw,
 				pendingConfirmations: specialPending,
 				unresolvedIdLikeFilters: specialUnresolved,
 			} = await resolveAndClassifyFilters(context, resource, syntheticFilters, readFields, params as IDataObject);
+			const specialWarnings: string[] = [...specialWarningsRaw];
 
 			if (specialUnresolved.length > 0) {
 				return attachCorrelation(
@@ -1675,6 +1711,26 @@ export async function executeAiTool(
 					),
 					correlationId,
 				);
+			}
+
+			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
+			if (cfg.companyFilterStrategy === 'viaProject' && companyRaw !== undefined && companyRaw !== null) {
+				const r = await resolveCompanyToProjectIdFilter(context, companyRaw as string | number, 'getByCompanyAndStatus');
+				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
+				if ('empty' in r) {
+					return attachCorrelation(
+						JSON.stringify(
+							buildListResponse(resource, 'getByCompanyAndStatus', [], {
+								hasMore: false, serverCap: MAX_QUERY_LIMIT, clientCap: MAX_QUERY_LIMIT,
+							}, {
+								resolutionWarnings: [`No projects found for company '${String(companyRaw)}'.`],
+							}),
+						),
+						correlationId,
+					);
+				}
+				syntheticFilters.unshift(r.filter);
+				if (r.warning) specialWarnings.push(r.warning);
 			}
 
 			// After resolveAndClassifyFilters, syntheticFilters values are resolved in-place.
@@ -1719,7 +1775,7 @@ export async function executeAiTool(
 
 			// Optional: company and priority filters (resolve name→ID)
 			const optionalFilters: ToolFilter[] = [];
-			if (params.company !== undefined && params.company !== null) {
+			if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) {
 				optionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
 			}
 			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
@@ -1753,6 +1809,26 @@ export async function executeAiTool(
 					),
 					correlationId,
 				);
+			}
+
+			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
+			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
+				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'getUnassigned');
+				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
+				if ('empty' in r) {
+					return attachCorrelation(
+						JSON.stringify(
+							buildListResponse(resource, 'getUnassigned', [], {
+								hasMore: false, serverCap: MAX_QUERY_LIMIT, clientCap: MAX_QUERY_LIMIT,
+							}, {
+								resolutionWarnings: [`No projects found for company '${String(params.company)}'.`],
+							}),
+						),
+						correlationId,
+					);
+				}
+				optionalFilters.unshift(r.filter);
+				if (r.warning) specialWarnings.push(r.warning);
 			}
 
 			const apiFilters: ToolFilter[] = [...unassignedFilters, ...optionalFilters, ...(recencyResult.filters as ToolFilter[])];
@@ -1891,12 +1967,13 @@ export async function executeAiTool(
 		// Short-circuit: getFullDetail
 		if (effectiveOperation === 'getFullDetail') {
 			const cfg = getConvenienceConfig(resource)!;
+			const fdIdPairConfig = getIdentifierPairConfig(resource, 'getFullDetail');
 			let fullDetailTicketId: string | undefined;
 			if (params.id !== undefined && params.id !== null) {
 				fullDetailTicketId = String(params.id);
-			} else if (typeof params.ticketNumber === 'string' && params.ticketNumber.trim()) {
+			} else if (fdIdPairConfig && typeof params.ticketNumber === 'string' && params.ticketNumber.trim()) {
 				const tnLookup = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, {
-					filter: [{ field: 'ticketNumber', op: 'eq', value: params.ticketNumber.trim() }],
+					filter: [{ field: fdIdPairConfig.altIdField, op: 'eq', value: params.ticketNumber.trim() }],
 					MaxRecords: 1,
 				} as IDataObject) as { items?: IAutotaskEntity[] };
 				const tnItems = Array.isArray(tnLookup.items) ? tnLookup.items : [];
@@ -1907,8 +1984,8 @@ export async function executeAiTool(
 								resource,
 								'getFullDetail',
 								ERROR_TYPES.ENTITY_NOT_FOUND,
-								`Ticket with ticketNumber '${params.ticketNumber}' not found.`,
-								`Verify the ticket number format (e.g. T20240615.0123) and retry autotask_${resource} with operation 'getMany'.`,
+								`Ticket with ${fdIdPairConfig.altIdField} '${params.ticketNumber}' not found.`,
+								`Verify the ticket number format (e.g. ${fdIdPairConfig.altIdExample}) and retry autotask_${resource} with operation 'getMany'.`,
 							),
 						),
 						correlationId,
@@ -1918,14 +1995,20 @@ export async function executeAiTool(
 			}
 
 			if (!fullDetailTicketId) {
+				const missingMsg = fdIdPairConfig
+					? `Either 'id' (numeric) or '${fdIdPairConfig.altIdField}' (e.g. ${fdIdPairConfig.altIdExample}) is required for getFullDetail.`
+					: `'id' (numeric) is required for getFullDetail.`;
+				const missingNext = fdIdPairConfig
+					? `Call autotask_${resource} with operation 'getFullDetail' and provide 'id' or '${fdIdPairConfig.altIdField}'.`
+					: `Call autotask_${resource} with operation 'getFullDetail' and provide 'id'.`;
 				return attachCorrelation(
 					JSON.stringify(
 						wrapError(
 							resource,
 							'getFullDetail',
 							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
-							"Either 'id' (numeric) or 'ticketNumber' (e.g. T20240615.0123) is required for getFullDetail.",
-							`Call autotask_${resource} with operation 'getFullDetail' and provide 'id' or 'ticketNumber'.`,
+							missingMsg,
+							missingNext,
 						),
 					),
 					correlationId,
@@ -1936,14 +2019,15 @@ export async function executeAiTool(
 			const fullDetailResponse = await autotaskApiRequest.call(context, 'GET', cfg.getEndpoint(resolvedDetailId)) as { item?: IAutotaskEntity };
 			const rawFullDetailTicket = fullDetailResponse.item;
 			if (!rawFullDetailTicket || typeof rawFullDetailTicket !== 'object') {
+				const resourceTitle = resource.charAt(0).toUpperCase() + resource.slice(1);
 				return attachCorrelation(
 					JSON.stringify(
 						wrapError(
 							resource,
 							'getFullDetail',
 							ERROR_TYPES.ENTITY_NOT_FOUND,
-							`Ticket with ID ${resolvedDetailId} not found.`,
-							`Verify the ticket ID and retry autotask_${resource} with operation 'getMany'.`,
+							`${resourceTitle} with ID ${resolvedDetailId} not found.`,
+							`Verify the ${resource} ID and retry autotask_${resource} with operation 'getMany'.`,
 						),
 					),
 					correlationId,
@@ -1991,7 +2075,42 @@ export async function executeAiTool(
 					summaryText: fdSummaryText,
 				};
 			} else {
-				// 'simple' mode — task/project. GET record + summaryText (no SLA).
+				// 'simple' mode — task/project. GET record + parallel child counts.
+				const childCounts: Record<string, number> = {};
+				const childCountErrors: string[] = [];
+				if (cfg.childCountEntities.length > 0) {
+					const numericId = Number(resolvedDetailId);
+					const countResults = await Promise.all(
+						cfg.childCountEntities.map(async (entry) => {
+							try {
+								const resp = await autotaskApiRequest.call(
+									context,
+									'POST',
+									entry.queryEndpoint,
+									{
+										filter: [{ field: entry.parentField, op: 'eq', value: numericId }],
+										MaxRecords: 1,
+										IncludeFields: ['id'],
+									} as IDataObject,
+								) as { items?: IAutotaskEntity[]; pageDetails?: { count?: number } };
+								const count = typeof resp.pageDetails?.count === 'number'
+									? resp.pageDetails.count
+									: (Array.isArray(resp.items) ? resp.items.length : 0);
+								return { key: entry.key, count };
+							} catch (err) {
+								const msg = err instanceof Error ? err.message : String(err);
+								return { key: entry.key, count: null as number | null, error: msg };
+							}
+						}),
+					);
+					for (const r of countResults) {
+						if (r.count !== null) {
+							childCounts[r.key] = r.count;
+						} else if ('error' in r) {
+							childCountErrors.push(`${r.key}: ${r.error}`);
+						}
+					}
+				}
 				const recordTitle = (detailRecord.title ?? detailRecord.projectName ?? detailRecord.name ?? '') as string;
 				const recordStatusLabel = (detailRecord.status_label ?? detailRecord.status ?? '') as string;
 				const recordCompanyLabel = (detailRecord.companyID_label ?? detailRecord.companyName ?? '') as string;
@@ -2001,7 +2120,12 @@ export async function executeAiTool(
 					recordStatusLabel ? `[${String(recordStatusLabel)}]` : '',
 					recordCompanyLabel ? `— ${String(recordCompanyLabel)}` : '',
 				].filter(Boolean).join(' ');
-				fullDetailRecord = { ...detailRecord, summaryText };
+				fullDetailRecord = {
+					...detailRecord,
+					...(Object.keys(childCounts).length > 0 ? { childCounts } : {}),
+					summaryText,
+					...(childCountErrors.length > 0 ? { _childCountErrors: childCountErrors } : {}),
+				};
 			}
 
 			const fullDetailJson = JSON.stringify(
@@ -2100,7 +2224,7 @@ export async function executeAiTool(
 
 			// Optional filters: company, status, priority
 			const cbpOptional: ToolFilter[] = [];
-			if (params.company !== undefined && params.company !== null) {
+			if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) {
 				cbpOptional.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
 			}
 			if (params.status !== undefined && params.status !== null) {
@@ -2137,6 +2261,24 @@ export async function executeAiTool(
 					),
 					correlationId,
 				);
+			}
+
+			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
+			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
+				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'countByPeriod');
+				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
+				if ('empty' in r) {
+					const emptyCountResponse: Record<string, unknown> = {
+						...buildCountResponse(resource, 'countByPeriod', 0),
+						period: periodParam,
+						from: cbpFrom,
+						to: cbpTo,
+						warnings: [`No projects found for company '${String(params.company)}'.`],
+					};
+					return attachCorrelation(JSON.stringify(emptyCountResponse), correlationId);
+				}
+				cbpOptional.unshift(r.filter);
+				if (r.warning) cbpWarnings.push(r.warning);
 			}
 
 			const cbpAllFilters: unknown[] = [
@@ -2187,7 +2329,7 @@ export async function executeAiTool(
 			];
 
 			const ageOptionalFilters: ToolFilter[] = [];
-			if (params.company !== undefined && params.company !== null) ageOptionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
+			if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) ageOptionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
 			if (params.status !== undefined && params.status !== null) ageOptionalFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
 			if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) ageOptionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
 
@@ -2214,6 +2356,26 @@ export async function executeAiTool(
 					),
 					correlationId,
 				);
+			}
+
+			// viaProject company filter resolution (e.g. task → projects → projectID-IN)
+			if (cfg.companyFilterStrategy === 'viaProject' && params.company !== undefined && params.company !== null) {
+				const r = await resolveCompanyToProjectIdFilter(context, params.company as string | number, 'getByAge');
+				if ('error' in r) return attachCorrelation(JSON.stringify(r.error), correlationId);
+				if ('empty' in r) {
+					return attachCorrelation(
+						JSON.stringify(
+							buildListResponse(resource, 'getByAge', [], {
+								hasMore: false, serverCap: MAX_QUERY_LIMIT, clientCap: MAX_QUERY_LIMIT,
+							}, {
+								resolutionWarnings: [`No projects found for company '${String(params.company)}'.`],
+							}),
+						),
+						correlationId,
+					);
+				}
+				ageOptionalFilters.unshift(r.filter);
+				if (r.warning) ageWarnings.push(r.warning);
 			}
 
 			const ageAllFilters: ToolFilter[] = [...ageBaseFilters, ...ageOptionalFilters, ...(recencyResult.filters as ToolFilter[])];

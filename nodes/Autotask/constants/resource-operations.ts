@@ -20,6 +20,8 @@ const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
     contact: ['moveToCompany'],
     company: ['searchByDomain'],
     ticket: ['slaHealthCheck', 'summary', 'getFullDetail', 'countByPeriod', 'getByAge', 'searchByKeyword', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus'],
+    task: ['getFullDetail', 'countByPeriod', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned'],
+    project: ['getFullDetail', 'countByPeriod', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned'],
     configurationItems: ['moveConfigurationItem', 'createIfNotExists'],
     changeRequestLinks: ['createIfNotExists'],
     contractCharge: ['createIfNotExists'],

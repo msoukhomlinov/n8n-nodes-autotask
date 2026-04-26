@@ -172,15 +172,15 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Get by company and status',
 		supportsFilters: true,
 		responseKind: 'list',
-		docsFragment: "Filter tickets by company (required, auto-resolved) and optionally by status or priority.",
+		docsFragment: "Filter records by company (required, auto-resolved) and optionally by status or priority.",
 	},
 	{
 		name: 'getUnassigned',
 		isWrite: false,
-		label: 'Get unassigned open tickets',
+		label: 'Get unassigned open records',
 		supportsFilters: true,
 		responseKind: 'list',
-		docsFragment: "Return open, unassigned tickets (assignedResourceID absent, status not Complete or Cancelled).",
+		docsFragment: "Return open, unassigned records (assigned resource absent, status not terminal).",
 	},
 	{
 		name: 'getBySLAStatus',
@@ -196,7 +196,7 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Get full detail',
 		supportsFilters: false,
 		responseKind: 'item',
-		docsFragment: "Get a ticket's fields, SLA status, and summary text in one call. Requires 'id' or 'ticketNumber'.",
+		docsFragment: "Get a record's fields plus a summary in one call (tickets also include SLA status). Requires 'id' (tickets also accept 'ticketNumber').",
 	},
 	{
 		name: 'countByPeriod',
@@ -204,7 +204,7 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Count by period',
 		supportsFilters: false,
 		responseKind: 'count',
-		docsFragment: "Count tickets created within a named period (today, this_month, last_quarter, etc.). Optional: company, status, priority.",
+		docsFragment: "Count records created within a named period (today, this_month, last_quarter, etc.). Optional: company, status, priority.",
 	},
 	{
 		name: 'getByAge',
@@ -212,7 +212,7 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		label: 'Get by age',
 		supportsFilters: true,
 		responseKind: 'list',
-		docsFragment: "Return tickets created more than N days ago. Required: olderThanDays (positive integer). Optional: status, company, priority.",
+		docsFragment: "Return records created more than N days ago. Required: olderThanDays (positive integer). Optional: status, company, priority.",
 	},
 	{
 		name: 'searchByKeyword',
