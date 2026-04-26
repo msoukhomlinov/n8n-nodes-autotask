@@ -6,6 +6,8 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Added
 
+- **AI tools — tool description appendix**: Optional textarea field on the `AutotaskAiTools` node. When set, its content is appended to the generated tool description, allowing deployers to add instance-specific context or constraints visible to the AI agent (e.g. queue restrictions, scope limits). Empty values are ignored — no behaviour change for existing configurations.
+
 - company: new `searchByIdentity` operation — accepts partial/noisy identity signals (company name, email, website/domain), does domain-first lookup, returns ranked candidates with confidence and matchedSignals metadata
 - company: `UnresolvedSearchDirective` on `searchByDomain` no-match responses — includes retry-key tracking to detect repeated identical failed queries and escalate to terminal with actionable disambiguation guidance
 - company: `CompanyDomainResultItem` typed results from `searchCompaniesByDomain` — consistent id, companyName, matchSource, confidence fields across all match paths including contact-email fallback
