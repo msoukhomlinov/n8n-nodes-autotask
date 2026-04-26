@@ -383,10 +383,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					'Range end (ISO-8601). Requires since or recency.',
 				);
 			shape.filtersJson = rz.string().nullish().describe(
-					'IMPORTANT: filtersJson does NOT auto-resolve labels. You MUST pass numeric IDs only — never string labels like "Critical" or "High". ' +
-					'Call listPicklistValues first to get IDs, then build filtersJson. ' +
-					'Use filter_field/filter_value (auto-resolves labels) for simple cases instead. ' +
-					'Format: JSON array of filter conditions. Mutually exclusive with filter_field. Recency/since/until still apply. Dates UTC.',
+					'JSON IFilterCondition array. No label resolution — use numeric IDs (call listPicklistValues for picklist IDs). Mutually exclusive with filter_field. Dates UTC.',
 				);
 			shape.returnAll = rz
 				.boolean()
