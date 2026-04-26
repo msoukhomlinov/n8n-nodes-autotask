@@ -4,6 +4,10 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [2.11.0] — 2026-04-26
 
+### Fixed
+
+- **Search Filter — Array value type for In/Not In operators**: Dynamic Build and Build operations now support an **Array** value type that serialises comma-separated input (e.g. `200,201,202`) as a proper JSON array, fixing the type mismatch that caused `notIn`/`in` filters to fail. Numeric strings are auto-cast to numbers. Value Type dropdown and field tooltip both warn that Array is only valid with In List / Not In List operators.
+
 ### Added
 
 - **AI tools — Tool description appendix**: New optional textarea on the `AutotaskAiTools` node appends deployer-supplied content to the generated tool description, allowing instance-specific context or constraints to reach the AI agent.

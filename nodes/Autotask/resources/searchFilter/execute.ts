@@ -10,9 +10,10 @@ interface RawFilterInput {
 				field: string;
 				op: string;
 				value?: string;
-				valueType?: 'string' | 'number' | 'boolean' | 'date';
+				valueType?: 'string' | 'number' | 'boolean' | 'date' | 'array';
 				dateValue?: string;
 				booleanValue?: boolean;
+				arrayValue?: string;
 				udf?: boolean;
 				isUtc?: boolean;
 			}>;
@@ -66,6 +67,8 @@ export async function build(this: IExecuteFunctions): Promise<INodeExecutionData
 									itemValue = item.dateValue;
 								} else if (item.valueType === 'boolean' && item.booleanValue !== undefined) {
 									itemValue = item.booleanValue;
+								} else if (item.valueType === 'array' && item.arrayValue !== undefined) {
+									itemValue = item.arrayValue;
 								} else {
 									itemValue = item.value;
 								}
@@ -80,6 +83,7 @@ export async function build(this: IExecuteFunctions): Promise<INodeExecutionData
 										dateValue: item.dateValue,
 										isUtc: item.isUtc,
 										booleanValue: item.booleanValue,
+										arrayValue: item.arrayValue,
 										udf: item.udf
 									}
 								};

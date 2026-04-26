@@ -150,21 +150,34 @@ export const searchFilterOperations: INodeProperties[] = [
 										options: [
 											{ name: 'String', value: 'string' },
 											{ name: 'Number', value: 'number' },
+											{ name: 'Array (In List / Not In List only)', value: 'array' },
 											{ name: 'Boolean', value: 'boolean' },
 											{ name: 'Date', value: 'date' },
 										],
 										default: 'string',
-										description: 'The type of value to be compared',
+										description: 'Data type for the filter value. Select <b>Array</b> only when the operator is <b>In List</b> or <b>Not In List</b> — using Array with any other operator will produce an invalid filter.',
 									},
 									{
 										displayName: 'Value',
 										name: 'value',
 										type: 'string',
 										default: '',
-										description: 'For boolean values, use "true" or "false"',
+										description: 'Filter value. For boolean use "true" or "false".',
 										displayOptions: {
 											hide: {
-												valueType: ['date', 'boolean'],
+												valueType: ['date', 'boolean', 'array'],
+											},
+										},
+									},
+									{
+										displayName: 'Values (comma-separated)',
+										name: 'arrayValue',
+										type: 'string',
+										default: '',
+										description: 'Comma-separated list of values for In List / Not In List, e.g. <code>200,201,202</code>. Numeric strings are automatically cast to numbers. <b>Only valid with In List or Not In List operators.</b>',
+										displayOptions: {
+											show: {
+												valueType: ['array'],
 											},
 										},
 									},

@@ -6,7 +6,7 @@ export interface IFilterGroup {
 export interface IFilterCondition {
 	field: string;
 	op: string;
-	value: string | number | boolean;
+	value: string | number | boolean | Array<string | number>;
 	isUdf?: boolean;
 }
 
@@ -19,11 +19,12 @@ export interface ISearchFilterBuilderInput {
 					type: 'condition';
 					field: string;
 					op: string;
-					value?: string | boolean;
+					value?: string | boolean | Array<string | number>;
 					dateValue?: string;
 					isUtc?: boolean;
 					booleanValue?: boolean;
-					valueType?: 'string' | 'number' | 'boolean' | 'date';
+					arrayValue?: string;
+					valueType?: 'string' | 'number' | 'boolean' | 'date' | 'array';
 					udf?: boolean;
 				};
 			}>;
