@@ -6,7 +6,7 @@ import type { IExecuteFunctions } from 'n8n-workflow';
 interface IAutotaskFilterCondition {
 	op: string;
 	field: string;
-	value: string | number | boolean;
+	value: string | number | boolean | Array<string | number>;
 	udf?: boolean;
 }
 
@@ -20,18 +20,18 @@ interface IAutotaskFilter {
 }
 
 async function convertValue(
-	value: string | boolean,
+	value: string | boolean | Array<string | number>,
 	valueType: string,
 	isUtc = false,
 	context: IExecuteFunctions,
-): Promise<string | number | boolean> {
+): Promise<string | number | boolean | Array<string | number>> {
 	if (valueType === 'boolean') {
 		// Handle case where value is already a boolean (from the UI toggle)
 		if (typeof value === 'boolean') {
 			return value;
 		}
 		// Handle case where value is a string (for backward compatibility)
-		return value.toLowerCase() === 'true';
+		return (value as string).toLowerCase() === 'true';
 	}
 	if (valueType === 'number') {
 		const num = Number(value);
@@ -39,6 +39,18 @@ async function convertValue(
 			throw new Error(`Invalid number value: ${value}`);
 		}
 		return num;
+	}
+	if (valueType === 'array') {
+		const items = Array.isArray(value)
+			? value
+			: String(value).split(',').map(s => s.trim()).filter(s => s.length > 0);
+		return items.map(el => {
+			const num = Number(el);
+			if (typeof el === 'number' || (!Number.isNaN(num) && Number.isFinite(num) && String(el).trim() !== '')) {
+				return num;
+			}
+			return String(el);
+		});
 	}
 	if (valueType === 'date') {
 		try {
@@ -65,7 +77,9 @@ async function convertValue(
 		}
 	}
 	// Ensure we return a string for all other cases
-	return typeof value === 'boolean' ? value.toString() : value;
+	if (typeof value === 'boolean') return value.toString();
+	if (Array.isArray(value)) return value.join(',');
+	return value;
 }
 
 export async function convertToAutotaskFilter(
@@ -149,7 +163,9 @@ export function validateFilterInput(input: ISearchFilterBuilderInput): void {
 			}
 			// Only check for value if operator is not exist/notExist
 			if (item.itemType.op !== 'exist' && item.itemType.op !== 'notExist') {
-				if (item.itemType.value === undefined) {
+				const isArrayOp = item.itemType.op === 'in' || item.itemType.op === 'notIn';
+				const hasArrayValue = isArrayOp && item.itemType.arrayValue !== undefined;
+				if (item.itemType.value === undefined && !hasArrayValue) {
 					throw new Error('Condition must have a value (empty string is allowed for searching empty fields)');
 				}
 
@@ -158,7 +174,9 @@ export function validateFilterInput(input: ISearchFilterBuilderInput): void {
 					const value = item.itemType.value ?? '';
 					if (value !== '') {
 						// Convert value to string before passing to moment
-						const valueStr = typeof value === 'boolean' ? value.toString() : value;
+						const valueStr = Array.isArray(value)
+							? value.join(',')
+							: typeof value === 'boolean' ? value.toString() : value;
 						const date = moment(valueStr);
 						if (!date.isValid()) {
 							throw new Error(`Invalid date format: ${value}`);

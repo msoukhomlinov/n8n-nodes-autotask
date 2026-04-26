@@ -150,6 +150,7 @@ export const searchFilterOperations: INodeProperties[] = [
 										options: [
 											{ name: 'String', value: 'string' },
 											{ name: 'Number', value: 'number' },
+											{ name: 'Array (for In/Not In)', value: 'array' },
 											{ name: 'Boolean', value: 'boolean' },
 											{ name: 'Date', value: 'date' },
 										],
@@ -164,7 +165,20 @@ export const searchFilterOperations: INodeProperties[] = [
 										description: 'For boolean values, use "true" or "false"',
 										displayOptions: {
 											hide: {
-												valueType: ['date', 'boolean'],
+												valueType: ['date', 'boolean', 'array'],
+											},
+										},
+									},
+									{
+										displayName: 'Value',
+										name: 'arrayValue',
+										type: 'string',
+										default: '',
+										description: 'Comma-separated list of values, e.g. 200,201,202. Numbers and strings supported.',
+										displayOptions: {
+											show: {
+												valueType: ['array'],
+												op: ['in', 'notIn'],
 											},
 										},
 									},
