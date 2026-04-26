@@ -150,7 +150,7 @@ export const searchFilterOperations: INodeProperties[] = [
 										options: [
 											{ name: 'String', value: 'string' },
 											{ name: 'Number', value: 'number' },
-											{ name: 'Array (In List / Not In List only)', value: 'array' },
+											{ name: 'Array (In List / Not In List Only)', value: 'array' },
 											{ name: 'Boolean', value: 'boolean' },
 											{ name: 'Date', value: 'date' },
 										],
@@ -170,7 +170,7 @@ export const searchFilterOperations: INodeProperties[] = [
 										},
 									},
 									{
-										displayName: 'Values (comma-separated)',
+										displayName: 'Values (Comma-Separated)',
 										name: 'arrayValue',
 										type: 'string',
 										default: '',
