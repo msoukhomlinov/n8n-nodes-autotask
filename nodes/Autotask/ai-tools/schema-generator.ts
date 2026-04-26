@@ -417,11 +417,15 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.min(1)
 				.nullish()
-				.describe('Domain to search, e.g. autotask.net or https://www.autotask.net/');
+				.describe(
+					"Domain to search. Prefer extracting domain from email/website first (e.g. email='user@domain.com' -> domain='domain.com'; website='https://www.domain.com/about' -> domain='domain.com'). Accepts bare domains or full URLs.",
+				);
 			shape.domainOperator = rz
 				.enum(['eq', 'beginsWith', 'endsWith', 'contains'])
 				.nullish()
-				.describe("Domain comparison operator (default 'contains').");
+				.describe(
+					"Domain comparison operator (default 'contains'). When a domain is available, do domain matching first; avoid strict exact-name-only matching.",
+				);
 			shape.searchContactEmails = rz
 				.boolean()
 				.nullish()

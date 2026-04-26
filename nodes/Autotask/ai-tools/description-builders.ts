@@ -304,6 +304,7 @@ export function buildUnpostedTimeEntriesDescription(
 export function buildCompanySearchByDomainDescription(resourceName: string): string {
 	return (
 		'Search companies by domain using website-style fields. ' +
+		'Identifier priority for company resolution: first extract/use domain from any provided email or website, then use company-name contains matching only as fallback. ' +
 		'Input can be a bare domain or full URL; the tool normalises it to a domain fragment (for example autotask.net). ' +
 		'IMPORTANT: Autotask typically stores company websites as full URLs (for example https://www.autotask.net/), so exact operator matches can fail on bare domain input. ' +
 		'To avoid false negatives, eq/like semantics are handled safely for website matching. ' +
@@ -611,6 +612,11 @@ export function buildUnifiedDescriptionTemplate(
 	if (identityHint) {
 		sections.push(identityHint);
 	}
+	if (resource === 'company') {
+		sections.push(
+			'Company identifier priority rule: derive domain from email/website first; only fall back to companyName contains matching when no domain signal is available.',
+		);
+	}
 	sections.push(
 		`Operations: ${allOps.join(', ')}. Set 'operation' to one.`,
 		dateTimeReferenceSnippet(DESCRIPTION_REFERENCE_PLACEHOLDER),
@@ -854,11 +860,17 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 	searchByDomain: {
 		required: [],
 		optional: [
-			{ field: 'domain', type: 'string', description: 'Domain to search, e.g. autotask.net.' },
+			{
+				field: 'domain',
+				type: 'string',
+				description:
+					"Domain to search. Prefer domain extracted from email/website first (e.g. email='user@domain.com' -> 'domain.com').",
+			},
 			{
 				field: 'domainOperator',
 				type: 'string',
-				description: "Operator: eq, beginsWith, endsWith, contains (default 'contains').",
+				description:
+					"Operator: eq, beginsWith, endsWith, contains (default 'contains'). Do domain matching first; avoid strict exact-name-only matching when a domain exists.",
 			},
 			{
 				field: 'searchContactEmails',

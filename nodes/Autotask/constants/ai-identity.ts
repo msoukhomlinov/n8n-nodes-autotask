@@ -23,7 +23,7 @@ const PROFILE_OVERRIDES: Record<string, AiIdentityProfile> = {
         hint: 'Identity includes parent context when available.',
     },
     company: {
-        hint: "Filter by company name using filter_field='companyName' (NOT 'name' — that field does not exist). ALWAYS use filter_op='contains' for name lookups — company names often include suffixes like '(NRL)' that cause exact matches to fail.",
+        hint: "Identifier priority for company resolution: Preferred: derive domain from email/website first. Fallback: companyName contains matching. Filter by company name using filter_field='companyName' (NOT 'name' — that field does not exist). ALWAYS use filter_op='contains' for name lookups — company names often include suffixes like '(NRL)' that cause exact matches to fail.",
     },
     resource: {
         hint: "Filter by resource name using filter_field='firstName' and/or filter_field_2='lastName' (NOT 'name'). Use filter_logic='and' for first+last name lookup.",
