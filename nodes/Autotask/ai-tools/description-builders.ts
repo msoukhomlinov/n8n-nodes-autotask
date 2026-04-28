@@ -1324,9 +1324,28 @@ function getOperationPurpose(
 			return buildListPicklistValuesDescription(resourceLabel);
 		case 'describeOperation':
 			return `Returns full documentation for a specific ${resourceLabel} operation — purpose, parameters, and usage notes.`;
+		case 'searchNotes':
+			return buildGlobalNotesSearchDescription();
 		default:
 			return `Perform ${operation} on ${resourceLabel} records.`;
 	}
+}
+
+export function buildGlobalNotesSearchDescription(): string {
+	return [
+		'Search notes across all 7 Autotask entity types simultaneously: tickets, companies, projects, tasks, contracts, configuration items, and products.',
+		'',
+		'PARAMETERS:',
+		'  keyword — search note title and body text (contains match)',
+		'  since (ISO 8601) — lower bound on createDateTime',
+		'  until (ISO 8601) — upper bound on createDateTime',
+		'  limit (1–25, default 10) — max results per entity type; max total = 7 × limit',
+		'',
+		'At least one of keyword, since, or until is required.',
+		'',
+		'RESPONSE: flat records[] each with entityType field, groupCounts summary per entity,',
+		'truncatedEntities[] when results hit the per-type cap.',
+	].join('\n');
 }
 
 function getOperationNotes(resource: string, operation: string): string[] {
