@@ -124,6 +124,19 @@ const ENRICHMENT_REGISTRY: Record<string, EnrichmentConfig> = {
 		fetchFields: ['id', 'projectName', 'projectNumber'],
 		outputFields: { projectName: 'projectName', projectNumber: 'projectNumber' },
 	},
+	roleID: {
+		entityName: 'Role',
+		fetchFields: ['id', 'name', 'description', 'isActive'],
+		outputFields: {
+			roleName: 'name',
+			roleIsActive: 'isActive',
+			roleDescription: (r: Record<string, unknown>) => {
+				const d = r['description'];
+				if (typeof d !== 'string') return d;
+				return d.length > 300 ? d.slice(0, 300) + '…' : d;
+			},
+		},
+	},
 	productID: {
 		entityName: 'Product',
 		fetchFields: ['id', 'name'],

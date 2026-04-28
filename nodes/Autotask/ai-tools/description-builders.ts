@@ -4,7 +4,7 @@ import { getAiIdentityHint } from '../constants/ai-identity';
 import { AI_TOOL_DEBUG_VERBOSE, redactForVerbose, traceDescriptionBuild } from './debug-trace';
 import { getOperationContractRuleText } from './operation-contracts';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
-import { RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } from './resource-language';
+import { RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION, RESOURCE_EXTRA_HINTS } from './resource-language';
 
 export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
 
@@ -225,6 +225,7 @@ export function buildCreateDescription(
 	const parentField = getParentRequirement(resourceName);
 	const parentHint = parentField ? ` Parent relation required: include ${parentField}.` : '';
 	const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
+	const extraHint = RESOURCE_EXTRA_HINTS[resourceName] ?? '';
 
 	return (
 		ref +
@@ -233,7 +234,8 @@ export function buildCreateDescription(
 		`Picklist and reference fields accept human-readable names — auto-resolved to IDs. ` +
 		`Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
 		`Confirm field values with user before executing when acting autonomously. ` +
-		`If picklist values fail validation, call autotask_${resourceName} with operation 'listPicklistValues'.`
+		`If picklist values fail validation, call autotask_${resourceName} with operation 'listPicklistValues'.` +
+		(extraHint ? ` ${extraHint}` : '')
 	);
 }
 
@@ -243,6 +245,7 @@ export function buildUpdateDescription(
 	referenceUtc?: string,
 ): string {
 	const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
+	const extraHint = RESOURCE_EXTRA_HINTS[resourceName] ?? '';
 	return (
 		ref +
 		`Update an existing ${resourceLabel} record by numeric ID. ` +
@@ -253,7 +256,8 @@ export function buildUpdateDescription(
 		`Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
 		`Confirm field values with user before executing when acting autonomously. ` +
 		`${describeFieldsHint(resourceName, 'write')} ` +
-		`Use autotask_${resourceName} with operation 'listPicklistValues' for picklist fields.`
+		`Use autotask_${resourceName} with operation 'listPicklistValues' for picklist fields.` +
+		(extraHint ? ` ${extraHint}` : '')
 	);
 }
 
@@ -542,7 +546,9 @@ export function buildResourceTransferOwnershipDescription(resourceName: string):
 }
 
 function buildCreateIfNotExistsDescription(resource: string): string {
-	return `Idempotent create for ${resource} using dedupFields (array of API field names); optional updateFields for upsert; errorOnDuplicate (default false). Pass same fields as create. Outcomes: created, skipped, updated.`;
+	const extraHint = RESOURCE_EXTRA_HINTS[resource] ?? '';
+	return `Idempotent create for ${resource} using dedupFields (array of API field names); optional updateFields for upsert; errorOnDuplicate (default false). Pass same fields as create. Outcomes: created, skipped, updated.` +
+		(extraHint ? ` ${extraHint}` : '');
 }
 
 export function buildDescribeFieldsDescription(resourceLabel: string): string {
@@ -1101,6 +1107,16 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			},
 		],
 	},
+	getAvailableRoles: {
+		required: [
+			{ field: 'resourceID', type: 'number | string', description: 'Resource name, email, or numeric ID (auto-resolved). Required.' },
+		],
+		optional: [
+			{ field: 'ticketID', type: 'number', description: 'Ticket ID. If provided, derives queueID and contractID automatically.' },
+			{ field: 'queueID', type: 'number', description: 'Queue ID to filter roles by.' },
+			{ field: 'contractID', type: 'number', description: 'Contract ID to apply exclusion rules.' },
+		],
+	},
 	getByResource: {
 		required: [
 			{ field: 'resourceID', type: 'number | string', description: 'Resource name, email, or numeric ID (auto-resolved).' },
@@ -1283,8 +1299,13 @@ function getOperationPurpose(
 			return buildContactMoveToCompanyDescription(resource);
 		case 'transferOwnership':
 			return buildResourceTransferOwnershipDescription(resource);
-		case 'createIfNotExists':
-			return `Idempotent creation for ${resourceLabel}: checks for duplicates using dedupFields before creating. Returns outcome: created, skipped, updated, or a resource-specific not_found variant.`;
+		case 'createIfNotExists': {
+			const extraHint = RESOURCE_EXTRA_HINTS[resource] ?? '';
+			return `Idempotent creation for ${resourceLabel}: checks for duplicates using dedupFields before creating. Returns outcome: created, skipped, updated, or a resource-specific not_found variant.` +
+				(extraHint ? ` ${extraHint}` : '');
+		}
+		case 'getAvailableRoles':
+			return `Return active roles available for a resource on a specific queue/contract. Required: resourceID. Optional: ticketID (auto-derives queueID and contractID), queueID, contractID. Contract exclusion rules are applied — returned roles are safe to use for time entry creation on that contract. Each role includes roleName and roleDescription; suggestedDefault is flagged when derivable from ticket assignment.`;
 		case 'getByResource':
 			if (resource === 'ticket') return buildTicketGetByResourceDescription(resource);
 			return `Get ${resourceLabel} record(s) for a specific resource. Provide resourceID as a name or numeric ID (auto-resolved).`;
