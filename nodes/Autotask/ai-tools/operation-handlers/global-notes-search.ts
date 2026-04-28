@@ -68,7 +68,7 @@ export async function handleSearchNotes(state: ExecutorState): Promise<string> {
 				'searchNotes',
 				ERROR_TYPES.MISSING_REQUIRED_FIELDS,
 				'At least one of keyword, since, or until is required.',
-				"autotask_globalNotesSearch with operation 'searchNotes'",
+				"Call autotask_globalNotesSearch with operation 'searchNotes' and provide at least one of: 'keyword', 'since', or 'until'.",
 				{ missingFields: ['keyword', 'since', 'until'] },
 			)),
 			correlationId,
