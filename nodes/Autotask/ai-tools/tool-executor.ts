@@ -58,6 +58,7 @@ import {
 } from './operation-handlers/ticket-specialty';
 import { handleGetAvailableRoles } from './operation-handlers/resource-operations';
 import { handleCreateIfNotExists } from './operation-handlers/compound-operations';
+import { handleSearchNotes } from './operation-handlers/global-notes-search';
 import type { ExecutorState } from './executor-state';
 import {
 	buildFilterFromParams,
@@ -225,6 +226,7 @@ const SPECIAL_HANDLERS: Record<string, (state: ExecutorState) => Promise<string>
 	searchByKeyword: handleSearchByKeyword,
 	timeline: handleTimeline,
 	getAvailableRoles: handleGetAvailableRoles,
+	searchNotes: handleSearchNotes,
 };
 
 /** n8n framework fields injected into every tool call — must not reach API request bodies. */
