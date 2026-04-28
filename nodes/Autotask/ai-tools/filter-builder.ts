@@ -9,6 +9,13 @@ import {
 } from '../helpers/label-resolution';
 import { isLikelyId } from '../helpers/id-utils';
 import { resolveFilterFieldAlias } from '../constants/filter-field-aliases';
+import { autotaskApiRequest } from '../helpers/http';
+import {
+    wrapError,
+    ERROR_TYPES,
+    type FlatErrorResponse,
+} from './error-formatter';
+import type { IAutotaskEntity } from '../types';
 
 export interface ToolFilter {
     field: string;
@@ -305,4 +312,93 @@ export async function resolveAndClassifyFilters(
         unresolvedIdLikeFilters,
         unresolvedIdLikeFilterDetails,
     };
+}
+
+export async function resolveCompanyToProjectIdFilter(
+	context: IExecuteFunctions,
+	companyRaw: string | number,
+	operationName: string,
+	callerResource: string,
+): Promise<
+	| { filter: ToolFilter; warning?: string }
+	| { empty: true }
+	| { error: FlatErrorResponse }
+> {
+	let companyId: number;
+	const raw = String(companyRaw).trim();
+	if (/^\d+$/.test(raw)) {
+		companyId = Number(raw);
+	} else {
+		const companyLookup = await autotaskApiRequest.call(
+			context, 'POST', 'Companies/query',
+			{
+				filter: [{ field: 'companyName', op: 'eq', value: raw }],
+				MaxRecords: 1,
+			} as IDataObject,
+		) as { items?: IAutotaskEntity[] };
+		const matches = Array.isArray(companyLookup.items) ? companyLookup.items : [];
+		if (matches.length === 0) {
+			// Try partial match to provide suggestions
+			try {
+				const partialLookup = await autotaskApiRequest.call(
+					context, 'POST', 'Companies/query',
+					{
+						filter: [{ field: 'companyName', op: 'contains', value: raw }],
+						MaxRecords: 5,
+						IncludeFields: ['id', 'companyName'],
+					} as IDataObject,
+				) as { items?: IAutotaskEntity[] };
+				const partialMatches = Array.isArray(partialLookup.items) ? partialLookup.items : [];
+				const candidates = partialMatches.map((c) => ({
+					id: c.id as string | number,
+					displayName: (c.companyName ?? c.id) as string,
+				}));
+				return {
+					error: wrapError(
+						callerResource,
+						operationName,
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`Company '${raw}' not found.`,
+						candidates.length > 0
+							? `Did you mean: ${candidates.map((c) => `'${c.displayName}'`).join(', ')}? Use the exact name or a numeric companyID.`
+							: 'Verify the company name is exact, or use a numeric companyID.',
+					),
+				};
+			} catch {
+				return {
+					error: wrapError(
+						callerResource,
+						operationName,
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`Company '${raw}' not found.`,
+						'Verify the company name is exact, or use a numeric companyID.',
+					),
+				};
+			}
+		}
+		companyId = Number(matches[0].id);
+	}
+
+	const projectsResp = await autotaskApiRequest.call(
+		context, 'POST', 'Projects/query',
+		{
+			filter: [{ field: 'companyID', op: 'eq', value: companyId }],
+			MaxRecords: 500,
+			IncludeFields: ['id'],
+		} as IDataObject,
+	) as { items?: IAutotaskEntity[] };
+	const projectIds = (Array.isArray(projectsResp.items) ? projectsResp.items : [])
+		.map((p) => Number(p.id))
+		.filter((n) => Number.isFinite(n));
+
+	if (projectIds.length === 0) {
+		return { empty: true };
+	}
+
+	return {
+		filter: { field: 'projectID', op: 'in', value: projectIds } as ToolFilter,
+		warning: projectIds.length >= 500
+			? `Company expanded to 500+ projects — task results may be incomplete. Narrow the search by date or status.`
+			: undefined,
+	};
 }
