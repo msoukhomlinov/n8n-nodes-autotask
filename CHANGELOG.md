@@ -4,6 +4,12 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ## [2.12.3] — 2026-04-28
 
+### Added
+- **AI tools — `globalNotesSearch.searchNotes` operation:** New virtual resource (AI tools node only). Fans out 7 parallel queries to all Autotask note entity types simultaneously (TicketNote, CompanyNote, ProjectNote, TaskNote, ContractNote, ConfigurationItemNote, ProductNote). Parameters: `keyword` (contains match on title+body), `since`/`until` (ISO 8601 bounds on `createDateTime`), `limit` (1–25 per entity type, default 10). Returns flat `records[]` with `entityType` discriminator, `groupCounts` per entity, and `truncatedEntities[]` when results hit the per-type cap. All parent FK fields auto-enriched (ticketNumber, companyName, projectNumber, etc.). At least one of keyword/since/until required.
+
+### Changed
+- **AI tools — `tool-executor.ts` modularised:** Reduced from 3,621 lines to ~1,623 lines. Handlers extracted to `operation-handlers/ticket-convenience.ts` (6 handlers), `ticket-specialty.ts` (3 handlers), `resource-operations.ts` (1 handler), `compound-operations.ts` (createIfNotExists). `ExecutorState` interface introduced in `executor-state.ts` for type-safe handler dispatch via `SPECIAL_HANDLERS` lookup table. Zero behaviour change to existing operations.
+
 ### Changed
 - **AI tools — `timeEntry.createIfNotExists` auto-injects `roleID`:** When `roleID` is not supplied but `resourceID` is, the executor fetches the resource's `defaultServiceDeskRoleID` and injects it automatically. Eliminates 8+ wasted API calls caused by role name guessing. Injection is recorded in `resolvedLabels` as `auto:resource.defaultServiceDeskRoleID`. Non-fatal on failure — falls through to API error.
 - **AI tools — `timeEntry` role hint updated:** `RESOURCE_EXTRA_HINTS.timeEntry` now documents the auto-injection behaviour. LLM instructed to omit `roleID` for standard logging and only provide it for non-default contexts (onsite, after-hours, travel).
