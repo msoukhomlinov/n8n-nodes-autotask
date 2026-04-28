@@ -4,6 +4,7 @@ import { getAiIdentityHint } from '../constants/ai-identity';
 import { AI_TOOL_DEBUG_VERBOSE, redactForVerbose, traceDescriptionBuild } from './debug-trace';
 import { getOperationContractRuleText } from './operation-contracts';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
+import { RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } from './resource-language';
 
 export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
 
@@ -41,7 +42,10 @@ const RESOURCE_LANGUAGE_CONFIG: Record<string, ResourceLanguageConfig> = {
 
 export function buildToolContractBlock(): string {
 	return [
-		'CAPABILITIES: filter, count, paging only. NO groupBy, aggregation, server-side sort, or cross-entity joins. For breakdowns: ask user for ≤10 IDs, then run one count per ID.',
+		'CAPABILITIES: filter, count, paging only. NO groupBy, aggregation, or server-side sort. ' +
+		'No cross-entity joins inside one call EXCEPT via documented convenience operations (e.g. ticket.getByResource handles primary+secondary lookups, ticket.searchByKeyword spans tickets/notes/time entries). ' +
+		'For other cross-entity lookups, do a two-step: query the join/child entity first, collect IDs, then query the parent with filter_op=in. ' +
+		'For breakdowns: ask user for ≤10 IDs, then run one count per ID.',
 		'ERRORS: when response has "error":true, the "nextAction" field is a directive TO YOU — execute it on your next call before responding. Never retry the same failed call unchanged.',
 	].join('\n');
 }
@@ -145,17 +149,22 @@ export function buildGetManyDescription(
 	resourceLabel: string,
 	resourceName: string,
 	readFields: FieldMeta[],
+	terminalStatusLabel?: string,
 	referenceUtc?: string,
 ): string {
 	const fieldList = listFilterableFields(readFields);
 	const dateFieldHint = listDateTimeFieldHint(readFields);
 	const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
+	const terminalHint = terminalStatusLabel
+		? `By default excludes terminal statuses (${terminalStatusLabel}) — set excludeTerminalStatuses=false only when user explicitly asks for closed/historical records. `
+		: '';
 
 	return (
 		ref +
 		`Search ${resourceLabel} with up to two filters (AND default; filter_logic='or' for either-match). ` +
 		`Example: filter_field='companyName', filter_op='contains', filter_value='Acme'. ` +
 		`Picklist/reference fields accept names (auto-resolved). Use filter_op='notExist'/'exist' for null checks. ` +
+		terminalHint +
 		`Filterable: ${fieldList}. ` +
 		`${ASCENDING_ID_WARNING} ` +
 		`Use recency/since/until for date ranges; filter_op='lt' on date fields for older-than queries. ` +
@@ -469,6 +478,19 @@ export function buildGetByAgeDescription(resource: string): string {
 		`Return ${recordsLabel} created more than N days ago. Required: 'olderThanDays' (positive integer). ` +
 		`Optional: ${optionalHint}. ` +
 		"Use 'returnAll' for the full set."
+	);
+}
+
+export function buildTicketGetByResourceDescription(_resource: string): string {
+	return (
+		"Find tickets where a resource is assigned as primary, secondary, or both. " +
+		"Required: 'resourceID' (name, email, or numeric ID — auto-resolved). " +
+		"Optional: 'mode' = 'primary' | 'secondary' | 'both' (default 'both'). " +
+		"'primary' filters tickets by assignedResourceID only. " +
+		"'secondary' queries TicketSecondaryResources by resourceID then fetches matching tickets. " +
+		"'both' merges and deduplicates — each ticket includes '_matchedAs' field with 'primary' and/or 'secondary'. " +
+		"'limit' applies per branch — combined result may exceed limit when mode='both'. " +
+		"Optional: 'recency'/'since'/'until', 'excludeTerminalStatuses' (default true), 'returnAll', 'fields'."
 	);
 }
 
@@ -1081,13 +1103,16 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 	},
 	getByResource: {
 		required: [
-			{
-				field: 'resourceID',
-				type: 'number | string',
-				description: 'Resource ID or name (auto-resolved).',
-			},
+			{ field: 'resourceID', type: 'number | string', description: 'Resource name, email, or numeric ID (auto-resolved).' },
 		],
 		optional: [
+			{ field: 'mode', type: 'string', description: "ticket only: 'primary' | 'secondary' | 'both' (default 'both')." },
+			{ field: 'limit', type: 'number', description: 'Max records per branch (1-500, default 10).' },
+			{ field: 'returnAll', type: 'boolean', description: 'Fetch all per branch.' },
+			{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
+			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
+			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
+			{ field: 'excludeTerminalStatuses', type: 'boolean', description: 'Exclude Complete/Cancelled (ticket only, default true).' },
 			{ field: 'fields', type: 'string', description: 'Comma-separated field names to return.' },
 		],
 	},
@@ -1206,7 +1231,14 @@ function getOperationPurpose(
 		case 'get':
 			return buildGetDescription(resourceLabel, resource);
 		case 'getMany':
-			return buildGetManyDescription(resourceLabel, resource, readFields);
+			return buildGetManyDescription(
+				resourceLabel,
+				resource,
+				readFields,
+				RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION.has(resource)
+					? (RESOURCE_LANGUAGE_CONFIG[resource]?.terminalStatusLabel ?? undefined)
+					: undefined,
+			);
 		case 'count':
 			return buildCountDescription(resourceLabel);
 		case 'create':
@@ -1254,6 +1286,7 @@ function getOperationPurpose(
 		case 'createIfNotExists':
 			return `Idempotent creation for ${resourceLabel}: checks for duplicates using dedupFields before creating. Returns outcome: created, skipped, updated, or a resource-specific not_found variant.`;
 		case 'getByResource':
+			if (resource === 'ticket') return buildTicketGetByResourceDescription(resource);
 			return `Get ${resourceLabel} record(s) for a specific resource. Provide resourceID as a name or numeric ID (auto-resolved).`;
 		case 'getByYear':
 			return `Get the time-off balance for a specific calendar year. Provide resourceID (name or ID) and year as an integer.`;
@@ -1292,6 +1325,7 @@ function getOperationNotes(resource: string, operation: string): string[] {
 		case 'getByCompanyAndStatus':
 		case 'getUnassigned':
 		case 'getBySLAStatus':
+		case 'getByResource':
 			return [...contractNotes, ...LIST_ADVANCED_NOTES];
 		case 'getMany':
 		case 'getPosted':

@@ -17,7 +17,12 @@ export interface AiIdentityProfile {
 // Keep overrides minimal: only add entries when derivation needs a deliberate hint.
 const PROFILE_OVERRIDES: Record<string, AiIdentityProfile> = {
     ticket: {
-        hint: 'Identity: ticket number + title when available.',
+        hint:
+            "Identity: ticket number + title when available. " +
+            "'assignedResourceID' is the PRIMARY assignee only. " +
+            "Secondary/co-assigned resources live in the TicketSecondaryResources entity (one row per ticket+resource pair). " +
+            "To find tickets where a resource is a secondary assignee, use autotask_ticket with operation 'getByResource' (mode='both' default) — handles primary and secondary in one call. " +
+            "For manual two-step: query autotask_ticketSecondaryResources with filter_field='resourceID', collect ticketID values, then fetch tickets via filter_field='id' filter_op='in'.",
     },
     timeEntry: {
         hint: 'Identity includes parent context when available.',

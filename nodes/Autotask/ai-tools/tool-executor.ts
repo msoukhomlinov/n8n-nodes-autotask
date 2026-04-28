@@ -148,7 +148,14 @@ const RESOURCE_CONVENIENCE_CONFIG: Record<string, ResourceConvenienceConfig> = {
 		companyFilterStrategy: 'direct',
 		supportsSLA: true,
 		getFullDetailMode: 'sla',
-		childCountEntities: [],
+		childCountEntities: [
+			{ queryEndpoint: 'TicketNotes/query',              parentField: 'ticketID', key: 'notes' },
+			{ queryEndpoint: 'TicketSecondaryResources/query', parentField: 'ticketID', key: 'secondaryResources' },
+			{ queryEndpoint: 'TicketCharges/query',            parentField: 'ticketID', key: 'charges' },
+			{ queryEndpoint: 'TimeEntries/query',              parentField: 'ticketID', key: 'timeEntries' },
+			{ queryEndpoint: 'TicketChecklistItems/query',     parentField: 'ticketID', key: 'checklistItems' },
+			{ queryEndpoint: 'TicketAdditionalContacts/query', parentField: 'ticketID', key: 'additionalContacts' },
+		],
 	},
 	task: {
 		queryEndpoint: 'Tasks/query',
@@ -872,6 +879,21 @@ export async function executeAiTool(
 			combinedFilters = [...filters, ...recencyResult.filters];
 		}
 	}
+	// Auto-exclude terminal statuses for getMany on ticket/task/project unless explicitly disabled
+	if (
+		normalisedOperation === 'getMany' &&
+		params.excludeTerminalStatuses !== false &&
+		!params.filtersJson // filtersJson path is unmanaged — user controls filters entirely
+	) {
+		const convenienceCfg = getConvenienceConfig(resource);
+		if (convenienceCfg && convenienceCfg.terminalStatusIds.length > 0) {
+			combinedFilters = [
+				...combinedFilters,
+				{ field: 'status', op: 'notIn', value: convenienceCfg.terminalStatusIds },
+			];
+		}
+	}
+
 	traceFilterBuild({
 		phase: 'combined-filters',
 		resource,
@@ -2429,6 +2451,239 @@ export async function executeAiTool(
 			);
 			const enrichedAgeJson = await enrichResponseJson(ageListJson, context);
 			return attachCorrelation(enrichedAgeJson, correlationId);
+		}
+
+		// Short-circuit: getByResource (ticket-scoped — primary + secondary assignment lookup)
+		if (effectiveOperation === 'getByResource' && resource === 'ticket') {
+			const cfg = getConvenienceConfig(resource)!;
+
+			// 1. Validate + resolve resourceID
+			const rawResourceId = (params as Record<string, unknown>).resourceID;
+			if (rawResourceId === undefined || rawResourceId === null || String(rawResourceId).trim() === '') {
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'getByResource',
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							"'resourceID' is required for getByResource.",
+							`Call autotask_${resource} with operation 'getByResource' and provide 'resourceID' as a name, email, or numeric ID.`,
+						),
+					),
+					correlationId,
+				);
+			}
+
+			let resourceIdNum: number;
+			const gbrResolutions: LabelResolution[] = [];
+			const gbrWarnings: string[] = [];
+			const rawStr = String(rawResourceId).trim();
+			const isNumericResource =
+				typeof rawResourceId === 'number' ||
+				(/^\d+$/.test(rawStr) && String(parseInt(rawStr, 10)) === rawStr && parseInt(rawStr, 10) > 0);
+
+			if (isNumericResource) {
+				resourceIdNum = typeof rawResourceId === 'number' ? rawResourceId : parseInt(rawStr, 10);
+			} else {
+				try {
+					const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
+					const helper = new EntityValueHelper(
+						context as unknown as ILoadOptionsFunctions,
+						'Resource',
+					);
+					const candidates = await helper.getValues(true);
+					const label = rawStr.toLowerCase();
+					let matchedId: number | undefined;
+					for (const entity of candidates) {
+						const obj = entity as unknown as IDataObject;
+						const display = helper.getEntityDisplayName(obj);
+						if (display && display.toLowerCase() === label) {
+							matchedId = obj.id as number;
+							break;
+						}
+						const emails = [obj.email, obj.email2, obj.email3] as (string | undefined)[];
+						if (emails.some((e) => e && e.toLowerCase() === label)) {
+							matchedId = obj.id as number;
+							break;
+						}
+					}
+					if (matchedId === undefined) {
+						return attachCorrelation(
+							JSON.stringify(
+								wrapError(
+									resource,
+									'getByResource',
+									ERROR_TYPES.ENTITY_NOT_FOUND,
+									`Resource '${rawStr}' not found.`,
+									`Verify the resource name or email is exact, or use a numeric resourceID. Call autotask_resource with operation 'getMany' to list active resources.`,
+								),
+							),
+							correlationId,
+						);
+					}
+					resourceIdNum = matchedId;
+					gbrResolutions.push({
+						field: 'resourceID',
+						from: rawStr,
+						to: matchedId,
+						method: 'reference',
+					} as LabelResolution);
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					return attachCorrelation(
+						JSON.stringify(
+							wrapError(
+								resource,
+								'getByResource',
+								ERROR_TYPES.API_ERROR,
+								`Resource lookup failed: ${msg}`,
+								`Provide a numeric resourceID instead of a name or email.`,
+							),
+						),
+						correlationId,
+					);
+				}
+			}
+
+			// 2. Validate mode (default 'both')
+			const modeRaw = (params as Record<string, unknown>).mode;
+			const mode = (typeof modeRaw === 'string' && ['primary', 'secondary', 'both'].includes(modeRaw)
+				? modeRaw
+				: 'both') as 'primary' | 'secondary' | 'both';
+
+			// 3. Common filter slices
+			const effectiveReturnAllGbr = params.returnAll === true;
+			const queryLimitForOp = effectiveReturnAllGbr
+				? undefined
+				: params.limit !== undefined
+					? getEffectiveLimit(params.limit)
+					: DEFAULT_QUERY_LIMIT;
+			const excludeTerminalGbr = (params as Record<string, unknown>).excludeTerminalStatuses !== false;
+			const terminalFilterGbr: ToolFilter | null =
+				excludeTerminalGbr && cfg.terminalStatusIds.length > 0
+					? { field: 'status', op: 'notIn', value: cfg.terminalStatusIds }
+					: null;
+			const recencyFiltersGbr = recencyResult.filters as ToolFilter[];
+
+			// 4. Primary path
+			let primaryItems: Record<string, unknown>[] = [];
+			if (mode === 'primary' || mode === 'both') {
+				const primaryFilters: ToolFilter[] = [
+					{ field: 'assignedResourceID', op: 'eq', value: resourceIdNum },
+					...(terminalFilterGbr ? [terminalFilterGbr] : []),
+					...recencyFiltersGbr,
+				];
+				const primaryBody: IDataObject = { filter: primaryFilters as unknown as IDataObject[] };
+				if (queryLimitForOp !== undefined) primaryBody.MaxRecords = queryLimitForOp;
+				const primaryResp = (await autotaskApiRequest.call(
+					context,
+					'POST',
+					cfg.queryEndpoint,
+					primaryBody,
+				)) as { items?: IAutotaskEntity[] };
+				primaryItems = Array.isArray(primaryResp.items)
+					? (primaryResp.items as Record<string, unknown>[])
+					: [];
+			}
+
+			// 5. Secondary path
+			let secondaryItems: Record<string, unknown>[] = [];
+			if (mode === 'secondary' || mode === 'both') {
+				const SEC_ASSIGNMENT_CAP = 500;
+				const secAssignmentBody: IDataObject = {
+					filter: [
+						{ field: 'resourceID', op: 'eq', value: resourceIdNum },
+					] as unknown as IDataObject[],
+					MaxRecords: SEC_ASSIGNMENT_CAP,
+					IncludeFields: ['ticketID'],
+				};
+				const secResp = (await autotaskApiRequest.call(
+					context,
+					'POST',
+					'TicketSecondaryResources/query',
+					secAssignmentBody,
+				)) as { items?: IAutotaskEntity[] };
+				const secAssignments = Array.isArray(secResp.items) ? secResp.items : [];
+				const ticketIds = [
+					...new Set(
+						secAssignments
+							.map((a) => Number((a as IDataObject).ticketID))
+							.filter(Number.isFinite),
+					),
+				];
+				if (secAssignments.length >= SEC_ASSIGNMENT_CAP) {
+					gbrWarnings.push(
+						`Secondary assignment lookup hit cap (${SEC_ASSIGNMENT_CAP} rows). Some secondary assignments may be missing — narrow with recency or since/until.`,
+					);
+				}
+				if (ticketIds.length > 0) {
+					const primaryIdSet = new Set(
+						primaryItems.map((t) => Number(t.id)).filter(Number.isFinite),
+					);
+					const newTicketIds = ticketIds.filter((id) => !primaryIdSet.has(id));
+					if (newTicketIds.length > 0) {
+						const secTicketFilters: ToolFilter[] = [
+							{ field: 'id', op: 'in', value: newTicketIds },
+							...(terminalFilterGbr ? [terminalFilterGbr] : []),
+							...recencyFiltersGbr,
+						];
+						const secTicketBody: IDataObject = {
+							filter: secTicketFilters as unknown as IDataObject[],
+						};
+						if (queryLimitForOp !== undefined) secTicketBody.MaxRecords = queryLimitForOp;
+						const secTicketResp = (await autotaskApiRequest.call(
+							context,
+							'POST',
+							cfg.queryEndpoint,
+							secTicketBody,
+						)) as { items?: IAutotaskEntity[] };
+						secondaryItems = Array.isArray(secTicketResp.items)
+							? (secTicketResp.items as Record<string, unknown>[])
+							: [];
+					}
+				}
+			}
+
+			// 6. Merge + dedupe (annotate with _matchedAs)
+			const mergedMap = new Map<number, Record<string, unknown>>();
+			for (const t of primaryItems) {
+				const id = Number(t.id);
+				if (!Number.isFinite(id)) continue;
+				mergedMap.set(id, { ...t, _matchedAs: ['primary'] });
+			}
+			for (const t of secondaryItems) {
+				const id = Number(t.id);
+				if (!Number.isFinite(id)) continue;
+				const existing = mergedMap.get(id);
+				if (existing) {
+					(existing._matchedAs as string[]).push('secondary');
+				} else {
+					mergedMap.set(id, { ...t, _matchedAs: ['secondary'] });
+				}
+			}
+			const mergedItems = [...mergedMap.values()];
+
+			// 7. Build response
+			const allGbrWarnings = [...gbrWarnings, ...labelWarnings];
+			const allGbrResolutions = [...gbrResolutions, ...labelResolutions];
+			const gbrJson = JSON.stringify(
+				buildListResponse(
+					resource,
+					'getByResource',
+					mergedItems,
+					{
+						hasMore: queryLimitForOp !== undefined && mergedItems.length >= queryLimitForOp,
+						serverCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
+						clientCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
+					},
+					{
+						resolutions: allGbrResolutions.length > 0 ? allGbrResolutions : undefined,
+						resolutionWarnings: allGbrWarnings.length > 0 ? allGbrWarnings : undefined,
+					},
+				),
+			);
+			const enrichedGbrJson = await enrichResponseJson(gbrJson, context);
+			return attachCorrelation(enrichedGbrJson, correlationId);
 		}
 
 		// Short-circuit: searchByKeyword
