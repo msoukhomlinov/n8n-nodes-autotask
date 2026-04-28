@@ -1363,6 +1363,37 @@ export async function executeAiTool(
 		},
 	});
 
+	// Auto-inject roleID for timeEntry.createIfNotExists when not provided.
+	// Uses the resource's defaultServiceDeskRoleID as a sensible default so the
+	// LLM doesn't need to call getAvailableRoles for routine time-logging.
+	if (
+		resource === 'timeEntry' &&
+		effectiveOperation === 'createIfNotExists' &&
+		!fieldValues.roleID &&
+		fieldValues.resourceID
+	) {
+		const resId = Number(fieldValues.resourceID);
+		if (resId > 0) {
+			try {
+				const resResponse = await autotaskApiRequest.call(
+					context, 'GET', `Resources/${resId}`,
+				) as { item?: Record<string, unknown> };
+				const defaultRoleId = resResponse?.item?.defaultServiceDeskRoleID;
+				if (typeof defaultRoleId === 'number' && defaultRoleId > 0) {
+					fieldValues.roleID = defaultRoleId;
+					labelResolutions.push({
+						field: 'roleID',
+						from: 'auto:resource.defaultServiceDeskRoleID',
+						to: defaultRoleId,
+						method: 'reference',
+					});
+				}
+			} catch {
+				// Non-fatal — LLM will get API error and can call getAvailableRoles
+			}
+		}
+	}
+
 	// Pre-execution write guard: block if any resolution failure condition exists.
 	if (isWriteOperation) {
 		const blocker = buildWriteResolutionBlocker(
@@ -2483,6 +2514,11 @@ export async function executeAiTool(
 			}
 
 			let resourceIdNum: number;
+			let searchedResource: { id: number; name: string | null; email: string | null } = {
+				id: 0,
+				name: null,
+				email: null,
+			};
 			const gbrResolutions: LabelResolution[] = [];
 			const gbrWarnings: string[] = [];
 			const rawStr = String(rawResourceId).trim();
@@ -2492,6 +2528,40 @@ export async function executeAiTool(
 
 			if (isNumericResource) {
 				resourceIdNum = typeof rawResourceId === 'number' ? rawResourceId : parseInt(rawStr, 10);
+				// Fetch the Resource record to populate searchedResource (best-effort).
+				try {
+					const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
+					const helper = new EntityValueHelper(
+						context as unknown as ILoadOptionsFunctions,
+						'Resource',
+					);
+					const fetched = (await helper.getValuesByIds(
+						[resourceIdNum],
+						['id', 'firstName', 'lastName', 'email'],
+					)) as Record<string, unknown>[];
+					const rec = Array.isArray(fetched) && fetched.length > 0 ? fetched[0] : undefined;
+					if (rec) {
+						const firstName = rec['firstName'] !== undefined && rec['firstName'] !== null
+							? String(rec['firstName'])
+							: '';
+						const lastName = rec['lastName'] !== undefined && rec['lastName'] !== null
+							? String(rec['lastName'])
+							: '';
+						const fullName = [firstName, lastName].filter(Boolean).join(' ');
+						searchedResource = {
+							id: resourceIdNum,
+							name: fullName || null,
+							email: rec['email'] !== undefined && rec['email'] !== null
+								? String(rec['email'])
+								: null,
+						};
+					} else {
+						searchedResource = { id: resourceIdNum, name: null, email: null };
+					}
+				} catch {
+					// Non-fatal: keep numeric id; name/email null
+					searchedResource = { id: resourceIdNum, name: null, email: null };
+				}
 			} else {
 				try {
 					const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
@@ -2502,16 +2572,19 @@ export async function executeAiTool(
 					const candidates = await helper.getValues(true);
 					const label = rawStr.toLowerCase();
 					let matchedId: number | undefined;
+					let matchedObj: IDataObject | undefined;
 					for (const entity of candidates) {
 						const obj = entity as unknown as IDataObject;
 						const display = helper.getEntityDisplayName(obj);
 						if (display && display.toLowerCase() === label) {
 							matchedId = obj.id as number;
+							matchedObj = obj;
 							break;
 						}
 						const emails = [obj.email, obj.email2, obj.email3] as (string | undefined)[];
 						if (emails.some((e) => e && e.toLowerCase() === label)) {
 							matchedId = obj.id as number;
+							matchedObj = obj;
 							break;
 						}
 					}
@@ -2530,6 +2603,24 @@ export async function executeAiTool(
 						);
 					}
 					resourceIdNum = matchedId;
+					if (matchedObj) {
+						const firstName = matchedObj['firstName'] !== undefined && matchedObj['firstName'] !== null
+							? String(matchedObj['firstName'])
+							: '';
+						const lastName = matchedObj['lastName'] !== undefined && matchedObj['lastName'] !== null
+							? String(matchedObj['lastName'])
+							: '';
+						const fullName = [firstName, lastName].filter(Boolean).join(' ');
+						searchedResource = {
+							id: matchedId,
+							name: fullName || null,
+							email: matchedObj['email'] !== undefined && matchedObj['email'] !== null
+								? String(matchedObj['email'])
+								: null,
+						};
+					} else {
+						searchedResource = { id: matchedId, name: null, email: null };
+					}
 					gbrResolutions.push({
 						field: 'resourceID',
 						from: rawStr,
@@ -2690,7 +2781,13 @@ export async function executeAiTool(
 					},
 				),
 			);
-			const enrichedGbrJson = await enrichResponseJson(gbrJson, context);
+			// Inject top-level descriptor so the LLM does not need to remember
+			// the input resource identity across many returned ticket records.
+			const gbrParsed = JSON.parse(gbrJson) as Record<string, unknown>;
+			gbrParsed['searchedResource'] = searchedResource;
+			gbrParsed['searchMode'] = mode;
+			const gbrJsonFinal = JSON.stringify(gbrParsed);
+			const enrichedGbrJson = await enrichResponseJson(gbrJsonFinal, context);
 			return attachCorrelation(enrichedGbrJson, correlationId);
 		}
 

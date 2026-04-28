@@ -693,7 +693,10 @@ export function buildUnifiedDescriptionTemplate(
 		if (op === 'whoAmI') {
 			summary = `operation '${op}': Resolve the authenticated ${resourceLabel} record.`;
 		} else if (op === 'create') {
-			summary = `operation '${op}': ${metadata?.docsFragment ?? 'Create a new record.'} ${buildRequiredFieldsSummary(writeFields)}`;
+			const idempotentNote = operations.includes('createIfNotExists')
+				? " Prefer 'createIfNotExists' for agent workflows — idempotent and retry-safe."
+				: '';
+			summary = `operation '${op}': ${metadata?.docsFragment ?? 'Create a new record.'} ${buildRequiredFieldsSummary(writeFields)}${idempotentNote}`;
 		} else if (op === 'update') {
 			if (resource === 'resourceTimeOffAdditional') {
 				summary = `operation '${op}': Update time-off additional quotas for a resource. Provide 'resourceID' (name or numeric ID, auto-resolved) and the fields to change (annual/additional hours per category).`;

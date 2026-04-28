@@ -7,12 +7,16 @@ export const PICKLIST_REFERENCE_FIELD_MAPPINGS: Record<string, IPicklistReferenc
 	'Resource': {
 		nameFields: ['firstName', 'lastName'],
 	},
-	//'Company': {
-	//	nameFields: ['companyName'],
-	//},
+	'Company': {
+		nameFields: ['companyName'],
+	},
 	'Contact': {
 		nameFields: ['firstName', 'lastName'],
 		separator: ' ',
+	},
+	'Contract': {
+		nameFields: ['contractName'],
+		bracketField: ['contractNumber'],
 	},
 	'Ticket': {
 		nameFields: ['title'],
@@ -25,21 +29,29 @@ export const PICKLIST_REFERENCE_FIELD_MAPPINGS: Record<string, IPicklistReferenc
 	'Country': {
 		nameFields: ['displayName'],
 	},
+	'Role': {
+		nameFields: ['name'],
+	},
+	'CompanyLocation': {
+		nameFields: ['name'],
+	},
 } as const;
 
 /**
  * List of entities that support reference field loading
  */
 export const REFERENCE_ENABLED_ENTITIES = [
-	//'Company',
 	'BillingCode',
-	// 'Contact',
-	// 'Contract',
+	'Company',
+	'CompanyLocation',
+	'Contact',
+	'Contract',
 	'Country',
+	'Project',
 	'Queue',
+	'Role',
 	'Resource',
 	'ServiceLevelAgreement',
-	'Status',
 ] as const;
 
 export type ReferenceEnabledEntity = typeof REFERENCE_ENABLED_ENTITIES[number];

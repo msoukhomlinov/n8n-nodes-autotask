@@ -43,6 +43,26 @@ const inFlightMap = new Map<string, Promise<Record<string, unknown>[]>>();
 // Enrichment registry
 // ---------------------------------------------------------------------------
 
+function buildPersonEntry(
+	entityName: 'Resource' | 'Contact',
+	prefix: string,
+	tier: 'primary' | 'audit',
+): EnrichmentConfig {
+	const emailField = entityName === 'Contact' ? 'emailAddress' : 'email';
+	const outputFields: Record<string, OutputFieldSpec> = {
+		[`${prefix}FullName`]: (r: Record<string, unknown>) =>
+			[r['firstName'], r['lastName']].filter(Boolean).join(' '),
+	};
+	if (tier === 'primary') {
+		outputFields[`${prefix}Email`] = emailField;
+	}
+	return {
+		entityName,
+		fetchFields: ['id', 'firstName', 'lastName', emailField],
+		outputFields,
+	};
+}
+
 const ENRICHMENT_REGISTRY: Record<string, EnrichmentConfig> = {
 	ticketID: {
 		entityName: 'Ticket',
@@ -60,39 +80,9 @@ const ENRICHMENT_REGISTRY: Record<string, EnrichmentConfig> = {
 			outputFields: { taskProjectNumber: 'projectNumber', taskProjectName: 'projectName' },
 		},
 	},
-	resourceID: {
-		entityName: 'Resource',
-		fetchFields: ['id', 'firstName', 'lastName', 'email'],
-		outputFields: {
-			resourceFirstName: 'firstName',
-			resourceLastName: 'lastName',
-			resourceFullName: (r: Record<string, unknown>) =>
-				[r['firstName'], r['lastName']].filter(Boolean).join(' '),
-			resourceEmail: 'email',
-		},
-	},
-	assignedResourceID: {
-		entityName: 'Resource',
-		fetchFields: ['id', 'firstName', 'lastName', 'email'],
-		outputFields: {
-			assignedResourceFirstName: 'firstName',
-			assignedResourceLastName: 'lastName',
-			assignedResourceFullName: (r: Record<string, unknown>) =>
-				[r['firstName'], r['lastName']].filter(Boolean).join(' '),
-			assignedResourceEmail: 'email',
-		},
-	},
-	creatorResourceID: {
-		entityName: 'Resource',
-		fetchFields: ['id', 'firstName', 'lastName', 'email'],
-		outputFields: {
-			creatorResourceFirstName: 'firstName',
-			creatorResourceLastName: 'lastName',
-			creatorResourceFullName: (r: Record<string, unknown>) =>
-				[r['firstName'], r['lastName']].filter(Boolean).join(' '),
-			creatorResourceEmail: 'email',
-		},
-	},
+	resourceID: buildPersonEntry('Resource', 'resource', 'primary'),
+	assignedResourceID: buildPersonEntry('Resource', 'assignedResource', 'primary'),
+	creatorResourceID: buildPersonEntry('Resource', 'creatorResource', 'audit'),
 	companyID: {
 		entityName: 'Company',
 		fetchFields: ['id', 'companyName'],
@@ -103,17 +93,7 @@ const ENRICHMENT_REGISTRY: Record<string, EnrichmentConfig> = {
 		fetchFields: ['id', 'contractName', 'contractNumber'],
 		outputFields: { contractName: 'contractName', contractNumber: 'contractNumber' },
 	},
-	contactID: {
-		entityName: 'Contact',
-		fetchFields: ['id', 'firstName', 'lastName', 'emailAddress'],
-		outputFields: {
-			contactFirstName: 'firstName',
-			contactLastName: 'lastName',
-			contactFullName: (r: Record<string, unknown>) =>
-				[r['firstName'], r['lastName']].filter(Boolean).join(' '),
-			contactEmail: 'emailAddress',
-		},
-	},
+	contactID: buildPersonEntry('Contact', 'contact', 'primary'),
 	billingCodeID: {
 		entityName: 'BillingCode',
 		fetchFields: ['id', 'name'],
@@ -137,10 +117,98 @@ const ENRICHMENT_REGISTRY: Record<string, EnrichmentConfig> = {
 			},
 		},
 	},
+	defaultServiceDeskRoleID: {
+		entityName: 'Role',
+		fetchFields: ['id', 'name', 'isActive'],
+		outputFields: { defaultServiceDeskRoleName: 'name' },
+	},
+	assignedResourceRoleID: {
+		entityName: 'Role',
+		fetchFields: ['id', 'name', 'isActive'],
+		outputFields: { assignedResourceRoleName: 'name' },
+	},
 	productID: {
 		entityName: 'Product',
 		fetchFields: ['id', 'name'],
 		outputFields: { productName: 'name' },
+	},
+	ownerResourceID: buildPersonEntry('Resource', 'ownerResource', 'primary'),
+	completedByResourceID: buildPersonEntry('Resource', 'completedByResource', 'audit'),
+	lastActivityResourceID: buildPersonEntry('Resource', 'lastActivityResource', 'audit'),
+	projectLeadResourceID: buildPersonEntry('Resource', 'projectLeadResource', 'primary'),
+	createdByResourceID: buildPersonEntry('Resource', 'createdByResource', 'audit'),
+	companyOwnerResourceID: buildPersonEntry('Resource', 'companyOwnerResource', 'audit'),
+	createdByContactID: buildPersonEntry('Contact', 'createdByContact', 'audit'),
+	installedByContactID: buildPersonEntry('Contact', 'installedByContact', 'audit'),
+	queueID: {
+		entityName: 'Queue',
+		fetchFields: ['id', 'name'],
+		outputFields: { queueName: 'name' },
+	},
+	serviceLevelAgreementID: {
+		entityName: 'ServiceLevelAgreement',
+		fetchFields: ['id', 'name'],
+		outputFields: { serviceLevelAgreementName: 'name' },
+	},
+	// ── Resource-typed variants (Phase 3) ───────────────────────────────────
+	impersonatorCreatorResourceID: buildPersonEntry('Resource', 'impersonatorCreatorResource', 'audit'),
+	impersonatorUpdaterResourceID: buildPersonEntry('Resource', 'impersonatorUpdaterResource', 'audit'),
+	firstResponseAssignedResourceID: buildPersonEntry('Resource', 'firstResponseAssignedResource', 'audit'),
+	firstResponseInitiatingResourceID: buildPersonEntry('Resource', 'firstResponseInitiatingResource', 'audit'),
+	billingApprovalResourceID: buildPersonEntry('Resource', 'billingApprovalResource', 'audit'),
+	canceledByResourceID: buildPersonEntry('Resource', 'canceledByResource', 'audit'),
+	voidedByResourceID: buildPersonEntry('Resource', 'voidedByResource', 'audit'),
+	lastPublishedByResourceID: buildPersonEntry('Resource', 'lastPublishedByResource', 'audit'),
+	approvalStatusChangedByResourceID: buildPersonEntry('Resource', 'approvalStatusChangedByResource', 'audit'),
+	// ── Country-typed variants (Phase 3) ────────────────────────────────────
+	countryID: {
+		entityName: 'Country',
+		fetchFields: ['id', 'displayName'],
+		outputFields: { countryName: 'displayName' },
+	},
+	billToCountryID: {
+		entityName: 'Country',
+		fetchFields: ['id', 'displayName'],
+		outputFields: { billToCountryName: 'displayName' },
+	},
+	// ── Company-typed variants (Phase 3) ────────────────────────────────────
+	parentCompanyID: {
+		entityName: 'Company',
+		fetchFields: ['id', 'companyName'],
+		outputFields: { parentCompanyName: 'companyName' },
+	},
+	billToCompanyID: {
+		entityName: 'Company',
+		fetchFields: ['id', 'companyName'],
+		outputFields: { billToCompanyName: 'companyName' },
+	},
+	// ── CompanyLocation (Phase 3) ───────────────────────────────────────────
+	companyLocationID: {
+		entityName: 'CompanyLocation',
+		fetchFields: ['id', 'name'],
+		outputFields: { companyLocationName: 'name' },
+	},
+	// ── Phase (Phase 3) ─────────────────────────────────────────────────────
+	phaseID: {
+		entityName: 'Phase',
+		fetchFields: ['id', 'title', 'phaseNumber'],
+		outputFields: { phaseTitle: 'title', phaseNumber: 'phaseNumber' },
+	},
+	// ── Opportunity (Phase 3) ───────────────────────────────────────────────
+	opportunityID: {
+		entityName: 'Opportunity',
+		fetchFields: ['id', 'title'],
+		outputFields: { opportunityTitle: 'title' },
+	},
+	// ── ConfigurationItem (Phase 3) ─────────────────────────────────────────
+	configurationItemID: {
+		entityName: 'ConfigurationItem',
+		fetchFields: ['id', 'referenceTitle', 'referenceNumber', 'serialNumber'],
+		outputFields: {
+			configurationItemReferenceTitle: 'referenceTitle',
+			configurationItemReferenceNumber: 'referenceNumber',
+			configurationItemSerialNumber: 'serialNumber',
+		},
 	},
 };
 

@@ -21,5 +21,5 @@ export const RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION: ReadonlySet<string> = new
 
 export const RESOURCE_EXTRA_HINTS: Readonly<Record<string, string>> = {
 	timeEntry:
-		"ROLE SELECTION: When creating a time entry without an explicit roleID, first call this tool with operation 'getAvailableRoles' passing resourceID and ticketID (or queueID + contractID). The response lists active roles available for the resource on that queue with contract-excluded roles already removed. Each role includes roleName and roleDescription — choose the role whose description best matches the work context (e.g. business-hours, after-hours, weekend, remote, sales). If a suggestedDefault role is flagged in the response, prefer it unless context requires otherwise. Avoid guessing role names — always call getAvailableRoles first.",
+		"ROLE: roleID auto-defaults to the resource's defaultServiceDeskRoleID — omit it for standard time logging. Only provide roleID explicitly when the work context requires a non-default role (e.g. onsite visit, after-hours, travel). In that case call operation 'getAvailableRoles' with resourceID and ticketID to see valid options with descriptions — never guess role names.",
 };

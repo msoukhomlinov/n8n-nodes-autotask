@@ -2,6 +2,18 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.12.3] — 2026-04-28
+
+### Changed
+- **AI tools — `timeEntry.createIfNotExists` auto-injects `roleID`:** When `roleID` is not supplied but `resourceID` is, the executor fetches the resource's `defaultServiceDeskRoleID` and injects it automatically. Eliminates 8+ wasted API calls caused by role name guessing. Injection is recorded in `resolvedLabels` as `auto:resource.defaultServiceDeskRoleID`. Non-fatal on failure — falls through to API error.
+- **AI tools — `timeEntry` role hint updated:** `RESOURCE_EXTRA_HINTS.timeEntry` now documents the auto-injection behaviour. LLM instructed to omit `roleID` for standard logging and only provide it for non-default contexts (onsite, after-hours, travel).
+- **Reference enrichment — `Role`, `Company`, `Contact`, `Contract`, `Project`, `CompanyLocation` enabled:** All added to `REFERENCE_ENABLED_ENTITIES`. `Company` (`companyName`), `Contract` (`contractName + contractNumber`), `Project` (`projectName + projectNumber`), `CompanyLocation` (`name`), and `Role` (`name`) added to `PICKLIST_REFERENCE_FIELD_MAPPINGS`. Standard node now generates `_label` suffix fields for these reference types across all entities.
+- **Reference enrichment — performance hardening:** `FieldProcessor.enrichWithReferenceLabels()` now derives minimal `includeFields` from `PICKLIST_REFERENCE_FIELD_MAPPINGS` before calling `getValuesByIds()`. Company/Contact response payloads shrink from ~80 fields/record to 2–4 fields.
+- **Reference enrichment — `Status` removed from `REFERENCE_ENABLED_ENTITIES`:** Dead code — no Autotask field uses `Status` as a reference entity type.
+- **AI tools — ENRICHMENT_REGISTRY expanded (+27 entries, tiered factory):** All 21 Resource/Contact entries refactored via `buildPersonEntry(entityName, prefix, tier)`. Primary tier (`resourceID`, `assignedResourceID`, `ownerResourceID`, `projectLeadResourceID`, `contactID`) emits `${prefix}FullName` + `${prefix}Email`; audit tier (all other person references) emits `${prefix}FullName` only. New FK entries: `ownerResourceID`, `completedByResourceID`, `lastActivityResourceID`, `projectLeadResourceID`, `createdByResourceID`, `companyOwnerResourceID`, `createdByContactID`, `installedByContactID`, `queueID`, `serviceLevelAgreementID`, `impersonatorCreatorResourceID`, `impersonatorUpdaterResourceID`, `firstResponseAssignedResourceID`, `firstResponseInitiatingResourceID`, `billingApprovalResourceID`, `canceledByResourceID`, `voidedByResourceID`, `lastPublishedByResourceID`, `approvalStatusChangedByResourceID`, `countryID`, `billToCountryID`, `parentCompanyID`, `billToCompanyID`, `companyLocationID`, `phaseID`, `opportunityID`, `configurationItemID`.
+- **AI tools — `ticket.getByResource` response includes `searchedResource` + `searchMode`:** Response carries top-level `searchedResource: { id, name, email }` and `searchMode` (`primary`|`secondary`|`both`). LLM no longer needs to remember input resource identity across returned records. Numeric input resolves name via one cached Resource fetch.
+- **AI tools — `create` per-op summary notes `createIfNotExists`:** When a resource exposes both `create` and `createIfNotExists`, the `create` summary appends "Prefer 'createIfNotExists' for agent workflows — idempotent and retry-safe."
+
 ## [2.12.2] — 2026-04-28
 
 ### Added

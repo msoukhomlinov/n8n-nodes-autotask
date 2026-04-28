@@ -17,7 +17,7 @@ import { FieldConversionPipeline } from '../../helpers/field-conversion/pipeline
 import { createDateWrapper } from '../../helpers/date-time/index';
 import { sentenceCase } from 'change-case';
 import { EntityValueHelper } from '../../helpers/entity-values';
-import { REFERENCE_ENABLED_ENTITIES } from '../../constants/field.constants';
+import { REFERENCE_ENABLED_ENTITIES, PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../../constants/field.constants';
 import type { ReferenceEnabledEntity } from '../../constants/field.constants';
 import { fieldTypeService, mapFieldOptions, getFieldTypeOptions, getFieldDisplayType } from '../../helpers/field-conversion/utils';
 import type { IFieldMappingContext } from '../../helpers/field-conversion/services/field-type.service';
@@ -996,8 +996,23 @@ export class FieldProcessor {
 					// Get the entity helper for this reference type
 					const entityHelper = this.getEntityValueHelper(referenceEntityType);
 
+					// Derive minimal fetch fields from display name mapping to minimise API payload.
+					// EntityValueHelper.getValuesByIds() merges these with required display fields + 'id'.
+					const mapping = PICKLIST_REFERENCE_FIELD_MAPPINGS[referenceEntityType as keyof typeof PICKLIST_REFERENCE_FIELD_MAPPINGS];
+					const displayFields = mapping
+						? [
+							'id',
+							...(Array.isArray(mapping.nameFields) ? mapping.nameFields : []),
+							...(mapping.bracketField
+								? (Array.isArray(mapping.bracketField)
+									? mapping.bracketField
+									: [mapping.bracketField])
+								: []),
+						]
+						: ['id', 'name'];
+
 					// Get all entities for this type first
-					const allEntities = await entityHelper.getValuesByIds(Array.from(referenceIds));
+					const allEntities = await entityHelper.getValuesByIds(Array.from(referenceIds), displayFields);
 
 					// Create a map of ID -> entity for quick lookups
 					const entityMap = new Map<string | number, IDataObject>();
