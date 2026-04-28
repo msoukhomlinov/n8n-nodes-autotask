@@ -426,6 +426,86 @@ export async function executeTicketOperation(
                     break;
                 }
 
+                case 'timeline': {
+                    const ticketIdentifierType = this.getNodeParameter('ticketIdentifierType', i, 'id') as string;
+                    let resolvedTicketId: number;
+
+                    if (ticketIdentifierType === 'ticketNumber') {
+                        const ticketNumber = (this.getNodeParameter('ticketNumber', i, '') as string).trim();
+                        if (!ticketNumber) {
+                            throw new Error('Ticket Number is required for timeline');
+                        }
+                        const queryResponse = await autotaskApiRequest.call(
+                            this,
+                            'POST',
+                            'Tickets/query',
+                            {
+                                filter: [{ field: 'ticketNumber', op: 'eq', value: ticketNumber }],
+                                MaxRecords: 1,
+                            } as IDataObject,
+                        ) as { items?: Array<{ id: number }> };
+                        const items = Array.isArray(queryResponse.items) ? queryResponse.items : [];
+                        if (items.length === 0) {
+                            throw new Error(`Ticket not found: ${ticketNumber}`);
+                        }
+                        resolvedTicketId = Number(items[0].id);
+                    } else {
+                        resolvedTicketId = Number(this.getNodeParameter('id', i, 0));
+                    }
+
+                    const since = this.getNodeParameter('since', i, '') as string;
+                    const until = this.getNodeParameter('until', i, '') as string;
+                    const resourceIdRaw = this.getNodeParameter('resourceId', i, '') as string;
+                    const includeHistories = this.getNodeParameter('includeHistories', i, false) as boolean;
+                    const textLimit = this.getNodeParameter('textLimit', i, 500) as number;
+                    const limit = this.getNodeParameter('limit', i, 50) as number;
+
+                    // Resolve resourceId string to numeric ID if needed
+                    let resolvedResourceId: number | undefined;
+                    if (resourceIdRaw) {
+                        const numericId = parseInt(resourceIdRaw, 10);
+                        if (!isNaN(numericId) && String(numericId) === resourceIdRaw) {
+                            resolvedResourceId = numericId;
+                        } else {
+                            const resourceResults = await autotaskApiRequest.call(
+                                this,
+                                'POST',
+                                'Resources/query',
+                                {
+                                    filter: [
+                                        { op: 'or', items: [
+                                            { field: 'firstName', op: 'contains', value: resourceIdRaw },
+                                            { field: 'lastName', op: 'contains', value: resourceIdRaw },
+                                            { field: 'email', op: 'eq', value: resourceIdRaw },
+                                        ]},
+                                    ],
+                                    MaxRecords: 1,
+                                } as unknown as IDataObject,
+                            ) as { items?: Array<{ id: number }> };
+                            const resItems = Array.isArray(resourceResults.items) ? resourceResults.items : [];
+                            if (resItems.length > 0) {
+                                resolvedResourceId = Number(resItems[0].id);
+                            }
+                        }
+                    }
+
+                    const { buildTicketTimeline } = await import('../../helpers/ticket-timeline');
+                    const result = await buildTicketTimeline(this, {
+                        ticketId: resolvedTicketId,
+                        since: since || undefined,
+                        until: until || undefined,
+                        resourceId: resolvedResourceId,
+                        includeHistories,
+                        textLimit,
+                        limit,
+                    });
+
+                    for (const event of result.events) {
+                        returnData.push({ json: event as unknown as IDataObject });
+                    }
+                    break;
+                }
+
                 case 'count': {
                     const countOp = new CountOperation<IAutotaskEntity>(ENTITY_TYPE, this);
                     const count = await countOp.execute(i);

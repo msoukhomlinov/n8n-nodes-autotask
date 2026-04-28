@@ -148,6 +148,7 @@ function getMetadataNeeds(operations: string[]): { needsReadFields: boolean; nee
 			'countByPeriod',
 			'getByAge',
 			'searchByKeyword',
+			'timeline',
 		].includes(op),
 	);
 	const needsWriteFields = operations.some((op) => ['create', 'createIfNotExists', 'update'].includes(op));
@@ -365,6 +366,22 @@ export class AutotaskAiTools implements INodeType {
 				description:
 					'Optional text appended to the generated tool description. Use to add deployment-specific context or constraints visible to the AI agent.',
 			},
+			{
+				displayName: 'Time Entry Notes Guidance',
+				name: 'timeEntryNotesGuidance',
+				type: 'string',
+				typeOptions: { rows: 6 },
+				default: '',
+				placeholder:
+					'e.g. Summary Notes: customer-visible, present tense, no jargon. Internal Notes: troubleshooting steps, root cause, follow-ups.',
+				description:
+					'Optional guidance for time entry note formatting (Summary Notes, Internal Notes). Appended to the tool description only when the selected resource is Time Entry. Combined description is capped at 2400 characters.',
+				displayOptions: {
+					show: {
+						resource: ['timeEntry'],
+					},
+				},
+			},
 		],
 	};
 
@@ -534,7 +551,32 @@ export class AutotaskAiTools implements INodeType {
 
 		const appendix = (this.getNodeParameter('toolDescriptionAppendix', itemIndex, '') as string).trim();
 		const baseDescription = injectDescriptionReferenceUtc(descriptionTemplate, referenceUtc);
-		const description = appendix ? `${baseDescription}\n\n${appendix}` : baseDescription;
+		const withAppendix = appendix ? `${baseDescription}\n\n${appendix}` : baseDescription;
+
+		const timeEntryNotesGuidance = resource === 'timeEntry'
+			? (this.getNodeParameter('timeEntryNotesGuidance', itemIndex, '') as string).trim()
+			: '';
+		const withGuidance = timeEntryNotesGuidance
+			? `${withAppendix}\n\nTIME ENTRY NOTES GUIDANCE:\n${timeEntryNotesGuidance}`
+			: withAppendix;
+
+		const DESCRIPTION_HARD_LIMIT = 2400;
+		let description = withGuidance;
+		if (description.length > DESCRIPTION_HARD_LIMIT) {
+			const originalLength = description.length;
+			const marker = '…[truncated]';
+			description = `${description.slice(0, DESCRIPTION_HARD_LIMIT - marker.length)}${marker}`;
+			traceToolBuild({
+				phase: 'description-truncated',
+				resource,
+				itemIndex,
+				summary: {
+					originalLength,
+					truncatedLength: description.length,
+				},
+			});
+		}
+
 		const schemaKeys = safeSchemaKeys(schema);
 		traceToolBuild({
 			phase: 'tool-built',

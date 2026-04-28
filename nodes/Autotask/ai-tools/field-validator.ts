@@ -129,6 +129,7 @@ export function validateEntityId(
         'whoAmI',
         'slaHealthCheck',
         'summary',
+        'timeline',
         'getByResource',
         'getByYear',
         'getByCompanyAndStatus',

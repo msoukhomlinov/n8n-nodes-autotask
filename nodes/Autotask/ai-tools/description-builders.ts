@@ -41,13 +41,8 @@ const RESOURCE_LANGUAGE_CONFIG: Record<string, ResourceLanguageConfig> = {
 
 export function buildToolContractBlock(): string {
 	return [
-		'API CAPABILITIES: filter, count, paging only.',
-		'NO groupBy, aggregation (avg/sum/count-by), server-side sort, or cross-entity joins.',
-		"For 'which X has most Y' or 'breakdown by Z': do NOT iterate all entities.",
-		'Ask user to provide a shortlist (≤10 IDs) then run one count per ID.',
-		'',
-		'ERROR RECOVERY: When response contains "error":true, the "nextAction" field is a directive TO YOU.',
-		'Execute it on your next call before responding to the user. Never retry same failed call unchanged.',
+		'CAPABILITIES: filter, count, paging only. NO groupBy, aggregation, server-side sort, or cross-entity joins. For breakdowns: ask user for ≤10 IDs, then run one count per ID.',
+		'ERRORS: when response has "error":true, the "nextAction" field is a directive TO YOU — execute it on your next call before responding. Never retry the same failed call unchanged.',
 	].join('\n');
 }
 
@@ -226,9 +221,8 @@ export function buildCreateDescription(
 		ref +
 		`Create a new ${resourceLabel} record. ` +
 		`${requiredSummary}${parentHint} ` +
-		`Name-based resolution: you can pass human-readable names instead of numeric IDs for picklist and reference fields (e.g. resourceName "Will Spence" instead of resourceID 29683, or category name "Internal Meeting" instead of numeric billingCodeID). The tool auto-resolves names to IDs. ` +
+		`Picklist and reference fields accept human-readable names — auto-resolved to IDs. ` +
 		`Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
-		`Successful creates typically return an itemId and any resolvedLabels showing name→ID mappings. ` +
 		`Confirm field values with user before executing when acting autonomously. ` +
 		`If picklist values fail validation, call autotask_${resourceName} with operation 'listPicklistValues'.`
 	);
@@ -246,7 +240,7 @@ export function buildUpdateDescription(
 		`PREREQUISITE: you need the numeric ID. If you only have a name or text, call autotask_${resourceName} with operation 'getMany' with a filter to find the record and get its 'id' first. ` +
 		`Only provide fields to change (PATCH-style behaviour). ` +
 		`Do not assume PUT-style replacement where omitted fields become null. ` +
-		`Name-based resolution: you can pass human-readable names instead of numeric IDs for picklist and reference fields. The tool auto-resolves names to IDs. ` +
+		`Picklist and reference fields accept human-readable names — auto-resolved to IDs. ` +
 		`Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
 		`Confirm field values with user before executing when acting autonomously. ` +
 		`${describeFieldsHint(resourceName, 'write')} ` +
@@ -329,17 +323,14 @@ export function buildTicketSummaryDescription(resourceName: string): string {
 	const ruleText = getOperationContractRuleText(resourceName, 'summary');
 	const identifierRule = ruleText.length > 0 ? `${ruleText.join(' ')} ` : '';
 	return (
-		'Get a compact, type-aware summary of any Autotask ticket. ' +
+		'Compact, type-aware ticket summary (auto-detects Service Request/Incident/Problem/Change Request/Alert). ' +
 		identifierRule +
-		'Automatically detects ticket type (Service Request, Incident, Problem, Change Request, Alert) and prioritises the most relevant fields. ' +
-		'Filters out null and empty fields to reduce noise. ' +
-		"Includes a 'computed' block with pre-calculated values: ageHours, daysSinceLastActivity, isAssigned; for open tickets: isOverdue, plus hoursUntilDue (not yet overdue) or hoursOverdue (past due); when SLA is assigned: slaStatus, slaNextMilestoneDueHours, slaEarliestBreachHours. " +
-		"Optionally includes a 'childCounts' block with counts of: notes, timeEntries, attachments, additionalConfigurationItems, additionalContacts, checklistItems (with completed/remaining breakdown), and changeRequestLinks (Change Request tickets only). Set 'includeChildCounts=true' to fetch these counts (adds several parallel API calls; omitted by default). " +
-		"Includes a 'relationships' block when the ticket is linked to a project, problem ticket, or opportunity. " +
-		"Use 'summaryTextLimit' to cap description/resolution length (default 500 chars). " +
-		"Set 'includeRaw=true' to receive the full enriched payload before alias renaming — label/UDF enrichments intact, original changeInfoField{N} keys, no null filtering or text truncation. " +
-		'For full SLA milestone timing and elapsed hours, use slaHealthCheck instead. ' +
-		"For population-level SLA queries (e.g. 'how many breached this week?'), use operation 'count' or 'getMany' with filter_field='serviceLevelAgreementHasBeenMet', filter_op='eq', filter_value=false instead. " +
+		"Returns a 'computed' block (age, SLA status, overdue flags) and a 'relationships' block when linked. " +
+		"'includeChildCounts=true' adds child-entity counts (extra parallel API calls; off by default). " +
+		"'summaryTextLimit' caps description/resolution length (default 500 chars). " +
+		"'includeRaw=true' returns the full enriched pre-alias payload (raw changeInfoField{N} keys, no null filtering). " +
+		'For full SLA milestone timing, use slaHealthCheck instead. ' +
+		"For population-level SLA queries (e.g. 'how many breached this week?'), use operation 'count' or 'getMany' with filter_field='serviceLevelAgreementHasBeenMet', filter_op='eq', filter_value=false. " +
 		describeFieldsHint(resourceName)
 	);
 }
@@ -379,6 +370,24 @@ export function buildTicketSlaHealthCheckDescription(resourceName: string): stri
 		'Includes wallClockRemainingHours, where negative values indicate overdue milestones. ' +
 		'This operation combines data from Ticket and ServiceLevelAgreementResults entities. ' +
 		"For population-level SLA queries (e.g. 'how many breached this week?'), do NOT call slaHealthCheck without an id. Use operation 'count' or 'getMany' with filter_field='serviceLevelAgreementHasBeenMet', filter_op='eq', filter_value=false instead. " +
+		describeFieldsHint(resourceName)
+	);
+}
+
+export function buildTicketTimelineDescription(resourceName: string): string {
+	const ruleText = getOperationContractRuleText(resourceName, 'timeline');
+	const identifierRule = ruleText.length > 0 ? `${ruleText.join(' ')} ` : '';
+	return (
+		'Chronological merged event stream (notes, time entries, and optionally field-change history) for a single ticket — use for escalation briefs, effort audits, and manager summaries. ' +
+		identifierRule +
+		"Events sorted oldest-first. Each event has a 'type' field: 'note' (communications), 'timeEntry' (work logged), or 'history' (field changes). " +
+		"Parameters: 'since'/'until' (ISO date — strongly recommended for active tickets to scope results); " +
+		"'resourceId' (name or numeric ID — filters note authors, time entry resources, and history actors); " +
+		"'includeHistories' (default false — enable for full field-change audit; can be very large on busy tickets — combine with since/until); " +
+		"'textLimit' (default 500 chars for note/entry text, 0=no limit); " +
+		"'limit' (default 50 per entity type). " +
+		"'hasMore: true' in response means at least one entity type hit the per-type cap — narrow with since/until or increase limit. " +
+		'For SLA milestone timing use slaHealthCheck. For ticket field overview use summary. ' +
 		describeFieldsHint(resourceName)
 	);
 }
@@ -633,6 +642,20 @@ export function buildUnifiedDescriptionTemplate(
 		dateTimeReferenceSnippet(DESCRIPTION_REFERENCE_PLACEHOLDER),
 	);
 
+	sections.push(
+		`operation 'describeFields': field metadata. Param: mode='read'|'write'.`,
+	);
+	sections.push(
+		`operation 'listPicklistValues': picklist values. Param: fieldId (NOT targetOperation).`,
+	);
+	sections.push(
+		`operation 'describeOperation': full docs for an op. Param: targetOperation.`,
+	);
+
+	if (supportsImpersonation) {
+		sections.push(`Impersonation supported: pass 'impersonationResourceId' for write attribution.`);
+	}
+
 	for (const op of operations) {
 		const metadata = getOperationMetadata(op);
 		let summary = metadata
@@ -655,23 +678,6 @@ export function buildUnifiedDescriptionTemplate(
 			summary = `operation '${op}': ${metadata?.docsFragment ?? ''}`.trim();
 		}
 		sections.push(summary);
-	}
-
-	sections.push(
-		`Name-based resolution (create/update/filters): picklist/reference values accept human-readable names, auto-resolved to IDs.`,
-	);
-	sections.push(
-		`operation 'describeFields': List field IDs/types/metadata. Use mode 'read' or 'write'.`,
-	);
-	sections.push(
-		`operation 'listPicklistValues': Get valid values for a picklist field. Use 'fieldId'.`,
-	);
-	sections.push(
-		`operation 'describeOperation': Full docs for a given operation. Use 'targetOperation' parameter.`,
-	);
-
-	if (supportsImpersonation) {
-		sections.push(`Impersonation supported: pass 'impersonationResourceId' for write attribution.`);
 	}
 
 	const combined = sections.join(' ');
@@ -760,15 +766,17 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			},
 			{
 				field: 'filter_value',
-				type: 'string | number | boolean | array',
-				description: 'Filter value. Use arrays for in/notIn.',
+				type: 'string',
+				description:
+					"Filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3'). Booleans: 'true'/'false'.",
 			},
 			{ field: 'filter_field_2', type: 'string', description: 'Second filter field.' },
 			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
 			{
 				field: 'filter_value_2',
-				type: 'string | number | boolean | array',
-				description: 'Second filter value.',
+				type: 'string',
+				description:
+					"Second filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
 			},
 			{ field: 'filter_logic', type: 'string', description: "'and' (default) or 'or'." },
 			{
@@ -803,15 +811,17 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'filter_op', type: 'string', description: 'Filter operator.' },
 			{
 				field: 'filter_value',
-				type: 'string | number | boolean | array',
-				description: 'Filter value.',
+				type: 'string',
+				description:
+					"Filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
 			},
 			{ field: 'filter_field_2', type: 'string', description: 'Second filter field.' },
 			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
 			{
 				field: 'filter_value_2',
-				type: 'string | number | boolean | array',
-				description: 'Second filter value.',
+				type: 'string',
+				description:
+					"Second filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
 			},
 			{ field: 'filter_logic', type: 'string', description: "'and' (default) or 'or'." },
 			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array.' },
@@ -837,8 +847,9 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'filter_op', type: 'string', description: 'Filter operator.' },
 			{
 				field: 'filter_value',
-				type: 'string | number | boolean | array',
-				description: 'Filter value.',
+				type: 'string',
+				description:
+					"Filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
 			},
 			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array.' },
 			{ field: 'returnAll', type: 'boolean', description: 'Fetch ALL matching records.' },
@@ -856,8 +867,9 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'filter_op', type: 'string', description: 'Filter operator.' },
 			{
 				field: 'filter_value',
-				type: 'string | number | boolean | array',
-				description: 'Filter value.',
+				type: 'string',
+				description:
+					"Filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
 			},
 			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array.' },
 			{ field: 'returnAll', type: 'boolean', description: 'Fetch ALL matching records.' },
@@ -1217,6 +1229,8 @@ function getOperationPurpose(
 			return buildTicketSlaHealthCheckDescription(resource);
 		case 'summary':
 			return buildTicketSummaryDescription(resource);
+		case 'timeline':
+			return buildTicketTimelineDescription(resource);
 		case 'getFullDetail':
 			return buildGetFullDetailDescription(resource);
 		case 'countByPeriod':
@@ -1268,6 +1282,7 @@ function getOperationNotes(resource: string, operation: string): string[] {
 			return [...contractNotes, ...LABEL_RESOLUTION_NOTES, ...DEDUP_NOTES];
 		case 'slaHealthCheck':
 		case 'summary':
+		case 'timeline':
 		case 'getFullDetail':
 		case 'countByPeriod':
 			return [...contractNotes];

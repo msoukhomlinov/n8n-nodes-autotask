@@ -2719,6 +2719,149 @@ export async function executeAiTool(
 			return attachCorrelation(enrichedSearchByKeywordJson, correlationId);
 		}
 
+		// Short-circuit: timeline
+		// Merged chronological event stream (TicketNotes + TimeEntries + optional TicketHistory).
+		// Parallel fetch via Promise.allSettled; per-stage failures degrade gracefully.
+		if (effectiveOperation === 'timeline') {
+			const cfg = getConvenienceConfig(resource)!;
+			const tlIdPairConfig = getIdentifierPairConfig(resource, 'timeline');
+			let timelineTicketId: string | undefined;
+			if (params.id !== undefined && params.id !== null) {
+				timelineTicketId = String(params.id);
+			} else if (tlIdPairConfig && typeof params.ticketNumber === 'string' && params.ticketNumber.trim()) {
+				const tnLookup = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, {
+					filter: [{ field: tlIdPairConfig.altIdField, op: 'eq', value: params.ticketNumber.trim() }],
+					MaxRecords: 1,
+				} as IDataObject) as { items?: IAutotaskEntity[] };
+				const tnItems = Array.isArray(tnLookup.items) ? tnLookup.items : [];
+				if (tnItems.length === 0) {
+					return attachCorrelation(
+						JSON.stringify(
+							wrapError(
+								resource,
+								'timeline',
+								ERROR_TYPES.ENTITY_NOT_FOUND,
+								`Ticket with ${tlIdPairConfig.altIdField} '${params.ticketNumber}' not found.`,
+								`Verify the ticket number format (e.g. ${tlIdPairConfig.altIdExample}) and retry autotask_${resource} with operation 'getMany'.`,
+							),
+						),
+						correlationId,
+					);
+				}
+				timelineTicketId = String(tnItems[0].id);
+			}
+
+			if (!timelineTicketId) {
+				const missingMsg = tlIdPairConfig
+					? `Either 'id' (numeric) or '${tlIdPairConfig.altIdField}' (e.g. ${tlIdPairConfig.altIdExample}) is required for timeline.`
+					: `'id' (numeric) is required for timeline.`;
+				const missingNext = tlIdPairConfig
+					? `Call autotask_${resource} with operation 'timeline' and provide 'id' or '${tlIdPairConfig.altIdField}'.`
+					: `Call autotask_${resource} with operation 'timeline' and provide 'id'.`;
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							'timeline',
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							missingMsg,
+							missingNext,
+						),
+					),
+					correlationId,
+				);
+			}
+
+			const resolvedTimelineTicketId = Number(timelineTicketId);
+
+			// Resolve resourceId string to numeric ID if provided
+			let resolvedTimelineResourceId: number | undefined;
+			const rawTimelineResourceId = (params as Record<string, unknown>).resourceId;
+			if (typeof rawTimelineResourceId === 'string' && rawTimelineResourceId.trim()) {
+				const rid = rawTimelineResourceId.trim();
+				const numericRid = parseInt(rid, 10);
+				if (!isNaN(numericRid) && String(numericRid) === rid) {
+					resolvedTimelineResourceId = numericRid;
+				} else {
+					try {
+						const resourceLookup = await autotaskApiRequest.call(
+							context, 'POST', 'Resources/query',
+							{
+								filter: [
+									{ op: 'or', items: [
+										{ field: 'firstName', op: 'contains', value: rid },
+										{ field: 'lastName', op: 'contains', value: rid },
+										{ field: 'email', op: 'eq', value: rid },
+									]},
+								],
+								MaxRecords: 1,
+							} as IDataObject,
+						) as { items?: IAutotaskEntity[] };
+						const ridItems = Array.isArray(resourceLookup.items) ? resourceLookup.items : [];
+						if (ridItems.length > 0) {
+							resolvedTimelineResourceId = Number(ridItems[0].id);
+						} else {
+							labelWarnings.push(
+								`Could not resolve resource '${rid}' to a numeric ID — timeline will not be filtered by resource.`,
+							);
+						}
+					} catch (err) {
+						const msg = err instanceof Error ? err.message : String(err);
+						labelWarnings.push(
+							`[INFRASTRUCTURE] Resource resolution failed for '${rid}': ${msg} — timeline will not be filtered by resource.`,
+						);
+					}
+				}
+			} else if (typeof rawTimelineResourceId === 'number' && rawTimelineResourceId > 0) {
+				resolvedTimelineResourceId = rawTimelineResourceId;
+			}
+
+			const includeHistories = (params as Record<string, unknown>).includeHistories === true;
+			const textLimit = typeof params.textLimit === 'number' ? params.textLimit : 500;
+			const timelineLimit = typeof params.limit === 'number' ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_QUERY_LIMIT) : 50;
+
+			const { buildTicketTimeline } = await import('../helpers/ticket-timeline');
+			const timelineResult = await buildTicketTimeline(context as unknown as import('n8n-workflow').IExecuteFunctions, {
+				ticketId: resolvedTimelineTicketId,
+				since: typeof params.since === 'string' && params.since.trim() ? params.since.trim() : undefined,
+				until: typeof params.until === 'string' && params.until.trim() ? params.until.trim() : undefined,
+				resourceId: resolvedTimelineResourceId,
+				includeHistories,
+				textLimit,
+				limit: timelineLimit,
+			});
+
+			const allTimelineWarnings = [...timelineResult.stageWarnings, ...labelWarnings];
+
+			const baseTimelineResponse = buildListResponse(
+				resource,
+				'timeline',
+				timelineResult.events as unknown as Record<string, unknown>[],
+				{
+					hasMore: timelineResult.hasMore,
+					serverCap: timelineLimit,
+					clientCap: timelineLimit,
+				},
+				{
+					resolutions: labelResolutions.length > 0 ? labelResolutions : undefined,
+					resolutionWarnings: allTimelineWarnings.length > 0 ? allTimelineWarnings : undefined,
+				},
+			);
+
+			const timelineResponseObject: Record<string, unknown> = {
+				...baseTimelineResponse,
+				ticketId: resolvedTimelineTicketId,
+				totalEvents: timelineResult.events.length,
+				noteCount: timelineResult.noteCount,
+				timeEntryCount: timelineResult.timeEntryCount,
+				historyCount: timelineResult.historyCount,
+			};
+
+			const timelineJson = JSON.stringify(timelineResponseObject);
+			const enrichedTimelineJson = await enrichResponseJson(timelineJson, context);
+			return attachCorrelation(enrichedTimelineJson, correlationId);
+		}
+
 		traceExecutor({
 			phase: 'api-call-start',
 			resource,
