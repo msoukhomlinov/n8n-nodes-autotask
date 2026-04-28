@@ -59,6 +59,7 @@ import {
 	handleTimeline,
 } from './operation-handlers/ticket-specialty';
 import { handleGetAvailableRoles } from './operation-handlers/resource-operations';
+import type { ExecutorState } from './executor-state';
 import {
 	buildFieldLookup,
 	buildFilterFromParams,
@@ -209,6 +210,19 @@ function getConvenienceConfig(resource: string): ResourceConvenienceConfig | und
 import { DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT, getEffectiveLimit, executeCountOperation } from './tool-executor-helpers';
 export { DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT, getEffectiveLimit, executeCountOperation };
 export const RECENCY_OVER_REQUEST_LIMIT = 500;
+
+const SPECIAL_HANDLERS: Record<string, (state: ExecutorState) => Promise<string>> = {
+	getByCompanyAndStatus: handleGetByCompanyAndStatus,
+	getUnassigned: handleGetUnassigned,
+	getBySLAStatus: handleGetBySLAStatus,
+	getFullDetail: handleGetFullDetail,
+	countByPeriod: handleCountByPeriod,
+	getByAge: handleGetByAge,
+	getByResource: handleGetByResource,
+	searchByKeyword: handleSearchByKeyword,
+	timeline: handleTimeline,
+	getAvailableRoles: handleGetAvailableRoles,
+};
 
 /**
  * Build field values for create/update from params.
@@ -1628,59 +1642,32 @@ export async function executeAiTool(
 			}
 		}
 
-		// Short-circuit: getByCompanyAndStatus
-		if (effectiveOperation === 'getByCompanyAndStatus') {
-			return handleGetByCompanyAndStatus({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
-		}
-
-		// Short-circuit: getUnassigned
-		if (effectiveOperation === 'getUnassigned') {
-			return handleGetUnassigned({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
-		}
-
-		// Short-circuit: getBySLAStatus
-		if (effectiveOperation === 'getBySLAStatus') {
-			return handleGetBySLAStatus({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
-		}
-
-		// Short-circuit: getFullDetail
-		if (effectiveOperation === 'getFullDetail') {
-			return handleGetFullDetail({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
-		}
-
-		// Short-circuit: countByPeriod
-		if (effectiveOperation === 'countByPeriod') {
-			return handleCountByPeriod({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
-		}
-
-		// Short-circuit: getByAge
-		if (effectiveOperation === 'getByAge') {
-			return handleGetByAge({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
-		}
-
-		// Short-circuit: getByResource (ticket-scoped — primary + secondary assignment lookup)
-		if (effectiveOperation === 'getByResource' && resource === 'ticket') {
-			return handleGetByResource({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
-		}
-
-		// Short-circuit: searchByKeyword
-		// Cross-entity full-text search across Tickets, TicketNotes, TimeEntries.
-		// Stages 1–3 run in parallel via Promise.allSettled; per-stage failures degrade gracefully.
-		// Recency is applied post-merge against the resolved recency field (default createDate).
-		if (effectiveOperation === 'searchByKeyword') {
-			return handleSearchByKeyword({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
-		}
-
-		// Short-circuit: timeline
-		// Merged chronological event stream (TicketNotes + TimeEntries + optional TicketHistory).
-		// Parallel fetch via Promise.allSettled; per-stage failures degrade gracefully.
-		if (effectiveOperation === 'timeline') {
-			return handleTimeline({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
-		}
-
-		// Short-circuit: getAvailableRoles (timeEntry resource)
-		if (effectiveOperation === 'getAvailableRoles') {
-			return handleGetAvailableRoles({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
+		// Dispatch to registered special handlers
+		const specialHandler = SPECIAL_HANDLERS[effectiveOperation];
+		if (specialHandler) {
+			const executorState: ExecutorState = {
+				context,
+				resource,
+				operation: effectiveOperation,
+				params,
+				readFields,
+				writeFields,
+				fieldValues,
+				combinedFilters,
+				effectiveLimit,
+				effectiveOffset,
+				effectiveReturnAll,
+				recencyResult,
+				labelResolutions,
+				labelWarnings,
+				labelPendingConfirmations,
+				filterResolutions,
+				filterWarnings,
+				correlationId: correlationId ?? '',
+				entityId,
+				selectedColumns,
+			};
+			return specialHandler(executorState);
 		}
 
 		traceExecutor({
