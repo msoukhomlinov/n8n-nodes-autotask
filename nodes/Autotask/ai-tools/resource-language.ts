@@ -21,5 +21,5 @@ export const RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION: ReadonlySet<string> = new
 
 export const RESOURCE_EXTRA_HINTS: Readonly<Record<string, string>> = {
 	timeEntry:
-		"ROLE: roleID auto-defaults to the resource's defaultServiceDeskRoleID — omit it for standard time logging. Only provide roleID explicitly when the work context requires a non-default role (e.g. onsite visit, after-hours, travel). In that case call operation 'getAvailableRoles' with resourceID and ticketID to see valid options with descriptions — never guess role names.",
+		"ROLE FIELD: NEVER guess roleID — role names are tenant-specific (e.g. 'Service Desk Tier 1', 'Project Engineer'). Omit roleID entirely to auto-default to the resource's defaultServiceDeskRoleID — correct for most time logging. If a non-default role is required, FIRST call autotask_timeEntry with operation 'getAvailableRoles' (resourceID + ticketID) to list valid role names, then pass the exact name or numeric id.",
 };

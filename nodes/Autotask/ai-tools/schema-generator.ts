@@ -297,13 +297,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 			if (!shape.excludeTerminalStatuses) {
 				shape.excludeTerminalStatuses = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe('Exclude terminal statuses Complete/Cancelled (default true). Set false to include closed tickets.');
 			}
 			if (!shape.returnAll) {
 				shape.returnAll = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe('Fetch all matching records per branch. Default false = up to limit.');
 			}
@@ -460,7 +460,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					'JSON IFilterCondition array. No label resolution — use numeric IDs (call listPicklistValues for picklist IDs). Mutually exclusive with filter_field. Dates UTC.',
 				);
 			shape.returnAll = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe(
 					'Fetch ALL matching records (API pagination). Default false = up to limit. Use tight filters; subject to MAX_RESPONSE_RECORDS truncation.',
@@ -479,7 +479,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				!shape.excludeTerminalStatuses
 			) {
 				shape.excludeTerminalStatuses = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe(
 						'Exclude terminal statuses from results (default true). Set false only when user explicitly asks for completed, cancelled, or historical records.',
@@ -526,7 +526,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					"Domain comparison operator (default 'contains'). When a domain is available, do domain matching first; avoid strict exact-name-only matching.",
 				);
 			shape.searchContactEmails = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('When true (default), fall back to contact email search if no website match.');
 			shape.limit = rz
@@ -549,7 +549,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// summary fields
 		if (hasSummary) {
 			shape.includeRaw = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe(
 					'Include pre-alias-rename payload: labels/UDFs intact, raw changeInfoField{N} keys, no null filtering. Use _meta.aliasMap for changeInfo mapping.',
@@ -561,7 +561,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					'Maximum characters for description and resolution fields in the summary. Default 500. Pass 0 for no limit.',
 				);
 			shape.includeChildCounts = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe(
 					'Include childCounts block (notes, time entries, attachments, etc.). Default false — adds parallel API calls.',
@@ -588,7 +588,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.nullish()
 				.describe('Filter by resource name or numeric ID — applies to note author, time entry resource, history actor');
 			shape.includeHistories = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Include field-change audit history events (default false — can be high volume on active tickets)');
 			shape.textLimit = rz
@@ -711,7 +711,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 			if (!shape.includeNotes) {
 				shape.includeNotes = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe(
 						'When true, also search TicketNotes.description. Default false. Adds one parallel API call. Capped at 200 matched notes.',
@@ -719,7 +719,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 			if (!shape.includeTimeEntries) {
 				shape.includeTimeEntries = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe(
 						'When true, also search TimeEntries.summaryNotes. Default false. Adds one parallel API call. Capped at 200 matched time entries.',
@@ -747,21 +747,21 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				// human-readable labels (e.g. "Will Spence") which the executor auto-resolves to IDs.
 				const needsLabelResolution = field.isPickList || field.isReference;
 				const base = needsLabelResolution
-					? rz.string()
+					? rz.union([rz.number(), rz.string()])
 					: field.type === 'number'
 						? rz.number()
 						: field.type === 'boolean'
-							? rz.boolean()
+							? rz.union([rz.boolean(), rz.number()])
 							: rz.string();
 				shape[field.id] = base.nullish().describe(desc);
 			}
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
-					.string()
+					.union([rz.number(), rz.string()])
 					.nullish()
 					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe(IMPERSONATION_PROCEED_DESCRIBE);
 			}
@@ -796,20 +796,20 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.nullish()
 				.describe('Optional destination contact ID.');
 			shape.copyUdfs = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to copy user-defined fields (default true).');
 			shape.copyAttachments = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to copy CI attachments (default true).');
-			shape.copyNotes = rz.boolean().nullish().describe('Whether to copy notes (default true).');
+			shape.copyNotes = rz.union([rz.boolean(), rz.number()]).nullish().describe('Whether to copy notes (default true).');
 			shape.copyNoteAttachments = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to copy note attachments (default true).');
 			shape.deactivateSource = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to deactivate the source CI after safety checks (default true).');
 			shape.idempotencyKey = rz.string().nullish().describe('Optional run key for traceability.');
@@ -842,7 +842,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.nullish()
 				.describe('Retry base delay in milliseconds (default 500).');
 			shape.retryJitter = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to use jitter in retry backoff (default true).');
 			shape.throttleMaxBytesPer5Min = rz
@@ -859,11 +859,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe('Maximum attachment size per file in bytes (default 6291456).');
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
-					.string()
+					.union([rz.number(), rz.string()])
 					.nullish()
 					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe(IMPERSONATION_PROCEED_DESCRIBE);
 			}
@@ -892,21 +892,21 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.nullish()
 				.describe('Optional destination company location ID.');
 			shape.skipIfDuplicateEmailFound = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe(
 					'Whether to skip move when duplicate email exists on destination (default true).',
 				);
 			shape.copyContactGroups = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to copy contact group memberships (default true).');
 			shape.copyCompanyNotes = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to copy company notes linked to the contact (default true).');
 			shape.copyNoteAttachments = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to copy attachments for copied notes (default true).');
 			shape.sourceAuditNote = rz
@@ -919,11 +919,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe('Optional audit note written to the destination company context.');
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
-					.string()
+					.union([rz.number(), rz.string()])
 					.nullish()
 					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe(IMPERSONATION_PROCEED_DESCRIBE);
 			}
@@ -946,23 +946,23 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.nullish()
 					.describe('Receiving resource ID. Must be active.');
 			shape.includeTickets = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to include tickets (default false).');
 			shape.includeProjects = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to include projects (default false).');
 			shape.includeServiceCallAssignments = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to reassign service call task/ticket resources (default false).');
 			shape.includeAppointments = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to reassign appointments (default false).');
 			shape.includeCompanies = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to transfer companies owned by the source resource (default false).');
 			shape.companyIdAllowlist = rz
@@ -970,7 +970,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.nullish()
 				.describe('Optional comma-separated company IDs to scope company transfer.');
 			shape.includeOpportunities = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe(
 					'Whether to transfer opportunities owned by the source resource (default false).',
@@ -997,11 +997,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					"Required when dueWindowPreset is 'custom'. Accepts YYYY-MM-DD or ISO-8601 datetime.",
 				);
 			shape.onlyOpenActive = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('When true, excludes terminal statuses (default true).');
 			shape.includeItemsWithNoDueDate = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe(
 					'Whether items with no due date are included (default true, unless due window is set).',
@@ -1043,7 +1043,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.nullish()
 				.describe('Optional comma-separated status integer values to include.');
 			shape.addAuditNotes = rz
-				.boolean()
+				.union([rz.boolean(), rz.number()])
 				.nullish()
 				.describe('Whether to create per-entity audit notes (default false).');
 			shape.auditNoteTemplate = rz
@@ -1054,11 +1054,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
-					.string()
+					.union([rz.number(), rz.string()])
 					.nullish()
 					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe(IMPERSONATION_PROCEED_DESCRIBE);
 			}
@@ -1077,13 +1077,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 			}
 			if (!shape.queueID) {
-				shape.queueID = rz.number().optional().describe(
-					'Queue ID to filter roles by. Use when ticketID is not available.'
+				shape.queueID = rz.union([rz.number(), rz.string()]).optional().describe(
+					'Queue ID or name to filter roles by. Use when ticketID is not available.'
 				);
 			}
 			if (!shape.contractID) {
-				shape.contractID = rz.number().optional().describe(
-					'Contract ID to apply exclusion rules. If ticketID is provided this is derived automatically.'
+				shape.contractID = rz.union([rz.number(), rz.string()]).optional().describe(
+					'Contract ID or name to apply exclusion rules. If ticketID is provided this is derived automatically.'
 				);
 			}
 		}
@@ -1100,11 +1100,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					const desc = buildFieldDescription(field);
 					const needsLabelResolution = field.isPickList || field.isReference;
 					const base = needsLabelResolution
-						? rz.string()
+						? rz.union([rz.number(), rz.string()])
 						: field.type === 'number'
 							? rz.number()
 							: field.type === 'boolean'
-								? rz.boolean()
+								? rz.union([rz.boolean(), rz.number()])
 								: rz.string();
 					shape[field.id] = base.nullish().describe(desc);
 				}
@@ -1126,18 +1126,18 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					);
 			if (!shape.errorOnDuplicate)
 				shape.errorOnDuplicate = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe(
 						"If true, error on duplicate instead of returning outcome: skipped. Default false.",
 					);
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
-					.string()
+					.union([rz.number(), rz.string()])
 					.nullish()
 					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
-					.boolean()
+					.union([rz.boolean(), rz.number()])
 					.nullish()
 					.describe(IMPERSONATION_PROCEED_DESCRIBE);
 			}

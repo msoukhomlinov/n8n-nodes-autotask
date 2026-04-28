@@ -11,21 +11,21 @@ import {
 
 /** Extract the canonical created-entity numeric ID from a compound creator result. */
 
-function buildCompoundEntityId(resource: string, result: any): number | undefined {
+function buildCompoundEntityId(resource: string, result: Record<string, unknown>): number | undefined {
 	const field = COMPOUND_REGISTRY[resource]?.entityIdField;
-	return field ? result[field] : (result.id ?? result.itemId);
+	return field ? (result[field] as number | undefined) : ((result.id ?? result.itemId) as number | undefined);
 }
 
 /** Extract the canonical existing-entity numeric ID from a compound creator result (skip/update). */
 
-function buildCompoundExistingId(resource: string, result: any): number | undefined {
+function buildCompoundExistingId(resource: string, result: Record<string, unknown>): number | undefined {
 	const field = COMPOUND_REGISTRY[resource]?.existingIdField;
-	return field ? result[field] : result.existingId;
+	return field ? (result[field] as number | undefined) : (result.existingId as number | undefined);
 }
 
 /** Build the context block (parent/scope fields) for a compound creator result. */
 
-function buildCompoundContext(resource: string, result: any): Record<string, unknown> | undefined {
+function buildCompoundContext(resource: string, result: Record<string, unknown>): Record<string, unknown> | undefined {
 	switch (resource) {
 		case 'contractCharge':
 			return result.contractId !== undefined ? { contractId: result.contractId } : undefined;
@@ -117,7 +117,7 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 		);
 	}
 	const dedupFields = (params.dedupFields as string[]) ?? registryEntry.defaultDedupFields;
-	const errorOnDuplicate = params.errorOnDuplicate === true;
+	const errorOnDuplicate = Boolean(params.errorOnDuplicate);
 	const updateFields = (params.updateFields as string[] | undefined) ?? [];
 
 	const compoundOptions = {
@@ -126,12 +126,12 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 		errorOnDuplicate,
 		updateFields,
 		impersonationResourceId: resolvedImpersonationId,
-		proceedWithoutImpersonationIfDenied: params.proceedWithoutImpersonationIfDenied !== false,
+		proceedWithoutImpersonationIfDenied: params.proceedWithoutImpersonationIfDenied !== false && params.proceedWithoutImpersonationIfDenied !== 0,
 	};
 
 	const handler = await registryEntry.getHandler();
 
-	const compoundResult: any = await handler(context, 0, compoundOptions);
+	const compoundResult = await handler(context, 0, compoundOptions) as Record<string, unknown>;
 
 	if (!compoundResult) {
 		// Helper returned falsy — let caller fall through to standard executor.
@@ -139,7 +139,7 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 	}
 
 	// Reclassify not-found outcomes as errors
-	if (COMPOUND_PARENT_NOT_FOUND_OUTCOMES.has(compoundResult.outcome)) {
+	if (COMPOUND_PARENT_NOT_FOUND_OUTCOMES.has(compoundResult.outcome as string)) {
 		const parentRef =
 			compoundResult.parentLookupValue ??
 			compoundResult.companyID ??

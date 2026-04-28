@@ -9,6 +9,12 @@ import {
     TYPED_REFERENCE_COMPANION_FIELDS,
 } from './typed-reference';
 
+/** Actionable hints appended to no-match warnings when a reference entity has a known lookup operation. */
+const REFERENCE_RESOLUTION_HINTS: Record<string, string> = {
+    Role: `Call autotask_timeEntry with operation 'getAvailableRoles' (resourceID + ticketID) to list valid roles for this resource.`,
+    Queue: `Call autotask_ticket with operation 'listPicklistValues' and fieldId='queueID' to list valid queues.`,
+};
+
 export interface LabelResolution {
     field: string;
     from: string | number;
@@ -292,7 +298,8 @@ export async function resolveLabelsToIds(
                     values[key] = bestId;
                     resolutions.push({ field: field.id, from: label, to: bestId, method: 'reference' });
                 } else if (!pendingFieldIds.has(field.id)) {
-                    warnings.push(`Could not resolve reference label '${label}' for field '${field.id}' (${field.referencesEntity})`);
+                    const hint = REFERENCE_RESOLUTION_HINTS[field.referencesEntity] ?? '';
+                    warnings.push(`Could not resolve reference label '${label}' for field '${field.id}' (${field.referencesEntity})${hint ? ` ${hint}` : ''}`);
                 }
             } catch (err) {
                 // Infrastructure-aware error classification
