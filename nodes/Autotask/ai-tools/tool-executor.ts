@@ -1627,32 +1627,32 @@ export async function executeAiTool(
 
 		// Short-circuit: getByCompanyAndStatus
 		if (effectiveOperation === 'getByCompanyAndStatus') {
-			return handleGetByCompanyAndStatus({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId, entityId, selectedColumns });
+			return handleGetByCompanyAndStatus({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
 		}
 
 		// Short-circuit: getUnassigned
 		if (effectiveOperation === 'getUnassigned') {
-			return handleGetUnassigned({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId, entityId, selectedColumns });
+			return handleGetUnassigned({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
 		}
 
 		// Short-circuit: getBySLAStatus
 		if (effectiveOperation === 'getBySLAStatus') {
-			return handleGetBySLAStatus({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId, entityId, selectedColumns });
+			return handleGetBySLAStatus({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
 		}
 
 		// Short-circuit: getFullDetail
 		if (effectiveOperation === 'getFullDetail') {
-			return handleGetFullDetail({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId, entityId, selectedColumns });
+			return handleGetFullDetail({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
 		}
 
 		// Short-circuit: countByPeriod
 		if (effectiveOperation === 'countByPeriod') {
-			return handleCountByPeriod({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId, entityId, selectedColumns });
+			return handleCountByPeriod({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
 		}
 
 		// Short-circuit: getByAge
 		if (effectiveOperation === 'getByAge') {
-			return handleGetByAge({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId, entityId, selectedColumns });
+			return handleGetByAge({ context, resource, operation: effectiveOperation, params, readFields, writeFields, fieldValues, combinedFilters, effectiveLimit, effectiveOffset, effectiveReturnAll, recencyResult, labelResolutions, labelWarnings, labelPendingConfirmations, filterResolutions, filterWarnings, correlationId: correlationId ?? '', entityId, selectedColumns });
 		}
 
 		// Short-circuit: getByResource (ticket-scoped — primary + secondary assignment lookup)
