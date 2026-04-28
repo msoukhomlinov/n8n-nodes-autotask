@@ -9,6 +9,8 @@ import { getConfiguredTimezone } from './date-time/utils';
 import { AUTOTASK_ENTITIES, getEntityMetadata } from '../constants/entities';
 import type { IEntityMetadata } from '../types';
 
+const VIRTUAL_RESOURCES = new Set(['globalNotesSearch']);
+
 function resolveEntityMetadata(resource: string): IEntityMetadata | undefined {
     const canonicalResource = normaliseResourceName(resource);
     const lowerCanonical = canonicalResource.toLowerCase();
@@ -232,6 +234,11 @@ export async function describeResource(
 
         // Get timezone for this context
         const timezone = await getConfiguredTimezone.call(context);
+
+        // Virtual resources have no Autotask entity and no field metadata endpoint.
+        if (VIRTUAL_RESOURCES.has(resource)) {
+            return { resource, mode, timezone, fields: [] };
+        }
 
         // Check if entity supports UDFs
         const metadata = resolveEntityMetadata(resource);
