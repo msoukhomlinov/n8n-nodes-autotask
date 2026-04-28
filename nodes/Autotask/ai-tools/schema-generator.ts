@@ -135,54 +135,15 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		'notIn',
 	]);
 	const rFilterValueSchema = rz
-		.union([
-			rz.string(),
-			rz.number(),
-			rz.boolean(),
-			rz.array(rz.union([rz.string(), rz.number(), rz.boolean()])),
-		])
-		.describe(
-			"Filter value. For reference and picklist fields, pass a human-readable name (e.g. 'In Progress', 'Contoso', 'High') — auto-resolves to ID. Or pass a numeric ID directly if known.",
-		);
-	const rRecencyEnum = rz.enum([
-		'last_15m',
-		'last_1h',
-		'last_2h',
-		'last_3h',
-		'last_4h',
-		'last_6h',
-		'last_8h',
-		'last_12h',
-		'last_24h',
-		'last_1d',
-		'last_2d',
-		'last_3d',
-		'last_4d',
-		'last_5d',
-		'last_6d',
-		'last_7d',
-		'last_14d',
-		'last_30d',
-		'last_90d',
-	]);
-	const rRecencyCustomDays = rz
 		.string()
-		.regex(/^last_\d+d$/)
-		.refine(
-			(s) => {
-				const n = parseInt(s.replace(/^last_(\d+)d$/, '$1'), 10);
-				return Number.isFinite(n) && n >= 1 && n <= 365;
-			},
-			{
-				message:
-					'Custom recency must be last_Nd with N between 1 and 365 (e.g. last_5d, last_45d).',
-			},
+		.describe(
+			"Filter value as string. For reference/picklist fields, pass human-readable name (e.g. 'In Progress', 'Contoso', 'High') — auto-resolves to ID, or pass numeric ID directly. For in/notIn operators, comma-separate values (e.g. '1,2,3'). Booleans: 'true'/'false'.",
 		);
 	const rRecencySchema = rz
-		.union([rRecencyEnum, rRecencyCustomDays])
+		.string()
 		.nullish()
 		.describe(
-			'Preset time window (last_7d, last_30d) or last_Nd (N=1–365). Mutually exclusive with since/until.',
+			'Preset time window: last_15m, last_1h, last_2h, last_3h, last_4h, last_6h, last_8h, last_12h, last_24h, last_1d–last_7d, last_14d, last_30d, last_90d. Or last_Nd (N=1–365). Mutually exclusive with since/until.',
 		);
 
 	function buildUnifiedSchema(
@@ -287,7 +248,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// resourceID — used by getByResource and getByYear (parent-path operations)
 		if (hasGetByResource || hasGetByYear) {
 			shape.resourceID = rz
-				.union([rz.number(), rz.string()])
+				.string()
 				.nullish()
 				.describe(
 					'Resource ID or name (auto-resolved). Required for getByResource and getByYear.',
@@ -493,11 +454,46 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 		}
 
+		// timeline fields
+		const hasTimeline = operations.includes('timeline');
+		if (hasTimeline) {
+			if (!shape.since) {
+				shape.since = rz
+					.string()
+					.nullish()
+					.describe('ISO 8601 date — filter events on or after this date');
+			}
+			if (!shape.until) {
+				shape.until = rz
+					.string()
+					.nullish()
+					.describe('ISO 8601 date — filter events on or before this date');
+			}
+			shape.resourceId = rz
+				.string()
+				.nullish()
+				.describe('Filter by resource name or numeric ID — applies to note author, time entry resource, history actor');
+			shape.includeHistories = rz
+				.boolean()
+				.nullish()
+				.describe('Include field-change audit history events (default false — can be high volume on active tickets)');
+			shape.textLimit = rz
+				.number()
+				.nullish()
+				.describe('Max characters for note/entry text fields (default 500; 0 = no limit)');
+			if (!shape.limit) {
+				shape.limit = rz
+					.number()
+					.nullish()
+					.describe('Max events per entity type — notes, time entries, histories each capped independently (default 50)');
+			}
+		}
+
 		// getByCompanyAndStatus / getUnassigned shared fields
 		if (hasGetByCompanyAndStatus || hasGetUnassigned) {
 			if (!shape.company) {
 				shape.company = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe(
 						hasGetByCompanyAndStatus
@@ -507,13 +503,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority) {
 				shape.priority = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe('Priority picklist label or ID (optional).');
 			}
 			if (hasGetByCompanyAndStatus && !shape.status) {
 				shape.status = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe('Status picklist label or ID (optional). Omit for all statuses.');
 			}
@@ -531,13 +527,12 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			if (!shape.atRiskWindowHours) {
 				shape.atRiskWindowHours = rz
 					.number()
-					.positive()
 					.nullish()
 					.describe('Hours before resolvedDueDateTime to consider a ticket at-risk (default 4). Only applies when slaStatus=at_risk.');
 			}
 			if (!shape.company) {
 				shape.company = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe('Company name or numeric companyID (auto-resolved). Optional.');
 			}
@@ -554,19 +549,19 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 			if (!shape.company) {
 				shape.company = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe('Company name or numeric companyID (auto-resolved). Optional.');
 			}
 			if (!shape.status) {
 				shape.status = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe('Status picklist label or ID (optional).');
 			}
 			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority) {
 				shape.priority = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe('Priority picklist label or ID (optional).');
 			}
@@ -579,13 +574,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.olderThanDays = rz
 					.number()
 					.int()
-					.positive()
+					.min(1)
 					.nullish()
 					.describe('Required for getByAge: return records older than N days (e.g. 30 for records created more than 30 days ago). Positive integer.');
 			}
-			if (!shape.company) shape.company = rz.union([rz.number(), rz.string()]).nullish().describe('Company name or companyID (auto-resolved).');
-			if (!shape.status) shape.status = rz.union([rz.number(), rz.string()]).nullish().describe('Status picklist label or ID (optional).');
-			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority) shape.priority = rz.union([rz.number(), rz.string()]).nullish().describe('Priority picklist label or ID (optional).');
+			if (!shape.company) shape.company = rz.string().nullish().describe('Company name or companyID (auto-resolved).');
+			if (!shape.status) shape.status = rz.string().nullish().describe('Status picklist label or ID (optional).');
+			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority) shape.priority = rz.string().nullish().describe('Priority picklist label or ID (optional).');
 		}
 
 		// searchByKeyword fields
@@ -638,7 +633,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				// human-readable labels (e.g. "Will Spence") which the executor auto-resolves to IDs.
 				const needsLabelResolution = field.isPickList || field.isReference;
 				const base = needsLabelResolution
-					? rz.union([rz.number(), rz.string()])
+					? rz.string()
 					: field.type === 'number'
 						? rz.number()
 						: field.type === 'boolean'
@@ -648,7 +643,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
@@ -664,26 +659,26 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.sourceConfigurationItemId = rz
 					.number()
 					.int()
-					.positive()
+					.min(1)
 					.nullish()
 					.describe('Source configuration item ID to clone.');
 			if (!shape.destinationCompanyId)
 				shape.destinationCompanyId = rz
 					.number()
 					.int()
-					.positive()
+					.min(1)
 					.nullish()
 					.describe('Destination company ID.');
 			shape.destinationCompanyLocationId = rz
 				.number()
 				.int()
-				.positive()
+				.min(1)
 				.nullish()
 				.describe('Optional destination company location ID.');
 			shape.destinationContactId = rz
 				.number()
 				.int()
-				.positive()
+				.min(1)
 				.nullish()
 				.describe('Optional destination contact ID.');
 			shape.copyUdfs = rz
@@ -750,7 +745,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe('Maximum attachment size per file in bytes (default 6291456).');
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
@@ -766,20 +761,20 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.sourceContactId = rz
 					.number()
 					.int()
-					.positive()
+					.min(1)
 					.nullish()
 					.describe('Source contact ID to move.');
 			if (!shape.destinationCompanyId)
 				shape.destinationCompanyId = rz
 					.number()
 					.int()
-					.positive()
+					.min(1)
 					.nullish()
 					.describe('Destination company ID for the cloned contact.');
 			shape.destinationCompanyLocationId = rz
 				.number()
 				.int()
-				.positive()
+				.min(1)
 				.nullish()
 				.describe('Optional destination company location ID.');
 			shape.skipIfDuplicateEmailFound = rz
@@ -810,7 +805,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe('Optional audit note written to the destination company context.');
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
@@ -826,14 +821,14 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.sourceResourceId = rz
 					.number()
 					.int()
-					.positive()
+					.min(1)
 					.nullish()
 					.describe('Source resource ID currently assigned to work. Can be inactive.');
 			if (!shape.destinationResourceId)
 				shape.destinationResourceId = rz
 					.number()
 					.int()
-					.positive()
+					.min(1)
 					.nullish()
 					.describe('Receiving resource ID. Must be active.');
 			shape.includeTickets = rz
@@ -945,7 +940,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz
@@ -967,7 +962,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					const desc = buildFieldDescription(field);
 					const needsLabelResolution = field.isPickList || field.isReference;
 					const base = needsLabelResolution
-						? rz.union([rz.number(), rz.string()])
+						? rz.string()
 						: field.type === 'number'
 							? rz.number()
 							: field.type === 'boolean'
@@ -1000,7 +995,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					);
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
-					.union([rz.number(), rz.string()])
+					.string()
 					.nullish()
 					.describe(IMPERSONATION_RESOURCE_ID_DESCRIBE);
 				shape.proceedWithoutImpersonationIfDenied = rz

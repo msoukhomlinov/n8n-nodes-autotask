@@ -43,6 +43,12 @@ export const ticketFields: INodeProperties[] = [
                 action: 'Get ticket summary',
             },
             {
+                name: 'Timeline',
+                value: 'timeline',
+                description: 'Fetch chronological event stream (notes, time entries, history) for a ticket',
+                action: 'Get ticket timeline',
+            },
+            {
                 name: 'Update',
                 value: 'update',
                 description: 'Update a ticket',
@@ -75,10 +81,10 @@ export const ticketFields: INodeProperties[] = [
         displayOptions: {
             show: {
                 resource: ['ticket'],
-                operation: ['slaHealthCheck', 'summary'],
+                operation: ['slaHealthCheck', 'summary', 'timeline'],
             },
         },
-        description: 'How to identify the ticket for SLA health checks or summary',
+        description: 'How to identify the ticket for SLA health checks, summary, or timeline',
     },
     {
         displayName: 'Ticket ID',
@@ -103,7 +109,7 @@ export const ticketFields: INodeProperties[] = [
         displayOptions: {
             show: {
                 resource: ['ticket'],
-                operation: ['slaHealthCheck', 'summary'],
+                operation: ['slaHealthCheck', 'summary', 'timeline'],
                 ticketIdentifierType: ['id'],
             },
         },
@@ -119,11 +125,61 @@ export const ticketFields: INodeProperties[] = [
         displayOptions: {
             show: {
                 resource: ['ticket'],
-                operation: ['slaHealthCheck', 'summary'],
+                operation: ['slaHealthCheck', 'summary', 'timeline'],
                 ticketIdentifierType: ['ticketNumber'],
             },
         },
         description: 'The ticket number to check, for example T20240615.0674',
+    },
+    {
+        displayName: 'Since',
+        name: 'since',
+        type: 'string',
+        default: '',
+        placeholder: '2024-01-01T00:00:00Z',
+        displayOptions: { show: { resource: ['ticket'], operation: ['timeline'] } },
+        description: 'Filter events on or after this date (ISO 8601)',
+    },
+    {
+        displayName: 'Until',
+        name: 'until',
+        type: 'string',
+        default: '',
+        placeholder: '2024-12-31T23:59:59Z',
+        displayOptions: { show: { resource: ['ticket'], operation: ['timeline'] } },
+        description: 'Filter events on or before this date (ISO 8601)',
+    },
+    {
+        displayName: 'Resource',
+        name: 'resourceId',
+        type: 'string',
+        default: '',
+        displayOptions: { show: { resource: ['ticket'], operation: ['timeline'] } },
+        description: 'Filter by resource name or numeric ID (applies to note author, time entry resource, history actor)',
+    },
+    {
+        displayName: 'Include Histories',
+        name: 'includeHistories',
+        type: 'boolean',
+        default: false,
+        displayOptions: { show: { resource: ['ticket'], operation: ['timeline'] } },
+        description: 'Whether to include field-change audit history (can be high volume on active tickets)',
+    },
+    {
+        displayName: 'Text Limit',
+        name: 'textLimit',
+        type: 'number',
+        default: 500,
+        displayOptions: { show: { resource: ['ticket'], operation: ['timeline'] } },
+        description: 'Max characters for note/entry text fields (0 = no limit)',
+    },
+    {
+        displayName: 'Limit',
+        name: 'limit',
+        type: 'number',
+        default: 50,
+        displayOptions: { show: { resource: ['ticket'], operation: ['timeline'] } },
+        description: 'Max events per entity type (notes, time entries, histories each capped independently)',
     },
     {
         displayName: 'Ticket Field Names or IDs',

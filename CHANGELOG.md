@@ -2,6 +2,21 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.12.0] — 2026-04-28
+
+### Added
+- **AI tools — Response enrichment expanded:** `ENRICHMENT_REGISTRY` extended with 8 new foreign-key enrichments auto-injected into all `records[]` and `record{}` responses: `resourceID` → `resourceFullName`, `resourceEmail`; `assignedResourceID` → `assignedResourceFullName`, `assignedResourceEmail`; `companyID` → `companyName`; `contractID` → `contractName`+`contractNumber`; `contactID` → `contactFullName`, `contactEmail`; `billingCodeID` → `billingCodeName`; `projectID` → `projectName`+`projectNumber`; `productID` → `productName`. Covers the top-8 most-frequent foreign keys by Autotask swagger occurrence count. Existing `ticketID` and `taskID` (with Project nextHop) entries unchanged. Cache refactored to store only raw records (avoiding outputFields shape collision when multiple registry entries share the same entity).
+- **AI tools — `ticket.timeline` operation:** New read operation on the ticket resource returns a chronological merged event stream of notes, time entries, and (optionally) field-change history for a single ticket. Accepts `id` or `ticketNumber`. Parameters: `since`/`until` (date range), `resourceId` (name or numeric ID, filters all event types), `includeHistories` (default false), `textLimit` (default 500 chars), `limit` (default 50 per entity type). Partial-failure tolerant: if one entity type fails, others are returned with a warning.
+- **AI tools — Time Entry Notes Guidance**: New optional textarea on the `AutotaskAiTools` node, displayed only when the selected resource is **Time Entry**. The supplied text is appended (under a `TIME ENTRY NOTES GUIDANCE:` header) to the generated tool description, letting deployers convey their org's note-format standards (Summary Notes, Internal Notes) to the AI agent inline. Combined description is hard-capped at 2400 characters with a `…[truncated]` marker; truncation is logged via the existing `traceToolBuild` instrumentation under a new `description-truncated` phase.
+
+### Changed
+- **AI tools — Tool description compression:** Reduce per-tool description overhead by ~1 400 chars across five changes targeting Qwen3-class (3–7 B-active) models: compress `buildToolContractBlock` from 492 → ~340 chars; remove verbose name-resolution examples from create/update descriptions; compress `buildTicketSummaryDescription` response-shape prose while preserving `includeRaw`, SLA routing, and population-level filter pattern; deduplicate trailing helper-op reminders; reorder `buildUnifiedDescriptionTemplate` so per-op summaries are truncated last.
+
+### Fixed
+- **MCP schema compliance (Copilot Studio):** Replace Zod `.positive()` with `.min(1)` or `.nullish()` on all 11 integer/float ID fields to eliminate `"exclusiveMinimum": 0` in emitted JSON Schema. Microsoft Copilot Studio throws `System.FormatException` on numeric `exclusiveMinimum` values, causing the entire `tools/list` MCP response to fail and all tools to disappear.
+- **MCP schema compliance (Copilot Studio):** Replace all 18 `rz.union([rz.number(), rz.string()])` fields and 3 compound union schemas (`rFilterValueSchema`, `rRecencySchema`) with `rz.string()` to eliminate `anyOf` from emitted JSON Schema. Simplifies schemas for broader MCP client compatibility.
+- **MCP schema compliance (Copilot Studio):** Update `filter_value` description to specify comma-separated string format for `in`/`notIn` operators (e.g. `'1,2,3'`) to match new `rz.string()` schema type.
+
 ## [2.11.0] — 2026-04-26
 
 ### Fixed

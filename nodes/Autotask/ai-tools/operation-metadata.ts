@@ -234,6 +234,15 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 			'Cross-entity full-text search for tickets. Matches keyword in title and description (always), and optionally in TicketNotes.description and TimeEntries.summaryNotes. Each returned ticket has a matchedIn array indicating where the keyword was found.',
 	},
 	{
+		name: 'timeline',
+		isWrite: false,
+		label: 'Ticket timeline',
+		supportsFilters: false,
+		responseKind: 'list',
+		docsFragment:
+			"Chronological merged event stream (notes, time entries, and optionally field-change history) for a single ticket. Requires 'id' or 'ticketNumber'. Use for escalation briefs, effort audits, and manager summaries.",
+	},
+	{
 		name: 'approve',
 		isWrite: true,
 		label: 'Approve time off request',

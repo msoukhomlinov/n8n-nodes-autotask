@@ -168,7 +168,7 @@ The node supports the following Autotask resources:
 | Tag | Manage ticket and article tags with unique label requirements |
 | Tag Alias | Manage alternative names for tags to improve searchability |
 | Tag Group | Organise tags into categories with display colours and system group protections |
-| Ticket | Manage service tickets. Includes SLA Health Check (SLA milestone timing and status) and Summary (compact type-aware summary with filtered fields, computed values, child entity counts, and relationships). |
+| Ticket | Manage service tickets. Includes SLA Health Check (SLA milestone timing and status), Summary (compact type-aware summary with filtered fields, computed values, child entity counts, and relationships), and Timeline (merged chronological event stream — notes, time entries, optional history — for escalation briefs and effort audits). |
 | Ticket Attachment | Manage files attached directly to tickets |
 | Ticket Category | Manage ticket categories with display colors and default field values |
 | Ticket Category Field Default | Query default field values for ticket categories |

@@ -28,10 +28,13 @@ interface EnrichmentCacheEntry {
 	expiresAt: number;
 }
 
-/** Cache of output fields keyed by `${entityName}:${id}` */
-const enrichmentCache = new Map<string, EnrichmentCacheEntry>();
-
-/** Cache of raw source records keyed by `raw:${entityName}:${id}` — used for nextHop idField lookup */
+/**
+ * Cache of raw source records keyed by `raw:${entityName}:${id}`.
+ * Raw records are entity/outputFields-agnostic — outputFields are computed per call,
+ * avoiding shape collision when multiple registry entries share the same entityName
+ * (e.g. resourceID + assignedResourceID both resolve Resource; taskID nextHop + direct
+ * projectID both resolve Project).
+ */
 const rawCache = new Map<string, EnrichmentCacheEntry>();
 
 const inFlightMap = new Map<string, Promise<Record<string, unknown>[]>>();
@@ -57,20 +60,86 @@ const ENRICHMENT_REGISTRY: Record<string, EnrichmentConfig> = {
 			outputFields: { taskProjectNumber: 'projectNumber', taskProjectName: 'projectName' },
 		},
 	},
+	resourceID: {
+		entityName: 'Resource',
+		fetchFields: ['id', 'firstName', 'lastName', 'email'],
+		outputFields: {
+			resourceFirstName: 'firstName',
+			resourceLastName: 'lastName',
+			resourceFullName: (r: Record<string, unknown>) =>
+				[r['firstName'], r['lastName']].filter(Boolean).join(' '),
+			resourceEmail: 'email',
+		},
+	},
+	assignedResourceID: {
+		entityName: 'Resource',
+		fetchFields: ['id', 'firstName', 'lastName', 'email'],
+		outputFields: {
+			assignedResourceFirstName: 'firstName',
+			assignedResourceLastName: 'lastName',
+			assignedResourceFullName: (r: Record<string, unknown>) =>
+				[r['firstName'], r['lastName']].filter(Boolean).join(' '),
+			assignedResourceEmail: 'email',
+		},
+	},
+	creatorResourceID: {
+		entityName: 'Resource',
+		fetchFields: ['id', 'firstName', 'lastName', 'email'],
+		outputFields: {
+			creatorResourceFirstName: 'firstName',
+			creatorResourceLastName: 'lastName',
+			creatorResourceFullName: (r: Record<string, unknown>) =>
+				[r['firstName'], r['lastName']].filter(Boolean).join(' '),
+			creatorResourceEmail: 'email',
+		},
+	},
+	companyID: {
+		entityName: 'Company',
+		fetchFields: ['id', 'companyName'],
+		outputFields: { companyName: 'companyName' },
+	},
+	contractID: {
+		entityName: 'Contract',
+		fetchFields: ['id', 'contractName', 'contractNumber'],
+		outputFields: { contractName: 'contractName', contractNumber: 'contractNumber' },
+	},
+	contactID: {
+		entityName: 'Contact',
+		fetchFields: ['id', 'firstName', 'lastName', 'emailAddress'],
+		outputFields: {
+			contactFirstName: 'firstName',
+			contactLastName: 'lastName',
+			contactFullName: (r: Record<string, unknown>) =>
+				[r['firstName'], r['lastName']].filter(Boolean).join(' '),
+			contactEmail: 'emailAddress',
+		},
+	},
+	billingCodeID: {
+		entityName: 'BillingCode',
+		fetchFields: ['id', 'name'],
+		outputFields: { billingCodeName: 'name' },
+	},
+	projectID: {
+		entityName: 'Project',
+		fetchFields: ['id', 'projectName', 'projectNumber'],
+		outputFields: { projectName: 'projectName', projectNumber: 'projectNumber' },
+	},
+	productID: {
+		entityName: 'Product',
+		fetchFields: ['id', 'name'],
+		outputFields: { productName: 'name' },
+	},
 };
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getCachedEntry(
-	cache: Map<string, EnrichmentCacheEntry>,
-	key: string,
-): Record<string, unknown> | undefined {
-	const entry = cache.get(key);
+function getCachedRaw(key: string): Record<string, unknown> | undefined {
+	const entry = rawCache.get(key);
 	if (!entry) return undefined;
 	if (Date.now() > entry.expiresAt) {
-		cache.delete(key);
+		rawCache.delete(key);
 		return undefined;
 	}
 	return entry.fields;
@@ -94,6 +163,11 @@ function applyOutputFields(
 /**
  * Fetches enrichment fields for a batch of IDs using EntityValueHelper.getValuesByIds().
  * Returns a Map<id, outputFields> of resolved output fields.
+ *
+ * Caches only the raw source record (rawCache). outputFields are computed per call so that
+ * multiple registry entries sharing the same entityName but different outputFields shapes
+ * never return stale/wrong fields from a previous entry's cache population.
+ *
  * Also populates rawCache so callers can look up source-record fields (e.g. nextHop idField).
  */
 async function fetchEntityFields(
@@ -107,12 +181,14 @@ async function fetchEntityFields(
 ): Promise<Map<number, Record<string, unknown>>> {
 	const resultMap = new Map<number, Record<string, unknown>>();
 
-	// Check cache for each id
+	// Check raw cache — compute outputFields on the fly from cached raw record.
+	// This avoids the shape-collision bug that would occur if we cached computed outputFields
+	// per entity:id, since multiple registry entries can share an entityName.
 	const uncachedIds: number[] = [];
 	for (const id of ids) {
-		const cached = getCachedEntry(enrichmentCache, `${entityName}:${id}`);
-		if (cached !== undefined) {
-			resultMap.set(id, cached);
+		const rawRecord = getCachedRaw(`raw:${entityName}:${id}`);
+		if (rawRecord !== undefined) {
+			resultMap.set(id, applyOutputFields(rawRecord, outputFields));
 		} else {
 			uncachedIds.push(id);
 		}
@@ -161,14 +237,10 @@ async function fetchEntityFields(
 		const id = rawResult['id'] as number;
 		if (id == null) continue;
 
-		// Cache the raw source record (for nextHop idField lookups)
+		// Cache only the raw source record — outputFields computed per call (see above)
 		rawCache.set(`raw:${entityName}:${id}`, { fields: rawResult, expiresAt });
 
-		// Compute and cache output fields
-		const fields = applyOutputFields(rawResult, outputFields);
-		enrichmentCache.set(`${entityName}:${id}`, { fields, expiresAt });
-
-		resultMap.set(id, fields);
+		resultMap.set(id, applyOutputFields(rawResult, outputFields));
 	}
 
 	return resultMap;
@@ -248,7 +320,7 @@ export async function enrichResponseJson(
 				// Collect unique next-hop IDs by reading raw source records from rawCache
 				const nextHopIdSet = new Set<number>();
 				for (const id of uniqueIds) {
-					const rawRecord = getCachedEntry(rawCache, `raw:${config.entityName}:${id}`);
+					const rawRecord = getCachedRaw(`raw:${config.entityName}:${id}`);
 					if (rawRecord) {
 						const nextIdRaw = rawRecord[nextHop.idField];
 						if (typeof nextIdRaw === 'number' && nextIdRaw > 0) {
@@ -287,7 +359,7 @@ export async function enrichResponseJson(
 
 				// Inject next-hop output fields
 				if (nextHopMap && config.nextHop) {
-					const rawRecord = getCachedEntry(rawCache, `raw:${config.entityName}:${v}`);
+					const rawRecord = getCachedRaw(`raw:${config.entityName}:${v}`);
 					if (rawRecord) {
 						const nextId = rawRecord[config.nextHop.idField];
 						if (typeof nextId === 'number' && nextId > 0) {
