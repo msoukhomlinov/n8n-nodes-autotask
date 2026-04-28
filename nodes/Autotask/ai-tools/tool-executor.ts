@@ -2089,6 +2089,41 @@ export async function executeAiTool(
 
 			const detailRecord = rawFullDetailTicket as Record<string, unknown>;
 
+			// Fetch child counts for ALL modes — childCountEntities is now populated for ticket (sla mode) too.
+			const childCounts: Record<string, number> = {};
+			const childCountErrors: string[] = [];
+			if (cfg.childCountEntities.length > 0) {
+				const numericId = Number(resolvedDetailId);
+				const countResults = await Promise.all(
+					cfg.childCountEntities.map(async (entry) => {
+						try {
+							const resp = await autotaskApiRequest.call(
+								context,
+								'POST',
+								`${entry.queryEndpoint}/count`,
+								{
+									filter: [{ field: entry.parentField, op: 'eq', value: numericId }],
+								} as IDataObject,
+							) as { queryCount?: number };
+							const count = typeof resp.queryCount === 'number' ? resp.queryCount : 0;
+							return { key: entry.key, count };
+						} catch (err) {
+							const msg = err instanceof Error ? err.message : String(err);
+							return { key: entry.key, count: null as number | null, error: msg };
+						}
+					}),
+				);
+				for (const r of countResults) {
+					if (r.count !== null) {
+						childCounts[r.key] = r.count;
+					} else if ('error' in r) {
+						childCountErrors.push(`${r.key}: ${r.error}`);
+					}
+				}
+			}
+			const childCountsSpread = Object.keys(childCounts).length > 0 ? { childCounts } : {};
+			const childCountErrorsSpread = childCountErrors.length > 0 ? { _childCountErrors: childCountErrors } : {};
+
 			let fullDetailRecord: Record<string, unknown>;
 			if (cfg.getFullDetailMode === 'sla') {
 				const fdTicket = detailRecord;
@@ -2123,43 +2158,14 @@ export async function executeAiTool(
 
 				fullDetailRecord = {
 					...fdTicket,
+					...childCountsSpread,
 					slaStatus: fdSlaStatus,
 					slaBreachDateTime: fdTicket.resolvedDueDateTime ?? null,
 					summaryText: fdSummaryText,
+					...childCountErrorsSpread,
 				};
 			} else {
-				// 'simple' mode — task/project. GET record + parallel child counts.
-				const childCounts: Record<string, number> = {};
-				const childCountErrors: string[] = [];
-				if (cfg.childCountEntities.length > 0) {
-					const numericId = Number(resolvedDetailId);
-					const countResults = await Promise.all(
-						cfg.childCountEntities.map(async (entry) => {
-							try {
-								const resp = await autotaskApiRequest.call(
-									context,
-									'POST',
-									`${entry.queryEndpoint}/count`,
-									{
-										filter: [{ field: entry.parentField, op: 'eq', value: numericId }],
-									} as IDataObject,
-								) as { queryCount?: number };
-								const count = typeof resp.queryCount === 'number' ? resp.queryCount : 0;
-								return { key: entry.key, count };
-							} catch (err) {
-								const msg = err instanceof Error ? err.message : String(err);
-								return { key: entry.key, count: null as number | null, error: msg };
-							}
-						}),
-					);
-					for (const r of countResults) {
-						if (r.count !== null) {
-							childCounts[r.key] = r.count;
-						} else if ('error' in r) {
-							childCountErrors.push(`${r.key}: ${r.error}`);
-						}
-					}
-				}
+				// 'simple' mode — task/project.
 				const recordTitle = (detailRecord.title ?? detailRecord.projectName ?? detailRecord.name ?? '') as string;
 				const recordStatusLabel = (detailRecord.status_label ?? detailRecord.status ?? '') as string;
 				const recordCompanyLabel = (detailRecord.companyID_label ?? detailRecord.companyName ?? '') as string;
@@ -2171,9 +2177,9 @@ export async function executeAiTool(
 				].filter(Boolean).join(' ');
 				fullDetailRecord = {
 					...detailRecord,
-					...(Object.keys(childCounts).length > 0 ? { childCounts } : {}),
+					...childCountsSpread,
 					summaryText,
-					...(childCountErrors.length > 0 ? { _childCountErrors: childCountErrors } : {}),
+					...childCountErrorsSpread,
 				};
 			}
 
