@@ -177,9 +177,10 @@ export const ticketFields: INodeProperties[] = [
         displayName: 'Limit',
         name: 'limit',
         type: 'number',
+        typeOptions: { minValue: 1 },
         default: 50,
         displayOptions: { show: { resource: ['ticket'], operation: ['timeline'] } },
-        description: 'Max events per entity type (notes, time entries, histories each capped independently)',
+        description: 'Max number of results to return',
     },
     {
         displayName: 'Ticket Field Names or IDs',
