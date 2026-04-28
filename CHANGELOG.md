@@ -2,6 +2,24 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.12.2] — 2026-04-28
+
+### Added
+- **AI tools — `ticket.getByResource` operation:** New convenience operation finds tickets where a resource is assigned as primary, secondary, or both. Required: `resourceID` (name, email, or numeric ID — auto-resolved). Optional: `mode` = `primary` | `secondary` | `both` (default `both`). Primary branch filters `assignedResourceID`; secondary branch queries `TicketSecondaryResources` then fetches matching tickets. Results are merged and deduplicated — each ticket includes `_matchedAs: ['primary'|'secondary'|...]`. Supports `limit` (per branch), `recency`/`since`/`until`, `excludeTerminalStatuses` (default true), `returnAll`, `fields`. Secondary join-table capped at 500 rows with warning if saturated.
+- **AI tools — `ticket.getFullDetail` child counts expanded:** `childCountEntities` now includes notes, secondaryResources, charges, timeEntries, checklistItems, and additionalContacts (previously empty).
+
+### Changed
+- **AI tools — Secondary resource awareness:** Ticket identity hint and `ticketSecondaryResources` entity description updated to explain that `assignedResourceID` is primary-only, secondary assignees live in `TicketSecondaryResources`, and to direct agents to `ticket.getByResource` for combined lookups.
+- **AI tools — Tool contract block:** "NO cross-entity joins" clause updated to explicitly exempt documented convenience operations (`ticket.getByResource`, `ticket.searchByKeyword`) and document the legitimate two-step manual pattern for other cross-entity lookups.
+
+### Backlog (future releases)
+- **AI tools — Entity `aiDescription` quality improvements:** ~50 entities in `constants/entities.ts` carry generic boilerplate descriptions (e.g. "X records scoped to a Y parent record"). High and medium priority entities identified for replacement with specific usage guidance, query patterns, and cross-entity pointers. Deferred to avoid scope creep; tracked here to prevent loss.
+
+## [2.12.1] — 2026-04-28
+
+### Changed
+- **AI tools — `getMany` defaults to open records for ticket/task/project:** `excludeTerminalStatuses` boolean parameter added (default `true`). When omitted, `getMany` automatically appends a `status notIn [terminal IDs]` filter, returning only active/open records. Set `excludeTerminalStatuses=false` to include completed/cancelled/historical records. No effect when `filtersJson` is used.
+
 ## [2.12.0] — 2026-04-28
 
 ### Added

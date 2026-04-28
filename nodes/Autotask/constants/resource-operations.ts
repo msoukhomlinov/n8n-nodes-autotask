@@ -19,7 +19,7 @@ const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
     resource: ['whoAmI', 'transferOwnership'],
     contact: ['moveToCompany'],
     company: ['searchByIdentity', 'searchByDomain'],
-    ticket: ['slaHealthCheck', 'summary', 'timeline', 'getFullDetail', 'countByPeriod', 'getByAge', 'searchByKeyword', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus'],
+    ticket: ['slaHealthCheck', 'summary', 'timeline', 'getFullDetail', 'countByPeriod', 'getByAge', 'searchByKeyword', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus', 'getByResource'],
     task: ['getFullDetail', 'countByPeriod', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned'],
     project: ['getFullDetail', 'countByPeriod', 'getByAge', 'getByCompanyAndStatus', 'getUnassigned'],
     configurationItems: ['moveConfigurationItem', 'createIfNotExists'],

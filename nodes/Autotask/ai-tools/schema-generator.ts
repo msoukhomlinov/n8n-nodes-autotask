@@ -5,7 +5,7 @@ import { IDENTIFIER_PAIR_OPERATIONS } from '../constants/resource-operations';
 import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
-import { RESOURCES_WITH_PRIORITY } from './resource-language';
+import { RESOURCES_WITH_PRIORITY, RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } from './resource-language';
 
 /** Picklist inlining threshold — at or below this count, inline all values; above, tell LLM to call listPicklistValues. */
 const INLINE_PICKLIST_THRESHOLD = 4;
@@ -248,11 +248,65 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// resourceID — used by getByResource and getByYear (parent-path operations)
 		if (hasGetByResource || hasGetByYear) {
 			shape.resourceID = rz
-				.string()
+				.union([rz.number(), rz.string()])
 				.nullish()
 				.describe(
-					'Resource ID or name (auto-resolved). Required for getByResource and getByYear.',
+					'Resource name, email, or numeric ID (auto-resolved). Required for getByResource and getByYear. ' +
+					"For ticket.getByResource: searches primary (assignedResourceID) and/or secondary (TicketSecondaryResources) assignments based on mode.",
 				);
+		}
+
+		// ticket.getByResource — mode field + list-family params (operation metadata marks supportsFilters:false so inject manually)
+		if (hasGetByResource && resource === 'ticket') {
+			if (!shape.mode) {
+				shape.mode = rz
+					.enum(['primary', 'secondary', 'both'])
+					.nullish()
+					.describe(
+						"ticket.getByResource scope: 'primary' (assignedResourceID only), " +
+						"'secondary' (TicketSecondaryResources only), or 'both' (default — deduplicated union, each ticket annotated with _matchedAs).",
+					);
+			}
+			if (!shape.limit) {
+				shape.limit = rz
+					.number()
+					.int()
+					.min(1)
+					.max(500)
+					.nullish()
+					.describe('Max records per branch (1-500, default 10). Note: combined merged result may exceed limit when mode=both.');
+			}
+			if (!shape.fields) {
+				shape.fields = rz
+					.string()
+					.nullish()
+					.describe(`Comma-separated field names to return. Omit for all. Call autotask_${resource} with operation 'describeFields' if unsure.`);
+			}
+			if (!shape.recency) shape.recency = rRecencySchema;
+			if (!shape.since) {
+				shape.since = rz
+					.string()
+					.nullish()
+					.describe('Range start (ISO-8601; e.g. 2026-01-01T09:00:00Z). Overrides recency.');
+			}
+			if (!shape.until) {
+				shape.until = rz
+					.string()
+					.nullish()
+					.describe('Range end (ISO-8601). Requires since or recency.');
+			}
+			if (!shape.excludeTerminalStatuses) {
+				shape.excludeTerminalStatuses = rz
+					.boolean()
+					.nullish()
+					.describe('Exclude terminal statuses Complete/Cancelled (default true). Set false to include closed tickets.');
+			}
+			if (!shape.returnAll) {
+				shape.returnAll = rz
+					.boolean()
+					.nullish()
+					.describe('Fetch all matching records per branch. Default false = up to limit.');
+			}
 		}
 
 		// year — used by getByYear
@@ -371,6 +425,20 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe(
 					"'idsAndLabels' (default, enriched with labels) or 'rawIds' (lighter).",
 				);
+
+			// excludeTerminalStatuses — only for resources that have terminal status semantics
+			if (
+				RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION.has(resource) &&
+				operations.includes('getMany') &&
+				!shape.excludeTerminalStatuses
+			) {
+				shape.excludeTerminalStatuses = rz
+					.boolean()
+					.nullish()
+					.describe(
+						'Exclude terminal statuses from results (default true). Set false only when user explicitly asks for completed, cancelled, or historical records.',
+					);
+			}
 		}
 
 		// searchByIdentity fields
