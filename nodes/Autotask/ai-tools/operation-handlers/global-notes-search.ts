@@ -59,7 +59,7 @@ export async function handleSearchNotes(state: ExecutorState): Promise<string> {
 	const since = params['since'] as string | undefined;
 	const until = params['until'] as string | undefined;
 	const limitRaw = params['limit'] as number | undefined;
-	const limit = Math.min(limitRaw ?? 10, 25);
+	const limit = Math.max(1, Math.min(limitRaw ?? 10, 25));
 
 	if (!keyword && !since && !until) {
 		return attachCorrelation(
