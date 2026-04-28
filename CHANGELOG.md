@@ -7,24 +7,19 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 ### Added
 - **AI tools — `ticket.getByResource` operation:** New convenience operation finds tickets where a resource is assigned as primary, secondary, or both. Required: `resourceID` (name, email, or numeric ID — auto-resolved). Optional: `mode` = `primary` | `secondary` | `both` (default `both`). Primary branch filters `assignedResourceID`; secondary branch queries `TicketSecondaryResources` then fetches matching tickets. Results are merged and deduplicated — each ticket includes `_matchedAs: ['primary'|'secondary'|...]`. Supports `limit` (per branch), `recency`/`since`/`until`, `excludeTerminalStatuses` (default true), `returnAll`, `fields`. Secondary join-table capped at 500 rows with warning if saturated.
 - **AI tools — `ticket.getFullDetail` child counts expanded:** `childCountEntities` now includes notes, secondaryResources, charges, timeEntries, checklistItems, and additionalContacts (previously empty). Child count fetching hoisted above the `sla`/`simple` branch split so ticket `getFullDetail` (which uses `sla` mode) now returns `childCounts` alongside SLA fields — previously the counts were never fetched for tickets despite being configured.
+- **AI tools — `timeEntry.getAvailableRoles` operation:** New read operation. Given `resourceID` (name, email, or numeric ID — auto-resolved) and optionally `ticketID`, `queueID`, or `contractID`, returns active roles for the resource on that queue with contract exclusion rules applied. `suggestedDefault` flagged when derivable from ticket assignment.
+- **AI tools — Role selection guidance for `timeEntry`:** `create`, `update`, and `createIfNotExists` descriptions now direct the AI to call `getAvailableRoles` before submitting when `roleID` is unknown.
 
 ### Changed
 - **AI tools — Secondary resource awareness:** Ticket identity hint and `ticketSecondaryResources` entity description updated to explain that `assignedResourceID` is primary-only, secondary assignees live in `TicketSecondaryResources`, and to direct agents to `ticket.getByResource` for combined lookups.
 - **AI tools — Tool contract block:** "NO cross-entity joins" clause updated to explicitly exempt documented convenience operations (`ticket.getByResource`, `ticket.searchByKeyword`) and document the legitimate two-step manual pattern for other cross-entity lookups.
 
+### Fixed
+- **AI tools — `roleID` enrichment:** `timeEntry` responses now include `roleName`, `roleDescription`, and `roleIsActive` enriched from the `Role` entity.
+- **AI tools — Numeric string IDs coerced to integer before API submission:** Label resolution now coerces numeric-string IDs (e.g. `"29682834"`) to integers, scoped to reference/picklist fields only, fixing `"expects type number but got string"` errors. Same fix applied to filter values in `resolveFilterLabelsToIds`.
+
 ### Backlog (future releases)
 - **AI tools — Entity `aiDescription` quality improvements:** ~50 entities in `constants/entities.ts` carry generic boilerplate descriptions (e.g. "X records scoped to a Y parent record"). High and medium priority entities identified for replacement with specific usage guidance, query patterns, and cross-entity pointers. Deferred to avoid scope creep; tracked here to prevent loss.
-
-## [2.12.3] — 2026-04-28
-
-### Added
-- **AI tools — `timeEntry.getAvailableRoles` operation:** New read operation for the `timeEntry` resource. Given `resourceID` (name, email, or numeric ID — auto-resolved) and optionally `ticketID`, `queueID`, or `contractID`, returns active roles available for the resource on that queue with contract exclusion rules already applied. When `ticketID` is provided, `queueID` and `contractID` are derived automatically from the ticket; `suggestedDefault` is flagged when derivable from the ticket's assigned role. Intended to be called before time entry creation to avoid role validation errors.
-- **AI tools — Role selection guidance for `timeEntry`:** `create`, `update`, and `createIfNotExists` descriptions now include an explicit directive to call `getAvailableRoles` before submitting a time entry when `roleID` is not already known.
-
-### Fixed
-- **AI tools — `roleID` enrichment:** `timeEntry` responses (records and single record) now include `roleName`, `roleDescription`, and `roleIsActive` fields enriched from the `Role` entity, removing the need to make a separate lookup to identify the role name.
-- **AI tools — Numeric string IDs no longer rejected as "expects type number":** When label resolution detects that a string value is already a valid numeric ID (e.g. `"29682834"`), it now coerces it to a number before the API call, fixing the `"expects type number but got string"` error that occurred when MCP clients auto-serialise numbers as strings.
-- Same numeric coercion applied to read-operation filter values in `resolveFilterLabelsToIds`.
 
 ## [2.12.1] — 2026-04-28
 

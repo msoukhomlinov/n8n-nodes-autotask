@@ -114,7 +114,7 @@ export async function resolveLabelsToIds(
 
         // Skip if already looks like an ID
         if (isLikelyId(provided)) {
-            if (typeof provided === 'string') values[key] = Number(provided);
+            if (typeof provided === 'string' && (field.isPickList || field.isReference)) values[key] = Number(provided);
             continue;
         }
 
@@ -401,7 +401,7 @@ export async function resolveFilterLabelsToIds(
     }
 
     if (isLikelyId(filterValue)) {
-        if (typeof filterValue === 'string') values[filterField] = Number(filterValue);
+        if (typeof filterValue === 'string' && (field?.isPickList || field?.isReference || hasReferenceFallback)) values[filterField] = Number(filterValue);
         return { values, resolutions, warnings, pendingConfirmations };
     }
 
