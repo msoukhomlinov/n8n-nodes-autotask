@@ -348,6 +348,33 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					'Max results per note entity type (default 10, max 25). Total records = 7 × limit at most.',
 				);
 			}
+			// Helper-op fields — describeFields/listPicklistValues/describeOperation are always
+			// in the operation enum, so their supporting params must be in the schema or Zod
+			// will strip them and the helpers will fail with missing-required-field errors.
+			shape.mode = rz
+				.enum(['read', 'write'])
+				.nullish()
+				.describe(
+					"Field mode for describeFields: 'read' for get/getMany, 'write' for create/update.",
+				);
+			shape.fieldId = rz
+				.string()
+				.nullish()
+				.describe('Field ID. Required for listPicklistValues.');
+			shape.query = rz
+				.string()
+				.nullish()
+				.describe('Search term to filter picklist values.');
+			shape.page = rz
+				.number()
+				.nullish()
+				.describe('Page for listPicklistValues (default 1).');
+			shape.targetOperation = rz
+				.string()
+				.nullish()
+				.describe(
+					"For describeOperation: the operation name to document (e.g. 'searchNotes').",
+				);
 			return rz.object(shape).strip();
 		}
 

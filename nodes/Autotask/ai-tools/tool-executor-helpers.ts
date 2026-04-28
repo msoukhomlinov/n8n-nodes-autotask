@@ -144,6 +144,22 @@ export function normaliseOperation(operation: string): string {
 			return 'getAvailableRoles';
 		case 'getbyyear':
 			return 'getByYear';
+		case 'getbycompanyandstatus':
+			return 'getByCompanyAndStatus';
+		case 'getunassigned':
+			return 'getUnassigned';
+		case 'getbyslastatus':
+			return 'getBySLAStatus';
+		case 'getfulldetail':
+			return 'getFullDetail';
+		case 'countbyperiod':
+			return 'countByPeriod';
+		case 'getbyage':
+			return 'getByAge';
+		case 'searchbykeyword':
+			return 'searchByKeyword';
+		case 'searchnotes':
+			return 'searchNotes';
 		case 'describeoperation':
 			return 'describeOperation';
 		case 'describefields':
