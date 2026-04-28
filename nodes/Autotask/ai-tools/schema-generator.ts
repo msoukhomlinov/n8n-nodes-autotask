@@ -332,6 +332,25 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 		}
 
+		// globalNotesSearch — virtual resource, custom fields only, skip all standard filter blocks
+		if (resource === 'globalNotesSearch') {
+			if (operations.includes('searchNotes')) {
+				shape['keyword'] = rz.string().optional().describe(
+					'Text to search across note titles and bodies (contains match). Applied to all 7 note entity types.',
+				);
+				shape['since'] = rz.string().optional().describe(
+					'ISO 8601 datetime — return only notes with createDateTime >= this value.',
+				);
+				shape['until'] = rz.string().optional().describe(
+					'ISO 8601 datetime — return only notes with createDateTime <= this value.',
+				);
+				shape['limit'] = rz.number().int().min(1).max(25).optional().describe(
+					'Max results per note entity type (default 10, max 25). Total records = 7 × limit at most.',
+				);
+			}
+			return rz.object(shape).strip();
+		}
+
 		// fields — column selection
 		if (hasGetFamily || hasCreate) {
 			shape.fields = rz
