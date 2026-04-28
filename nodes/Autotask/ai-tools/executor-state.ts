@@ -25,4 +25,5 @@ export interface ExecutorState {
 	correlationId: string;                         // '' when no correlation ID — never undefined
 	entityId: string;                          // '' when no ID — matches tool-executor.ts line ~608
 	selectedColumns: string[];                 // parseFieldsParam never returns null
+	resolvedImpersonationId?: number;          // numeric resource ID after name/email resolution; undefined when impersonation not in use
 }

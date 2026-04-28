@@ -20,7 +20,6 @@ import {
 	type LabelResolution,
 	type PendingLabelConfirmation,
 } from '../helpers/label-resolution';
-import { TYPED_REFERENCE_COMPANION_FIELDS } from '../helpers/typed-reference';
 import {
 	applyChangeInfoAliases,
 	buildAliasMap,
@@ -28,7 +27,7 @@ import {
 } from '../helpers/change-info-aliases';
 import { buildOperationDoc } from './description-builders';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
-import { getConfiguredTimezone, convertDatesToUTC } from '../helpers/date-time/utils';
+import { getConfiguredTimezone } from '../helpers/date-time/utils';
 import {
 	buildRecencyFilters,
 	type RecencyBuildResult,
@@ -38,7 +37,6 @@ import {
 import {
 	attachCorrelation,
 	buildMetadataResponse,
-	buildCompoundResponse,
 	type ToolResponseContext,
 } from './response-builder';
 import {
@@ -59,9 +57,9 @@ import {
 	handleTimeline,
 } from './operation-handlers/ticket-specialty';
 import { handleGetAvailableRoles } from './operation-handlers/resource-operations';
+import { handleCreateIfNotExists } from './operation-handlers/compound-operations';
 import type { ExecutorState } from './executor-state';
 import {
-	buildFieldLookup,
 	buildFilterFromParams,
 	resolveAndClassifyFilters,
 } from './filter-builder';
@@ -81,11 +79,7 @@ import {
 	traceToolCall,
 } from './debug-trace';
 import { buildWriteResolutionBlocker, summariseResolutionState } from './write-guard';
-import {
-	COMPOUND_REGISTRY,
-	COMPOUND_PARENT_NOT_FOUND_OUTCOMES,
-} from '../constants/compound-registry';
-import { validateOperationContract, hasProvidedValue, type OperationContractViolation } from './operation-contracts';
+import { validateOperationContract, hasProvidedValue } from './operation-contracts';
 import { enrichResponseJson } from '../helpers/enrichment';
 import { autotaskApiRequest } from '../helpers/http';
 
@@ -207,7 +201,16 @@ function getConvenienceConfig(resource: string): ResourceConvenienceConfig | und
 	return RESOURCE_CONVENIENCE_CONFIG[resource];
 }
 
-import { DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT, getEffectiveLimit, executeCountOperation } from './tool-executor-helpers';
+import {
+	DEFAULT_QUERY_LIMIT,
+	MAX_QUERY_LIMIT,
+	getEffectiveLimit,
+	executeCountOperation,
+	buildFieldValues,
+	parseFieldsParam,
+	normaliseOperation,
+	buildContractViolationNextAction,
+} from './tool-executor-helpers';
 export { DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT, getEffectiveLimit, executeCountOperation };
 export const RECENCY_OVER_REQUEST_LIMIT = 500;
 
@@ -224,117 +227,6 @@ const SPECIAL_HANDLERS: Record<string, (state: ExecutorState) => Promise<string>
 	getAvailableRoles: handleGetAvailableRoles,
 };
 
-/**
- * Build field values for create/update from params.
- * Only includes actual entity field values, excluding control params.
- */
-function buildFieldValues(
-	params: ToolExecutorParams,
-	excludeKeys: string[],
-	writeFields: FieldMeta[],
-): Record<string, unknown> {
-	const result: Record<string, unknown> = {};
-	const writeFieldLookup = buildFieldLookup(writeFields);
-	const exclude = new Set<string>([
-		...excludeKeys,
-		'resource',
-		'operation',
-		'filter_field',
-		'filter_op',
-		'filter_value',
-		'filter_field_2',
-		'filter_op_2',
-		'filter_value_2',
-		'filter_logic',
-		'limit',
-		'offset',
-		'fields',
-		'recency',
-		'recency_field',
-		'since',
-		'until',
-		'domain',
-		'domainOperator',
-		'searchContactEmails',
-		'impersonationResourceId',
-		'proceedWithoutImpersonationIfDenied',
-		'dedupFields',
-		'errorOnDuplicate',
-		'updateFields',
-		'outputMode',
-		'targetOperation',
-		'filtersJson',
-		'returnAll',
-		'company',
-		// Companion fields for typed-reference resolution (ticketLookupField, projectLookupField, ...).
-		// These are schema fields consumed by the resolver, never sent to the API.
-		...Array.from(TYPED_REFERENCE_COMPANION_FIELDS),
-	]);
-	for (const [key, value] of Object.entries(params)) {
-		if (value !== undefined && value !== null && value !== '' && !exclude.has(key)) {
-			const canonicalField = writeFieldLookup.get(key.toLowerCase());
-			result[canonicalField?.id ?? key] = value;
-		}
-	}
-	return result;
-}
-
-/**
- * Parse the 'fields' param into a selectColumns-compatible array.
- */
-function parseFieldsParam(fields: string | undefined): string[] {
-	if (!fields || typeof fields !== 'string') return [];
-	return fields
-		.split(',')
-		.map((f) => f.trim())
-		.filter(Boolean);
-}
-
-/**
- * Normalise operation names to canonical forms used by the executor.
- */
-function normaliseOperation(operation: string): string {
-	const key = operation.trim().toLowerCase();
-	switch (key) {
-		case 'getmany':
-			return 'getMany';
-		case 'whoami':
-			return 'whoAmI';
-		case 'getposted':
-			return 'getPosted';
-		case 'getunposted':
-			return 'getUnposted';
-		case 'searchbydomain':
-			return 'searchByDomain';
-		case 'searchbyidentity':
-			return 'searchByIdentity';
-		case 'slahealthcheck':
-			return 'slaHealthCheck';
-		case 'moveconfigurationitem':
-			return 'moveConfigurationItem';
-		case 'movetocompany':
-			return 'moveToCompany';
-		case 'transferownership':
-			return 'transferOwnership';
-		case 'createifnotexists':
-			return 'createIfNotExists';
-		case 'getbyresource':
-			return 'getByResource';
-		case 'getavailableroles':
-			return 'getAvailableRoles';
-		case 'getbyyear':
-			return 'getByYear';
-		case 'describeoperation':
-			return 'describeOperation';
-		case 'describefields':
-			return 'describeFields';
-		case 'listpicklistvalues':
-			return 'listPicklistValues';
-		default:
-			return key;
-	}
-}
-
 /** n8n framework fields injected into every tool call — must not reach API request bodies. */
 export const N8N_METADATA_FIELDS = new Set([
 	'sessionId',
@@ -350,79 +242,6 @@ export const N8N_METADATA_FIELDS = new Set([
 
 /** Key prefixes injected by n8n that must be stripped regardless of suffix */
 export const N8N_METADATA_PREFIXES = ['Prompt__'];
-
-/** Extract the canonical created-entity numeric ID from a compound creator result. */
- 
-function buildCompoundEntityId(resource: string, result: any): number | undefined {
-	const field = COMPOUND_REGISTRY[resource]?.entityIdField;
-	return field ? result[field] : (result.id ?? result.itemId);
-}
-
-/** Extract the canonical existing-entity numeric ID from a compound creator result (skip/update). */
- 
-function buildCompoundExistingId(resource: string, result: any): number | undefined {
-	const field = COMPOUND_REGISTRY[resource]?.existingIdField;
-	return field ? result[field] : result.existingId;
-}
-
-/** Build the context block (parent/scope fields) for a compound creator result. */
- 
-function buildCompoundContext(resource: string, result: any): Record<string, unknown> | undefined {
-	switch (resource) {
-		case 'contractCharge':
-			return result.contractId !== undefined ? { contractId: result.contractId } : undefined;
-		case 'ticketCharge':
-			return { ticketId: result.ticketId, ticketID: result.ticketID };
-		case 'projectCharge':
-			return result.projectId !== undefined ? { projectId: result.projectId } : undefined;
-		case 'configurationItems':
-			return { companyID: result.companyID };
-		case 'timeEntry': {
-			const ctx: Record<string, unknown> = { resourceID: result.resourceID };
-			if (result.ticketID !== undefined) ctx.ticketID = result.ticketID;
-			if (result.taskID !== undefined) ctx.taskID = result.taskID;
-			return ctx;
-		}
-		case 'contractService':
-			return result.contractId !== undefined ? { contractId: result.contractId } : undefined;
-		case 'contract':
-			return { companyID: result.companyID };
-		case 'opportunity':
-			return undefined;
-		case 'expenseItem':
-			return { expenseReportID: result.expenseReportID };
-		case 'ticketAdditionalConfigurationItem':
-			return result.ticketID !== undefined ? { ticketID: result.ticketID } : undefined;
-		case 'ticketAdditionalContact':
-			return result.ticketID !== undefined ? { ticketID: result.ticketID } : undefined;
-		case 'changeRequestLink': {
-			const ctx: Record<string, unknown> = {};
-			if (result.changeRequestTicketID !== undefined)
-				ctx.changeRequestTicketID = result.changeRequestTicketID;
-			if (result.problemOrIncidentTicketID !== undefined)
-				ctx.problemOrIncidentTicketID = result.problemOrIncidentTicketID;
-			return Object.keys(ctx).length > 0 ? ctx : undefined;
-		}
-		case 'holidaySet':
-			return undefined;
-		case 'holiday':
-			return result.holidaySetId !== undefined ? { holidaySetId: result.holidaySetId } : undefined;
-		default:
-			return undefined;
-	}
-}
-
-function buildContractViolationNextAction(
-	resource: string,
-	operation: string,
-	violations: OperationContractViolation[],
-): string {
-	return (
-		`Call autotask_${resource} with operation '${operation}' and ensure: ` +
-		violations.map((v) => v.message).join(' ')
-	);
-}
-
 
 /**
  * Execute an Autotask operation by routing to the existing tool executor
@@ -1497,108 +1316,34 @@ export async function executeAiTool(
 	try {
 		// Compound operation short-circuit: createIfNotExists bypasses the standard executor
 		if (effectiveOperation === 'createIfNotExists') {
-			// createFields comes from fieldValues (already validated + label-resolved above)
-			// Convert date fields from user timezone to UTC before passing to compound helpers,
-			// which bypass CreateOperation.execute() and therefore convertDatesToUTC.
-			const createFields: Record<string, unknown> = (await convertDatesToUTC(
-				{ ...fieldValues } as IDataObject,
-				resource,
+			const compoundState: ExecutorState = {
 				context,
-				'createIfNotExists',
-			)) as Record<string, unknown>;
-			const registryEntry = COMPOUND_REGISTRY[resource];
-			if (!registryEntry) {
-				return attachCorrelation(
-					JSON.stringify(
-						wrapError(
-							resource,
-							'createIfNotExists',
-							ERROR_TYPES.INVALID_OPERATION,
-							`createIfNotExists is not implemented for resource '${resource}'.`,
-							`Use autotask_${resource} with operation 'create' instead.`,
-						),
-					),
-					correlationId,
-				);
-			}
-			const dedupFields = (params.dedupFields as string[]) ?? registryEntry.defaultDedupFields;
-			const errorOnDuplicate = params.errorOnDuplicate === true;
-			const updateFields = (params.updateFields as string[] | undefined) ?? [];
-
-			const compoundOptions = {
-				createFields,
-				dedupFields,
-				errorOnDuplicate,
-				updateFields,
-				impersonationResourceId: resolvedImpersonationId,
-				proceedWithoutImpersonationIfDenied: params.proceedWithoutImpersonationIfDenied !== false,
+				resource,
+				operation: effectiveOperation,
+				params,
+				readFields,
+				writeFields,
+				fieldValues,
+				combinedFilters,
+				effectiveLimit,
+				effectiveOffset,
+				effectiveReturnAll,
+				recencyResult,
+				labelResolutions,
+				labelWarnings,
+				labelPendingConfirmations,
+				filterResolutions,
+				filterWarnings,
+				correlationId: correlationId ?? '',
+				entityId,
+				selectedColumns,
+				resolvedImpersonationId,
 			};
-
-			const handler = await registryEntry.getHandler();
-			 
-			const compoundResult: any = await handler(context, 0, compoundOptions);
-
-			if (compoundResult) {
-				// Reclassify not-found outcomes as errors
-				if (COMPOUND_PARENT_NOT_FOUND_OUTCOMES.has(compoundResult.outcome)) {
-					const parentRef =
-						compoundResult.parentLookupValue ??
-						compoundResult.companyID ??
-						compoundResult.ticketID ??
-						'unknown';
-					return attachCorrelation(
-						JSON.stringify(
-							wrapError(
-								resource,
-								'createIfNotExists',
-								ERROR_TYPES.ENTITY_NOT_FOUND,
-								`Parent entity not found: ${parentRef}`,
-								`Verify the parent entity identifier and retry.`,
-								{ outcome: compoundResult.outcome },
-							),
-						),
-						correlationId,
-					);
-				}
-
-				// Merge compound warnings with label resolution warnings
-				const rawCompoundWarnings: string[] = Array.isArray(compoundResult.warnings)
-					? compoundResult.warnings
-					: [];
-				const allWarnings = [...rawCompoundWarnings, ...labelWarnings];
-
-				const entityId = buildCompoundEntityId(resource, compoundResult);
-				const existingEntityId = buildCompoundExistingId(resource, compoundResult);
-				const compoundContext = buildCompoundContext(resource, compoundResult);
-
-				const compoundData: Record<string, unknown> = {
-					outcome: compoundResult.outcome,
-				};
-				if (entityId !== undefined) compoundData.id = entityId;
-				if (existingEntityId !== undefined) compoundData.existingId = existingEntityId;
-				if (compoundResult.matchedDedupFields !== undefined)
-					compoundData.matchedDedupFields = compoundResult.matchedDedupFields;
-				if (compoundResult.fieldsUpdated !== undefined)
-					compoundData.fieldsUpdated = compoundResult.fieldsUpdated;
-				if (compoundResult.fieldsCompared !== undefined)
-					compoundData.fieldsCompared = compoundResult.fieldsCompared;
-				if (compoundContext !== undefined) compoundData.context = compoundContext;
-
-				const compoundJson = JSON.stringify(
-					buildCompoundResponse(
-						resource,
-						'createIfNotExists',
-						compoundData as Parameters<typeof buildCompoundResponse>[2],
-						{
-							resolutions: labelResolutions,
-							resolutionWarnings: allWarnings,
-							pendingConfirmations: labelPendingConfirmations,
-						},
-					),
-				);
-				const enrichedCompoundJson = await enrichResponseJson(compoundJson, context);
-				return attachCorrelation(enrichedCompoundJson, correlationId);
+			const compoundJson = await handleCreateIfNotExists(compoundState);
+			if (compoundJson !== null) {
+				return compoundJson;
 			}
+			// Fall through to standard executor when handler returns null (no compoundResult).
 		}
 
 		// Convenience-ops resource gate — fail fast for unsupported resources.
