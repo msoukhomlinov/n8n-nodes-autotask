@@ -243,6 +243,14 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 			"Chronological merged event stream (notes, time entries, and optionally field-change history) for a single ticket. Requires 'id' or 'ticketNumber'. Use for escalation briefs, effort audits, and manager summaries.",
 	},
 	{
+		name: 'getAvailableRoles',
+		isWrite: false,
+		label: 'Get available roles for resource',
+		supportsFilters: false,
+		responseKind: 'list',
+		docsFragment: "Return active roles available for a resource on a specific queue/contract, with contract exclusion rules applied. Required: resourceID. Optional: ticketID, queueID, contractID.",
+	},
+	{
 		name: 'approve',
 		isWrite: true,
 		label: 'Approve time off request',

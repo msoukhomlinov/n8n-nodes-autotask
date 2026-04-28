@@ -1018,6 +1018,30 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 		}
 
+		// getAvailableRoles fields
+		if (operations.includes('getAvailableRoles')) {
+			if (!shape.resourceID) {
+				shape.resourceID = rz.union([rz.number(), rz.string()]).describe(
+					'Required. The resource (technician) ID or name to find available roles for.'
+				);
+			}
+			if (!shape.ticketID) {
+				shape.ticketID = rz.number().optional().describe(
+					'Ticket ID. If provided, derives queueID and contractID from the ticket automatically.'
+				);
+			}
+			if (!shape.queueID) {
+				shape.queueID = rz.number().optional().describe(
+					'Queue ID to filter roles by. Use when ticketID is not available.'
+				);
+			}
+			if (!shape.contractID) {
+				shape.contractID = rz.number().optional().describe(
+					'Contract ID to apply exclusion rules. If ticketID is provided this is derived automatically.'
+				);
+			}
+		}
+
 		// createIfNotExists — reuse dynamic writeFields + add dedup/error fields
 		const hasCreateIfNotExists = operations.includes('createIfNotExists');
 		if (hasCreateIfNotExists) {

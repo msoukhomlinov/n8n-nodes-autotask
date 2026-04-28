@@ -15,6 +15,17 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 ### Backlog (future releases)
 - **AI tools — Entity `aiDescription` quality improvements:** ~50 entities in `constants/entities.ts` carry generic boilerplate descriptions (e.g. "X records scoped to a Y parent record"). High and medium priority entities identified for replacement with specific usage guidance, query patterns, and cross-entity pointers. Deferred to avoid scope creep; tracked here to prevent loss.
 
+## [2.12.3] — 2026-04-28
+
+### Added
+- **AI tools — `timeEntry.getAvailableRoles` operation:** New read operation for the `timeEntry` resource. Given `resourceID` (name, email, or numeric ID — auto-resolved) and optionally `ticketID`, `queueID`, or `contractID`, returns active roles available for the resource on that queue with contract exclusion rules already applied. When `ticketID` is provided, `queueID` and `contractID` are derived automatically from the ticket; `suggestedDefault` is flagged when derivable from the ticket's assigned role. Intended to be called before time entry creation to avoid role validation errors.
+- **AI tools — Role selection guidance for `timeEntry`:** `create`, `update`, and `createIfNotExists` descriptions now include an explicit directive to call `getAvailableRoles` before submitting a time entry when `roleID` is not already known.
+
+### Fixed
+- **AI tools — `roleID` enrichment:** `timeEntry` responses (records and single record) now include `roleName`, `roleDescription`, and `roleIsActive` fields enriched from the `Role` entity, removing the need to make a separate lookup to identify the role name.
+- **AI tools — Numeric string IDs no longer rejected as "expects type number":** When label resolution detects that a string value is already a valid numeric ID (e.g. `"29682834"`), it now coerces it to a number before the API call, fixing the `"expects type number but got string"` error that occurred when MCP clients auto-serialise numbers as strings.
+- Same numeric coercion applied to read-operation filter values in `resolveFilterLabelsToIds`.
+
 ## [2.12.1] — 2026-04-28
 
 ### Changed

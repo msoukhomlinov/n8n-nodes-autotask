@@ -131,6 +131,7 @@ export function validateEntityId(
         'summary',
         'timeline',
         'getByResource',
+        'getAvailableRoles',
         'getByYear',
         'getByCompanyAndStatus',
         'getUnassigned',

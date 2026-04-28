@@ -113,7 +113,10 @@ export async function resolveLabelsToIds(
         if (provided === null || provided === undefined) continue;
 
         // Skip if already looks like an ID
-        if (isLikelyId(provided)) continue;
+        if (isLikelyId(provided)) {
+            if (typeof provided === 'string') values[key] = Number(provided);
+            continue;
+        }
 
         // Picklist resolution by label
         if (field.isPickList) {
@@ -398,6 +401,7 @@ export async function resolveFilterLabelsToIds(
     }
 
     if (isLikelyId(filterValue)) {
+        if (typeof filterValue === 'string') values[filterField] = Number(filterValue);
         return { values, resolutions, warnings, pendingConfirmations };
     }
 
