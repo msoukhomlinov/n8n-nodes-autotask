@@ -22,7 +22,7 @@ export interface ExecutorState {
 	labelPendingConfirmations: PendingLabelConfirmation[];
 	filterResolutions: LabelResolution[];
 	filterWarnings: string[];
-	correlationId: string;
+	correlationId: string | undefined;
 	entityId: string;                          // '' when no ID — matches tool-executor.ts line ~608
 	selectedColumns: string[];                 // parseFieldsParam never returns null
 }
