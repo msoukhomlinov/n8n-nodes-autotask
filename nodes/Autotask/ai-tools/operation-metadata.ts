@@ -267,6 +267,14 @@ const OPERATION_METADATA_LIST: OperationMetadata[] = [
 		docsFragment:
 			"Reject a pending time off request by numeric 'id', with optional rejectReason.",
 	},
+	{
+		name: 'searchNotes',
+		label: 'Search notes (global, cross-entity)',
+		isWrite: false,
+		supportsFilters: false,
+		responseKind: 'list',
+		docsFragment: 'Search across all 7 note entity types simultaneously using keyword and/or date bounds. Returns flat records[] with entityType discriminator per record.',
+	},
 ];
 
 export const OPERATION_METADATA: Readonly<Record<string, OperationMetadata>> = Object.freeze(

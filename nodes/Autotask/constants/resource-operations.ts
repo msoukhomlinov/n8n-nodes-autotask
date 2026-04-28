@@ -1,7 +1,7 @@
 import { AUTOTASK_ENTITIES } from './entities';
 import { OperationType } from '../types/base/entity-types';
 
-const AI_OPERATION_ORDER = ['get', 'whoAmI', 'getMany', 'searchByIdentity', 'searchByDomain', 'slaHealthCheck', 'summary', 'timeline', 'getFullDetail', 'countByPeriod', 'getByAge', 'searchByKeyword', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus', 'getPosted', 'getUnposted', 'getByResource', 'getAvailableRoles', 'getByYear', 'count', 'create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'approve', 'reject', 'delete'] as const;
+const AI_OPERATION_ORDER = ['get', 'whoAmI', 'getMany', 'searchByIdentity', 'searchByDomain', 'slaHealthCheck', 'summary', 'timeline', 'getFullDetail', 'countByPeriod', 'getByAge', 'searchByKeyword', 'searchNotes', 'getByCompanyAndStatus', 'getUnassigned', 'getBySLAStatus', 'getPosted', 'getUnposted', 'getByResource', 'getAvailableRoles', 'getByYear', 'count', 'create', 'createIfNotExists', 'moveToCompany', 'moveConfigurationItem', 'transferOwnership', 'update', 'approve', 'reject', 'delete'] as const;
 const EXCLUDED_TOP_LEVEL_RESOURCES = new Set(['tool', 'searchFilter']);
 
 const OP_TYPE_TO_AI_OPS: Record<OperationType, string[]> = {
@@ -41,6 +41,7 @@ const SPECIAL_AI_OPERATIONS: Record<string, string[]> = {
     timeOffRequest: ['approve', 'reject'],
     aiHelper: ['describeResource', 'listPicklistValues', 'validateParameters'],
     apiThreshold: ['get'],
+    globalNotesSearch: ['searchNotes'],
 };
 
 /**
