@@ -317,7 +317,7 @@ export async function searchCompaniesByDomain(
 	const requestedOperator = options.domainOperator ?? 'contains';
 	const requestedNormalisedOperator = normaliseOperator(requestedOperator);
 	const limit = clampLimit(options.limit);
-	const searchContactEmails = options.searchContactEmails !== false;
+	const searchContactEmails = options.searchContactEmails !== false && (options.searchContactEmails as unknown) !== 0;
 	const notes: string[] = [];
 
 	if (!domainNormalised) {

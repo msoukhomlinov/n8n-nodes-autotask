@@ -84,6 +84,18 @@ import { validateOperationContract, hasProvidedValue } from './operation-contrac
 import { enrichResponseJson } from '../helpers/enrichment';
 import { autotaskApiRequest } from '../helpers/http';
 
+/**
+ * Coerce an unknown value to boolean, handling Copilot Studio's integer coercion
+ * (true → 1, false → 0) and string representations.
+ */
+function toBool(v: unknown, defaultVal = false): boolean {
+	if (v === null || v === undefined) return defaultVal;
+	if (typeof v === 'boolean') return v;
+	if (typeof v === 'number') return v !== 0;
+	if (typeof v === 'string') return v.toLowerCase() === 'true';
+	return defaultVal;
+}
+
 export interface ToolExecutorParams {
 	resource: string;
 	operation: string;
@@ -533,8 +545,8 @@ export async function executeAiTool(
 		recencyResult.windowMs !== null &&
 		recencyResult.windowMs <= AUTO_RETURN_ALL_WINDOW_MS;
 
-	const effectiveReturnAll = params.returnAll === true || isShortWindow;
-	const autoReturnAll = isShortWindow && params.returnAll !== true;
+	const effectiveReturnAll = toBool(params.returnAll) || isShortWindow;
+	const autoReturnAll = isShortWindow && !toBool(params.returnAll);
 
 	 
 	let combinedFilters: any[];
@@ -604,7 +616,7 @@ export async function executeAiTool(
 	// Auto-exclude terminal statuses for getMany on ticket/task/project unless explicitly disabled
 	if (
 		normalisedOperation === 'getMany' &&
-		params.excludeTerminalStatuses !== false &&
+		toBool(params.excludeTerminalStatuses, true) &&
 		!params.filtersJson // filtersJson path is unmanaged — user controls filters entirely
 	) {
 		const convenienceCfg = getConvenienceConfig(resource);
@@ -1250,7 +1262,7 @@ export async function executeAiTool(
 			}
 			case 'includeRaw':
 				if (effectiveOperation === 'summary') {
-					return typeof params.includeRaw === 'boolean' ? params.includeRaw : false;
+					return toBool(params.includeRaw);
 				}
 				return fallbackValue;
 			case 'summaryTextLimit':
@@ -1260,7 +1272,7 @@ export async function executeAiTool(
 				return fallbackValue;
 			case 'includeChildCounts':
 				if (effectiveOperation === 'summary') {
-					return typeof params.includeChildCounts === 'boolean' ? params.includeChildCounts : false;
+					return toBool(params.includeChildCounts);
 				}
 				return fallbackValue;
 			case 'slaTicketFields':

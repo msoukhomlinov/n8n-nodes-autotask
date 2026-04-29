@@ -224,9 +224,9 @@ export async function handleGetUnassigned(state: ExecutorState): Promise<string>
 	}
 
 	let specialUnresolved: ToolFilter[] = [];
-	let specialResolutions: any[] = [];
+	let specialResolutions: LabelResolution[] = [];
 	let specialWarnings: string[] = [];
-	let specialPending: any[] = [];
+	let specialPending: PendingLabelConfirmation[] = [];
 
 	if (optionalFilters.length > 0) {
 		const resolved = await resolveAndClassifyFilters(context, resource, optionalFilters, readFields as FieldMeta[], params as IDataObject);
@@ -322,7 +322,7 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 	}
 
 	// Build SLA filters based on slaStatus
-	let slaFilters: any[];
+	let slaFilters: IDataObject[];
 	if (slaStatusParam === 'breached') {
 		slaFilters = [{ field: 'serviceLevelAgreementHasBeenMet', op: 'eq', value: false }];
 	} else if (slaStatusParam === 'compliant') {
@@ -351,9 +351,9 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 	}
 
 	let slaSpecialUnresolved: ToolFilter[] = [];
-	let slaSpecialResolutions: any[] = [];
+	let slaSpecialResolutions: LabelResolution[] = [];
 	let slaSpecialWarnings: string[] = [];
-	let slaSpecialPending: any[] = [];
+	let slaSpecialPending: PendingLabelConfirmation[] = [];
 
 	if (slaOptionalFilters.length > 0) {
 		const resolved = await resolveAndClassifyFilters(context, resource, slaOptionalFilters, readFields as FieldMeta[], params as IDataObject);
@@ -379,7 +379,7 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 		);
 	}
 
-	const apiSlaFilters: any[] = [...slaFilters, ...slaOptionalFilters, ...(recencyResult.filters as any[])];
+	const apiSlaFilters: IDataObject[] = [...slaFilters, ...(slaOptionalFilters as unknown as IDataObject[]), ...(recencyResult.filters as unknown as IDataObject[])];
 	const queryLimitForSla = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit as number) : DEFAULT_QUERY_LIMIT);
 	const slaRequestBody: IDataObject = { filter: apiSlaFilters as IDataObject[] };
 	if (queryLimitForSla !== undefined) {
@@ -783,9 +783,9 @@ export async function handleGetByAge(state: ExecutorState): Promise<string> {
 	if (params.status !== undefined && params.status !== null) ageOptionalFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
 	if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) ageOptionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
 
-	let ageResolutions: any[] = [];
+	let ageResolutions: LabelResolution[] = [];
 	let ageWarnings: string[] = [];
-	let agePending: any[] = [];
+	let agePending: PendingLabelConfirmation[] = [];
 	let ageUnresolved: ToolFilter[] = [];
 
 	if (ageOptionalFilters.length > 0) {

@@ -250,13 +250,13 @@ export async function handleGetByResource(state: ExecutorState): Promise<string>
 		: 'both') as 'primary' | 'secondary' | 'both';
 
 	// 3. Common filter slices
-	const effectiveReturnAllGbr = params.returnAll === true;
+	const effectiveReturnAllGbr = Boolean(params.returnAll);
 	const queryLimitForOp = effectiveReturnAllGbr
 		? undefined
 		: params.limit !== undefined
 			? getEffectiveLimit(params.limit as number | undefined)
 			: DEFAULT_QUERY_LIMIT;
-	const excludeTerminalGbr = (params as Record<string, unknown>).excludeTerminalStatuses !== false;
+	const excludeTerminalGbr = (params as Record<string, unknown>).excludeTerminalStatuses !== false && (params as Record<string, unknown>).excludeTerminalStatuses !== 0;
 	const terminalFilterGbr: ToolFilter | null =
 		excludeTerminalGbr && cfg.terminalStatusIds.length > 0
 			? { field: 'status', op: 'notIn', value: cfg.terminalStatusIds }
@@ -413,8 +413,8 @@ export async function handleSearchByKeyword(state: ExecutorState): Promise<strin
 		);
 	}
 
-	const includeNotes = (params as Record<string, unknown>).includeNotes === true;
-	const includeTimeEntries = (params as Record<string, unknown>).includeTimeEntries === true;
+	const includeNotes = Boolean((params as Record<string, unknown>).includeNotes);
+	const includeTimeEntries = Boolean((params as Record<string, unknown>).includeTimeEntries);
 
 	// Stage 1: Tickets/query — title OR description contains keyword
 	const stage1Body: IDataObject = {
@@ -773,7 +773,7 @@ export async function handleTimeline(state: ExecutorState): Promise<string> {
 		resolvedTimelineResourceId = rawTimelineResourceId;
 	}
 
-	const includeHistories = (params as Record<string, unknown>).includeHistories === true;
+	const includeHistories = Boolean((params as Record<string, unknown>).includeHistories);
 	const textLimit = typeof params.textLimit === 'number' ? params.textLimit : 500;
 	const timelineLimit = typeof params.limit === 'number' ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_QUERY_LIMIT) : 50;
 
