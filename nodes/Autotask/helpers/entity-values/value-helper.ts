@@ -6,7 +6,12 @@ import { PICKLIST_REFERENCE_FIELD_MAPPINGS, DEFAULT_PICKLIST_FIELDS } from '../.
 import type { IPicklistReferenceFieldMapping } from '../../types/base/picklists';
 import { ERROR_TEMPLATES, WARNING_TEMPLATES } from '../../constants/error.constants';
 import type { CacheService } from '../cache';
-import { EntityHelper } from '../entity';
+import { EntityHelper, getFields } from '../entity';
+import type { IAutotaskField } from '../../types/base/entities';
+import { QUERY_LIMITS } from '../../constants/operations';
+
+/** Memoises per-entity isActive field support. Keyed by lowercased entity type. */
+const entitySupportsIsActiveCache = new Map<string, boolean>();
 
 interface IFallbackConfig {
 	enabled: boolean;
@@ -52,6 +57,29 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 
 		// Set cache service from options
 		this.cacheService = options?.cacheService;
+	}
+
+	private async entitySupportsIsActiveField(): Promise<boolean> {
+		const key = this.entityType.toLowerCase();
+		const cached = entitySupportsIsActiveCache.get(key);
+		if (cached !== undefined) return cached;
+		try {
+			const fields = (await getFields(this.entityType, this.context, {
+				fieldType: 'standard',
+			})) as IAutotaskField[];
+			const has = fields.some((f) => f.name === 'isActive');
+			entitySupportsIsActiveCache.set(key, has);
+			return has;
+		} catch (err) {
+			console.warn(
+				`[EntityValueHelper] Could not check isActive support for ${this.entityType}: ${
+					err instanceof Error ? err.message : 'unknown error'
+				}. Skipping isActive filter.`,
+			);
+			// Do NOT write to entitySupportsIsActiveCache here — a transient failure
+			// must not permanently suppress isActive filtering for this entity type.
+			return false;
+		}
 	}
 
 	private getEntityFieldMapping(): IPicklistReferenceFieldMapping | undefined {
@@ -161,7 +189,14 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			};
 
 			if (activeOnly && !('isActive' in filters)) {
-				filters.isActive = true;
+				const supports = await this.entitySupportsIsActiveField();
+				if (supports) {
+					filters.isActive = true;
+				} else {
+					console.debug(
+						`[EntityValueHelper] Skipping isActive filter — ${this.entityType} has no isActive field`,
+					);
+				}
 			}
 
 			// Create query with filters
@@ -220,37 +255,49 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		}
 
 		try {
-			// Create query with an 'in' filter for the IDs
-			const query: IAutotaskQueryInput<T> = {
-				filter: [
-					{
-						field: 'id',
-						op: 'in',
-						value: ids,
-					},
-				],
-			};
+			// Deduplicate by string representation — prevents the same entity appearing
+			// multiple times when duplicates span batch boundaries.
+			const uniqueIds = Array.from(new Map(ids.map(id => [String(id), id])).values());
 
-			// When the caller specifies includeFields, build an explicit IncludeFields that
-			// merges them with required display fields. GetManyOperation.executeQuery honours
-			// an explicit caller-supplied IncludeFields even under isPicklistQuery mode.
+			// Build the merged IncludeFields set once — used by every batch
+			const mergedIncludeFields = new Set<string>();
 			if (includeFields && includeFields.length > 0) {
-				const merged = new Set<string>(['id']);
+				mergedIncludeFields.add('id');
 				for (const field of this.getRequiredDisplayFields()) {
-					merged.add(field);
+					mergedIncludeFields.add(field);
 				}
 				for (const field of includeFields) {
-					if (field) merged.add(field);
+					if (field) mergedIncludeFields.add(field);
 				}
-				query.IncludeFields = Array.from(merged);
 			}
 
-			console.debug(`Loading ${ids.length} reference entities for ${this.entityType} by ID`);
+			const batchCount = Math.ceil(uniqueIds.length / QUERY_LIMITS.MAX_OR_CONDITIONS);
+			console.debug(
+				`Loading ${uniqueIds.length} reference entities for ${this.entityType} by ID${batchCount > 1 ? ` (in ${batchCount} batches)` : ''}`,
+			);
 
-			// Get entities with the 'in' filter applied
 			const getManyOp = await this.getGetManyOperation();
-			const results = await getManyOp.execute(query);
 
+			if (uniqueIds.length <= QUERY_LIMITS.MAX_OR_CONDITIONS) {
+				// Single batch — identical behaviour to original
+				const query: IAutotaskQueryInput<T> = {
+					filter: [{ field: 'id', op: 'in', value: uniqueIds }],
+					...(mergedIncludeFields.size > 0 ? { IncludeFields: Array.from(mergedIncludeFields) } : {}),
+				};
+				return await getManyOp.execute(query);
+			}
+
+			// Multiple batches — run sequentially and concatenate results
+			const results: T[] = [];
+			for (let start = 0; start < uniqueIds.length; start += QUERY_LIMITS.MAX_OR_CONDITIONS) {
+				const batchIds = uniqueIds.slice(start, start + QUERY_LIMITS.MAX_OR_CONDITIONS);
+				const query: IAutotaskQueryInput<T> = {
+					filter: [{ field: 'id', op: 'in', value: batchIds }],
+					...(mergedIncludeFields.size > 0 ? { IncludeFields: Array.from(mergedIncludeFields) } : {}),
+				};
+				const batchResults = await getManyOp.execute(query);
+				results.push(...batchResults);
+			}
 			return results;
 		} catch (error) {
 			throw new Error(
