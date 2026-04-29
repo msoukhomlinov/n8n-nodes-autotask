@@ -76,6 +76,8 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 					err instanceof Error ? err.message : 'unknown error'
 				}. Skipping isActive filter.`,
 			);
+			// Do NOT write to entitySupportsIsActiveCache here — a transient failure
+			// must not permanently suppress isActive filtering for this entity type.
 			return false;
 		}
 	}
