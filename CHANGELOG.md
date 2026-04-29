@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.12.5] — 2026-04-29
+
+### Fixed
+- **AI tools — Copilot Studio MCP enumeration failure on Contact (and all resources with write fields):** `rz.union([rz.number(), rz.string()])` and `rz.union([rz.boolean(), rz.number()])` in `schema-generator.ts` produce `anyOf: [{type: ["number","string"]}, {type: "null"}]` in JSON Schema — the **type array inside anyOf** pattern is what Copilot Studio's .NET parser cannot handle, causing the entire `tools/list` MCP response to fail. Root cause: v2.12.4 re-introduced this pattern for write fields and boolean params. Fix: replaced all 46 `.union()` calls with `rz.coerce.string()` (for picklist/reference/ID fields) and `rz.coerce.boolean()` (for boolean params). Both produce `{type: ["T", "null"]}` — no `anyOf` — while still accepting Copilot Studio's coerced integers at runtime (`42 → "42"` via coerce.string(), `1 → true` / `0 → false` via coerce.boolean()). `isLikelyId()` correctly identifies coerced string IDs; `toBool()` correctly handles coerced booleans. Affects `schema-generator.ts` only.
+
 ## [2.12.4] — 2026-04-29
 
 ### Fixed
