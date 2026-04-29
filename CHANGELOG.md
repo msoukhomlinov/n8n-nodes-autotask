@@ -2,6 +2,15 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.12.4] — 2026-04-29
+
+### Fixed
+- **AI tools — Copilot Studio integer coercion on picklist/reference fields:** Dynamic write-field loops in `schema-generator.ts` changed from `rz.string()` to `rz.union([rz.number(), rz.string()])`. Copilot Studio coerces numeric-looking values to integers before MCP schema validation; the string-only schema previously rejected these, requiring retries with label strings. Numeric IDs now pass through `isLikelyId()` without triggering label resolution; string labels continue to auto-resolve. Both create/update and createIfNotExists loops updated. `impersonationResourceId` (5 sites) updated the same way.
+- **AI tools — Copilot Studio boolean coercion (`true` → `1`):** Boolean input params widened from `rz.boolean()` to `rz.union([rz.boolean(), rz.number()])` across ~25 fields including `returnAll`, `excludeTerminalStatuses`, `includeNotes`, `includeTimeEntries`, `includeHistories`, `errorOnDuplicate`, and others. Added `toBool()` helper in `tool-executor.ts` for handler-side coercion. Fixed missed `=== true` checks in `ticket-specialty.ts` (`includeNotes`, `includeTimeEntries`, `includeHistories`) and `compound-operations.ts` (`errorOnDuplicate`). Fixed `proceedWithoutImpersonationIfDenied` and `searchContactEmails` `!== false` guards to also exclude integer `0`.
+- **AI tools — `searchByKeyword` tool error with `includeTimeEntries=true`:** Caused by `=== true` strict check failing when Copilot coerces boolean to integer `1`. Fixed by `Boolean()` coercion in handler. Stage 3 (TimeEntries search) now activates correctly.
+- **AI tools — `timeEntry` roleID guidance:** `RESOURCE_EXTRA_HINTS.timeEntry` rewritten to lead with explicit "NEVER guess roleID" directive, state auto-default behaviour (omit for standard logging), and direct LLM to call `getAvailableRoles` first when a non-default role is needed.
+- **AI tools — reference resolution hint on no-match:** Added `REFERENCE_RESOLUTION_HINTS` map in `label-resolution.ts`. When Role or Queue label resolution returns no match, warning now includes an actionable directive pointing to the correct lookup operation (`getAvailableRoles` / `listPicklistValues`).
+
 ## [2.12.3] — 2026-04-28
 
 ### Added
