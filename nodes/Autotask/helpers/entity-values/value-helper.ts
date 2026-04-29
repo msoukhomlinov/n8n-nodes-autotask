@@ -255,6 +255,10 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		}
 
 		try {
+			// Deduplicate by string representation — prevents the same entity appearing
+			// multiple times when duplicates span batch boundaries.
+			const uniqueIds = Array.from(new Map(ids.map(id => [String(id), id])).values());
+
 			// Build the merged IncludeFields set once — used by every batch
 			const mergedIncludeFields = new Set<string>();
 			if (includeFields && includeFields.length > 0) {
@@ -267,17 +271,17 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 				}
 			}
 
-			const batchCount = Math.ceil(ids.length / QUERY_LIMITS.MAX_OR_CONDITIONS);
+			const batchCount = Math.ceil(uniqueIds.length / QUERY_LIMITS.MAX_OR_CONDITIONS);
 			console.debug(
-				`Loading ${ids.length} reference entities for ${this.entityType} by ID${batchCount > 1 ? ` (in ${batchCount} batches)` : ''}`,
+				`Loading ${uniqueIds.length} reference entities for ${this.entityType} by ID${batchCount > 1 ? ` (in ${batchCount} batches)` : ''}`,
 			);
 
 			const getManyOp = await this.getGetManyOperation();
 
-			if (ids.length <= QUERY_LIMITS.MAX_OR_CONDITIONS) {
+			if (uniqueIds.length <= QUERY_LIMITS.MAX_OR_CONDITIONS) {
 				// Single batch — identical behaviour to original
 				const query: IAutotaskQueryInput<T> = {
-					filter: [{ field: 'id', op: 'in', value: ids }],
+					filter: [{ field: 'id', op: 'in', value: uniqueIds }],
 					...(mergedIncludeFields.size > 0 ? { IncludeFields: Array.from(mergedIncludeFields) } : {}),
 				};
 				return await getManyOp.execute(query);
@@ -285,8 +289,8 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 
 			// Multiple batches — run sequentially and concatenate results
 			const results: T[] = [];
-			for (let start = 0; start < ids.length; start += QUERY_LIMITS.MAX_OR_CONDITIONS) {
-				const batchIds = ids.slice(start, start + QUERY_LIMITS.MAX_OR_CONDITIONS);
+			for (let start = 0; start < uniqueIds.length; start += QUERY_LIMITS.MAX_OR_CONDITIONS) {
+				const batchIds = uniqueIds.slice(start, start + QUERY_LIMITS.MAX_OR_CONDITIONS);
 				const query: IAutotaskQueryInput<T> = {
 					filter: [{ field: 'id', op: 'in', value: batchIds }],
 					...(mergedIncludeFields.size > 0 ? { IncludeFields: Array.from(mergedIncludeFields) } : {}),
