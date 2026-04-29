@@ -1077,13 +1077,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 			}
 			if (!shape.queueID) {
-				shape.queueID = rz.union([rz.number(), rz.string()]).optional().describe(
-					'Queue ID or name to filter roles by. Use when ticketID is not available.'
+				shape.queueID = rz.number().optional().describe(
+					'Queue ID to filter roles by. Use when ticketID is not available.'
 				);
 			}
 			if (!shape.contractID) {
-				shape.contractID = rz.union([rz.number(), rz.string()]).optional().describe(
-					'Contract ID or name to apply exclusion rules. If ticketID is provided this is derived automatically.'
+				shape.contractID = rz.number().optional().describe(
+					'Contract ID to apply exclusion rules. If ticketID is provided this is derived automatically.'
 				);
 			}
 		}

@@ -773,7 +773,7 @@ export async function handleTimeline(state: ExecutorState): Promise<string> {
 		resolvedTimelineResourceId = rawTimelineResourceId;
 	}
 
-	const includeHistories = (params as Record<string, unknown>).includeHistories === true;
+	const includeHistories = Boolean((params as Record<string, unknown>).includeHistories);
 	const textLimit = typeof params.textLimit === 'number' ? params.textLimit : 500;
 	const timelineLimit = typeof params.limit === 'number' ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_QUERY_LIMIT) : 50;
 
