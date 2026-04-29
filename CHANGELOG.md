@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.12.6] - 2026-04-29
+
+### Fixed
+- `getValues(activeOnly=true)` no longer sends `isActive` filter to entities that do not have that field (Contract, Project, Queue, ServiceLevelAgreement). Field support is now checked at runtime via `getFields()` with a module-level memo, eliminating the 500 API error seen when building reference dropdowns or resolving labels for those entities.
+- `getValuesByIds()` now batches large ID sets at `QUERY_LIMITS.MAX_OR_CONDITIONS` (500) and runs batches sequentially, fixing the "Queries are limited to 500 or fewer 'OR' conditions" error that occurred when enriching result sets with 500+ unique reference IDs of the same entity type. All callers are protected automatically.
+
 ## [2.12.5] — 2026-04-29
 
 ### Fixed
