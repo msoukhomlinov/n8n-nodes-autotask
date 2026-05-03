@@ -21,7 +21,6 @@ export interface IConfigurationItemCreateResult {
 	outcome: ConfigurationItemCreateOutcome;
 	companyID: string | number;
 	configurationItemId?: number;
-	existingConfigurationItemId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
 	fieldsUpdated?: string[];
@@ -170,7 +169,7 @@ export async function createConfigurationItemIfNotExists(
 				return {
 					outcome: 'updated',
 					companyID,
-					existingConfigurationItemId: duplicate.id as number,
+					configurationItemId: duplicate.id as number,
 					matchedDedupFields: matchedFields,
 					fieldsUpdated: Object.keys(patch),
 					fieldsCompared: compared,
@@ -181,7 +180,7 @@ export async function createConfigurationItemIfNotExists(
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
 					companyID,
-					existingConfigurationItemId: duplicate.id as number,
+					configurationItemId: duplicate.id as number,
 					matchedDedupFields: matchedFields,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings],
@@ -193,7 +192,7 @@ export async function createConfigurationItemIfNotExists(
 			outcome: 'skipped',
 			companyID,
 			reason: 'duplicate_configuration_item',
-			existingConfigurationItemId: duplicate.id as number,
+			configurationItemId: duplicate.id as number,
 			matchedDedupFields: matchedFields,
 			warnings,
 		};

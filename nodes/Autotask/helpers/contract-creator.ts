@@ -21,7 +21,6 @@ export interface IContractCreateResult {
 	outcome: ContractCreateOutcome;
 	companyID: string | number;
 	contractId?: number;
-	existingContractId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
 	fieldsUpdated?: string[];
@@ -161,7 +160,7 @@ export async function createContractIfNotExists(
 				return {
 					outcome: 'updated',
 					companyID,
-					existingContractId: duplicate.id as number,
+					contractId: duplicate.id as number,
 					matchedDedupFields: matchedFields,
 					fieldsUpdated: Object.keys(patch),
 					fieldsCompared: compared,
@@ -172,7 +171,7 @@ export async function createContractIfNotExists(
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
 					companyID,
-					existingContractId: duplicate.id as number,
+					contractId: duplicate.id as number,
 					matchedDedupFields: matchedFields,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings],
@@ -184,7 +183,7 @@ export async function createContractIfNotExists(
 			outcome: 'skipped',
 			companyID,
 			reason: 'duplicate_contract',
-			existingContractId: duplicate.id as number,
+			contractId: duplicate.id as number,
 			matchedDedupFields: matchedFields,
 			warnings,
 		};

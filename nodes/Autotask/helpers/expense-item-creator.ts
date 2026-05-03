@@ -21,7 +21,6 @@ export interface IExpenseItemCreateResult {
 	outcome: ExpenseItemCreateOutcome;
 	expenseReportID: string | number;
 	expenseItemId?: number;
-	existingExpenseItemId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
 	fieldsUpdated?: string[];
@@ -106,7 +105,7 @@ export async function createExpenseItemIfNotExists(
 				return {
 					outcome: 'updated',
 					expenseReportID,
-					existingExpenseItemId: entry.id as number,
+					expenseItemId: entry.id as number,
 					matchedDedupFields: matched,
 					fieldsUpdated: Object.keys(patch),
 					fieldsCompared: compared,
@@ -117,7 +116,7 @@ export async function createExpenseItemIfNotExists(
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
 					expenseReportID,
-					existingExpenseItemId: entry.id as number,
+					expenseItemId: entry.id as number,
 					matchedDedupFields: matched,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings],
@@ -128,7 +127,7 @@ export async function createExpenseItemIfNotExists(
 		return {
 			outcome: 'skipped',
 			expenseReportID,
-			existingExpenseItemId: entry.id as number,
+			expenseItemId: entry.id as number,
 			reason: 'duplicate_expense_item',
 			matchedDedupFields: matched,
 			warnings,

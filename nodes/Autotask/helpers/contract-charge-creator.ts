@@ -16,7 +16,6 @@ export interface IContractChargeCreateIfNotExistsResult {
 	outcome: ContractChargeCreateIfNotExistsOutcome;
 	contractId?: number;
 	chargeId?: number;
-	existingChargeId?: number;
 	externalServiceIdentifier: string;
 	chargeName: string;
 	datePurchased: string;
@@ -84,7 +83,7 @@ function mapToContractChargeResult(
 		outcome,
 		contractId: result.parentId,
 		chargeId: result.chargeId,
-		existingChargeId: result.existingChargeId,
+
 		externalServiceIdentifier,
 		chargeName: result.chargeName,
 		datePurchased: result.datePurchased,

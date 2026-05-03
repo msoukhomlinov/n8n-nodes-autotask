@@ -21,7 +21,6 @@ export interface IOpportunityCreateResult {
 	outcome: OpportunityCreateOutcome;
 	companyId?: number;
 	opportunityId?: number;
-	existingId?: number;
 	title?: string;
 	reason?: string;
 	matchedDedupFields?: string[];
@@ -165,7 +164,7 @@ export async function createOpportunityIfNotExists(
 				return {
 					outcome: 'updated',
 					companyId,
-					existingId: duplicate.id as number,
+					opportunityId: duplicate.id as number,
 					title,
 					matchedDedupFields: matchedFields,
 					fieldsUpdated: Object.keys(patch),
@@ -177,7 +176,7 @@ export async function createOpportunityIfNotExists(
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
 					companyId,
-					existingId: duplicate.id as number,
+					opportunityId: duplicate.id as number,
 					title,
 					matchedDedupFields: matchedFields,
 					fieldsCompared: compared,
@@ -190,7 +189,7 @@ export async function createOpportunityIfNotExists(
 			outcome: 'skipped',
 			reason: 'duplicate_opportunity',
 			companyId,
-			existingId: duplicate.id as number,
+			opportunityId: duplicate.id as number,
 			title,
 			matchedDedupFields: matchedFields,
 			warnings,

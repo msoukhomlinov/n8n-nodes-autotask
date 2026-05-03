@@ -9,18 +9,11 @@ import {
 	COMPOUND_PARENT_NOT_FOUND_OUTCOMES,
 } from '../../constants/compound-registry';
 
-/** Extract the canonical created-entity numeric ID from a compound creator result. */
+/** Extract the entity numeric ID from a compound creator result (all outcomes use the same field). */
 
-function buildCompoundEntityId(resource: string, result: Record<string, unknown>): number | undefined {
+function buildCompoundId(resource: string, result: Record<string, unknown>): number | undefined {
 	const field = COMPOUND_REGISTRY[resource]?.entityIdField;
 	return field ? (result[field] as number | undefined) : ((result.id ?? result.itemId) as number | undefined);
-}
-
-/** Extract the canonical existing-entity numeric ID from a compound creator result (skip/update). */
-
-function buildCompoundExistingId(resource: string, result: Record<string, unknown>): number | undefined {
-	const field = COMPOUND_REGISTRY[resource]?.existingIdField;
-	return field ? (result[field] as number | undefined) : (result.existingId as number | undefined);
 }
 
 /** Build the context block (parent/scope fields) for a compound creator result. */
@@ -166,15 +159,19 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 		: [];
 	const allWarnings = [...rawCompoundWarnings, ...labelWarnings];
 
-	const entityId = buildCompoundEntityId(resource, compoundResult);
-	const existingEntityId = buildCompoundExistingId(resource, compoundResult);
+	const compoundId = buildCompoundId(resource, compoundResult);
 	const compoundContext = buildCompoundContext(resource, compoundResult);
 
 	const compoundData: Record<string, unknown> = {
 		outcome: compoundResult.outcome,
 	};
-	if (entityId !== undefined) compoundData.id = entityId;
-	if (existingEntityId !== undefined) compoundData.existingId = existingEntityId;
+	if (compoundId !== undefined) {
+		if (compoundResult.outcome === 'created') {
+			compoundData.id = compoundId;
+		} else {
+			compoundData.existingId = compoundId;
+		}
+	}
 	if (compoundResult.matchedDedupFields !== undefined)
 		compoundData.matchedDedupFields = compoundResult.matchedDedupFields;
 	if (compoundResult.fieldsUpdated !== undefined)

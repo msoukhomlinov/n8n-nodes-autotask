@@ -23,7 +23,6 @@ export interface ITimeEntryCreateResult {
 	ticketID?: number;
 	taskID?: number;
 	timeEntryId?: number;
-	existingTimeEntryId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
 	fieldsUpdated?: string[];
@@ -108,7 +107,7 @@ export async function createTimeEntryIfNotExists(
 					resourceID,
 					ticketID,
 					taskID,
-					existingTimeEntryId: entry.id as number,
+					timeEntryId: entry.id as number,
 					matchedDedupFields: matched,
 					fieldsUpdated: Object.keys(patch),
 					fieldsCompared: compared,
@@ -121,7 +120,7 @@ export async function createTimeEntryIfNotExists(
 					resourceID,
 					ticketID,
 					taskID,
-					existingTimeEntryId: entry.id as number,
+					timeEntryId: entry.id as number,
 					matchedDedupFields: matched,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings],
@@ -134,7 +133,7 @@ export async function createTimeEntryIfNotExists(
 			resourceID,
 			ticketID,
 			taskID,
-			existingTimeEntryId: entry.id as number,
+			timeEntryId: entry.id as number,
 			reason: 'duplicate_time_entry',
 			matchedDedupFields: matched,
 			warnings,

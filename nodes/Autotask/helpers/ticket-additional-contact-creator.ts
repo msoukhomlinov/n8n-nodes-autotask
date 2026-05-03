@@ -20,7 +20,6 @@ export interface ITicketAdditionalContactCreateResult {
 	outcome: TicketAdditionalContactCreateOutcome;
 	ticketId?: number;
 	ticketAdditionalContactId?: number;
-	existingId?: number;
 	contactID?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
@@ -196,7 +195,7 @@ export async function createTicketAdditionalContactIfNotExists(
 				return {
 					outcome: 'updated',
 					ticketId,
-					existingId: duplicate.id as number,
+					ticketAdditionalContactId: duplicate.id as number,
 					contactID,
 					matchedDedupFields: matchedFields,
 					fieldsUpdated: Object.keys(patch),
@@ -208,7 +207,7 @@ export async function createTicketAdditionalContactIfNotExists(
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
 					ticketId,
-					existingId: duplicate.id as number,
+					ticketAdditionalContactId: duplicate.id as number,
 					contactID,
 					matchedDedupFields: matchedFields,
 					fieldsCompared: compared,
@@ -221,7 +220,7 @@ export async function createTicketAdditionalContactIfNotExists(
 			outcome: 'skipped',
 			reason: 'duplicate_association',
 			ticketId,
-			existingId: duplicate.id as number,
+			ticketAdditionalContactId: duplicate.id as number,
 			contactID,
 			matchedDedupFields: matchedFields,
 			warnings,

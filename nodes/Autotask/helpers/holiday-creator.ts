@@ -20,7 +20,6 @@ export interface IHolidayCreateResult {
 	outcome: HolidayCreateOutcome;
 	holidaySetId?: number;
 	holidayId?: number;
-	existingHolidayId?: number;
 	holidayDate?: string;
 	holidayName?: string;
 	reason?: string;
@@ -204,7 +203,7 @@ export async function createHolidayIfNotExists(
 				return {
 					outcome: 'updated',
 					holidaySetId,
-					existingHolidayId: duplicate.id as number,
+					holidayId: duplicate.id as number,
 					holidayDate,
 					holidayName,
 					matchedDedupFields: matchedFields,
@@ -217,7 +216,7 @@ export async function createHolidayIfNotExists(
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
 					holidaySetId,
-					existingHolidayId: duplicate.id as number,
+					holidayId: duplicate.id as number,
 					holidayDate,
 					holidayName,
 					matchedDedupFields: matchedFields,
@@ -231,7 +230,7 @@ export async function createHolidayIfNotExists(
 			outcome: 'skipped',
 			reason: 'duplicate_holiday',
 			holidaySetId,
-			existingHolidayId: duplicate.id as number,
+			holidayId: duplicate.id as number,
 			holidayDate,
 			holidayName,
 			matchedDedupFields: matchedFields,

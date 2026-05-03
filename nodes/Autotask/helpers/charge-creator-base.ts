@@ -21,7 +21,6 @@ export interface IChargeCreateResult {
 	outcome: ChargeCreateOutcome;
 	parentId?: number;
 	chargeId?: number;
-	existingChargeId?: number;
 	parentLookupValue: string;
 	chargeName: string;
 	datePurchased: string;
@@ -270,7 +269,7 @@ export async function createChargeIfNotExists(
 				});
 				return {
 					outcome: 'updated',
-					existingChargeId: duplicate.id as number,
+					chargeId: duplicate.id as number,
 					parentId,
 					parentLookupValue,
 					chargeName: (options.createFields.name as string) ?? (updatedEntity.name as string) ?? '',
@@ -286,7 +285,7 @@ export async function createChargeIfNotExists(
 				return {
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
-					existingChargeId: duplicate.id as number,
+					chargeId: duplicate.id as number,
 					parentId,
 					parentLookupValue,
 					chargeName: (options.createFields.name as string) ?? '',
@@ -301,7 +300,7 @@ export async function createChargeIfNotExists(
 		return {
 			outcome: 'skipped',
 			reason: 'duplicate_charge',
-			existingChargeId: duplicate.id as number,
+			chargeId: duplicate.id as number,
 			parentId,
 			parentLookupValue,
 			chargeName: (options.createFields.name as string) ?? '',
