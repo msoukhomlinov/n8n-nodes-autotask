@@ -1,7 +1,8 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { extractId, extractItems, compareDedupField } from './dedup-utils';
+import { extractId, extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
+import { findDuplicate } from './entity-dedup';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -20,7 +21,6 @@ export interface IOpportunityCreateResult {
 	outcome: OpportunityCreateOutcome;
 	companyId?: number;
 	opportunityId?: number;
-	existingId?: number;
 	title?: string;
 	reason?: string;
 	matchedDedupFields?: string[];
@@ -61,60 +61,20 @@ async function verifyCompanyExists(
 
 // ─── Step 1: Find duplicate opportunity ──────────────────────────────────────
 
-async function findDuplicateOpportunity(
+function findDuplicateOpportunity(
 	ctx: IExecuteFunctions,
 	companyId: number,
 	dedupFields: string[],
 	createFields: Record<string, unknown>,
 ): Promise<{ duplicate: IDataObject | null; matchedFields: string[] }> {
-	if (!dedupFields || dedupFields.length === 0) {
-		return { duplicate: null, matchedFields: [] };
-	}
-
-	// Always filter server-side by companyID to narrow the result set;
-	// also push the first dedup field for additional server-side narrowing
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const apiFilter: any[] = [
-		{ field: 'companyID', op: 'eq', value: companyId },
-	];
-
-	const firstDedupField = dedupFields[0];
-	if (firstDedupField && firstDedupField !== 'companyID' && createFields[firstDedupField] !== undefined) {
-		apiFilter.push({ field: firstDedupField, op: 'eq', value: createFields[firstDedupField] });
-	}
-
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
-		'Opportunities/query',
-		{ filter: apiFilter },
-	);
-
-	const items = extractItems(response as IDataObject);
-
-	for (const item of items) {
-		const matched: string[] = [];
-		let allMatch = true;
-
-		for (const field of dedupFields) {
-			const inputValue = createFields[field];
-			const apiValue = item[field];
-			const fieldType = FIELD_TYPE_MAP[field] ?? 'string';
-
-			if (compareDedupField(fieldType, apiValue, inputValue)) {
-				matched.push(field);
-			} else {
-				allMatch = false;
-				break;
-			}
-		}
-
-		if (allMatch && matched.length === dedupFields.length) {
-			return { duplicate: item, matchedFields: matched };
-		}
-	}
-
-	return { duplicate: null, matchedFields: [] };
+	return findDuplicate(ctx, {
+		entityType: 'Opportunity',
+		queryEndpoint: 'Opportunities/query',
+		scopeFilters: [{ field: 'companyID', op: 'eq', value: companyId }],
+		dedupFields,
+		createFields,
+		fieldTypeMap: FIELD_TYPE_MAP,
+	});
 }
 
 // ─── Step 2: Create opportunity ───────────────────────────────────────────────
@@ -204,7 +164,7 @@ export async function createOpportunityIfNotExists(
 				return {
 					outcome: 'updated',
 					companyId,
-					existingId: duplicate.id as number,
+					opportunityId: duplicate.id as number,
 					title,
 					matchedDedupFields: matchedFields,
 					fieldsUpdated: Object.keys(patch),
@@ -216,7 +176,7 @@ export async function createOpportunityIfNotExists(
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
 					companyId,
-					existingId: duplicate.id as number,
+					opportunityId: duplicate.id as number,
 					title,
 					matchedDedupFields: matchedFields,
 					fieldsCompared: compared,
@@ -229,7 +189,7 @@ export async function createOpportunityIfNotExists(
 			outcome: 'skipped',
 			reason: 'duplicate_opportunity',
 			companyId,
-			existingId: duplicate.id as number,
+			opportunityId: duplicate.id as number,
 			title,
 			matchedDedupFields: matchedFields,
 			warnings,

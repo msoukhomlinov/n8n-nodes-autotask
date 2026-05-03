@@ -20,7 +20,6 @@ export interface ITicketAdditionalCICreateResult {
 	outcome: TicketAdditionalCICreateOutcome;
 	ticketId?: number;
 	ticketAdditionalConfigurationItemId?: number;
-	existingId?: number;
 	configurationItemID?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
@@ -196,7 +195,7 @@ export async function createTicketAdditionalCIIfNotExists(
 				return {
 					outcome: 'updated',
 					ticketId,
-					existingId: duplicate.id as number,
+					ticketAdditionalConfigurationItemId: duplicate.id as number,
 					configurationItemID,
 					matchedDedupFields: matchedFields,
 					fieldsUpdated: Object.keys(patch),
@@ -208,7 +207,7 @@ export async function createTicketAdditionalCIIfNotExists(
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
 					ticketId,
-					existingId: duplicate.id as number,
+					ticketAdditionalConfigurationItemId: duplicate.id as number,
 					configurationItemID,
 					matchedDedupFields: matchedFields,
 					fieldsCompared: compared,
@@ -221,7 +220,7 @@ export async function createTicketAdditionalCIIfNotExists(
 			outcome: 'skipped',
 			reason: 'duplicate_association',
 			ticketId,
-			existingId: duplicate.id as number,
+			ticketAdditionalConfigurationItemId: duplicate.id as number,
 			configurationItemID,
 			matchedDedupFields: matchedFields,
 			warnings,

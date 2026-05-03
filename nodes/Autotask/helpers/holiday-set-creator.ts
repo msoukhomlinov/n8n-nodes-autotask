@@ -19,7 +19,6 @@ export type HolidaySetCreateOutcome = 'created' | 'skipped' | 'updated';
 export interface IHolidaySetCreateResult {
 	outcome: HolidaySetCreateOutcome;
 	holidaySetId?: number;
-	existingHolidaySetId?: number;
 	holidaySetName?: string;
 	reason?: string;
 	matchedDedupFields?: string[];
@@ -167,7 +166,7 @@ export async function createHolidaySetIfNotExists(
 				});
 				return {
 					outcome: 'updated',
-					existingHolidaySetId: duplicate.id as number,
+					holidaySetId: duplicate.id as number,
 					holidaySetName: duplicate.holidaySetName as string,
 					matchedDedupFields: matchedFields,
 					fieldsUpdated: Object.keys(patch),
@@ -178,7 +177,7 @@ export async function createHolidaySetIfNotExists(
 				return {
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
-					existingHolidaySetId: duplicate.id as number,
+					holidaySetId: duplicate.id as number,
 					holidaySetName: duplicate.holidaySetName as string,
 					matchedDedupFields: matchedFields,
 					fieldsCompared: compared,
@@ -190,7 +189,7 @@ export async function createHolidaySetIfNotExists(
 		return {
 			outcome: 'skipped',
 			reason: 'duplicate_holiday_set',
-			existingHolidaySetId: duplicate.id as number,
+			holidaySetId: duplicate.id as number,
 			holidaySetName: duplicate.holidaySetName as string,
 			matchedDedupFields: matchedFields,
 			warnings,

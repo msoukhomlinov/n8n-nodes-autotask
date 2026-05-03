@@ -17,7 +17,6 @@ export interface IChangeRequestLinkCreateResult {
 	changeRequestTicketID?: string | number;
 	problemOrIncidentTicketID?: string | number;
 	linkId?: number;
-	existingLinkId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
 	warnings: string[];
@@ -135,7 +134,7 @@ export async function createChangeRequestLinkIfNotExists(
 			outcome: 'skipped',
 			changeRequestTicketID,
 			problemOrIncidentTicketID,
-			existingLinkId: duplicate.id as number,
+			linkId: duplicate.id as number,
 			reason: 'duplicate_link',
 			matchedDedupFields: matchedFields,
 			warnings,

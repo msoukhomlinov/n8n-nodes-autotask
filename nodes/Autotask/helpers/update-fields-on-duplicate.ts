@@ -1,8 +1,10 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest, buildEntityUrl, buildChildEntityUrl } from './http';
-import { compareDedupField } from './dedup-utils';
+import { compareDedupField, getEntityFieldValue } from './dedup-utils';
 import { getEntityMetadata } from '../constants/entities';
 import { OperationType } from '../types/base/entity-types';
+import { getFields } from './entity/api';
+import type { IUdfFieldDefinition } from '../types/base/udf-types';
 
 // ─── computeFieldDiffs ────────────────────────────────────────────────────────
 
@@ -46,7 +48,7 @@ export function computeFieldDiffs(
 		}
 
 		const fieldType = fieldTypeMap[field] ?? 'string';
-		const apiValue = duplicateRow[field];
+		const apiValue = getEntityFieldValue(duplicateRow as IDataObject, field);
 		const inputValue = desiredFields[field];
 
 		const isMatch = compareDedupField(fieldType, apiValue, inputValue);
@@ -121,10 +123,39 @@ export async function applyDuplicateUpdate(
 	// (which throws for unknown entities) before we have a chance to fall back.
 	const metadata = getEntityMetadata(resource);
 
+	// Split patch into standard fields and UDF fields.
+	// UDF fields must be sent as userDefinedFields[{name, value}]; sending them flat causes 500.
+	let patchStandard: IDataObject = { ...(patch as IDataObject) };
+	let udfEntries: Array<{ name: string; value: unknown }> = [];
+
+	if (metadata?.hasUserDefinedFields) {
+		try {
+			const udfDefs = await getFields(resource, context, { fieldType: 'udf' }) as IUdfFieldDefinition[];
+			if (udfDefs.length > 0) {
+				const udfNameSet = new Set(udfDefs.map(u => u.name.toLowerCase()));
+				const udfKeys = Object.keys(patch).filter(k => udfNameSet.has(k.toLowerCase()));
+				if (udfKeys.length > 0) {
+					udfEntries = udfKeys.map(k => ({ name: k, value: (patch as IDataObject)[k] }));
+					patchStandard = Object.fromEntries(
+						Object.entries(patch as IDataObject).filter(([k]) => !udfKeys.includes(k)),
+					);
+				}
+			}
+		} catch {
+			// UDF metadata unavailable — send all patch fields as standard root fields.
+			// If any are genuine UDF fields, Autotask will return a field-not-found error
+			// on the PATCH, which is more actionable than throwing before the request.
+			warnings.push(
+				`applyDuplicateUpdate: could not fetch UDF definitions for '${resource}' — patch sent without UDF splitting. If the patch contains UDF fields, the PATCH may fail.`,
+			);
+		}
+	}
+
 	// Build PATCH body — always include `id`
 	const body: IDataObject = {
 		id: duplicateId,
-		...(patch as IDataObject),
+		...patchStandard,
+		...(udfEntries.length > 0 ? { userDefinedFields: udfEntries } : {}),
 	};
 
 	// Determine the endpoint

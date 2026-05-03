@@ -16,7 +16,6 @@ export interface ITicketChargeCreateIfNotExistsResult {
 	outcome: TicketChargeCreateIfNotExistsOutcome;
 	ticketId?: number;
 	chargeId?: number;
-	existingChargeId?: number;
 	ticketID: string | number;
 	chargeName: string;
 	datePurchased: string;
@@ -101,7 +100,7 @@ function mapToTicketChargeResult(
 		outcome,
 		ticketId: result.parentId,
 		chargeId: result.chargeId,
-		existingChargeId: result.existingChargeId,
+
 		ticketID,
 		chargeName: result.chargeName,
 		datePurchased: result.datePurchased,

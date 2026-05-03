@@ -21,10 +21,8 @@ export interface CompoundRegistryEntry {
 	getHandler: () => Promise<CompoundOperationHandler>;
 	/** Default dedup fields when the caller does not specify dedupFields. */
 	defaultDedupFields: string[];
-	/** Field in the result containing the created entity's numeric ID. */
+	/** Field in the result containing the entity's numeric ID (all outcomes: created/skipped/updated). */
 	entityIdField: string;
-	/** Field in the result containing the existing entity's numeric ID (on skip/update). */
-	existingIdField: string;
 	/**
 	 * Outcome string that indicates the parent entity was not found.
 	 * When the compound result's `outcome` matches this, the tool returns
@@ -52,7 +50,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['name', 'datePurchased'],
 		entityIdField: 'chargeId',
-		existingIdField: 'existingChargeId',
 		notFoundOutcome: 'contract_not_found',
 	},
 	ticketCharge: {
@@ -62,7 +59,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['name', 'datePurchased'],
 		entityIdField: 'chargeId',
-		existingIdField: 'existingChargeId',
 		notFoundOutcome: 'ticket_not_found',
 	},
 	projectCharge: {
@@ -72,7 +68,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['name', 'datePurchased'],
 		entityIdField: 'chargeId',
-		existingIdField: 'existingChargeId',
 		notFoundOutcome: 'project_not_found',
 	},
 	configurationItems: {
@@ -82,7 +77,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['serialNumber'],
 		entityIdField: 'configurationItemId',
-		existingIdField: 'existingConfigurationItemId',
 		notFoundOutcome: 'company_not_found',
 	},
 	timeEntry: {
@@ -92,7 +86,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['dateWorked', 'hoursWorked'],
 		entityIdField: 'timeEntryId',
-		existingIdField: 'existingTimeEntryId',
 	},
 	contractService: {
 		getHandler: () =>
@@ -101,7 +94,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['serviceID'],
 		entityIdField: 'contractServiceId',
-		existingIdField: 'existingContractServiceId',
 		notFoundOutcome: 'contract_not_found',
 	},
 	contract: {
@@ -111,7 +103,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['contractName'],
 		entityIdField: 'contractId',
-		existingIdField: 'existingContractId',
 		notFoundOutcome: 'company_not_found',
 	},
 	opportunity: {
@@ -121,7 +112,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['title'],
 		entityIdField: 'opportunityId',
-		existingIdField: 'existingId',
 		notFoundOutcome: 'company_not_found',
 	},
 	expenseItem: {
@@ -131,7 +121,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['expenseDate', 'description'],
 		entityIdField: 'expenseItemId',
-		existingIdField: 'existingExpenseItemId',
 	},
 	ticketAdditionalConfigurationItem: {
 		getHandler: () =>
@@ -140,7 +129,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['configurationItemID'],
 		entityIdField: 'ticketAdditionalConfigurationItemId',
-		existingIdField: 'existingId',
 		notFoundOutcome: 'ticket_not_found',
 	},
 	ticketAdditionalContact: {
@@ -150,7 +138,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['contactID'],
 		entityIdField: 'ticketAdditionalContactId',
-		existingIdField: 'existingId',
 		notFoundOutcome: 'ticket_not_found',
 	},
 	changeRequestLink: {
@@ -160,7 +147,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['changeRequestTicketID', 'problemOrIncidentTicketID'],
 		entityIdField: 'linkId',
-		existingIdField: 'existingLinkId',
 	},
 	holidaySet: {
 		getHandler: () =>
@@ -169,7 +155,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['holidaySetName'],
 		entityIdField: 'holidaySetId',
-		existingIdField: 'existingHolidaySetId',
 	},
 	holiday: {
 		getHandler: () =>
@@ -178,7 +163,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['holidayDate'],
 		entityIdField: 'holidayId',
-		existingIdField: 'existingHolidayId',
 		notFoundOutcome: 'holiday_set_not_found',
 	},
 };

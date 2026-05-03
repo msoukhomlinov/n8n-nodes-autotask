@@ -52,6 +52,21 @@ export function normaliseQuantity(value: number): number {
 	return Math.round(value * 10000) / 10000;
 }
 
+// ─── UDF-aware field reader ─────────────────────────────────────────────────
+
+/**
+ * Read a field value from an entity record.
+ * Standard fields are at the root; UDF fields live in userDefinedFields[].
+ * Tries root first, then falls back to userDefinedFields[] by name.
+ */
+export function getEntityFieldValue(entity: IDataObject, field: string): unknown {
+	if (field in entity) return entity[field];
+	// Autotask prevents UDF names from colliding with standard field names, so root-first is safe.
+	const udfs = entity.userDefinedFields as Array<{ name: string; value: unknown }> | undefined;
+	const lower = field.toLowerCase();
+	return udfs?.find(udf => udf.name.toLowerCase() === lower)?.value;
+}
+
 // ─── Response helpers ───────────────────────────────────────────────────────
 
 /** Extract the numeric ID from an Autotask API create/update response */

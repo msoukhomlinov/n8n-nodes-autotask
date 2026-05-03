@@ -16,7 +16,6 @@ export interface IProjectChargeCreateIfNotExistsResult {
 	outcome: ProjectChargeCreateIfNotExistsOutcome;
 	projectId?: number;
 	chargeId?: number;
-	existingChargeId?: number;
 	projectID: string | number;
 	chargeName: string;
 	datePurchased: string;
@@ -101,7 +100,7 @@ function mapToProjectChargeResult(
 		outcome,
 		projectId: result.parentId,
 		chargeId: result.chargeId,
-		existingChargeId: result.existingChargeId,
+
 		projectID,
 		chargeName: result.chargeName,
 		datePurchased: result.datePurchased,

@@ -1,7 +1,8 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { compareDedupField, extractId, extractItems } from './dedup-utils';
+import { extractId, extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
+import { findDuplicate } from './entity-dedup';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -20,7 +21,6 @@ export interface IConfigurationItemCreateResult {
 	outcome: ConfigurationItemCreateOutcome;
 	companyID: string | number;
 	configurationItemId?: number;
-	existingConfigurationItemId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
 	fieldsUpdated?: string[];
@@ -60,61 +60,20 @@ async function verifyCompanyExists(
 
 // ─── Step 2: Find duplicate CI ───────────────────────────────────────────────
 
-async function findDuplicateConfigurationItem(
+function findDuplicateConfigurationItem(
 	ctx: IExecuteFunctions,
 	companyID: string | number,
 	dedupFields: string[],
 	createFields: Record<string, unknown>,
 ): Promise<{ duplicate: IDataObject | null; matchedFields: string[] }> {
-	if (!dedupFields || dedupFields.length === 0) {
-		return { duplicate: null, matchedFields: [] };
-	}
-
-	// Server-side: always filter by companyID, plus first dedup field for narrowing
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const apiFilter: any[] = [
-		{ field: 'companyID', op: 'eq', value: companyID },
-	];
-
-	const firstDedupField = dedupFields[0];
-	const firstDedupValue = createFields[firstDedupField];
-	if (firstDedupValue !== undefined && firstDedupValue !== null) {
-		apiFilter.push({ field: firstDedupField, op: 'eq', value: firstDedupValue });
-	}
-
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
-		'ConfigurationItems/query',
-		{ filter: apiFilter },
-	);
-
-	const items = extractItems(response as IDataObject);
-
-	// Client-side precision match on ALL selected dedupFields
-	for (const item of items) {
-		const matched: string[] = [];
-		let allMatch = true;
-
-		for (const field of dedupFields) {
-			const fieldType = CI_FIELD_TYPE_MAP[field] ?? 'string';
-			const inputValue = createFields[field];
-			const apiValue = item[field];
-
-			if (compareDedupField(fieldType, apiValue, inputValue)) {
-				matched.push(field);
-			} else {
-				allMatch = false;
-				break;
-			}
-		}
-
-		if (allMatch && matched.length === dedupFields.length) {
-			return { duplicate: item, matchedFields: matched };
-		}
-	}
-
-	return { duplicate: null, matchedFields: [] };
+	return findDuplicate(ctx, {
+		entityType: 'ConfigurationItem',
+		queryEndpoint: 'ConfigurationItems/query',
+		scopeFilters: [{ field: 'companyID', op: 'eq', value: companyID }],
+		dedupFields,
+		createFields,
+		fieldTypeMap: CI_FIELD_TYPE_MAP,
+	});
 }
 
 // ─── Step 3: Create the configuration item ───────────────────────────────────
@@ -210,7 +169,7 @@ export async function createConfigurationItemIfNotExists(
 				return {
 					outcome: 'updated',
 					companyID,
-					existingConfigurationItemId: duplicate.id as number,
+					configurationItemId: duplicate.id as number,
 					matchedDedupFields: matchedFields,
 					fieldsUpdated: Object.keys(patch),
 					fieldsCompared: compared,
@@ -221,7 +180,7 @@ export async function createConfigurationItemIfNotExists(
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
 					companyID,
-					existingConfigurationItemId: duplicate.id as number,
+					configurationItemId: duplicate.id as number,
 					matchedDedupFields: matchedFields,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings],
@@ -233,7 +192,7 @@ export async function createConfigurationItemIfNotExists(
 			outcome: 'skipped',
 			companyID,
 			reason: 'duplicate_configuration_item',
-			existingConfigurationItemId: duplicate.id as number,
+			configurationItemId: duplicate.id as number,
 			matchedDedupFields: matchedFields,
 			warnings,
 		};

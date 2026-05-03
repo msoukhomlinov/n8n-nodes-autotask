@@ -1,7 +1,8 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { compareDedupField, extractId, extractItems } from './dedup-utils';
+import { extractId, extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
+import { findDuplicate } from './entity-dedup';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -20,7 +21,6 @@ export interface IContractCreateResult {
 	outcome: ContractCreateOutcome;
 	companyID: string | number;
 	contractId?: number;
-	existingContractId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
 	fieldsUpdated?: string[];
@@ -30,14 +30,9 @@ export interface IContractCreateResult {
 
 // ─── Field type map ──────────────────────────────────────────────────────────
 
-/**
- * Known field types for contract dedup comparison.
- * Default is 'string' for any field not listed here.
- */
 const CONTRACT_FIELD_TYPE_MAP: Record<string, string> = {
 	contractName: 'string',
 	contractNumber: 'string',
-	externalServiceIdentifier: 'string',
 	contractType: 'integer',
 };
 
@@ -58,61 +53,20 @@ async function verifyCompanyExists(
 
 // ─── Step 2: Find duplicate contract ────────────────────────────────────────
 
-async function findDuplicateContract(
+function findDuplicateContract(
 	ctx: IExecuteFunctions,
 	companyID: string | number,
 	dedupFields: string[],
 	createFields: Record<string, unknown>,
 ): Promise<{ duplicate: IDataObject | null; matchedFields: string[] }> {
-	if (!dedupFields || dedupFields.length === 0) {
-		return { duplicate: null, matchedFields: [] };
-	}
-
-	// Server-side filter: always scope by companyID, narrow by first dedup field if present
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const apiFilter: any[] = [
-		{ field: 'companyID', op: 'eq', value: companyID },
-	];
-
-	const firstDedupField = dedupFields[0];
-	if (firstDedupField && createFields[firstDedupField] !== undefined) {
-		apiFilter.push({
-			field: firstDedupField,
-			op: 'eq',
-			value: createFields[firstDedupField],
-		});
-	}
-
-	const response = await autotaskApiRequest.call(
-		ctx, 'POST', 'Contracts/query', { filter: apiFilter },
-	);
-
-	const contracts = extractItems(response as IDataObject);
-
-	// Client-side precision match on ALL selected dedupFields
-	for (const contract of contracts) {
-		const matched: string[] = [];
-		let allMatch = true;
-
-		for (const field of dedupFields) {
-			const fieldType = CONTRACT_FIELD_TYPE_MAP[field] ?? 'string';
-			const inputValue = createFields[field];
-			const apiValue = contract[field];
-
-			if (compareDedupField(fieldType, apiValue, inputValue)) {
-				matched.push(field);
-			} else {
-				allMatch = false;
-				break;
-			}
-		}
-
-		if (allMatch && matched.length === dedupFields.length) {
-			return { duplicate: contract, matchedFields: matched };
-		}
-	}
-
-	return { duplicate: null, matchedFields: [] };
+	return findDuplicate(ctx, {
+		entityType: 'Contract',
+		queryEndpoint: 'Contracts/query',
+		scopeFilters: [{ field: 'companyID', op: 'eq', value: companyID }],
+		dedupFields,
+		createFields,
+		fieldTypeMap: CONTRACT_FIELD_TYPE_MAP,
+	});
 }
 
 // ─── Step 3: Create contract ─────────────────────────────────────────────────
@@ -206,7 +160,7 @@ export async function createContractIfNotExists(
 				return {
 					outcome: 'updated',
 					companyID,
-					existingContractId: duplicate.id as number,
+					contractId: duplicate.id as number,
 					matchedDedupFields: matchedFields,
 					fieldsUpdated: Object.keys(patch),
 					fieldsCompared: compared,
@@ -217,7 +171,7 @@ export async function createContractIfNotExists(
 					outcome: 'skipped',
 					reason: 'duplicate_no_changes',
 					companyID,
-					existingContractId: duplicate.id as number,
+					contractId: duplicate.id as number,
 					matchedDedupFields: matchedFields,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings],
@@ -229,7 +183,7 @@ export async function createContractIfNotExists(
 			outcome: 'skipped',
 			companyID,
 			reason: 'duplicate_contract',
-			existingContractId: duplicate.id as number,
+			contractId: duplicate.id as number,
 			matchedDedupFields: matchedFields,
 			warnings,
 		};
