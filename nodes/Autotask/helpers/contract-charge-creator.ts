@@ -16,7 +16,7 @@ export interface IContractChargeCreateIfNotExistsResult {
 	outcome: ContractChargeCreateIfNotExistsOutcome;
 	contractId?: number;
 	chargeId?: number;
-	externalServiceIdentifier: string;
+	contractID: string | number;
 	chargeName: string;
 	datePurchased: string;
 	unitQuantity?: number;
@@ -30,10 +30,10 @@ export interface IContractChargeCreateIfNotExistsResult {
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
-const CONTRACT_CHARGE_CONFIG: ChargeCreatorConfig = {
+const CONTRACT_CHARGE_CONFIG_BY_ID: ChargeCreatorConfig = {
 	parentEntityLabel: 'Contract',
 	parentQueryEndpoint: 'Contracts/query',
-	parentLookupField: 'externalServiceIdentifier',
+	parentLookupField: 'id',
 	chargeQueryEndpoint: 'ContractCharges/query',
 	chargeParentIdField: 'contractID',
 	chargeCreateEndpointTemplate: 'Contracts/{parentId}/Charges',
@@ -47,6 +47,11 @@ const CONTRACT_CHARGE_CONFIG: ChargeCreatorConfig = {
 	},
 };
 
+const CONTRACT_CHARGE_CONFIG_BY_EXTERNAL_ID: ChargeCreatorConfig = {
+	...CONTRACT_CHARGE_CONFIG_BY_ID,
+	parentLookupField: 'externalServiceIdentifier',
+};
+
 // ─── Main orchestrator ───────────────────────────────────────────────────────
 
 export async function createContractChargeIfNotExists(
@@ -54,26 +59,37 @@ export async function createContractChargeIfNotExists(
 	_itemIndex: number,
 	options: IContractChargeCreateIfNotExistsOptions,
 ): Promise<IContractChargeCreateIfNotExistsResult> {
-	const externalServiceIdentifier = (options.createFields.externalServiceIdentifier as string) ?? '';
-	if (!externalServiceIdentifier) {
-		throw new Error('externalServiceIdentifier is required to find the contract.');
+	const contractID = options.createFields.contractID as string | number | undefined;
+	const externalServiceIdentifier = options.createFields.externalServiceIdentifier as string | undefined;
+
+	if ((contractID === undefined || contractID === null || contractID === '') && !externalServiceIdentifier) {
+		throw new Error('Either contractID or externalServiceIdentifier is required to find the contract.');
 	}
+
+	// Numeric contractID → look up by id field directly
+	// String of digits → treat as numeric ID
+	// Otherwise → fall back to externalServiceIdentifier lookup
+	const isNumericId = contractID !== undefined && contractID !== null && contractID !== '' &&
+		(typeof contractID === 'number' || (typeof contractID === 'string' && /^\d+$/.test(contractID) && parseInt(contractID, 10) > 0));
+
+	const config = isNumericId ? CONTRACT_CHARGE_CONFIG_BY_ID : CONTRACT_CHARGE_CONFIG_BY_EXTERNAL_ID;
+	const lookupValue = isNumericId ? String(contractID) : (externalServiceIdentifier as string);
 
 	const result = await createChargeIfNotExists(
 		ctx,
-		CONTRACT_CHARGE_CONFIG,
-		externalServiceIdentifier,
+		config,
+		lookupValue,
 		options,
 	);
 
-	return mapToContractChargeResult(result, externalServiceIdentifier);
+	return mapToContractChargeResult(result, isNumericId ? (contractID as string | number) : lookupValue);
 }
 
 // ─── Result mapper ──────────────────────────────────────────────────────────
 
 function mapToContractChargeResult(
 	result: IChargeCreateResult,
-	externalServiceIdentifier: string,
+	contractID: string | number,
 ): IContractChargeCreateIfNotExistsResult {
 	const outcome = result.outcome === 'parent_not_found'
 		? 'contract_not_found' as const
@@ -84,7 +100,7 @@ function mapToContractChargeResult(
 		contractId: result.parentId,
 		chargeId: result.chargeId,
 
-		externalServiceIdentifier,
+		contractID,
 		chargeName: result.chargeName,
 		datePurchased: result.datePurchased,
 		unitQuantity: result.unitQuantity,
