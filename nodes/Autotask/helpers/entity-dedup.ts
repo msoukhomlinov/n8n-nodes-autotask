@@ -66,13 +66,22 @@ export async function findDuplicate(
 		return { duplicate: null, matchedFields: [] };
 	}
 
-	// Determine which fields are standard vs UDF
-	const standardApiFields = await getFields(entityType, ctx, { fieldType: 'standard' }) as IAutotaskField[];
-	const standardFieldNames = new Set(standardApiFields.map(f => f.name));
-	// P1: only queryable standard fields may be pushed into the API filter
-	const queryableStandardFieldNames = new Set(
-		standardApiFields.filter(f => f.isQueryable).map(f => f.name),
-	);
+	// Determine which fields are standard vs UDF.
+	// On failure, degrade gracefully: skip server-side dedup-field narrowing and rely on
+	// scope filters + full client-side matching — no harder failure than before this helper existed.
+	let standardFieldNames = new Set<string>();
+	let queryableStandardFieldNames = new Set<string>();
+	try {
+		const standardApiFields = await getFields(entityType, ctx, { fieldType: 'standard' }) as IAutotaskField[];
+		standardFieldNames = new Set(standardApiFields.map(f => f.name));
+		// P1: only queryable standard fields may be pushed into the API filter
+		queryableStandardFieldNames = new Set(
+			standardApiFields.filter(f => f.isQueryable).map(f => f.name),
+		);
+	} catch {
+		// Standard field metadata unavailable — treat all dedup fields as unclassified.
+		// Server-side narrowing is skipped; client-side comparison still runs.
+	}
 
 	// P2: fetch UDF metadata for any UDF dedup fields to get type-aware comparison
 	const udfDedupFields = dedupFields.filter(f => !standardFieldNames.has(f));
