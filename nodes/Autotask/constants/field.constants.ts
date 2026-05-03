@@ -57,6 +57,23 @@ export const REFERENCE_ENABLED_ENTITIES = [
 export type ReferenceEnabledEntity = typeof REFERENCE_ENABLED_ENTITIES[number];
 
 /**
+ * Subset of REFERENCE_ENABLED_ENTITIES safe to fetch in full for UI dropdowns.
+ * Only entities with bounded record counts belong here.
+ * Never add Company, Contact, Contract, Project, or any customer-data entity.
+ */
+export const UI_REFERENCE_ENABLED_ENTITIES = [
+	'BillingCode',
+	'CompanyLocation',
+	'Country',
+	'Queue',
+	'Role',
+	'Resource',
+	'ServiceLevelAgreement',
+] as const;
+
+export type UiReferenceEnabledEntity = typeof UI_REFERENCE_ENABLED_ENTITIES[number];
+
+/**
  * Field display formats for various field types
  * @remarks Used to control how fields are displayed in the UI
  */
