@@ -2,7 +2,7 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [Unreleased]
+## [2.13.1] - 2026-05-04
 
 ### Planned
 - **`createIfNotExists` — remaining UDF-supported entities:** `company`, `companySiteConfiguration`, `contact`, `product`, `project`, `salesOrder`, `serviceBundle`, `service`, `subscription`, `task`, and `ticket` all support UDFs per Autotask docs but have no `createIfNotExists` operation implemented yet. When added, they will automatically inherit UDF dedup support via `entity-dedup.ts`.
