@@ -1,6 +1,6 @@
 import type { INodePropertyOptions, FieldTypeMap } from 'n8n-workflow';
-import { REFERENCE_ENABLED_ENTITIES } from '../../constants/field.constants';
-import type { ReferenceEnabledEntity } from '../../constants/field.constants';
+import { UI_REFERENCE_ENABLED_ENTITIES } from '../../constants/field.constants';
+import type { ReferenceEnabledEntity, UiReferenceEnabledEntity } from '../../constants/field.constants';
 import type { AutotaskDataType } from './core-types';
 import { UdfDataType } from './udf-types';
 import type { IAutotaskField } from './entity-types';
@@ -139,8 +139,8 @@ export function isResourceMapperField(field: IBaseField): field is IResourceMapp
 /**
  * Helper function to check if an entity type is enabled for reference lookups
  */
-function isEnabledReferenceType(entityType: string | undefined): entityType is ReferenceEnabledEntity {
-	return typeof entityType === 'string' && REFERENCE_ENABLED_ENTITIES.includes(entityType as ReferenceEnabledEntity);
+function isEnabledReferenceType(entityType: string | undefined): entityType is UiReferenceEnabledEntity {
+	return typeof entityType === 'string' && UI_REFERENCE_ENABLED_ENTITIES.includes(entityType as UiReferenceEnabledEntity);
 }
 
 /**
