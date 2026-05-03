@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.13.3] - 2026-05-04
+
+### Fixed
+- **UI reference field slowdown — Company/Contact/Contract/Project causing full-table fetches:** Commit `366f305` added large customer-data entities to `REFERENCE_ENABLED_ENTITIES`, which caused `loadReferenceValues` to fetch all active records for those entities every time a reference field dropdown rendered in the n8n UI (e.g. configuring a Ticket node would fetch all Companies). Fix: introduce `UI_REFERENCE_ENABLED_ENTITIES` (bounded entities only: BillingCode, CompanyLocation, Country, Queue, Role, Resource, ServiceLevelAgreement). `isEnabledReferenceType` now uses this subset, preventing Company/Contact/Contract/Project from being rendered as UI dropdowns. `loadReferenceValues` uses a context-aware allowlist: UI path restricts to bounded entities; execution path retains full entity set so `addReferenceLabels` output continues to include Company/Contact/Contract/Project resolved labels. `enrichWithReferenceLabels` is unchanged.
+
 ## [2.13.2] - 2026-05-04
 
 ### Fixed
