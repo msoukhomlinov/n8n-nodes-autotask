@@ -17,8 +17,8 @@ import { FieldConversionPipeline } from '../../helpers/field-conversion/pipeline
 import { createDateWrapper } from '../../helpers/date-time/index';
 import { sentenceCase } from 'change-case';
 import { EntityValueHelper } from '../../helpers/entity-values';
-import { REFERENCE_ENABLED_ENTITIES, PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../../constants/field.constants';
-import type { ReferenceEnabledEntity } from '../../constants/field.constants';
+import { REFERENCE_ENABLED_ENTITIES, UI_REFERENCE_ENABLED_ENTITIES, PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../../constants/field.constants';
+import type { ReferenceEnabledEntity, UiReferenceEnabledEntity } from '../../constants/field.constants';
 import { fieldTypeService, mapFieldOptions, getFieldTypeOptions, getFieldDisplayType } from '../../helpers/field-conversion/utils';
 import type { IFieldMappingContext } from '../../helpers/field-conversion/services/field-type.service';
 import { handleErrors } from '../../helpers/errorHandler';
@@ -338,11 +338,18 @@ export class FieldProcessor {
 		// historical/inactive references can still be resolved.
 		const activeOnly = this.isLoadOptionsContext();
 
+		// UI path: restrict to bounded entities only to avoid full-table fetches for
+		// large customer-data entities (Company, Contact, Contract, Project).
+		// Execution path: full set so addReferenceLabels resolves all reference types.
+		const referenceAllowlist: readonly (ReferenceEnabledEntity | UiReferenceEnabledEntity)[] = this.isLoadOptionsContext()
+			? UI_REFERENCE_ENABLED_ENTITIES
+			: REFERENCE_ENABLED_ENTITIES;
+
 		// Group reference fields by entity type
 		const referenceFieldsByType = fields.reduce((acc, field) => {
 			if (field.isReference &&
 				field.referenceEntityType &&
-				REFERENCE_ENABLED_ENTITIES.includes(field.referenceEntityType as ReferenceEnabledEntity)) {
+				(referenceAllowlist as readonly string[]).includes(field.referenceEntityType)) {
 				if (!acc[field.referenceEntityType]) {
 					acc[field.referenceEntityType] = [];
 				}
