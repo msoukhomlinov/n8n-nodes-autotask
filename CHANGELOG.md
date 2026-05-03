@@ -2,6 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [Unreleased]
+
+### Planned
+- **`createIfNotExists` — remaining UDF-supported entities:** `company`, `companySiteConfiguration`, `contact`, `product`, `project`, `salesOrder`, `serviceBundle`, `service`, `subscription`, `task`, and `ticket` all support UDFs per Autotask docs but have no `createIfNotExists` operation implemented yet. When added, they will automatically inherit UDF dedup support via `entity-dedup.ts`.
+
+## [2.13.0] - 2026-05-03
+
+### Changed
+- **`createIfNotExists` — UDF dedup field support + centralised dedup logic:** All `createIfNotExists` operations (`contract`, `configurationItem`, `opportunity`, `expenseItem`, `timeEntry`, `contractService`, `contractCharge`, `ticketCharge`, `projectCharge`) now correctly handle user-defined fields in `dedupFields`. Previously, UDF field names were sent as standard API filter fields, causing Autotask to return a 500 error ("Unable to find \<field\> in the Entity"). Fix: new `helpers/entity-dedup.ts` centralises duplicate detection — calls `getFields()` at runtime to classify each dedup field as standard or UDF, pushes the first dedup field server-side (standard fields use normal filter shape; UDF fields use `{ field, udf: true, op, value }`, respecting Autotask's one-UDF-per-query limit), and compares all dedup fields client-side. UDF values are read from `record.userDefinedFields[]` via new `getEntityFieldValue()` in `dedup-utils.ts`. All per-creator inline dedup loops replaced with calls to `findDuplicate()`. `computeFieldDiffs` in `update-fields-on-duplicate.ts` fixed to read UDF values via `getEntityFieldValue()` when comparing for update-on-duplicate; `applyDuplicateUpdate` fixed to send UDF patch fields in `userDefinedFields: [{name, value}]` format rather than flat root (Autotask requirement).
+
 ## [2.12.6] - 2026-04-29
 
 ### Fixed

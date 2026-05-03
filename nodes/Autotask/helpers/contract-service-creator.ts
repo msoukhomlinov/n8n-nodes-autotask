@@ -1,7 +1,8 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { extractId, extractItems, compareDedupField } from './dedup-utils';
+import { extractId, extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
+import { findDuplicate } from './entity-dedup';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -28,8 +29,6 @@ export interface IContractServiceCreateResult {
 	fieldsCompared?: string[];
 	warnings: string[];
 }
-
-// ─── Field type map ──────────────────────────────────────────────────────────
 
 const CONTRACT_SERVICE_FIELD_TYPE_MAP: Record<string, string> = {
 	serviceID: 'integer',
@@ -101,66 +100,20 @@ async function resolveContractId(
 
 // ─── Step 2: Find duplicate ContractService ──────────────────────────────────
 
-/**
- * Query ContractServices for existing records on the resolved contract.
- * Applies API-side filter for contractID (and serviceID when it is in dedupFields),
- * then performs client-side precision matching across all requested dedupFields.
- */
-async function findDuplicateContractService(
+function findDuplicateContractService(
 	ctx: IExecuteFunctions,
 	contractId: number,
 	dedupFields: string[],
 	createFields: Record<string, unknown>,
 ): Promise<{ duplicate: IDataObject | null; matchedFields: string[] }> {
-	if (!dedupFields || dedupFields.length === 0) {
-		return { duplicate: null, matchedFields: [] };
-	}
-
-	// API filter: always include contractID; add serviceID server-side when present in dedupFields
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const apiFilter: any[] = [
-		{ field: 'contractID', op: 'eq', value: contractId },
-	];
-
-	if (dedupFields.includes('serviceID') && createFields.serviceID !== undefined) {
-		apiFilter.push({ field: 'serviceID', op: 'eq', value: createFields.serviceID });
-	}
-
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
-		'ContractServices/query',
-		{ filter: apiFilter },
-	);
-
-	const services = extractItems(response as IDataObject);
-
-	// Client-side precision match on ALL selected dedupFields
-	for (const service of services) {
-		const matched: string[] = [];
-		let allMatch = true;
-
-		for (const field of dedupFields) {
-			const inputValue = createFields[field];
-			const apiValue = service[field];
-
-			// serviceID is an integer reference field; all others default to string comparison
-			const fieldType = field === 'serviceID' ? 'integer' : 'string';
-
-			if (compareDedupField(fieldType, apiValue, inputValue)) {
-				matched.push(field);
-			} else {
-				allMatch = false;
-				break;
-			}
-		}
-
-		if (allMatch && matched.length === dedupFields.length) {
-			return { duplicate: service, matchedFields: matched };
-		}
-	}
-
-	return { duplicate: null, matchedFields: [] };
+	return findDuplicate(ctx, {
+		entityType: 'ContractService',
+		queryEndpoint: 'ContractServices/query',
+		scopeFilters: [{ field: 'contractID', op: 'eq', value: contractId }],
+		dedupFields,
+		createFields,
+		fieldTypeMap: CONTRACT_SERVICE_FIELD_TYPE_MAP,
+	});
 }
 
 // ─── Step 3: Create ContractService ──────────────────────────────────────────

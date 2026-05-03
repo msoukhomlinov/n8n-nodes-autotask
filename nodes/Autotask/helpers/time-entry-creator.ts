@@ -1,7 +1,8 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { compareDedupField, extractId, extractItems } from './dedup-utils';
+import { extractId } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
+import { findDuplicate } from './entity-dedup';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -38,10 +39,6 @@ const FIELD_TYPE_MAP: Record<string, string> = {
 	summaryNotes: 'string',
 };
 
-function getFieldType(field: string): string {
-	return FIELD_TYPE_MAP[field] ?? 'string';
-}
-
 // ─── Main orchestrator ───────────────────────────────────────────────────────
 
 export async function createTimeEntryIfNotExists(
@@ -60,123 +57,88 @@ export async function createTimeEntryIfNotExists(
 	const ticketID = createFields.ticketID as number | undefined;
 	const taskID = createFields.taskID as number | undefined;
 
-	// Step 1: Build dedup query filters
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const apiFilter: any[] = [
+	// Step 1: Build scope filters (resourceID always; ticketID/taskID when present)
+	const scopeFilters: Array<{ field: string; op: string; value: unknown }> = [
 		{ field: 'resourceID', op: 'eq', value: resourceID },
 	];
+	if (ticketID !== undefined) scopeFilters.push({ field: 'ticketID', op: 'eq', value: ticketID });
+	if (taskID !== undefined) scopeFilters.push({ field: 'taskID', op: 'eq', value: taskID });
 
-	if (ticketID !== undefined) {
-		apiFilter.push({ field: 'ticketID', op: 'eq', value: ticketID });
-	}
+	// Step 2: Find duplicate using central dedup logic (handles standard + UDF fields)
+	const { duplicate: entry, matchedFields: matched } = await findDuplicate(ctx, {
+		entityType: 'TimeEntry',
+		queryEndpoint: 'TimeEntries/query',
+		scopeFilters,
+		dedupFields,
+		createFields,
+		fieldTypeMap: FIELD_TYPE_MAP,
+	});
 
-	if (taskID !== undefined) {
-		apiFilter.push({ field: 'taskID', op: 'eq', value: taskID });
-	}
-
-	// Add the first dedup field as a server-side filter for narrowing
-	if (dedupFields.length > 0) {
-		const firstField = dedupFields[0];
-		const inputValue = createFields[firstField];
-		if (inputValue !== undefined && inputValue !== null) {
-			apiFilter.push({ field: firstField, op: 'eq', value: inputValue });
+	if (entry) {
+		// Duplicate found
+		if (errorOnDuplicate) {
+			throw new Error(
+				`Duplicate time entry found (ID: ${entry.id}) for resourceID ${resourceID}. ` +
+				`Matched dedup fields: ${matched.join(', ')}. ` +
+				`Set errorOnDuplicate=false to skip instead of error.`,
+			);
 		}
-	}
 
-	// Step 2: Query existing time entries
-	let existingEntries: IDataObject[] = [];
-
-	if (dedupFields.length > 0) {
-		const response = await autotaskApiRequest.call(
-			ctx, 'POST', 'TimeEntries/query', { filter: apiFilter },
-		);
-		existingEntries = extractItems(response as IDataObject);
-	}
-
-	// Step 3: Client-side match all dedupFields
-	for (const entry of existingEntries) {
-		const matched: string[] = [];
-		let allMatch = true;
-
-		for (const field of dedupFields) {
-			const fieldType = getFieldType(field);
-			const inputValue = createFields[field];
-			const apiValue = entry[field];
-
-			if (compareDedupField(fieldType, apiValue, inputValue)) {
-				matched.push(field);
+		const { updateFields } = options;
+		if (updateFields && updateFields.length > 0) {
+			const { patch, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
+				entry as Record<string, unknown>,
+				createFields,
+				updateFields,
+				FIELD_TYPE_MAP,
+			);
+			if (skipped.length > 0) {
+				diffWarnings.push(`updateFields requested for ${skipped.length} field(s) not present in createFields: ${skipped.join(', ')}`);
+			}
+			if (Object.keys(patch).length > 0) {
+				const { warnings: updateWarnings } = await applyDuplicateUpdate(ctx, {
+					resource: 'TimeEntry',
+					duplicateId: entry.id as number,
+					patch,
+					impersonationResourceId: options.impersonationResourceId,
+					proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied,
+				});
+				return {
+					outcome: 'updated',
+					resourceID,
+					ticketID,
+					taskID,
+					existingTimeEntryId: entry.id as number,
+					matchedDedupFields: matched,
+					fieldsUpdated: Object.keys(patch),
+					fieldsCompared: compared,
+					warnings: [...warnings, ...diffWarnings, ...updateWarnings],
+				};
 			} else {
-				allMatch = false;
-				break;
+				return {
+					outcome: 'skipped',
+					reason: 'duplicate_no_changes',
+					resourceID,
+					ticketID,
+					taskID,
+					existingTimeEntryId: entry.id as number,
+					matchedDedupFields: matched,
+					fieldsCompared: compared,
+					warnings: [...warnings, ...diffWarnings],
+				};
 			}
 		}
 
-		if (allMatch && matched.length === dedupFields.length) {
-			// Duplicate found
-			if (errorOnDuplicate) {
-				throw new Error(
-					`Duplicate time entry found (ID: ${entry.id}) for resourceID ${resourceID}. ` +
-					`Matched dedup fields: ${matched.join(', ')}. ` +
-					`Set errorOnDuplicate=false to skip instead of error.`,
-				);
-			}
-
-			const { updateFields } = options;
-			if (updateFields && updateFields.length > 0) {
-				const { patch, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
-					entry as Record<string, unknown>,
-					createFields,
-					updateFields,
-					FIELD_TYPE_MAP,
-				);
-				if (skipped.length > 0) {
-					diffWarnings.push(`updateFields requested for ${skipped.length} field(s) not present in createFields: ${skipped.join(', ')}`);
-				}
-				if (Object.keys(patch).length > 0) {
-					const { warnings: updateWarnings } = await applyDuplicateUpdate(ctx, {
-						resource: 'TimeEntry',
-						duplicateId: entry.id as number,
-						patch,
-						impersonationResourceId: options.impersonationResourceId,
-						proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied,
-					});
-					return {
-						outcome: 'updated',
-						resourceID,
-						ticketID,
-						taskID,
-						existingTimeEntryId: entry.id as number,
-						matchedDedupFields: matched,
-						fieldsUpdated: Object.keys(patch),
-						fieldsCompared: compared,
-						warnings: [...warnings, ...diffWarnings, ...updateWarnings],
-					};
-				} else {
-					return {
-						outcome: 'skipped',
-						reason: 'duplicate_no_changes',
-						resourceID,
-						ticketID,
-						taskID,
-						existingTimeEntryId: entry.id as number,
-						matchedDedupFields: matched,
-						fieldsCompared: compared,
-						warnings: [...warnings, ...diffWarnings],
-					};
-				}
-			}
-
-			return {
-				outcome: 'skipped',
-				resourceID,
-				ticketID,
-				taskID,
-				existingTimeEntryId: entry.id as number,
-				reason: 'duplicate_time_entry',
-				matchedDedupFields: matched,
-				warnings,
-			};
-		}
+		return {
+			outcome: 'skipped',
+			resourceID,
+			ticketID,
+			taskID,
+			existingTimeEntryId: entry.id as number,
+			reason: 'duplicate_time_entry',
+			matchedDedupFields: matched,
+			warnings,
+		};
 	}
 
 	// Step 4: Build create body and POST

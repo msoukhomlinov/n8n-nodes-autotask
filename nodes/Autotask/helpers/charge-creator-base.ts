@@ -1,7 +1,8 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { compareDedupField, extractId, extractItems } from './dedup-utils';
+import { extractId, extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
+import { findDuplicate } from './entity-dedup';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -87,60 +88,20 @@ export async function findParentEntity(
 /**
  * Step 2: Check for duplicate charges using configurable dedup fields.
  */
-export async function findDuplicateCharge(
+export function findDuplicateCharge(
 	ctx: IExecuteFunctions,
 	config: ChargeCreatorConfig,
 	parentId: number,
 	options: IChargeCreateIfNotExistsOptions,
 ): Promise<{ duplicate: IDataObject | null; matchedFields: string[] }> {
-	const { dedupFields, createFields } = options;
-
-	if (!dedupFields || dedupFields.length === 0) {
-		return { duplicate: null, matchedFields: [] };
-	}
-
-	// API filter: always filter by parent ID, plus name if in dedupFields
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const apiFilter: any[] = [
-		{ field: config.chargeParentIdField, op: 'eq', value: parentId },
-	];
-	if (dedupFields.includes('name')) {
-		apiFilter.push({ field: 'name', op: 'eq', value: createFields.name });
-	}
-
-	const response = await autotaskApiRequest.call(
-		ctx, 'POST', config.chargeQueryEndpoint, { filter: apiFilter },
-	);
-
-	const charges = extractItems(response as IDataObject);
-	const fieldTypeMap = config.fieldTypeMap ?? {};
-
-	// Client-side precision match on ALL selected dedupFields
-	for (const charge of charges) {
-		const matched: string[] = [];
-		let allMatch = true;
-
-		for (const field of dedupFields) {
-			const fieldType = fieldTypeMap[field] ?? 'string';
-
-			// Get the input value from createFields
-			const inputValue = createFields[field];
-			const apiValue = charge[field];
-
-			if (compareDedupField(fieldType, apiValue, inputValue)) {
-				matched.push(field);
-			} else {
-				allMatch = false;
-				break;
-			}
-		}
-
-		if (allMatch && matched.length === dedupFields.length) {
-			return { duplicate: charge, matchedFields: matched };
-		}
-	}
-
-	return { duplicate: null, matchedFields: [] };
+	return findDuplicate(ctx, {
+		entityType: config.entityName,
+		queryEndpoint: config.chargeQueryEndpoint,
+		scopeFilters: [{ field: config.chargeParentIdField, op: 'eq', value: parentId }],
+		dedupFields: options.dedupFields,
+		createFields: options.createFields,
+		fieldTypeMap: config.fieldTypeMap,
+	});
 }
 
 /**
