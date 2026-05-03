@@ -11,6 +11,8 @@ import type { IUdfFieldDefinition } from '../types/base/udf-types';
 export interface IFieldDiffResult {
 	/** Fields that differ between the duplicate and desired values (API values to PATCH) */
 	patch: Record<string, unknown>;
+	/** Per-field from/to values for all fields that differed */
+	fieldChanges: Record<string, { from: unknown; to: unknown }>;
 	/** Fields that were compared (includes both matching and differing fields) */
 	compared: string[];
 	/** Fields in updateFields not present in desiredFields — skipped without comparison */
@@ -36,6 +38,7 @@ export function computeFieldDiffs(
 	fieldTypeMap: Record<string, string>,
 ): IFieldDiffResult {
 	const patch: Record<string, unknown> = {};
+	const fieldChanges: Record<string, { from: unknown; to: unknown }> = {};
 	const compared: string[] = [];
 	const skipped: string[] = [];
 	const warnings: string[] = [];
@@ -57,13 +60,13 @@ export function computeFieldDiffs(
 		compared.push(field);
 
 		if (!isMatch) {
-			// Values differ — include in patch
+			// Values differ — include in patch and record from/to
 			patch[field] = inputValue;
+			fieldChanges[field] = { from: apiValue, to: inputValue };
 		}
-		// If isMatch === true the field is already up to date; add to compared but not patch
 	}
 
-	return { patch, compared, skipped, warnings };
+	return { patch, fieldChanges, compared, skipped, warnings };
 }
 
 // ─── applyDuplicateUpdate ─────────────────────────────────────────────────────
@@ -170,14 +173,15 @@ export async function applyDuplicateUpdate(
 		}
 		endpoint = buildChildEntityUrl(metadata.childOf, resource, parentId);
 	} else if (metadata) {
-		// Direct update: PATCH to {entity}/{duplicateId}
-		endpoint = buildEntityUrl(resource, { entityId: duplicateId });
+		// Direct update: PATCH to collection endpoint — Autotask REST API pattern requires
+		// id in the body, not the URL. PATCH /{entity}/{id} returns 405 for all root entities.
+		endpoint = buildEntityUrl(resource);
 	} else {
 		// Fallback for unknown entities — construct URL manually and warn rather than throw
 		warnings.push(
 			`applyDuplicateUpdate: unknown entity '${resource}' — metadata not found, constructing PATCH URL manually.`,
 		);
-		endpoint = `/atservicesrest/v1.0/${resource}/${duplicateId}`;
+		endpoint = `/atservicesrest/v1.0/${resource}`;
 	}
 
 	const response = await autotaskApiRequest.call(

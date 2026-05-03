@@ -28,7 +28,7 @@ export interface IChargeCreateResult {
 	unitPrice?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
-	fieldsUpdated?: string[];
+	fieldsUpdated?: Record<string, { from: unknown; to: unknown }>;
 	fieldsCompared?: string[];
 	warnings: string[];
 }
@@ -249,7 +249,7 @@ export async function createChargeIfNotExists(
 		const { updateFields } = options;
 		if (updateFields && updateFields.length > 0) {
 			const fieldTypeMap = config.fieldTypeMap ?? {};
-			const { patch, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
+			const { patch, fieldChanges, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
 				duplicate as Record<string, unknown>,
 				options.createFields,
 				updateFields,
@@ -277,7 +277,7 @@ export async function createChargeIfNotExists(
 					unitQuantity: options.createFields.unitQuantity as number | undefined,
 					unitPrice: options.createFields.unitPrice as number | undefined,
 					matchedDedupFields: matchedFields,
-					fieldsUpdated: Object.keys(patch),
+					fieldsUpdated: fieldChanges,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings, ...updateWarnings],
 				};

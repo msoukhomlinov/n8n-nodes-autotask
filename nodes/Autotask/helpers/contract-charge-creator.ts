@@ -23,7 +23,7 @@ export interface IContractChargeCreateIfNotExistsResult {
 	unitPrice?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
-	fieldsUpdated?: string[];
+	fieldsUpdated?: Record<string, { from: unknown; to: unknown }>;
 	fieldsCompared?: string[];
 	warnings: string[];
 }

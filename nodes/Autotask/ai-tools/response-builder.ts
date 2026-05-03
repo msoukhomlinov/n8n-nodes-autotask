@@ -446,8 +446,8 @@ export function buildCompoundResponse(
 		existingId?: number | string;
 		record?: Record<string, unknown>;
 		matchedDedupFields?: string[];
-		fieldsUpdated?: Record<string, unknown>;
-		fieldsCompared?: Record<string, unknown>;
+		fieldsUpdated?: Record<string, { from: unknown; to: unknown }>;
+		fieldsCompared?: string[];
 		context?: Record<string, unknown>;
 	},
 	context: ToolResponseContext = {},

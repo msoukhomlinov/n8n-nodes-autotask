@@ -22,7 +22,7 @@ export interface IHolidaySetCreateResult {
 	holidaySetName?: string;
 	reason?: string;
 	matchedDedupFields?: string[];
-	fieldsUpdated?: string[];
+	fieldsUpdated?: Record<string, { from: unknown; to: unknown }>;
 	fieldsCompared?: string[];
 	warnings: string[];
 }
@@ -147,7 +147,7 @@ export async function createHolidaySetIfNotExists(
 
 		const { updateFields } = options;
 		if (updateFields && updateFields.length > 0) {
-			const { patch, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
+			const { patch, fieldChanges, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
 				duplicate as Record<string, unknown>,
 				createFields,
 				updateFields,
@@ -169,7 +169,7 @@ export async function createHolidaySetIfNotExists(
 					holidaySetId: duplicate.id as number,
 					holidaySetName: duplicate.holidaySetName as string,
 					matchedDedupFields: matchedFields,
-					fieldsUpdated: Object.keys(patch),
+					fieldsUpdated: fieldChanges,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings, ...updateWarnings],
 				};

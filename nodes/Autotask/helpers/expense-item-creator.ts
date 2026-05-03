@@ -23,7 +23,7 @@ export interface IExpenseItemCreateResult {
 	expenseItemId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
-	fieldsUpdated?: string[];
+	fieldsUpdated?: Record<string, { from: unknown; to: unknown }>;
 	fieldsCompared?: string[];
 	warnings: string[];
 }
@@ -84,7 +84,7 @@ export async function createExpenseItemIfNotExists(
 
 		const { updateFields } = options;
 		if (updateFields && updateFields.length > 0) {
-			const { patch, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
+			const { patch, fieldChanges, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
 				entry as Record<string, unknown>,
 				createFields,
 				updateFields,
@@ -107,7 +107,7 @@ export async function createExpenseItemIfNotExists(
 					expenseReportID,
 					expenseItemId: entry.id as number,
 					matchedDedupFields: matched,
-					fieldsUpdated: Object.keys(patch),
+					fieldsUpdated: fieldChanges,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings, ...updateWarnings],
 				};

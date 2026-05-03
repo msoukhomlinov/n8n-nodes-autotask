@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.13.2] - 2026-05-04
+
+### Fixed
+- **`createIfNotExists` update path — 405 on PATCH `/{id}`:** `applyDuplicateUpdate` was constructing the PATCH URL as `/{entity}/{id}` for root entities (e.g. `PATCH /Contracts/30131266/`). Autotask REST API only allows GET on that endpoint; PATCH must go to the collection endpoint (`/Contracts`) with `id` in the body — matching the pattern used by the standard `UpdateOperation`. Fixed both the metadata-known path and the unknown-entity fallback.
+- **`createIfNotExists` update output — from/to field changes:** `fieldsUpdated` in update responses previously contained only a flat list of changed field names (`string[]`). Now contains a `Record<string, { from: unknown; to: unknown }>` map showing the before and after value for each changed field. Applied uniformly across all `createIfNotExists` helpers.
+
 ## [2.13.1] - 2026-05-04
 
 ### Planned

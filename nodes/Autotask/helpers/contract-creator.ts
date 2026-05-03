@@ -23,7 +23,7 @@ export interface IContractCreateResult {
 	contractId?: number;
 	reason?: string;
 	matchedDedupFields?: string[];
-	fieldsUpdated?: string[];
+	fieldsUpdated?: Record<string, { from: unknown; to: unknown }>;
 	fieldsCompared?: string[];
 	warnings: string[];
 }
@@ -140,7 +140,7 @@ export async function createContractIfNotExists(
 
 		const { updateFields } = options;
 		if (updateFields && updateFields.length > 0) {
-			const { patch, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
+			const { patch, fieldChanges, compared, skipped, warnings: diffWarnings } = computeFieldDiffs(
 				duplicate as Record<string, unknown>,
 				createFields,
 				updateFields,
@@ -162,7 +162,7 @@ export async function createContractIfNotExists(
 					companyID,
 					contractId: duplicate.id as number,
 					matchedDedupFields: matchedFields,
-					fieldsUpdated: Object.keys(patch),
+					fieldsUpdated: fieldChanges,
 					fieldsCompared: compared,
 					warnings: [...warnings, ...diffWarnings, ...updateWarnings],
 				};
