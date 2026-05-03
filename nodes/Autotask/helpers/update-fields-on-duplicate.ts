@@ -129,16 +129,25 @@ export async function applyDuplicateUpdate(
 	let udfEntries: Array<{ name: string; value: unknown }> = [];
 
 	if (metadata?.hasUserDefinedFields) {
-		const udfDefs = await getFields(resource, context, { fieldType: 'udf' }) as IUdfFieldDefinition[];
-		if (udfDefs.length > 0) {
-			const udfNameSet = new Set(udfDefs.map(u => u.name.toLowerCase()));
-			const udfKeys = Object.keys(patch).filter(k => udfNameSet.has(k.toLowerCase()));
-			if (udfKeys.length > 0) {
-				udfEntries = udfKeys.map(k => ({ name: k, value: (patch as IDataObject)[k] }));
-				patchStandard = Object.fromEntries(
-					Object.entries(patch as IDataObject).filter(([k]) => !udfKeys.includes(k)),
-				);
+		try {
+			const udfDefs = await getFields(resource, context, { fieldType: 'udf' }) as IUdfFieldDefinition[];
+			if (udfDefs.length > 0) {
+				const udfNameSet = new Set(udfDefs.map(u => u.name.toLowerCase()));
+				const udfKeys = Object.keys(patch).filter(k => udfNameSet.has(k.toLowerCase()));
+				if (udfKeys.length > 0) {
+					udfEntries = udfKeys.map(k => ({ name: k, value: (patch as IDataObject)[k] }));
+					patchStandard = Object.fromEntries(
+						Object.entries(patch as IDataObject).filter(([k]) => !udfKeys.includes(k)),
+					);
+				}
 			}
+		} catch {
+			// UDF metadata unavailable — send all patch fields as standard root fields.
+			// If any are genuine UDF fields, Autotask will return a field-not-found error
+			// on the PATCH, which is more actionable than throwing before the request.
+			warnings.push(
+				`applyDuplicateUpdate: could not fetch UDF definitions for '${resource}' — patch sent without UDF splitting. If the patch contains UDF fields, the PATCH may fail.`,
+			);
 		}
 	}
 
