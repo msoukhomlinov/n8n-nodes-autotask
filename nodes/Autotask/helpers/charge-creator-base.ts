@@ -2,6 +2,7 @@ import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
 import { extractItems } from './dedup-utils';
 import { performCreate } from './entity-writer';
+import { ParentNotFoundError } from './compound-errors';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
 
@@ -16,7 +17,7 @@ export interface IChargeCreateIfNotExistsOptions {
 	updateFields?: string[];
 }
 
-export type ChargeCreateOutcome = 'created' | 'skipped' | 'updated' | 'parent_not_found';
+export type ChargeCreateOutcome = 'created' | 'skipped' | 'updated';
 
 export interface IChargeCreateResult {
 	outcome: ChargeCreateOutcome;
@@ -216,13 +217,7 @@ export async function createChargeIfNotExists(
 	warnings.push(...parentWarnings);
 
 	if (parents.length === 0) {
-		return {
-			outcome: 'parent_not_found',
-			parentLookupValue,
-			chargeName: (options.createFields.name as string) ?? '',
-			datePurchased: (options.createFields.datePurchased as string) ?? '',
-			warnings,
-		};
+		throw new ParentNotFoundError(config.parentEntityLabel, config.parentLookupField, parentLookupValue);
 	}
 
 	const parentId = parents[0].id as number;

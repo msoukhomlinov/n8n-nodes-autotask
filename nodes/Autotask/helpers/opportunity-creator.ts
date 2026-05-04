@@ -4,6 +4,7 @@ import { extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
 import { performCreate } from './entity-writer';
+import { ParentNotFoundError } from './compound-errors';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ export interface IOpportunityCreateIfNotExistsOptions {
 	updateFields?: string[];
 }
 
-export type OpportunityCreateOutcome = 'created' | 'skipped' | 'updated' | 'company_not_found';
+export type OpportunityCreateOutcome = 'created' | 'skipped' | 'updated';
 
 export interface IOpportunityCreateResult {
 	outcome: OpportunityCreateOutcome;
@@ -99,7 +100,7 @@ export async function createOpportunityIfNotExists(
 	// Step 0: Verify company exists
 	const companyExists = await verifyCompanyExists(ctx, companyId);
 	if (!companyExists) {
-		return { outcome: 'company_not_found', companyId, title, reason: `Company with ID ${companyId} not found.`, warnings };
+		throw new ParentNotFoundError('Company', 'id', companyId);
 	}
 
 	// Step 1: Check for duplicate

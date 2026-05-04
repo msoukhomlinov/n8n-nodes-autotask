@@ -4,6 +4,7 @@ import { extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
 import { performCreate } from './entity-writer';
+import { ParentNotFoundError } from './compound-errors';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ export interface IContractServiceCreateIfNotExistsOptions {
 	updateFields?: string[];
 }
 
-export type ContractServiceCreateOutcome = 'created' | 'skipped' | 'updated' | 'contract_not_found';
+export type ContractServiceCreateOutcome = 'created' | 'skipped' | 'updated';
 
 export interface IContractServiceCreateResult {
 	outcome: ContractServiceCreateOutcome;
@@ -102,11 +103,7 @@ export async function createContractServiceIfNotExists(
 	warnings.push(...resolveWarnings);
 
 	if (contractId === null) {
-		return {
-			outcome: 'contract_not_found',
-			serviceID,
-			warnings,
-		};
+		throw new ParentNotFoundError('Contract', 'id', String(contractID));
 	}
 
 	// Step 2: Check for duplicate

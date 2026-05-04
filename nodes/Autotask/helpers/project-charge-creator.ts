@@ -10,7 +10,7 @@ import {
 
 export type IProjectChargeCreateIfNotExistsOptions = IChargeCreateIfNotExistsOptions;
 
-export type ProjectChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'updated' | 'project_not_found';
+export type ProjectChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'updated';
 
 export interface IProjectChargeCreateIfNotExistsResult {
 	outcome: ProjectChargeCreateIfNotExistsOutcome;
@@ -92,12 +92,8 @@ function mapToProjectChargeResult(
 	result: IChargeCreateResult,
 	projectID: string | number,
 ): IProjectChargeCreateIfNotExistsResult {
-	const outcome = result.outcome === 'parent_not_found'
-		? 'project_not_found' as const
-		: result.outcome;
-
 	return {
-		outcome,
+		outcome: result.outcome,
 		projectId: result.parentId,
 		chargeId: result.chargeId,
 

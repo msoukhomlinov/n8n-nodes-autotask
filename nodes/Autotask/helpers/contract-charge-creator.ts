@@ -10,7 +10,7 @@ import {
 
 export type IContractChargeCreateIfNotExistsOptions = IChargeCreateIfNotExistsOptions;
 
-export type ContractChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'updated' | 'contract_not_found';
+export type ContractChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'updated';
 
 export interface IContractChargeCreateIfNotExistsResult {
 	outcome: ContractChargeCreateIfNotExistsOutcome;
@@ -75,12 +75,8 @@ function mapToContractChargeResult(
 	result: IChargeCreateResult,
 	contractID: string | number,
 ): IContractChargeCreateIfNotExistsResult {
-	const outcome = result.outcome === 'parent_not_found'
-		? 'contract_not_found' as const
-		: result.outcome;
-
 	return {
-		outcome,
+		outcome: result.outcome,
 		contractId: result.parentId,
 		chargeId: result.chargeId,
 

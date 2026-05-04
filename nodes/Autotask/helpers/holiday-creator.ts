@@ -3,6 +3,7 @@ import { autotaskApiRequest } from './http';
 import { compareDedupField, extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { performCreate } from './entity-writer';
+import { ParentNotFoundError } from './compound-errors';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -15,7 +16,7 @@ export interface IHolidayCreateIfNotExistsOptions {
 	updateFields?: string[];
 }
 
-export type HolidayCreateOutcome = 'created' | 'skipped' | 'updated' | 'holiday_set_not_found';
+export type HolidayCreateOutcome = 'created' | 'skipped' | 'updated';
 
 export interface IHolidayCreateResult {
 	outcome: HolidayCreateOutcome;
@@ -131,12 +132,7 @@ export async function createHolidayIfNotExists(
 	// Step 0: Verify holiday set exists
 	const setExists = await verifyHolidaySetExists(ctx, holidaySetId);
 	if (!setExists) {
-		return {
-			outcome: 'holiday_set_not_found',
-			holidaySetId,
-			reason: `HolidaySet with ID ${holidaySetId} not found.`,
-			warnings,
-		};
+		throw new ParentNotFoundError('HolidaySet', 'id', holidaySetId);
 	}
 
 	// Step 1: Check for duplicate

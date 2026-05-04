@@ -4,6 +4,7 @@ import { extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
 import { performCreate } from './entity-writer';
+import { ParentNotFoundError } from './compound-errors';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ export interface IConfigurationItemCreateIfNotExistsOptions {
 	updateFields?: string[];
 }
 
-export type ConfigurationItemCreateOutcome = 'created' | 'skipped' | 'updated' | 'company_not_found';
+export type ConfigurationItemCreateOutcome = 'created' | 'skipped' | 'updated';
 
 export interface IConfigurationItemCreateResult {
 	outcome: ConfigurationItemCreateOutcome;
@@ -95,11 +96,7 @@ export async function createConfigurationItemIfNotExists(
 	// Step 1: Verify company exists
 	const companyExists = await verifyCompanyExists(ctx, companyID);
 	if (!companyExists) {
-		return {
-			outcome: 'company_not_found',
-			companyID,
-			warnings,
-		};
+		throw new ParentNotFoundError('Company', 'id', companyID);
 	}
 
 	// Step 2: Check for duplicate CI

@@ -2,10 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.14.2] - 2026-05-04
+
+### Fixed
+- **`createIfNotExists` — parent not found returned as silent success (all entities):** All compound `createIfNotExists` helpers (`contractCharge`, `ticketCharge`, `projectCharge`, `configurationItems`, `contract`, `contractService`, `opportunity`, `holiday`, `ticketAdditionalConfigurationItem`, `ticketAdditionalContact`) now throw `ParentNotFoundError` when the parent entity is not found, instead of returning a `xxx_not_found` success-shaped object. Standard node path: workflow node fails with a descriptive error (or `continueOnFail` captures `{ error: "..." }`). AI tools path: `compound-operations.ts` catches `ParentNotFoundError` and returns `ENTITY_NOT_FOUND` error envelope. `notFoundOutcome` field removed from `CompoundRegistryEntry`; `COMPOUND_PARENT_NOT_FOUND_OUTCOMES` set removed.
+
 ## [2.14.1] - 2026-05-04
 
 ### Fixed
 - **`createIfNotExists` — contract/ticket/project charge parent lookup always returns not-found:** `findParentEntity` passed the parent ID as a string to the Autotask `id` field filter (a Long). Autotask returns 0 results for string values against Long fields, so the parent was never found and the charge was never created. Fix: `lookupValue` / `parentLookupValue` now typed `string | number`; callers pass numeric IDs as numbers (`Number(id)`) and string identifiers (e.g. `ticketNumber`) as strings. Affected: `contractCharge`, `ticketCharge`, `projectCharge` `createIfNotExists`.
+- **`createIfNotExists` — parent not found silently returned as success envelope:** When parent entity (contract/ticket/project) was not found, `createChargeIfNotExists` returned `{ outcome: 'contract_not_found', ... }` as a success-shaped object. Now throws an error so the workflow node fails (or `continueOnFail` captures it as `{ error: "..." }`). `parent_not_found` outcome and `contract_not_found`/`ticket_not_found`/`project_not_found` outcome variants removed.
 
 ## [2.14.0] - 2026-05-04
 

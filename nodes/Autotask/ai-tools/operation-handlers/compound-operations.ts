@@ -4,10 +4,8 @@ import { attachCorrelation, buildCompoundResponse } from '../response-builder';
 import { wrapError, ERROR_TYPES } from '../error-formatter';
 import { enrichResponseJson } from '../../helpers/enrichment';
 import { convertDatesToUTC } from '../../helpers/date-time/utils';
-import {
-	COMPOUND_REGISTRY,
-	COMPOUND_PARENT_NOT_FOUND_OUTCOMES,
-} from '../../constants/compound-registry';
+import { COMPOUND_REGISTRY } from '../../constants/compound-registry';
+import { ParentNotFoundError } from '../../helpers/compound-errors';
 
 /** Extract the entity numeric ID from a compound creator result (all outcomes use the same field). */
 
@@ -125,33 +123,30 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 
 	const handler = await registryEntry.getHandler();
 
-	const compoundResult = await handler(context, 0, compoundOptions) as Record<string, unknown>;
+	let compoundResult: Record<string, unknown>;
+	try {
+		compoundResult = await handler(context, 0, compoundOptions) as Record<string, unknown>;
+	} catch (err) {
+		if (err instanceof ParentNotFoundError) {
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						'createIfNotExists',
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						err.message,
+						`Verify the parent entity identifier and retry.`,
+					),
+				),
+				correlationId,
+			);
+		}
+		throw err;
+	}
 
 	if (!compoundResult) {
 		// Helper returned falsy — let caller fall through to standard executor.
 		return null;
-	}
-
-	// Reclassify not-found outcomes as errors
-	if (COMPOUND_PARENT_NOT_FOUND_OUTCOMES.has(compoundResult.outcome as string)) {
-		const parentRef =
-			compoundResult.parentLookupValue ??
-			compoundResult.companyID ??
-			compoundResult.ticketID ??
-			'unknown';
-		return attachCorrelation(
-			JSON.stringify(
-				wrapError(
-					resource,
-					'createIfNotExists',
-					ERROR_TYPES.ENTITY_NOT_FOUND,
-					`Parent entity not found: ${parentRef}`,
-					`Verify the parent entity identifier and retry.`,
-					{ outcome: compoundResult.outcome },
-				),
-			),
-			correlationId,
-		);
 	}
 
 	// Merge compound warnings with label resolution warnings

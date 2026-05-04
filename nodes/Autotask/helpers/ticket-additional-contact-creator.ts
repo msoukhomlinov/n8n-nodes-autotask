@@ -2,6 +2,7 @@ import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
 import { extractItems, compareDedupField } from './dedup-utils';
 import { performCreate } from './entity-writer';
+import { ParentNotFoundError } from './compound-errors';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
@@ -15,7 +16,7 @@ export interface ITicketAdditionalContactCreateIfNotExistsOptions {
 	updateFields?: string[];
 }
 
-export type TicketAdditionalContactCreateOutcome = 'created' | 'skipped' | 'updated' | 'ticket_not_found';
+export type TicketAdditionalContactCreateOutcome = 'created' | 'skipped' | 'updated';
 
 export interface ITicketAdditionalContactCreateResult {
 	outcome: TicketAdditionalContactCreateOutcome;
@@ -128,7 +129,7 @@ export async function createTicketAdditionalContactIfNotExists(
 	// Step 0: Verify ticket exists
 	const ticketExists = await verifyTicketExists(ctx, ticketId);
 	if (!ticketExists) {
-		return { outcome: 'ticket_not_found', ticketId, contactID, warnings };
+		throw new ParentNotFoundError('Ticket', 'id', ticketId);
 	}
 
 	// Step 1: Check for duplicate

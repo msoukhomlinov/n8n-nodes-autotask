@@ -10,7 +10,7 @@ import {
 
 export type ITicketChargeCreateIfNotExistsOptions = IChargeCreateIfNotExistsOptions;
 
-export type TicketChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'updated' | 'ticket_not_found';
+export type TicketChargeCreateIfNotExistsOutcome = 'created' | 'skipped' | 'updated';
 
 export interface ITicketChargeCreateIfNotExistsResult {
 	outcome: TicketChargeCreateIfNotExistsOutcome;
@@ -92,12 +92,8 @@ function mapToTicketChargeResult(
 	result: IChargeCreateResult,
 	ticketID: string | number,
 ): ITicketChargeCreateIfNotExistsResult {
-	const outcome = result.outcome === 'parent_not_found'
-		? 'ticket_not_found' as const
-		: result.outcome;
-
 	return {
-		outcome,
+		outcome: result.outcome,
 		ticketId: result.parentId,
 		chargeId: result.chargeId,
 

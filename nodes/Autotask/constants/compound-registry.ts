@@ -23,12 +23,6 @@ export interface CompoundRegistryEntry {
 	defaultDedupFields: string[];
 	/** Field in the result containing the entity's numeric ID (all outcomes: created/skipped/updated). */
 	entityIdField: string;
-	/**
-	 * Outcome string that indicates the parent entity was not found.
-	 * When the compound result's `outcome` matches this, the tool returns
-	 * an ENTITY_NOT_FOUND error for the parent rather than the created entity.
-	 */
-	notFoundOutcome?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,7 +44,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['name', 'datePurchased'],
 		entityIdField: 'chargeId',
-		notFoundOutcome: 'contract_not_found',
+
 	},
 	ticketCharge: {
 		getHandler: () =>
@@ -59,7 +53,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['name', 'datePurchased'],
 		entityIdField: 'chargeId',
-		notFoundOutcome: 'ticket_not_found',
+
 	},
 	projectCharge: {
 		getHandler: () =>
@@ -68,7 +62,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['name', 'datePurchased'],
 		entityIdField: 'chargeId',
-		notFoundOutcome: 'project_not_found',
+
 	},
 	configurationItems: {
 		getHandler: () =>
@@ -77,7 +71,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['serialNumber'],
 		entityIdField: 'configurationItemId',
-		notFoundOutcome: 'company_not_found',
+
 	},
 	timeEntry: {
 		getHandler: () =>
@@ -94,7 +88,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['serviceID'],
 		entityIdField: 'contractServiceId',
-		notFoundOutcome: 'contract_not_found',
+
 	},
 	contract: {
 		getHandler: () =>
@@ -103,7 +97,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['contractName'],
 		entityIdField: 'contractId',
-		notFoundOutcome: 'company_not_found',
+
 	},
 	opportunity: {
 		getHandler: () =>
@@ -112,7 +106,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['title'],
 		entityIdField: 'opportunityId',
-		notFoundOutcome: 'company_not_found',
+
 	},
 	expenseItem: {
 		getHandler: () =>
@@ -129,7 +123,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['configurationItemID'],
 		entityIdField: 'ticketAdditionalConfigurationItemId',
-		notFoundOutcome: 'ticket_not_found',
+
 	},
 	ticketAdditionalContact: {
 		getHandler: () =>
@@ -138,7 +132,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['contactID'],
 		entityIdField: 'ticketAdditionalContactId',
-		notFoundOutcome: 'ticket_not_found',
+
 	},
 	changeRequestLink: {
 		getHandler: () =>
@@ -163,17 +157,6 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['holidayDate'],
 		entityIdField: 'holidayId',
-		notFoundOutcome: 'holiday_set_not_found',
 	},
 };
 
-/**
- * Set of all outcome strings that mean a parent entity was not found.
- * Derived from the registry — no manual maintenance needed.
- */
-export const COMPOUND_PARENT_NOT_FOUND_OUTCOMES: ReadonlySet<string> = new Set([
-	'parent_not_found', // defensive — kept for forward-compatibility
-	...Object.values(COMPOUND_REGISTRY)
-		.map((e) => e.notFoundOutcome)
-		.filter((v): v is string => v !== undefined),
-]);
