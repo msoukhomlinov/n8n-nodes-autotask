@@ -166,7 +166,7 @@ export async function createCharge(
 	parentId: number,
 	billingCodeID: number | undefined,
 	options: IChargeCreateIfNotExistsOptions,
-): Promise<number> {
+): Promise<{ chargeId: number; warnings: string[] }> {
 	const body: IDataObject = {
 		...options.createFields as IDataObject,
 		[config.chargeParentIdField]: parentId,
@@ -189,13 +189,13 @@ export async function createCharge(
 
 	const endpoint = config.chargeCreateEndpointTemplate.replace('{parentId}', String(parentId));
 
-	const { id: chargeId } = await performCreate(ctx, config.entityName, body, {
+	const { id: chargeId, warnings: createWarnings } = await performCreate(ctx, config.entityName, body, {
 		endpoint,
 		impersonationResourceId: options.impersonationResourceId,
 		proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
 	});
 
-	return chargeId;
+	return { chargeId, warnings: createWarnings };
 }
 
 /**
@@ -308,7 +308,8 @@ export async function createChargeIfNotExists(
 	warnings.push(...billingWarnings);
 
 	// Step 4: Create charge
-	const chargeId = await createCharge(ctx, config, parentId, billingCodeID, options);
+	const { chargeId, warnings: createWarnings } = await createCharge(ctx, config, parentId, billingCodeID, options);
+	warnings.push(...createWarnings);
 
 	return {
 		outcome: 'created',
