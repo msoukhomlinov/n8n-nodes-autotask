@@ -1,10 +1,6 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
-import { autotaskApiRequest, buildEntityUrl, buildChildEntityUrl } from './http';
 import { compareDedupField, getEntityFieldValue } from './dedup-utils';
-import { getEntityMetadata } from '../constants/entities';
-import { OperationType } from '../types/base/entity-types';
-import { getFields } from './entity/api';
-import type { IUdfFieldDefinition } from '../types/base/udf-types';
+import { performPatch } from './entity-writer';
 
 // ─── computeFieldDiffs ────────────────────────────────────────────────────────
 
@@ -94,11 +90,8 @@ export interface IApplyDuplicateUpdateResult {
 
 /**
  * Apply a PATCH to an existing duplicate record, updating only the fields in `patch`.
- *
- * URL construction mirrors the UpdateOperation logic:
- * - Child entities whose metadata has `operations.update === 'parent'` use the
- *   parent collection URL (`{parent}/{parentId}/{child}`) with `id` in the body.
- * - All other entities use the direct URL (`{entity}/{duplicateId}`).
+ * Delegates to `performPatch` which handles UDF splitting, endpoint construction,
+ * and inactive-reference retry.
  *
  * @throws if the PATCH request fails — callers should handle errors.
  */
@@ -106,8 +99,6 @@ export async function applyDuplicateUpdate(
 	context: IExecuteFunctions,
 	options: IApplyDuplicateUpdateOptions,
 ): Promise<IApplyDuplicateUpdateResult> {
-	const warnings: string[] = [];
-
 	const {
 		resource,
 		duplicateId,
@@ -117,85 +108,16 @@ export async function applyDuplicateUpdate(
 		proceedWithoutImpersonationIfDenied,
 	} = options;
 
-	// Guard: nothing to do if patch is empty
-	if (Object.keys(patch).length === 0) {
-		return { updatedEntity: {}, warnings: ['applyDuplicateUpdate called with empty patch — skipped'] };
-	}
-
-	// Resolve entity metadata first so we can branch on it without calling buildEntityUrl
-	// (which throws for unknown entities) before we have a chance to fall back.
-	const metadata = getEntityMetadata(resource);
-
-	// Split patch into standard fields and UDF fields.
-	// UDF fields must be sent as userDefinedFields[{name, value}]; sending them flat causes 500.
-	let patchStandard: IDataObject = { ...(patch as IDataObject) };
-	let udfEntries: Array<{ name: string; value: unknown }> = [];
-
-	if (metadata?.hasUserDefinedFields) {
-		try {
-			const udfDefs = await getFields(resource, context, { fieldType: 'udf' }) as IUdfFieldDefinition[];
-			if (udfDefs.length > 0) {
-				const udfNameSet = new Set(udfDefs.map(u => u.name.toLowerCase()));
-				const udfKeys = Object.keys(patch).filter(k => udfNameSet.has(k.toLowerCase()));
-				if (udfKeys.length > 0) {
-					udfEntries = udfKeys.map(k => ({ name: k, value: (patch as IDataObject)[k] }));
-					patchStandard = Object.fromEntries(
-						Object.entries(patch as IDataObject).filter(([k]) => !udfKeys.includes(k)),
-					);
-				}
-			}
-		} catch {
-			// UDF metadata unavailable — send all patch fields as standard root fields.
-			// If any are genuine UDF fields, Autotask will return a field-not-found error
-			// on the PATCH, which is more actionable than throwing before the request.
-			warnings.push(
-				`applyDuplicateUpdate: could not fetch UDF definitions for '${resource}' — patch sent without UDF splitting. If the patch contains UDF fields, the PATCH may fail.`,
-			);
-		}
-	}
-
-	// Build PATCH body — always include `id`
-	const body: IDataObject = {
-		id: duplicateId,
-		...patchStandard,
-		...(udfEntries.length > 0 ? { userDefinedFields: udfEntries } : {}),
-	};
-
-	// Determine the endpoint
-	let endpoint: string;
-
-	if (metadata?.childOf && metadata.operations?.[OperationType.UPDATE] === 'parent') {
-		// Parent-mode update: POST/PATCH to parent/{parentId}/{child} with id in body
-		if (!parentId) {
-			throw new Error(
-				`applyDuplicateUpdate: parentId is required for child entity '${resource}' but was not provided`,
-			);
-		}
-		endpoint = buildChildEntityUrl(metadata.childOf, resource, parentId);
-	} else if (metadata) {
-		// Direct update: PATCH to collection endpoint — Autotask REST API pattern requires
-		// id in the body, not the URL. PATCH /{entity}/{id} returns 405 for all root entities.
-		endpoint = buildEntityUrl(resource);
-	} else {
-		// Fallback for unknown entities — construct URL manually and warn rather than throw
-		warnings.push(
-			`applyDuplicateUpdate: unknown entity '${resource}' — metadata not found, constructing PATCH URL manually.`,
-		);
-		endpoint = `/atservicesrest/v1.0/${resource}`;
-	}
-
-	const response = await autotaskApiRequest.call(
+	const { response: updatedEntity, warnings } = await performPatch(
 		context,
-		'PATCH',
-		endpoint,
-		body,
-		{},
-		impersonationResourceId,
-		proceedWithoutImpersonationIfDenied ?? true,
-	) as IDataObject;
+		resource,
+		duplicateId,
+		patch as IDataObject,
+		{ parentId, impersonationResourceId, proceedWithoutImpersonationIfDenied },
+	);
 
 	return {
-		updatedEntity: (response ?? {}) as Record<string, unknown>,
+		updatedEntity: updatedEntity as Record<string, unknown>,
 		warnings,
 	};
 }
