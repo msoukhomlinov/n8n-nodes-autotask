@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { extractId, extractItems, compareDedupField } from './dedup-utils';
+import { extractItems, compareDedupField } from './dedup-utils';
+import { performCreate } from './entity-writer';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
@@ -106,34 +107,6 @@ async function findDuplicateAssociation(
 	return { duplicate: null, matchedFields: [] };
 }
 
-// ─── Step 2: Create association ───────────────────────────────────────────────
-
-async function createAssociation(
-	ctx: IExecuteFunctions,
-	ticketId: number,
-	contactID: number,
-	impersonationResourceId?: number,
-	proceedWithoutImpersonationIfDenied?: boolean,
-): Promise<number> {
-	const body: IDataObject = { contactID };
-
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
-		`Tickets/${ticketId}/AdditionalContacts`,
-		body,
-		{},
-		impersonationResourceId,
-		proceedWithoutImpersonationIfDenied ?? true,
-	);
-
-	const newId = extractId(response as IDataObject);
-	if (!newId) {
-		throw new Error('TicketAdditionalContact creation succeeded but returned no ID.');
-	}
-	return newId;
-}
-
 // ─── Main orchestrator ────────────────────────────────────────────────────────
 
 export async function createTicketAdditionalContactIfNotExists(
@@ -232,13 +205,17 @@ export async function createTicketAdditionalContactIfNotExists(
 		throw new Error('createFields.contactID is required to create the association.');
 	}
 
-	const newId = await createAssociation(
+	const { id: newId, warnings: createWarnings } = await performCreate(
 		ctx,
-		ticketId,
-		contactID,
-		options.impersonationResourceId,
-		options.proceedWithoutImpersonationIfDenied,
+		'TicketAdditionalContact',
+		{ contactID } as IDataObject,
+		{
+			endpoint: `Tickets/${ticketId}/AdditionalContacts`,
+			impersonationResourceId: options.impersonationResourceId,
+			proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
+		},
 	);
+	warnings.push(...createWarnings);
 
 	return {
 		outcome: 'created',
