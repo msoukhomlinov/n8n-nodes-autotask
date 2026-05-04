@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.13.4] - 2026-05-04
+
+### Fixed
+- **`createIfNotExists` — UDF values omitted on create:** Compound helpers bypass `CreateOperation.execute()` and call `autotaskApiRequest` directly, so `buildRequestBody()`'s UDF→`userDefinedFields` conversion never ran. Records were created without any UDF values supplied by the caller. Fix: `handleCreateIfNotExists` now splits UDF flat fields into `userDefinedFields:[{name,value}]` immediately after `convertDatesToUTC`, before passing `createFields` to any compound helper — mirrors `applyDuplicateUpdate`'s UDF handling on the update path. Applies to all entities with `hasUserDefinedFields: true` (Contract, ConfigurationItem, TimeEntry, Opportunity, ExpenseItem). Non-UDF entities skip the fetch.
+
 ## [2.13.3] - 2026-05-04
 
 ### Fixed

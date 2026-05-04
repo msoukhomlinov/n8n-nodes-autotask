@@ -3,6 +3,7 @@ import { autotaskApiRequest } from './http';
 import { extractId, extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
+import { buildApiCreateBody } from './udf/split';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -77,9 +78,7 @@ async function createContract(
 	impersonationResourceId?: number,
 	proceedWithoutImpersonationIfDenied?: boolean,
 ): Promise<number> {
-	const body: IDataObject = {
-		...createFields as IDataObject,
-	};
+	const body = await buildApiCreateBody(ctx, 'Contract', createFields);
 
 	const response = await autotaskApiRequest.call(
 		ctx,

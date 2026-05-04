@@ -94,6 +94,7 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 		context,
 		'createIfNotExists',
 	)) as Record<string, unknown>;
+
 	const registryEntry = COMPOUND_REGISTRY[resource];
 	if (!registryEntry) {
 		return attachCorrelation(

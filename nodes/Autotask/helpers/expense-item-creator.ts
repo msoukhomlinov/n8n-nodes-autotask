@@ -3,6 +3,7 @@ import { autotaskApiRequest } from './http';
 import { extractId } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
+import { buildApiCreateBody } from './udf/split';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -135,9 +136,7 @@ export async function createExpenseItemIfNotExists(
 	}
 
 	// Step 4: Create via child endpoint — POST to /Expenses/{expenseReportID}/Items
-	const body: IDataObject = {
-		...createFields as IDataObject,
-	};
+	const body = await buildApiCreateBody(ctx, 'ExpenseItem', createFields);
 
 	const response = await autotaskApiRequest.call(
 		ctx,

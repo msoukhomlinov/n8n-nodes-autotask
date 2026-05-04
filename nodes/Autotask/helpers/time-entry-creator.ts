@@ -3,6 +3,7 @@ import { autotaskApiRequest } from './http';
 import { extractId } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
+import { buildApiCreateBody } from './udf/split';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -141,9 +142,7 @@ export async function createTimeEntryIfNotExists(
 	}
 
 	// Step 4: Build create body and POST
-	const body: IDataObject = {
-		...createFields as IDataObject,
-	};
+	const body = await buildApiCreateBody(ctx, 'TimeEntry', createFields);
 
 	const response = await autotaskApiRequest.call(
 		ctx,
