@@ -2,6 +2,17 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.14.0] - 2026-05-04
+
+### Changed
+- Architecture: all compound `createIfNotExists` POST/PATCH calls now route through a shared wire layer (`helpers/entity-writer.ts` — `performCreate`/`performPatch`) that uses the same `buildRequestBody` body-builder as `CreateOperation`/`UpdateOperation`. Eliminates body-building drift between compound and regular paths.
+- `buildRequestBody` (`helpers/http/body-builder.ts`) no longer requires a `FieldProcessor` — accepts `IExecuteFunctions` context directly. `getFields` failures now warn and continue rather than throwing (matches prior `buildApiCreateBody` behavior).
+- `applyDuplicateUpdate` is now a thin wrapper over `performPatch` — UDF splitting and endpoint construction unified.
+
+### Fixed
+- `withInactiveRefRetry` now active on all compound creates and updates (previously only on `CreateOperation`/`UpdateOperation` — compound helpers hard-failed on inactive reference entities).
+- Debug `console.log` statements removed from `buildRequestBody` (log noise + PII risk on request bodies).
+
 ## [2.13.4] - 2026-05-04
 
 ### Fixed
