@@ -62,7 +62,7 @@ export async function createContractChargeIfNotExists(
 	const result = await createChargeIfNotExists(
 		ctx,
 		CONTRACT_CHARGE_CONFIG_BY_ID,
-		String(contractID),
+		typeof contractID === 'number' ? contractID : parseInt(String(contractID), 10),
 		options,
 	);
 

@@ -22,7 +22,7 @@ export interface IChargeCreateResult {
 	outcome: ChargeCreateOutcome;
 	parentId?: number;
 	chargeId?: number;
-	parentLookupValue: string;
+	parentLookupValue: string | number;
 	chargeName: string;
 	datePurchased: string;
 	unitQuantity?: number;
@@ -65,7 +65,7 @@ export interface ChargeCreatorConfig {
 export async function findParentEntity(
 	ctx: IExecuteFunctions,
 	config: ChargeCreatorConfig,
-	lookupValue: string,
+	lookupValue: string | number,
 ): Promise<{ parents: IDataObject[]; warnings: string[] }> {
 	const warnings: string[] = [];
 
@@ -204,7 +204,7 @@ export async function createCharge(
 export async function createChargeIfNotExists(
 	ctx: IExecuteFunctions,
 	config: ChargeCreatorConfig,
-	parentLookupValue: string,
+	parentLookupValue: string | number,
 	options: IChargeCreateIfNotExistsOptions,
 ): Promise<IChargeCreateResult> {
 	const warnings: string[] = [];

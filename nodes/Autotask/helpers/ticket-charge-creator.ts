@@ -74,7 +74,7 @@ export async function createTicketChargeIfNotExists(
 		? TICKET_CHARGE_CONFIG_BY_ID
 		: TICKET_CHARGE_CONFIG_BY_TICKET_NUMBER;
 
-	const lookupValue = String(ticketID);
+	const lookupValue: string | number = isNumericId ? Number(ticketID) : String(ticketID);
 
 	const result = await createChargeIfNotExists(
 		ctx,

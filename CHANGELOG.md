@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.14.1] - 2026-05-04
+
+### Fixed
+- **`createIfNotExists` — contract/ticket/project charge parent lookup always returns not-found:** `findParentEntity` passed the parent ID as a string to the Autotask `id` field filter (a Long). Autotask returns 0 results for string values against Long fields, so the parent was never found and the charge was never created. Fix: `lookupValue` / `parentLookupValue` now typed `string | number`; callers pass numeric IDs as numbers (`Number(id)`) and string identifiers (e.g. `ticketNumber`) as strings. Affected: `contractCharge`, `ticketCharge`, `projectCharge` `createIfNotExists`.
+
 ## [2.14.0] - 2026-05-04
 
 ### Changed

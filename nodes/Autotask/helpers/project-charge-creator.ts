@@ -74,7 +74,7 @@ export async function createProjectChargeIfNotExists(
 		? PROJECT_CHARGE_CONFIG_BY_ID
 		: PROJECT_CHARGE_CONFIG_BY_NUMBER;
 
-	const lookupValue = String(projectID);
+	const lookupValue: string | number = isNumericId ? Number(projectID) : String(projectID);
 
 	const result = await createChargeIfNotExists(
 		ctx,
