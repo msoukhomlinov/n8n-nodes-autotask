@@ -1,8 +1,9 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { extractId, extractItems } from './dedup-utils';
+import { extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
+import { performCreate } from './entity-writer';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -77,41 +78,6 @@ function findDuplicateContractService(
 		createFields,
 		fieldTypeMap: CONTRACT_SERVICE_FIELD_TYPE_MAP,
 	});
-}
-
-// ─── Step 3: Create ContractService ──────────────────────────────────────────
-
-/**
- * POST Contracts/{contractId}/Services to create a new ContractService record.
- */
-async function createContractService(
-	ctx: IExecuteFunctions,
-	contractId: number,
-	createFields: Record<string, unknown>,
-	impersonationResourceId?: number,
-	proceedWithoutImpersonationIfDenied?: boolean,
-): Promise<number> {
-	const body: IDataObject = {
-		...createFields as IDataObject,
-		contractID: contractId,
-	};
-
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
-		`Contracts/${contractId}/Services`,
-		body,
-		{},
-		impersonationResourceId,
-		proceedWithoutImpersonationIfDenied ?? true,
-	);
-
-	const contractServiceId = extractId(response as IDataObject);
-	if (!contractServiceId) {
-		throw new Error('ContractService creation succeeded but returned no ID.');
-	}
-
-	return contractServiceId;
 }
 
 // ─── Main orchestrator ───────────────────────────────────────────────────────
@@ -213,13 +179,17 @@ export async function createContractServiceIfNotExists(
 	}
 
 	// Step 3: Create ContractService
-	const contractServiceId = await createContractService(
+	const { id: contractServiceId, warnings: createWarnings } = await performCreate(
 		ctx,
-		contractId,
-		createFields,
-		options.impersonationResourceId,
-		options.proceedWithoutImpersonationIfDenied,
+		'ContractService',
+		{ ...createFields as IDataObject, contractID: contractId },
+		{
+			endpoint: `Contracts/${contractId}/Services`,
+			impersonationResourceId: options.impersonationResourceId,
+			proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
+		},
 	);
+	warnings.push(...createWarnings);
 
 	return {
 		outcome: 'created',

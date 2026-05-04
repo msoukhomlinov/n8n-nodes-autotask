@@ -1,9 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
-import { autotaskApiRequest } from './http';
-import { extractId } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
-import { buildApiCreateBody } from './udf/split';
+import { performCreate } from './entity-writer';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -136,22 +134,17 @@ export async function createExpenseItemIfNotExists(
 	}
 
 	// Step 4: Create via child endpoint — POST to /Expenses/{expenseReportID}/Items
-	const body = await buildApiCreateBody(ctx, 'ExpenseItem', createFields);
-
-	const response = await autotaskApiRequest.call(
+	const { id: expenseItemId, warnings: createWarnings } = await performCreate(
 		ctx,
-		'POST',
-		`Expenses/${expenseReportID}/Items`,
-		body,
-		{},
-		options.impersonationResourceId,
-		options.proceedWithoutImpersonationIfDenied ?? true,
+		'ExpenseItem',
+		createFields as IDataObject,
+		{
+			endpoint: `Expenses/${expenseReportID}/Items`,
+			impersonationResourceId: options.impersonationResourceId,
+			proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
+		},
 	);
-
-	const expenseItemId = extractId(response as IDataObject);
-	if (!expenseItemId) {
-		throw new Error('Expense item creation succeeded but returned no ID.');
-	}
+	warnings.push(...createWarnings);
 
 	// Step 5: Return created result
 	return {

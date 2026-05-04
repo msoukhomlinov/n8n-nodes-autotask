@@ -1,7 +1,8 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { compareDedupField, extractId, extractItems } from './dedup-utils';
+import { compareDedupField, extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
+import { performCreate } from './entity-writer';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -108,34 +109,6 @@ async function findDuplicateHoliday(
 	return { duplicate: null, matchedFields: [] };
 }
 
-// ─── Step 2: Create holiday ───────────────────────────────────────────────────
-
-async function createHoliday(
-	ctx: IExecuteFunctions,
-	holidaySetId: number,
-	createFields: Record<string, unknown>,
-	impersonationResourceId?: number,
-	proceedWithoutImpersonationIfDenied?: boolean,
-): Promise<number> {
-	const body: IDataObject = { ...createFields as IDataObject };
-
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
-		`HolidaySets/${holidaySetId}/Holidays`,
-		body,
-		{},
-		impersonationResourceId,
-		proceedWithoutImpersonationIfDenied ?? true,
-	);
-
-	const id = extractId(response as IDataObject);
-	if (!id) {
-		throw new Error('Holiday creation succeeded but returned no ID.');
-	}
-	return id;
-}
-
 // ─── Main orchestrator ────────────────────────────────────────────────────────
 
 export async function createHolidayIfNotExists(
@@ -239,13 +212,17 @@ export async function createHolidayIfNotExists(
 	}
 
 	// Step 2: Create holiday
-	const holidayId = await createHoliday(
+	const { id: holidayId, warnings: createWarnings } = await performCreate(
 		ctx,
-		holidaySetId,
-		createFields,
-		options.impersonationResourceId,
-		options.proceedWithoutImpersonationIfDenied,
+		'Holiday',
+		createFields as IDataObject,
+		{
+			endpoint: `HolidaySets/${holidaySetId}/Holidays`,
+			impersonationResourceId: options.impersonationResourceId,
+			proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
+		},
 	);
+	warnings.push(...createWarnings);
 
 	return {
 		outcome: 'created',
