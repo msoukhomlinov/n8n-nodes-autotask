@@ -8,7 +8,6 @@ import { processResponseDates } from '../../helpers/date-time';
 import { processOutputMode } from '../../helpers/output-mode';
 import { buildRequestBody } from '../../helpers/http/body-builder';
 import { BaseOperation } from './base-operation';
-import { FieldProcessor } from './field-processor';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { getEntityMetadata } from '../../constants/entities';
 import { convertDatesToUTC } from '../../helpers/date-time/utils';
@@ -25,8 +24,6 @@ import {
  * Extends BaseOperation to handle both direct and indirect parent-child relationships
  */
 export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
-	private readonly fieldProcessor: FieldProcessor;
-
 	constructor(
 		entityType: string,
 		context: IExecuteFunctions,
@@ -36,7 +33,6 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 		const parentType = metadata?.operations?.update === 'parent' ? metadata.childOf : undefined;
 
 		super(entityType, OperationType.UPDATE, context, parentType);
-		this.fieldProcessor = FieldProcessor.getInstance(entityType, OperationType.UPDATE, context);
 	}
 
 	/**
@@ -125,7 +121,7 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 						entityType: this.entityType,
 						entityId,
 						operation: 'update',
-						fieldProcessor: this.fieldProcessor,
+						ctx: this.context,
 					});
 
 					console.debug('Request body:', requestBody);

@@ -9,7 +9,6 @@ import { processOutputMode } from '../../helpers/output-mode';
 import { getEntityMetadata } from '../../constants/entities';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { buildRequestBody } from '../../helpers/http/body-builder';
-import { FieldProcessor } from './field-processor';
 import { BaseOperation } from './base-operation';
 import { convertDatesToUTC } from '../../helpers/date-time/utils';
 import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
@@ -26,8 +25,6 @@ import {
  * Extends BaseOperation to handle both direct and indirect parent-child relationships
  */
 export class CreateOperation<T extends IAutotaskEntity> extends BaseOperation {
-	private readonly fieldProcessor: FieldProcessor;
-
 	constructor(
 		entityType: string,
 		context: IExecuteFunctions,
@@ -37,7 +34,6 @@ export class CreateOperation<T extends IAutotaskEntity> extends BaseOperation {
 		const parentType = metadata?.operations?.create === 'parent' ? metadata.childOf : undefined;
 
 		super(entityType, OperationType.CREATE, context, parentType);
-		this.fieldProcessor = FieldProcessor.getInstance(entityType, OperationType.CREATE, context);
 	}
 
 	/**
@@ -122,7 +118,7 @@ export class CreateOperation<T extends IAutotaskEntity> extends BaseOperation {
 						validatedData: apiReadyData, // Use date-converted data
 						entityType: this.entityType,
 						operation: 'create',
-						fieldProcessor: this.fieldProcessor,
+						ctx: this.context,
 					});
 
 					console.debug('Request body:', requestBody);
