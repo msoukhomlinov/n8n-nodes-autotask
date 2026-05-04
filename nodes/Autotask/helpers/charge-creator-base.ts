@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { extractId, extractItems } from './dedup-utils';
+import { extractItems } from './dedup-utils';
+import { performCreate } from './entity-writer';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
 
@@ -188,20 +189,12 @@ export async function createCharge(
 
 	const endpoint = config.chargeCreateEndpointTemplate.replace('{parentId}', String(parentId));
 
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
+	const { id: chargeId } = await performCreate(ctx, config.entityName, body, {
 		endpoint,
-		body,
-		{},
-		options.impersonationResourceId,
-		options.proceedWithoutImpersonationIfDenied ?? true,
-	);
+		impersonationResourceId: options.impersonationResourceId,
+		proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
+	});
 
-	const chargeId = extractId(response as IDataObject);
-	if (!chargeId) {
-		throw new Error('Charge creation succeeded but returned no ID.');
-	}
 	return chargeId;
 }
 
