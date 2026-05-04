@@ -52,49 +52,13 @@ async function verifyContractExists(
 
 // ─── Step 1: Resolve contractID ──────────────────────────────────────────────
 
-/**
- * Resolve the contractID option to a numeric Autotask contract ID.
- * - If the value is already numeric (or a string of only digits), use it directly
- *   and verify the contract exists.
- * - Otherwise treat it as an externalServiceIdentifier and query Contracts/query.
- */
 async function resolveContractId(
 	ctx: IExecuteFunctions,
 	contractID: string | number,
 ): Promise<{ contractId: number | null; warnings: string[] }> {
-	const warnings: string[] = [];
-	const isNumericId = typeof contractID === 'number' || (typeof contractID === 'string' && /^\d+$/.test(contractID) && parseInt(contractID, 10) > 0);
-
-	if (isNumericId) {
-		const numericId = Number(contractID);
-		const exists = await verifyContractExists(ctx, numericId);
-		if (!exists) {
-			return { contractId: null, warnings };
-		}
-		return { contractId: numericId, warnings };
-	}
-
-	// Lookup by externalServiceIdentifier
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
-		'Contracts/query',
-		{ filter: [{ field: 'externalServiceIdentifier', op: 'eq', value: String(contractID) }] },
-	);
-
-	const contracts = extractItems(response as IDataObject);
-
-	if (contracts.length === 0) {
-		return { contractId: null, warnings };
-	}
-
-	if (contracts.length > 1) {
-		warnings.push(
-			`Multiple Contracts (${contracts.length}) found for externalServiceIdentifier '${contractID}'. Using first (ID: ${contracts[0]?.id}).`,
-		);
-	}
-
-	return { contractId: contracts[0].id as number, warnings };
+	const numericId = Number(contractID);
+	const exists = await verifyContractExists(ctx, numericId);
+	return { contractId: exists ? numericId : null, warnings: [] };
 }
 
 // ─── Step 2: Find duplicate ContractService ──────────────────────────────────

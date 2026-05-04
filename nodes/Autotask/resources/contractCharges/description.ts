@@ -23,7 +23,7 @@ export const contractChargeFields: INodeProperties[] = [
 			{
 				name: 'Create If Not Exists',
 				value: 'createIfNotExists',
-				description: 'Find contract by external ID, check for duplicates, create charge only if none found',
+				description: 'Find contract by contractID, check for duplicates, create charge only if none found',
 				action: 'Create a contract charge if not exists',
 			},
 			{

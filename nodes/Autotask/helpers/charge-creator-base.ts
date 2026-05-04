@@ -42,7 +42,7 @@ export interface ChargeCreatorConfig {
 	parentEntityLabel: string;
 	/** API query endpoint for finding the parent (e.g. "Contracts/query", "Tickets/query") */
 	parentQueryEndpoint: string;
-	/** Field name used to look up the parent (e.g. "externalServiceIdentifier", "ticketNumber", "projectNumber") */
+	/** Field name used to look up the parent (e.g. "id", "ticketNumber", "projectNumber") */
 	parentLookupField: string;
 	/** API entity name for charges query (e.g. "ContractCharges/query", "TicketCharges/query") */
 	chargeQueryEndpoint: string;

@@ -47,11 +47,6 @@ const CONTRACT_CHARGE_CONFIG_BY_ID: ChargeCreatorConfig = {
 	},
 };
 
-const CONTRACT_CHARGE_CONFIG_BY_EXTERNAL_ID: ChargeCreatorConfig = {
-	...CONTRACT_CHARGE_CONFIG_BY_ID,
-	parentLookupField: 'externalServiceIdentifier',
-};
-
 // ─── Main orchestrator ───────────────────────────────────────────────────────
 
 export async function createContractChargeIfNotExists(
@@ -60,29 +55,18 @@ export async function createContractChargeIfNotExists(
 	options: IContractChargeCreateIfNotExistsOptions,
 ): Promise<IContractChargeCreateIfNotExistsResult> {
 	const contractID = options.createFields.contractID as string | number | undefined;
-	const externalServiceIdentifier = options.createFields.externalServiceIdentifier as string | undefined;
-
-	if ((contractID === undefined || contractID === null || contractID === '') && !externalServiceIdentifier) {
-		throw new Error('Either contractID or externalServiceIdentifier is required to find the contract.');
+	if (contractID === undefined || contractID === null || contractID === '') {
+		throw new Error('contractID is required in createFields to find the contract.');
 	}
-
-	// Numeric contractID → look up by id field directly
-	// String of digits → treat as numeric ID
-	// Otherwise → fall back to externalServiceIdentifier lookup
-	const isNumericId = contractID !== undefined && contractID !== null && contractID !== '' &&
-		(typeof contractID === 'number' || (typeof contractID === 'string' && /^\d+$/.test(contractID) && parseInt(contractID, 10) > 0));
-
-	const config = isNumericId ? CONTRACT_CHARGE_CONFIG_BY_ID : CONTRACT_CHARGE_CONFIG_BY_EXTERNAL_ID;
-	const lookupValue = isNumericId ? String(contractID) : (externalServiceIdentifier as string);
 
 	const result = await createChargeIfNotExists(
 		ctx,
-		config,
-		lookupValue,
+		CONTRACT_CHARGE_CONFIG_BY_ID,
+		String(contractID),
 		options,
 	);
 
-	return mapToContractChargeResult(result, isNumericId ? (contractID as string | number) : lookupValue);
+	return mapToContractChargeResult(result, contractID);
 }
 
 // ─── Result mapper ──────────────────────────────────────────────────────────
