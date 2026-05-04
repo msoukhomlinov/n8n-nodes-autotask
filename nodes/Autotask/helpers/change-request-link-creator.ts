@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { compareDedupField, extractId, extractItems } from './dedup-utils';
+import { compareDedupField, extractItems } from './dedup-utils';
+import { performCreate } from './entity-writer';
 
 export interface IChangeRequestLinkCreateIfNotExistsOptions {
 	createFields: Record<string, unknown>;
@@ -81,26 +82,6 @@ async function findDuplicateLink(
 	return { duplicate: null, matchedFields: [] };
 }
 
-async function createLink(
-	ctx: IExecuteFunctions,
-	createFields: Record<string, unknown>,
-	impersonationResourceId?: number,
-	proceedWithoutImpersonationIfDenied?: boolean,
-): Promise<number> {
-	const response = await autotaskApiRequest.call(
-		ctx, 'POST', 'ChangeRequestLinks',
-		createFields as IDataObject, {},
-		impersonationResourceId,
-		proceedWithoutImpersonationIfDenied ?? true,
-	);
-
-	const linkId = extractId(response as IDataObject);
-	if (!linkId) {
-		throw new Error('ChangeRequestLink creation succeeded but returned no ID.');
-	}
-	return linkId;
-}
-
 export async function createChangeRequestLinkIfNotExists(
 	ctx: IExecuteFunctions,
 	_itemIndex: number,
@@ -141,11 +122,16 @@ export async function createChangeRequestLinkIfNotExists(
 		};
 	}
 
-	const linkId = await createLink(
-		ctx, createFields,
-		options.impersonationResourceId,
-		options.proceedWithoutImpersonationIfDenied,
+	const { id: linkId, warnings: createWarnings } = await performCreate(
+		ctx,
+		'ChangeRequestLink',
+		createFields as IDataObject,
+		{
+			impersonationResourceId: options.impersonationResourceId,
+			proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
+		},
 	);
+	warnings.push(...createWarnings);
 
 	return {
 		outcome: 'created',

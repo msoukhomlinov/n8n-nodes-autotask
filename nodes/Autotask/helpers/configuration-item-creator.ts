@@ -1,9 +1,9 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { extractId, extractItems } from './dedup-utils';
+import { extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
-import { buildApiCreateBody } from './udf/split';
+import { performCreate } from './entity-writer';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -75,33 +75,6 @@ function findDuplicateConfigurationItem(
 		createFields,
 		fieldTypeMap: CI_FIELD_TYPE_MAP,
 	});
-}
-
-// ─── Step 3: Create the configuration item ───────────────────────────────────
-
-async function createConfigurationItem(
-	ctx: IExecuteFunctions,
-	createFields: Record<string, unknown>,
-	impersonationResourceId?: number,
-	proceedWithoutImpersonationIfDenied?: boolean,
-): Promise<number> {
-	const body = await buildApiCreateBody(ctx, 'ConfigurationItem', createFields);
-
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
-		'ConfigurationItems',
-		body,
-		{},
-		impersonationResourceId,
-		proceedWithoutImpersonationIfDenied ?? true,
-	);
-
-	const itemId = extractId(response as IDataObject);
-	if (!itemId) {
-		throw new Error('ConfigurationItem creation succeeded but returned no ID.');
-	}
-	return itemId;
 }
 
 // ─── Main orchestrator ────────────────────────────────────────────────────────
@@ -198,12 +171,16 @@ export async function createConfigurationItemIfNotExists(
 	}
 
 	// Step 3: Create the configuration item
-	const configurationItemId = await createConfigurationItem(
+	const { id: configurationItemId, warnings: createWarnings } = await performCreate(
 		ctx,
-		createFields,
-		options.impersonationResourceId,
-		options.proceedWithoutImpersonationIfDenied,
+		'ConfigurationItem',
+		createFields as IDataObject,
+		{
+			impersonationResourceId: options.impersonationResourceId,
+			proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
+		},
 	);
+	warnings.push(...createWarnings);
 
 	return {
 		outcome: 'created',

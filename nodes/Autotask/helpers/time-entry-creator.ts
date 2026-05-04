@@ -1,9 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
-import { autotaskApiRequest } from './http';
-import { extractId } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
-import { buildApiCreateBody } from './udf/split';
+import { performCreate } from './entity-writer';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -141,23 +139,17 @@ export async function createTimeEntryIfNotExists(
 		};
 	}
 
-	// Step 4: Build create body and POST
-	const body = await buildApiCreateBody(ctx, 'TimeEntry', createFields);
-
-	const response = await autotaskApiRequest.call(
+	// Step 4: Create via performCreate
+	const { id: timeEntryId, warnings: createWarnings } = await performCreate(
 		ctx,
-		'POST',
-		'TimeEntries',
-		body,
-		{},
-		options.impersonationResourceId,
-		options.proceedWithoutImpersonationIfDenied ?? true,
+		'TimeEntry',
+		createFields as IDataObject,
+		{
+			impersonationResourceId: options.impersonationResourceId,
+			proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
+		},
 	);
-
-	const timeEntryId = extractId(response as IDataObject);
-	if (!timeEntryId) {
-		throw new Error('Time entry creation succeeded but returned no ID.');
-	}
+	warnings.push(...createWarnings);
 
 	// Step 5: Return created result
 	return {

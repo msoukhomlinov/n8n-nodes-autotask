@@ -1,7 +1,8 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { compareDedupField, extractId, extractItems } from './dedup-utils';
+import { compareDedupField, extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
+import { performCreate } from './entity-writer';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -94,31 +95,6 @@ async function findDuplicateHolidaySet(
 	return { duplicate: null, matchedFields: [] };
 }
 
-// ─── Step 2: Create holiday set ───────────────────────────────────────────────
-
-async function createHolidaySet(
-	ctx: IExecuteFunctions,
-	createFields: Record<string, unknown>,
-	impersonationResourceId?: number,
-	proceedWithoutImpersonationIfDenied?: boolean,
-): Promise<number> {
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
-		'HolidaySets',
-		createFields as IDataObject,
-		{},
-		impersonationResourceId,
-		proceedWithoutImpersonationIfDenied ?? true,
-	);
-
-	const id = extractId(response as IDataObject);
-	if (!id) {
-		throw new Error('HolidaySet creation succeeded but returned no ID.');
-	}
-	return id;
-}
-
 // ─── Main orchestrator ────────────────────────────────────────────────────────
 
 export async function createHolidaySetIfNotExists(
@@ -197,12 +173,16 @@ export async function createHolidaySetIfNotExists(
 	}
 
 	// Step 2: Create holiday set
-	const holidaySetId = await createHolidaySet(
+	const { id: holidaySetId, warnings: createWarnings } = await performCreate(
 		ctx,
-		createFields,
-		options.impersonationResourceId,
-		options.proceedWithoutImpersonationIfDenied,
+		'HolidaySet',
+		createFields as IDataObject,
+		{
+			impersonationResourceId: options.impersonationResourceId,
+			proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
+		},
 	);
+	warnings.push(...createWarnings);
 
 	return {
 		outcome: 'created',

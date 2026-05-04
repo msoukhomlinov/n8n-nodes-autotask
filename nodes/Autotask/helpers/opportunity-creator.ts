@@ -1,9 +1,9 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
-import { extractId, extractItems } from './dedup-utils';
+import { extractItems } from './dedup-utils';
 import { computeFieldDiffs, applyDuplicateUpdate } from './update-fields-on-duplicate';
 import { findDuplicate } from './entity-dedup';
-import { buildApiCreateBody } from './udf/split';
+import { performCreate } from './entity-writer';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -76,32 +76,6 @@ function findDuplicateOpportunity(
 		createFields,
 		fieldTypeMap: FIELD_TYPE_MAP,
 	});
-}
-
-// ─── Step 2: Create opportunity ───────────────────────────────────────────────
-
-async function createOpportunity(
-	ctx: IExecuteFunctions,
-	createFields: Record<string, unknown>,
-	impersonationResourceId?: number,
-	proceedWithoutImpersonationIfDenied?: boolean,
-): Promise<number> {
-	const body = await buildApiCreateBody(ctx, 'Opportunity', createFields);
-	const response = await autotaskApiRequest.call(
-		ctx,
-		'POST',
-		'Opportunities',
-		body,
-		{},
-		impersonationResourceId,
-		proceedWithoutImpersonationIfDenied ?? true,
-	);
-
-	const newId = extractId(response as IDataObject);
-	if (!newId) {
-		throw new Error('Opportunity creation succeeded but returned no ID.');
-	}
-	return newId;
 }
 
 // ─── Main orchestrator ────────────────────────────────────────────────────────
@@ -199,12 +173,16 @@ export async function createOpportunityIfNotExists(
 	}
 
 	// Step 2: Create opportunity
-	const newId = await createOpportunity(
+	const { id: newId, warnings: createWarnings } = await performCreate(
 		ctx,
-		createFields,
-		options.impersonationResourceId,
-		options.proceedWithoutImpersonationIfDenied,
+		'Opportunity',
+		createFields as IDataObject,
+		{
+			impersonationResourceId: options.impersonationResourceId,
+			proceedWithoutImpersonationIfDenied: options.proceedWithoutImpersonationIfDenied ?? true,
+		},
 	);
+	warnings.push(...createWarnings);
 
 	return {
 		outcome: 'created',
