@@ -8,7 +8,7 @@ import { OperationType } from '../types/base/entity-types';
 
 /**
  * Shared POST layer for all compound createIfNotExists helpers.
- * Handles body-building (UDF splitting, id:0 for child entities),
+ * Delegates body-building (UDF splitting, id:0 for child entities) to buildRequestBody,
  * endpoint construction, and withInactiveRefRetry.
  *
  * @param opts.endpoint - Required when Autotask URL differs from the
@@ -117,7 +117,7 @@ export async function performPatch(
 		endpoint = buildEntityUrl(entityType);
 	} else {
 		warnings.push(`performPatch: unknown entity '${entityType}' — metadata not found, constructing PATCH URL manually.`);
-		endpoint = `${entityType}s`;
+		endpoint = `${entityType}s`; // relative path — autotaskApiRequest prepends the base URL
 	}
 
 	const inactiveRefWarnings: string[] = [];
