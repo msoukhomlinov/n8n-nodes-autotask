@@ -9,6 +9,7 @@ import {
 	CountOperation,
 } from '../../operations/base';
 import { createHolidaySetIfNotExists } from '../../helpers/holiday-set-creator';
+import { formatCompoundResponse } from '../../helpers/compound-response-formatter';
 
 const ENTITY_TYPE = 'holidaySet';
 
@@ -90,7 +91,7 @@ export async function executeHolidaySetOperation(
 						errorOnDuplicate,
 						updateFields,
 					});
-					returnData.push({ json: result as unknown as IDataObject });
+					returnData.push({ json: formatCompoundResponse('holidaySet', result as unknown as Record<string, unknown>, createFields, dedupFields, updateFields) });
 					break;
 				}
 

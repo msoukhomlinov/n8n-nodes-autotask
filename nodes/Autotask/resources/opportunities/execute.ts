@@ -1,5 +1,6 @@
-import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
+import { formatCompoundResponse } from '../../helpers/compound-response-formatter';
 import {
 	CreateOperation,
 	UpdateOperation,
@@ -33,13 +34,15 @@ export async function executeOpportunityOperation(
 						const fieldsToMap = this.getNodeParameter('fieldsToMap', i, { value: {} }) as { value: Record<string, unknown> | null };
 						createFields = fieldsToMap?.value ?? {};
 					} catch { /* fieldsToMap may not be available */ }
+					const dedupFields = this.getNodeParameter('dedupFields', i, []) as string[];
+					const updateFields = this.getNodeParameter('updateFields', i, []) as string[];
 					const result = await createOpportunityIfNotExists(this, i, {
 						createFields,
-						dedupFields: this.getNodeParameter('dedupFields', i, []) as string[],
-						updateFields: this.getNodeParameter('updateFields', i, []) as string[],
+						dedupFields,
+						updateFields,
 						errorOnDuplicate: this.getNodeParameter('errorOnDuplicate', i, false) as boolean,
 					});
-					returnData.push({ json: result as unknown as IDataObject });
+					returnData.push({ json: formatCompoundResponse('opportunity', result as unknown as Record<string, unknown>, createFields, dedupFields, updateFields) });
 					break;
 				}
 				case 'update': {

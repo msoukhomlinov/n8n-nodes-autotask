@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
+import { formatCompoundResponse } from '../../helpers/compound-response-formatter';
 import {
 	CreateOperation,
 	GetOperation,
@@ -69,13 +70,16 @@ export async function executeTicketAdditionalContactOperation(
 						const fieldsToMap = this.getNodeParameter('fieldsToMap', i, { value: {} }) as { value: Record<string, unknown> | null };
 						createFields = fieldsToMap?.value ?? {};
 					} catch { /* fieldsToMap may not be available */ }
+					const dedupFields = this.getNodeParameter('dedupFields', i, []) as string[];
+					const updateFields = this.getNodeParameter('updateFields', i, []) as string[];
+					const errorOnDuplicate = this.getNodeParameter('errorOnDuplicate', i, false) as boolean;
 					const result = await createTicketAdditionalContactIfNotExists(this, i, {
 						createFields,
-						dedupFields: this.getNodeParameter('dedupFields', i, []) as string[],
-						updateFields: this.getNodeParameter('updateFields', i, []) as string[],
-						errorOnDuplicate: this.getNodeParameter('errorOnDuplicate', i, false) as boolean,
+						dedupFields,
+						updateFields,
+						errorOnDuplicate,
 					});
-					returnData.push({ json: result as unknown as IDataObject });
+					returnData.push({ json: formatCompoundResponse('ticketAdditionalContact', result as unknown as Record<string, unknown>, createFields, dedupFields, updateFields) });
 					break;
 				}
 

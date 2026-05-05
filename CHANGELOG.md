@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.16.0] - 2026-05-05
+
+### Changed
+- **`createIfNotExists` — standard node path now matches AI tools response shape (all 14 entities):** Standard node path previously returned raw helper result (`chargeName`, `chargeId`, etc. as flat fields). Now returns the same structured shape as the AI tools path: `record{}` containing all supplied entity fields + entity `id`, `dedupFields`, `updateFields` (when non-empty), `matchedDedupFields`, `fieldsUpdated`, `fieldsCompared`, `context` (parent scope), `warnings`. Implemented via shared `helpers/compound-response-formatter.ts` — no per-helper duplication.
+
 ## [2.15.0] - 2026-05-05
 
 ### Changed

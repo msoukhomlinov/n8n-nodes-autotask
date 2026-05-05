@@ -2,6 +2,7 @@ import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-wor
 import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import { CreateOperation, GetOperation, GetManyOperation, CountOperation, DeleteOperation } from '../../operations/base';
+import { formatCompoundResponse } from '../../helpers/compound-response-formatter';
 
 const ENTITY_TYPE = 'changeRequestLink';
 
@@ -58,12 +59,15 @@ export async function executeChangeRequestLinkOperation(
 						const fieldsToMap = this.getNodeParameter('fieldsToMap', i, { value: {} }) as { value: Record<string, unknown> | null };
 						createFields = fieldsToMap?.value ?? {};
 					} catch { /* fieldsToMap may not be available */ }
+					const dedupFields = this.getNodeParameter('dedupFields', i, []) as string[];
+					const updateFields: string[] = [];
+					const errorOnDuplicate = this.getNodeParameter('errorOnDuplicate', i, false) as boolean;
 					const result = await createChangeRequestLinkIfNotExists(this, i, {
 						createFields,
-						dedupFields: this.getNodeParameter('dedupFields', i, []) as string[],
-						errorOnDuplicate: this.getNodeParameter('errorOnDuplicate', i, false) as boolean,
+						dedupFields,
+						errorOnDuplicate,
 					});
-					returnData.push({ json: result as unknown as IDataObject });
+					returnData.push({ json: formatCompoundResponse('changeRequestLink', result as unknown as Record<string, unknown>, createFields, dedupFields, updateFields) });
 					break;
 				}
 
