@@ -33,9 +33,9 @@ export function buildCompoundContextFromResult(
 		case 'expenseItem':
 			return { expenseReportID: result.expenseReportID };
 		case 'ticketAdditionalConfigurationItem':
-			return result.ticketID !== undefined ? { ticketID: result.ticketID } : undefined;
+			return result.ticketId !== undefined ? { ticketID: result.ticketId } : undefined;
 		case 'ticketAdditionalContact':
-			return result.ticketID !== undefined ? { ticketID: result.ticketID } : undefined;
+			return result.ticketId !== undefined ? { ticketID: result.ticketId } : undefined;
 		case 'changeRequestLink': {
 			const ctx: Record<string, unknown> = {};
 			if (result.changeRequestTicketID !== undefined)
