@@ -168,6 +168,8 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 			compoundData.existingId = compoundId;
 		}
 	}
+	compoundData.dedupFields = dedupFields;
+	if (updateFields.length > 0) compoundData.updateFields = updateFields;
 	if (compoundResult.matchedDedupFields !== undefined)
 		compoundData.matchedDedupFields = compoundResult.matchedDedupFields;
 	if (compoundResult.fieldsUpdated !== undefined)
@@ -175,6 +177,21 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 	if (compoundResult.fieldsCompared !== undefined)
 		compoundData.fieldsCompared = compoundResult.fieldsCompared;
 	if (compoundContext !== undefined) compoundData.context = compoundContext;
+
+	// Echo all supplied entity fields as record{} for created/updated outcomes.
+	// createFields contains only actual entity fields — buildFieldValues already
+	// strips dedupFields, errorOnDuplicate, updateFields, and all metadata keys.
+	// recordExcludeFields strips helper-only inputs (e.g. materialCode → billingCodeID)
+	// that the helper resolves internally and never writes to the API as-is.
+	if (compoundResult.outcome === 'created' || compoundResult.outcome === 'updated') {
+		const excludeSet = new Set(registryEntry.recordExcludeFields ?? []);
+		const record: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(createFields)) {
+			if (!excludeSet.has(k)) record[k] = v;
+		}
+		if (compoundId !== undefined) record.id = compoundId;
+		compoundData.record = record;
+	}
 
 	const compoundJson = JSON.stringify(
 		buildCompoundResponse(
