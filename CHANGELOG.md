@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.16.0] - 2026-05-06
+
+### Changed
+- **Dependency updates:** `moment-timezone` 0.5.47 → 0.5.48, `prettier` 3.5.2 → 3.8.3, `typescript` 5.7.3 → 5.9.3, `@n8n/node-cli` 0.23.0 → 0.29.0.
+
 ## [2.15.3] - 2026-05-05
 
 ### Fixed
