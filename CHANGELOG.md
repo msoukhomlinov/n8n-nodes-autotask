@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.15.0] - 2026-05-05
+
+### Changed
+- **`createIfNotExists` — `record{}` now included in `created` and `updated` responses (all entities):** All 14 compound `createIfNotExists` handlers now return a `record{}` containing every entity field supplied by the caller, plus the entity `id`. Previously only a subset of hardcoded fields was surfaced (e.g. `chargeName`, `datePurchased` for charges; only `contractId`/`companyID` for contract). Fix is in the single dispatch point (`compound-operations.ts` → `handleCreateIfNotExists`); no per-helper changes required. `skipped` outcome is unchanged (no entity was written).
+
 ## [2.14.2] - 2026-05-04
 
 ### Fixed
