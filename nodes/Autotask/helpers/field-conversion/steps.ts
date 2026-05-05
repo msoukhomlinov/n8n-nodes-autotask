@@ -1,4 +1,4 @@
-import type { ResourceMapperField } from '../../types/base/entities';
+﻿import type { ResourceMapperField } from '../../types/base/entities';
 import type { ConversionStep, ConversionContext } from './types';
 import { UdfDisplayFormat } from '../../types/base/udf-types';
 import { DATE_FORMATS } from '../../constants/operations';
@@ -38,6 +38,7 @@ export const conversionSteps: ConversionStep[] = [
 				// Use the centralized getResourceMapperFieldType for type mapping
 				const type = getResourceMapperFieldType(context.field);
 				if (!type) {
+					 
 					throw new Error(`Failed to map type for field ${context.field.name}`);
 				}
 
@@ -99,6 +100,7 @@ export const conversionSteps: ConversionStep[] = [
 
 				return result;
 			} catch (error) {
+				// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 				throw new Error(`Failed to process basic properties for field ${context.field.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
 			}
 		},

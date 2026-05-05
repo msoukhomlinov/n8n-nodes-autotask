@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+﻿import { createHmac, timingSafeEqual } from 'node:crypto';
 import { AutotaskErrorType } from '../errorHandler';
 
 /**
@@ -210,6 +210,7 @@ export function generateWebhookSignature(payload: string | unknown, secretKey: s
 				hasSecretKey: !!secretKey,
 			},
 		);
+		 
 		throw new Error('Missing required parameters for signature generation');
 	}
 
@@ -237,6 +238,7 @@ export function generateWebhookSignature(payload: string | unknown, secretKey: s
 			'Error generating webhook signature',
 			error,
 		);
+		// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 		throw new Error(
 			`Error generating webhook signature: ${error instanceof Error ? error.message : 'Unknown error'}`,
 		);

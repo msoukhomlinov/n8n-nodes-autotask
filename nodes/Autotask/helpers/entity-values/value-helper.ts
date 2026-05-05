@@ -1,4 +1,4 @@
-import type { ILoadOptionsFunctions, IExecuteFunctions, IDataObject, IHookFunctions } from 'n8n-workflow';
+﻿import type { ILoadOptionsFunctions, IExecuteFunctions, IDataObject, IHookFunctions } from 'n8n-workflow';
 import type { IAutotaskEntity, IAutotaskQueryInput } from '../../types';
 import type { GetManyOperation } from '../../operations/base/get-many';
 // REMOVED to break circular dependency: import { GetManyOperation as GetManyOperationClass } from '../../operations/base/get-many';
@@ -230,6 +230,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 
 			return results;
 		} catch (error) {
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(
 				ERROR_TEMPLATES.reference
 					.replace('{type}', 'GetValuesError')
@@ -300,6 +301,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			}
 			return results;
 		} catch (error) {
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(
 				ERROR_TEMPLATES.reference
 					.replace('{type}', 'GetValuesByIdsError')
@@ -333,6 +335,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 					.replace('{details}', error));
 				return this.getFallbackValues();
 			}
+			 
 			throw new Error(error);
 		}
 
@@ -350,6 +353,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 					.replace('{details}', errorMessage));
 				return this.getFallbackValues();
 			}
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(errorMessage);
 		}
 	}
@@ -360,6 +364,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	 */
 	private getFallbackValues(): T[] {
 		if (!this.fallbackConfig.enabled) {
+			 
 			throw new Error('Fallback is not enabled');
 		}
 
@@ -569,6 +574,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 					.replace('{details}', errorMessage));
 				return String(entity.id || 'Unknown');
 			}
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(errorMessage);
 		}
 	}
@@ -723,6 +729,8 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		if (fallbackConfig.enabled) {
 			return this.getFallbackName(entity, fallbackConfig);
 		}
+
+		 
 
 		throw new Error(`No display name found for ${this.entityType}`);
 	}

@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
@@ -53,7 +53,7 @@ export async function executeBillingCodeOperation(
 				returnData.push({ json: { error: error.message } });
 				continue;
 			}
-			throw error;
+			throw new NodeOperationError(this.getNode(), error as Error);
 		}
 	}
 

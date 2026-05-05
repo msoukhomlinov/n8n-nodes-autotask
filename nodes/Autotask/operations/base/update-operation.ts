@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types/base/entity-types';
 import { OperationType } from '../../types/base/entity-types';
 import { autotaskApiRequest } from '../../helpers/http/request';
@@ -109,6 +109,7 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 					) {
 						impersonationResourceId = undefined;
 					} else {
+						// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 						throw error;
 					}
 				}
@@ -174,6 +175,7 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 					}
 
 					if (!response) {
+						 
 						throw new Error(
 							ERROR_TEMPLATES.operation
 								.replace('{type}', 'ResponseError')
@@ -203,6 +205,7 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 					if (error instanceof Error) {
 						if (error.message.includes('404')) {
 							console.debug('[UpdateOperation] Endpoint not found error detected');
+							// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 							throw new Error(
 								ERROR_TEMPLATES.validation
 									.replace('{type}', 'ValidationError')
@@ -211,6 +214,7 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 							);
 						}
 					}
+					// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 					throw error;
 				}
 			},

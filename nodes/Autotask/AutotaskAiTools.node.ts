@@ -301,6 +301,7 @@ export class AutotaskAiTools implements INodeType {
 		group: ['output'],
 		version: 1,
 		description: 'Expose Autotask operations as individual AI tools for the AI Agent',
+		subtitle: '={{$parameter["resource"]}}',
 		codex: {
 			categories: ['AI'],
 			subcategories: {
@@ -932,6 +933,10 @@ export class AutotaskAiTools implements INodeType {
 					});
 				} catch {
 					// best-effort: trace must not suppress the rethrow
+				}
+				if (this.continueOnFail()) {
+					response.push({ json: { error: msg }, pairedItem: { item: itemIndex } });
+					continue;
 				}
 				throw new NodeOperationError(this.getNode(), msg, { itemIndex });
 			}

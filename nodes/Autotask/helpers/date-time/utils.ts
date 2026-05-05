@@ -1,5 +1,6 @@
 import type { Moment } from 'moment-timezone';
 import type { IExecuteFunctions, ILoadOptionsFunctions, IDataObject } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import { DateTimeWrapper } from './wrapper';
 import moment from 'moment-timezone';
 import type { IAutotaskCredentials } from '../../types/base/auth';
@@ -87,7 +88,7 @@ export async function processResponseDates<T>(
 		return result;
 	} catch (error) {
 		console.error('Failed to process response dates:', error);
-		throw error;
+		throw new NodeOperationError(this.getNode(), error as Error);
 	}
 }
 
@@ -203,7 +204,7 @@ export async function convertDatesToUTC(
 		return result;
 	} catch (error) {
 		console.error(`[${operationName}] Error converting dates to UTC:`, error);
-		throw error;
+		throw new NodeOperationError(context.getNode(), error as Error);
 	}
 }
 

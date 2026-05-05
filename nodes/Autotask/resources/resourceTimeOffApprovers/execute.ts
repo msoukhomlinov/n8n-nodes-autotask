@@ -1,4 +1,5 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	GetOperation,
@@ -53,7 +54,7 @@ export async function executeResourceTimeOffApproverOperation(
 				returnData.push({ json: { error: (error as Error).message } });
 				continue;
 			}
-			throw error;
+			throw new NodeOperationError(this.getNode(), error as Error);
 		}
 	}
 

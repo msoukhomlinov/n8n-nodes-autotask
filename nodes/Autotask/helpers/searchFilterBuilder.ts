@@ -1,4 +1,4 @@
-import type { ISearchFilterBuilderInput } from '../types/SearchFilter';
+﻿import type { ISearchFilterBuilderInput } from '../types/SearchFilter';
 import moment from 'moment-timezone';
 import { getConfiguredTimezone } from './date-time/utils';
 import type { IExecuteFunctions } from 'n8n-workflow';
@@ -36,6 +36,7 @@ async function convertValue(
 	if (valueType === 'number') {
 		const num = Number(value);
 		if (Number.isNaN(num)) {
+			 
 			throw new Error(`Invalid number value: ${value}`);
 		}
 		return num;
@@ -55,6 +56,7 @@ async function convertValue(
 	if (valueType === 'date') {
 		try {
 			if (typeof value !== 'string') {
+				 
 				throw new Error('Date value must be a string');
 			}
 			const timezone = await getConfiguredTimezone.call(context);
@@ -69,10 +71,12 @@ async function convertValue(
 				date = moment.tz(value, timezone).utc();
 			}
 			if (!date.isValid()) {
+				 
 				throw new Error(`Invalid date value: ${value}`);
 			}
 			return date.format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
 		} catch (error) {
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(`Invalid date value: ${value}`);
 		}
 	}
@@ -141,24 +145,29 @@ function countUdfConditions(input: ISearchFilterBuilderInput): number {
 
 export function validateFilterInput(input: ISearchFilterBuilderInput): void {
 	if (!input.filter?.group?.length) {
+		 
 		throw new Error('Filter must contain at least one group');
 	}
 
 	const udfCount = countUdfConditions(input);
 	if (udfCount > 1) {
+		 
 		throw new Error('Autotask API only allows querying by one user-defined field at a time');
 	}
 
 	for (const group of input.filter.group) {
 		if (!group.items?.length) {
+			 
 			throw new Error('Each group must contain at least one condition');
 		}
 
 		for (const item of group.items) {
 			if (!item.itemType.field) {
+				 
 				throw new Error('Condition must have a field name');
 			}
 			if (!item.itemType.op) {
+				 
 				throw new Error('Condition must have an operator');
 			}
 			// Only check for value if operator is not exist/notExist
@@ -166,6 +175,7 @@ export function validateFilterInput(input: ISearchFilterBuilderInput): void {
 				const isArrayOp = item.itemType.op === 'in' || item.itemType.op === 'notIn';
 				const hasArrayValue = isArrayOp && item.itemType.arrayValue !== undefined;
 				if (item.itemType.value === undefined && !hasArrayValue) {
+					 
 					throw new Error('Condition must have a value (empty string is allowed for searching empty fields)');
 				}
 
@@ -179,6 +189,7 @@ export function validateFilterInput(input: ISearchFilterBuilderInput): void {
 							: typeof value === 'boolean' ? value.toString() : value;
 						const date = moment(valueStr);
 						if (!date.isValid()) {
+							 
 							throw new Error(`Invalid date format: ${value}`);
 						}
 					}

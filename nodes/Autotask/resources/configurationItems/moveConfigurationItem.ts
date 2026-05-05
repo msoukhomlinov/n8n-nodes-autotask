@@ -1,4 +1,4 @@
-import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
+﻿import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
 import { autotaskApiRequest } from '../../helpers/http';
 import { getOptionalImpersonationResourceId } from '../../helpers/impersonation';
 import { ATTACHMENT_TYPE, MAX_ATTACHMENT_SIZE_BYTES } from '../../helpers/attachment';
@@ -149,6 +149,7 @@ async function withRetries<T>(
       return await task();
     } catch (error) {
       if (attempt > retryPolicy.maxRetries || !isTransientError(error)) {
+        // eslint-disable-next-line @n8n/community-nodes/require-node-api-error
         throw error;
       }
       const jitterMs = retryPolicy.jitter ? Math.floor(Math.random() * delayMs * 0.3) : 0;
@@ -452,7 +453,9 @@ async function createCiWithReferenceFieldFallback(
       const match = BAD_REF_FIELD_PATTERN.exec(msg);
       const badField = match?.[1] ?? match?.[2];
 
+      // eslint-disable-next-line @n8n/community-nodes/require-node-api-error
       if (!badField || !(badField in payload)) throw error;
+      // eslint-disable-next-line @n8n/community-nodes/require-node-api-error
       if (attempt >= MAX_STRIPS) throw error;
 
       const strippedValue = payload[badField];
@@ -1001,6 +1004,7 @@ export async function executeMoveConfigurationItem(
             warnings.push(`Failed to apply partial failure strategy: ${partialError instanceof Error ? partialError.message : String(partialError)}`);
           }
         }
+        // eslint-disable-next-line @n8n/community-nodes/require-node-api-error
         throw error;
       }
     },

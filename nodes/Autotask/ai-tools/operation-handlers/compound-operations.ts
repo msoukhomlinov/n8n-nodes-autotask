@@ -1,4 +1,5 @@
 import type { IDataObject } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type { ExecutorState } from '../executor-state';
 import { attachCorrelation, buildCompoundResponse } from '../response-builder';
 import { wrapError, ERROR_TYPES } from '../error-formatter';
@@ -141,7 +142,7 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 				correlationId,
 			);
 		}
-		throw err;
+		throw new NodeOperationError(context.getNode(), err as Error);
 	}
 
 	if (!compoundResult) {

@@ -1,4 +1,4 @@
-import type { IExecuteFunctions } from 'n8n-workflow';
+﻿import type { IExecuteFunctions } from 'n8n-workflow';
 import type { IAutotaskEntity, IAutotaskQueryInput } from '../../types';
 import type { IFilterCondition } from '../../types/base/entity-types';
 import { GetManyOperation } from './get-many';
@@ -47,6 +47,7 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 
 			// Validate filter structure
 			if (!queryInput.filter || !Array.isArray(queryInput.filter)) {
+				 
 				throw new Error('Advanced filter must contain a "filter" array');
 			}
 
@@ -55,6 +56,7 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 				if (filter.items) {
 					// Group condition
 					if (!['and', 'or'].includes(filter.op)) {
+						 
 						throw new Error('Group operator must be "and" or "or"');
 					}
 					for (const item of filter.items) {
@@ -63,6 +65,7 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 				} else {
 					// Leaf condition
 					if (!filter.field || !filter.op) {
+						 
 						throw new Error('Each filter condition must have a field and operator');
 					}
 				}
@@ -108,8 +111,10 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 			return queryInput;
 		} catch (error) {
 			if (error instanceof SyntaxError) {
+				// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 				throw new Error(`Invalid JSON in advanced filter: ${error.message}`);
 			}
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw error;
 		}
 	}

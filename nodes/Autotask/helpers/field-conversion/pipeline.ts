@@ -1,4 +1,4 @@
-import type { ResourceMapperField, IEntityField } from '../../types/base/entities';
+﻿import type { ResourceMapperField, IEntityField } from '../../types/base/entities';
 import type { FieldProcessor } from '../../operations/base/field-processor';
 import type { ConversionContext, ConversionMode } from './types';
 import { conversionSteps } from './steps';
@@ -52,6 +52,7 @@ export class FieldConversionPipeline {
 				canBeUsedToMatch: mode === 'read' && field.isQueryable,
 			} as ResourceMapperField;
 		} catch (error) {
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(`Field conversion failed for ${field.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
 		}
 	}
@@ -68,6 +69,7 @@ export class FieldConversionPipeline {
 			}
 			return results;
 		} catch (error) {
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(`Batch field conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
 		}
 	}

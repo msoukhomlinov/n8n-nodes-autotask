@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import type { ISearchFilterBuilderInput } from '../../types/SearchFilter';
 import { validateFilterInput, convertToAutotaskFilter } from '../../helpers/searchFilterBuilder';
 

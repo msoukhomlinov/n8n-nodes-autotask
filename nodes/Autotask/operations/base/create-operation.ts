@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types/base/entity-types';
 import { OperationType } from '../../types/base/entity-types';
 import { autotaskApiRequest } from '../../helpers/http/request';
@@ -107,6 +107,7 @@ export class CreateOperation<T extends IAutotaskEntity> extends BaseOperation {
 					) {
 						impersonationResourceId = undefined;
 					} else {
+						// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 						throw error;
 					}
 				}
@@ -216,6 +217,7 @@ export class CreateOperation<T extends IAutotaskEntity> extends BaseOperation {
 							});
 						}
 					}
+					// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 					throw error;
 				}
 			},

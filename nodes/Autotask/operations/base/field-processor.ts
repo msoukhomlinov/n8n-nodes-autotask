@@ -1,4 +1,4 @@
-import type {
+﻿import type {
 	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	IHookFunctions,
@@ -95,6 +95,7 @@ export class FieldProcessor {
 
 		const instance = FieldProcessor.instances.get(key);
 		if (!instance) {
+			 
 			throw new Error(`Failed to get or create FieldProcessor instance for ${key}`);
 		}
 		return instance;
@@ -190,6 +191,7 @@ export class FieldProcessor {
 		}
 		const helper = this._entityHelpers.get(entityType);
 		if (!helper) {
+			 
 			throw new Error(`Failed to get or create EntityValueHelper for ${entityType}`);
 		}
 		return helper;
@@ -233,6 +235,7 @@ export class FieldProcessor {
 
 			return result;
 		} catch (error) {
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(
 				ERROR_TEMPLATES.operation
 					.replace('{type}', 'ProcessingError')
@@ -397,6 +400,7 @@ export class FieldProcessor {
 						}
 
 						if (!entities?.length) {
+							 
 							throw new Error(
 								ERROR_TEMPLATES.reference
 									.replace('{type}', 'NoDataError')
@@ -773,6 +777,7 @@ export class FieldProcessor {
 		}
 
 		if (!this.context) {
+			 
 			throw new Error('Context is required for enrichWithPicklistLabels');
 		}
 
@@ -944,6 +949,7 @@ export class FieldProcessor {
 		}
 
 		if (!this.context) {
+			 
 			throw new Error('Context is required for enrichWithReferenceLabels');
 		}
 
@@ -1114,6 +1120,7 @@ export class FieldProcessor {
 	 */
 	private async getFieldsForEntity(entityType: string, fieldType: 'standard' | 'udf' = 'standard'): Promise<IAutotaskField[]> {
 		if (!this.context) {
+			 
 			throw new Error('Context is required for getFieldsForEntity');
 		}
 
@@ -1127,6 +1134,7 @@ export class FieldProcessor {
 	 */
 	private getEntityHelperInstance(): EntityValueHelper<IAutotaskEntity> {
 		if (!this.context) {
+			 
 			throw new Error('Context is required for getEntityHelperInstance');
 		}
 
@@ -1142,6 +1150,7 @@ export class FieldProcessor {
 		}
 		const helper = this._entityHelpers.get(this.entityType);
 		if (!helper) {
+			 
 			throw new Error(`Failed to get EntityHelper for ${this.entityType}`);
 		}
 		return helper;

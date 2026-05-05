@@ -1,4 +1,4 @@
-import type {
+﻿import type {
 	IExecuteFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
@@ -176,6 +176,7 @@ function validateParentChain(chain: Array<{ type: string; id: string | number }>
 
 	for (const link of chain) {
 		if (!link.type || (typeof link.id !== 'string' && typeof link.id !== 'number')) {
+			 
 			throw new Error(
 				'Invalid parent chain structure. Each chain link must have a type and id.',
 			);
@@ -183,6 +184,7 @@ function validateParentChain(chain: Array<{ type: string; id: string | number }>
 
 		const metadata = getEntityMetadata(link.type);
 		if (!metadata) {
+			 
 			throw new Error(
 				`Invalid parent type in chain: ${link.type}. Entity type not found in metadata.`,
 			);
@@ -199,6 +201,7 @@ function validateParentChain(chain: Array<{ type: string; id: string | number }>
 function buildEntityUrl(entity: string, options: IUrlOptions = {}): string {
 	const metadata = getEntityMetadata(entity);
 	if (!metadata) {
+		 
 		throw new Error(`Invalid entity type: ${entity}. Entity type not found in metadata.`);
 	}
 
@@ -237,11 +240,13 @@ function buildChildEntityUrl(
 ): string {
 	const parentMetadata = getEntityMetadata(parent);
 	if (!parentMetadata) {
+		 
 		throw new Error(`Invalid parent entity type: ${parent}. Entity type not found in metadata.`);
 	}
 
 	const childMetadata = getEntityMetadata(child);
 	if (!childMetadata) {
+		 
 		throw new Error(`Invalid child entity type: ${child}. Entity type not found in metadata.`);
 	}
 
@@ -347,12 +352,14 @@ export async function autotaskApiRequest<T = JsonObject>(
 ): Promise<T> {
 	const credentials = await this.getCredentials('autotaskApi') as IAutotaskCredentials | undefined;
 	if (!credentials) {
+		 
 		throw new Error(
 			'Autotask API credentials not found. Ensure the node has valid Autotask API credentials configured.',
 		);
 	}
 	const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
 	if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) {
+		 
 		throw new Error(
 			'Autotask API zone URL is missing. Check credentials: select a zone, or if using "Other (Custom URL)", provide the custom zone URL.',
 		);
@@ -415,6 +422,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 		new URL(options.url as string);
 	} catch (urlError) {
 		const msg = urlError instanceof Error ? urlError.message : String(urlError);
+		// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 		throw new Error(
 			`Invalid Autotask API URL: ${msg}. ` +
 				`Constructed URL: "${options.url}", endpoint: "${endpoint}", ` +
@@ -436,6 +444,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 
 		// Handle empty responses
 		if (!response) {
+			 
 			throw new Error('Empty response from API');
 		}
 
@@ -454,6 +463,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 			if (endpoint.endsWith('fields') || endpoint.endsWith('userDefinedFields')) {
 				const fieldsResponse = response as { fields: unknown[] };
 				if (!fieldsResponse?.fields || !Array.isArray(fieldsResponse.fields)) {
+					 
 					throw new Error(`Invalid fields response: missing or invalid fields array for ${endpoint}`);
 				}
 				return response as T;
@@ -461,6 +471,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 			// Entity info response
 			const infoResponse = response as { info: Record<string, unknown> };
 			if (!infoResponse?.info || typeof infoResponse.info !== 'object') {
+				 
 				throw new Error('Invalid entity information response: missing or invalid info object');
 			}
 			return response as T;
@@ -483,6 +494,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 				const idField = 'id' in modResponse ? 'id' : 'itemId';
 				return { item: { [idField]: modResponse[idField] } } as T;
 			}
+			 
 			throw new Error(`Invalid modification response: missing id/itemId for ${method} ${endpoint}`);
 		}
 
@@ -492,6 +504,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 			if (typeof countResponse?.queryCount === 'number') {
 				return response as T;
 			}
+			 
 			throw new Error(`Invalid count response: missing or invalid queryCount value. Response: ${JSON.stringify(response)}`);
 		}
 
@@ -501,6 +514,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 			if (queryResponse?.items && Array.isArray(queryResponse.items) && queryResponse?.pageDetails) {
 				return response as T;
 			}
+			 
 			throw new Error('Invalid query response: missing items array or pageDetails');
 		}
 
@@ -521,11 +535,13 @@ export async function autotaskApiRequest<T = JsonObject>(
 				// This indicates the record wasn't found but API returned a valid response
 				const entityType = endpoint.split('/')[0].replace(/\/$/, '');
 				const entityId = endpoint.split('/')[1]?.replace(/\/$/, '') || 'unknown';
+				 
 				throw new Error(`[NotFoundError] The ${entityType} with ID ${entityId} was not found. Please verify the ID is correct and that you have permission to access this record.`);
 			}
 		}
 
 		// If we get here, response format is unexpected
+		 
 		throw new Error(
 			`Invalid API response format for ${method} ${endpoint}: ${JSON.stringify(response)}`,
 		);
@@ -533,6 +549,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 		// If this is already a NodeApiError (e.g. from retry handler), re-throw as-is
 		// to avoid double-wrapping the error
 		if (error instanceof NodeApiError) {
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw error;
 		}
 

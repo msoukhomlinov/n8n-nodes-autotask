@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-workflow';
 import type { IAutotaskField, IFieldValidationRules } from '../../types';
 import { handleErrors } from '../../helpers/errorHandler';
 import type { IDataObject } from 'n8n-workflow';
@@ -191,6 +191,7 @@ export class FieldValidator {
 						}
 					}
 
+					 
 					throw new Error(`Unknown data type for field ${field.name}: ${field.dataType} in entity ${this.entityType}`);
 				}
 			}
@@ -270,6 +271,7 @@ export class FieldValidator {
 			}
 			return true;
 		} catch (error) {
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(`Field validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
 		}
 	}

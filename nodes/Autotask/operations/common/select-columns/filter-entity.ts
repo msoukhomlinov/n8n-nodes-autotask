@@ -1,4 +1,4 @@
-import type { IExecuteFunctions } from 'n8n-workflow';
+﻿import type { IExecuteFunctions } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../../types';
 import { validateJsonParameter } from '../../../helpers/json-validation';
 
@@ -122,6 +122,7 @@ export function getSelectedColumns(context: IExecuteFunctions, itemIndex: number
 	} catch (error) {
 		// If it's a validation error, re-throw it
 		if (error instanceof Error && (error.message.includes('selectColumnsJson') || error.message.includes('bodyJson'))) {
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw error;
 		}
 		// If both parameters don't exist or there's another error, return empty array

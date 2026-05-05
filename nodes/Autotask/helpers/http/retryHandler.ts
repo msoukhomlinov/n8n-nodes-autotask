@@ -1,4 +1,4 @@
-import type {
+﻿import type {
 	IExecuteFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
@@ -31,6 +31,7 @@ export async function executeWithRetry<T>(
 
 			// Only retry 429s - throw other errors immediately
 			if (status !== 429) {
+				// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 				throw error;
 			}
 

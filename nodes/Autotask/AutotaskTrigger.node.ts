@@ -9,7 +9,7 @@ import type {
 	INodePropertyOptions,
 	ResourceMapperFields,
 } from 'n8n-workflow';
-import { NodeOperationError } from 'n8n-workflow';
+import { NodeOperationError, NodeConnectionTypes } from 'n8n-workflow';
 import { AutotaskWebhookEntityType, AutotaskWebhookEventType } from './types/webhook';
 import type { IAutotaskWebhookPayload, IAutotaskRawWebhookPayload } from './types/webhook';
 import { verifyWebhookSignature } from './helpers/webhook/signature';
@@ -64,7 +64,7 @@ export class AutotaskTrigger implements INodeType {
 			name: 'Autotask Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
 				name: 'autotaskApi',
@@ -420,7 +420,7 @@ export class AutotaskTrigger implements INodeType {
 						}
 
 						// For other errors, re-throw
-						throw error;
+						throw new NodeOperationError(this.getNode(), error as Error);
 					}
 				} catch (error) {
 					console.error('Error checking webhook existence:', error);

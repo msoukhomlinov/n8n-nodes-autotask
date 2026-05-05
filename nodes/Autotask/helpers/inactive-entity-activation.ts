@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Shared helper for temporarily activating inactive Autotask contacts and
  * resources so that API write operations referencing them can succeed.
  *
@@ -36,6 +36,7 @@
  */
 
 import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import { autotaskApiRequest, buildChildEntityUrl } from './http';
 
 // ---------------------------------------------------------------------------
@@ -218,7 +219,7 @@ export async function withInactiveRefRetry<T>(
 		return await runOperation();
 	} catch (error) {
 		const ref = parseInactiveRefError(error, fieldValues);
-		if (!ref) throw error;
+		if (!ref) throw new NodeOperationError(context.getNode(), error as Error);
 
 		return withTemporaryActivation(context, ref, warnings, runOperation);
 	}
@@ -299,6 +300,7 @@ async function resolvePatchEndpoint(
 
 		const companyId = Number(contactResponse?.item?.companyID ?? 0);
 		if (!companyId) {
+			 
 			throw new Error(
 				`Cannot temporarily activate contact ${ref.entityId}: unable to determine its companyID`,
 			);

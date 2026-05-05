@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { fetchThresholdInformation } from '../../helpers/http/request';
 
 /**

@@ -1,4 +1,4 @@
-import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
+﻿import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
 import { getFields } from './entity/api';
 import { buildEntityDeepLink } from './entity/deep-link';
@@ -177,6 +177,7 @@ function parseDueBefore(raw: string | null | undefined): IDateCutoffs {
 
   const parsed = new Date(dueBeforeRaw);
   if (Number.isNaN(parsed.getTime())) {
+     
     throw new Error(`Due cut-off is invalid. Use YYYY-MM-DD or a valid ISO-8601 datetime. Received: "${dueBeforeRaw}".`);
   }
 
@@ -300,6 +301,7 @@ function getStatusValuesFromFields(
       .map((item) => asNumber(item.value))
       .filter((value): value is number => value !== null && allowed.has(value));
     if (values.length === 0) {
+       
       throw new Error(`No ${entityName} statuses matched statusAllowlistByValue.`);
     }
     return { mode: 'in', values };
@@ -312,6 +314,7 @@ function getStatusValuesFromFields(
       .map((item) => asNumber(item.value))
       .filter((value): value is number => value !== null);
     if (values.length === 0) {
+       
       throw new Error(`No ${entityName} statuses matched statusAllowlistByLabel.`);
     }
     return { mode: 'in', values };
@@ -323,6 +326,7 @@ function getStatusValuesFromFields(
     .filter((value): value is number => value !== null);
 
   if (closedValues.length === 0) {
+     
     throw new Error(`Unable to resolve closed/terminal statuses for ${entityName}. Provide explicit allowlists.`);
   }
 
@@ -336,6 +340,7 @@ function buildStatusFilter(fieldName: string, mode: 'in' | 'notIn' | 'none', val
 
 function ensureBelowLimit(results: IDataObject[], limit: number, entityLabel: string): void {
   if (results.length > limit) {
+     
     throw new Error(
       `Found \u2265${results.length} ${entityLabel}. Exceeds maxItemsPerEntity (${limit}). Narrow your filters (add due window, reduce scope) or increase maxItemsPerEntity.`,
     );
@@ -410,6 +415,7 @@ async function addAuditNote(
         warnings.push(`Task notes endpoint not supported; task ${entityId} audit note skipped.`);
         return;
       }
+      // eslint-disable-next-line @n8n/community-nodes/require-node-api-error
       throw error;
     }
   } catch (error) {
@@ -429,14 +435,17 @@ export async function transferOwnership(
 
   const source = await autotaskApiRequest.call(context, 'GET', `Resources/${options.sourceResourceId}/`) as { item?: IDataObject };
   if (!source.item) {
+     
     throw new Error(`Source resource ${options.sourceResourceId} was not found.`);
   }
 
   const destination = await autotaskApiRequest.call(context, 'GET', `Resources/${options.destinationResourceId}/`) as { item?: IDataObject };
   if (!destination.item) {
+     
     throw new Error(`Receiving resource ${options.destinationResourceId} was not found.`);
   }
   if (!isActiveResource(destination.item)) {
+     
     throw new Error(`Receiving resource ${options.destinationResourceId} is inactive. Select an active receiving resource.`);
   }
   const sourceResourceName = getResourceDisplayName(source.item, options.sourceResourceId);
@@ -509,6 +518,7 @@ export async function transferOwnership(
       );
       const missingCompanyIds = uniqueCompanyIds.filter((id) => !foundCompanyIds.has(id));
       if (missingCompanyIds.length > 0) {
+         
         throw new Error(`Some companies in company allowlist were not found: ${missingCompanyIds.join(', ')}`);
       }
     } else {

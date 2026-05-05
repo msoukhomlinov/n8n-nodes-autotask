@@ -1,4 +1,5 @@
-import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import { autotaskApiRequest } from '../../helpers/http';
 import { resolveLabelsToIds } from '../../helpers/label-resolution';
 
@@ -19,7 +20,8 @@ async function resolveResourceId(
 		const msg = err instanceof Error ? err.message : String(err);
 		// If the value is non-numeric (a name/label), resolution failure means we can't proceed
 		if (typeof rawId === 'string' && !/^\d+$/.test(rawId)) {
-			throw new Error(
+			throw new NodeOperationError(
+				context.getNode(),
 				`Could not resolve resource name '${rawId}' to a numeric ID: ${msg}. Use a numeric resourceID instead.`,
 			);
 		}
@@ -73,7 +75,7 @@ export async function executeResourceTimeOffBalanceOperation(
 				returnData.push({ json: { error: (error as Error).message } });
 				continue;
 			}
-			throw error;
+			throw new NodeOperationError(this.getNode(), error as Error);
 		}
 	}
 

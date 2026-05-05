@@ -1,4 +1,4 @@
-import type { ILoadOptionsFunctions, ResourceMapperFields, IExecuteFunctions, INodePropertyOptions } from 'n8n-workflow';
+﻿import type { ILoadOptionsFunctions, ResourceMapperFields, IExecuteFunctions, INodePropertyOptions } from 'n8n-workflow';
 import { handleErrors } from '../errorHandler';
 import { autotaskApiRequest } from '../http';
 import { WebhookUrlType, buildWebhookUrl, validateEntityType } from './urls';
@@ -166,6 +166,7 @@ export async function getWebhookSupportedFields(
 		} catch (error) {
 			// If webhook field approach fails, provide a clear error
 			console.error(`Failed to retrieve webhook fields for ${entityType}:`, error);
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(`Failed to retrieve webhook fields for ${entityType}: ${(error as Error).message}`);
 		}
 

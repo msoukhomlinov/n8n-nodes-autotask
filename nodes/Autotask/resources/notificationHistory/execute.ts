@@ -1,4 +1,4 @@
-import { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+﻿import { IExecuteFunctions, INodeExecutionData, NodeOperationError } from 'n8n-workflow';
 import { IAutotaskEntity } from '../../types';
 import {
   GetOperation,
@@ -50,7 +50,7 @@ export async function executeNotificationHistoryOperation(
         returnData.push({ json: { error: error.message } });
         continue;
       }
-      throw error;
+      throw new NodeOperationError(this.getNode(), error as Error);
     }
   }
   return [returnData];

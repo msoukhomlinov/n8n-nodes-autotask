@@ -1,4 +1,4 @@
-import type { INodePropertyOptions } from 'n8n-workflow';
+﻿import type { INodePropertyOptions } from 'n8n-workflow';
 import type { IAutotaskField, IFieldValidationRules } from '../../types';
 
 type FieldWithValidation = IAutotaskField & {
@@ -37,6 +37,7 @@ export function sortFieldsByRequiredAndName(fields: FieldWithValidation[]): INod
 		}));
 	} catch (error) {
 		console.error('Failed to sort fields:', error);
+		// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 		throw error;
 	}
 }

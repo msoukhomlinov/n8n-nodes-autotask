@@ -1,4 +1,4 @@
-import type { INodePropertyOptions } from 'n8n-workflow';
+﻿import type { INodePropertyOptions } from 'n8n-workflow';
 import type { IAutotaskField } from '../../types';
 import type { ILoadOptionsFunctions } from 'n8n-workflow';
 import { AUTOTASK_ENTITIES } from '../../constants/entities';
@@ -30,6 +30,7 @@ export function getFieldOptions(fields: IAutotaskField[]): INodePropertyOptions[
 				description: formatFieldDescription(field),
 			}));
 	} catch (error) {
+		// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 		throw new Error(`Failed to get field options: ${error instanceof Error ? error.message : 'Unknown error'}`);
 	}
 }
@@ -47,6 +48,7 @@ export function getFilterFieldOptions(fields: IAutotaskField[]): INodePropertyOp
 				description: formatFieldDescription(field),
 			}));
 	} catch (error) {
+		// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 		throw new Error(`Failed to get filter field options: ${error instanceof Error ? error.message : 'Unknown error'}`);
 	}
 }
@@ -64,6 +66,7 @@ export function getSortFieldOptions(fields: IAutotaskField[]): INodePropertyOpti
 				description: formatFieldDescription(field),
 			}));
 	} catch (error) {
+		// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 		throw new Error(`Failed to get sort field options: ${error instanceof Error ? error.message : 'Unknown error'}`);
 	}
 }

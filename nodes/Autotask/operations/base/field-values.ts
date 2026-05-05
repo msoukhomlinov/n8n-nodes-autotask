@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, IDataObject, GenericValue } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, IDataObject, GenericValue } from 'n8n-workflow';
 import { FieldValidator } from './field-validator';
 import { handleErrors } from '../../helpers/errorHandler';
 import { getFields } from '../../helpers/entity/api';
@@ -60,6 +60,7 @@ export async function getOperationFieldValues(
 			} catch (error) {
 				// If it's a validation error, re-throw it
 				if (error instanceof Error && error.message.includes('bodyJson')) {
+					// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 					throw error;
 				}
 				// Parameter doesn't exist, use empty object
@@ -129,6 +130,7 @@ export async function getOperationFieldValues(
 				error.message.includes('hasn\'t been executed') ||
 				error.message.includes('Referenced node is unexecuted'))) {
 			// Re-throw expression errors so the user knows about the problem
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(
 				`Expression error in field mapping: ${error.message}\n\n` +
 				`Hint: Check that all referenced nodes have executed. ` +

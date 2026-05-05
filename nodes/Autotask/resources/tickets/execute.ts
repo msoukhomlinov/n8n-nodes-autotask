@@ -1,4 +1,5 @@
-import type { IDataObject, IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+﻿import type { IDataObject, IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import type { IAutotaskCredentials } from '../../types/base/auth';
 import {
@@ -525,7 +526,7 @@ export async function executeTicketOperation(
                 returnData.push({ json: { error: (error as Error).message } });
                 continue;
             }
-            throw error;
+            throw new NodeOperationError(this.getNode(), error as Error);
         }
     }
 

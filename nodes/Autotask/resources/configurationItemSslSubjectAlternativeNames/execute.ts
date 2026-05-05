@@ -1,4 +1,5 @@
-import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
   UpdateOperation,
@@ -102,7 +103,7 @@ export async function executeConfigurationItemSslSubjectAlternativeNameOperation
         returnData.push({ json: errorObject });
         continue;
       }
-      throw error;
+      throw new NodeOperationError(this.getNode(), error as Error);
     }
   }
 

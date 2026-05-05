@@ -1,4 +1,4 @@
-import type {
+﻿import type {
 	IExecuteFunctions,
 	INodeProperties,
 	INodePropertyOptions,
@@ -122,6 +122,7 @@ export class BaseOperation {
 				return undefined;
 			}
 
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(
 				ERROR_TEMPLATES.validation
 					.replace('{type}', 'ValidationError')
@@ -143,6 +144,7 @@ export class BaseOperation {
 		for (const parentType of this.parentChain) {
 			const parentId = await this.getParameter(`${parentType}ID`, itemIndex);
 			if (typeof parentId !== 'string' && typeof parentId !== 'number') {
+				 
 				throw new Error(
 					ERROR_TEMPLATES.validation
 						.replace('{type}', 'ValidationError')
@@ -217,6 +219,7 @@ export class BaseOperation {
 				) as IAutotaskResponse<IAutotaskEntity>;
 
 				if (!response.item) {
+					 
 					throw new Error(
 						ERROR_TEMPLATES.notFound
 							.replace('{type}', 'NotFoundError')
@@ -361,6 +364,7 @@ export class BaseOperation {
 		if (this.parentType) {
 			const parentId = options.parentIdOverride ?? await this.getParameter(`${this.parentType}ID`, itemIndex);
 			if (typeof parentId !== 'string' && typeof parentId !== 'number') {
+				 
 				throw new Error(
 					ERROR_TEMPLATES.validation
 						.replace('{type}', 'ValidationError')
@@ -433,6 +437,7 @@ export class BaseOperation {
 				) as IAutotaskResponse<{ count: number }>;
 
 				if (typeof response?.item?.count !== 'number') {
+					 
 					throw new Error(
 						ERROR_TEMPLATES.validation
 							.replace('{type}', 'ValidationError')
@@ -475,6 +480,7 @@ export class BaseOperation {
 			async () => {
 				const metadata = getEntityMetadata(this.entityType);
 				if (!metadata?.isAttachment) {
+					 
 					throw new Error(
 						ERROR_TEMPLATES.validation
 							.replace('{type}', 'ValidationError')
@@ -506,6 +512,7 @@ export class BaseOperation {
 				) as IAutotaskResponse<IAutotaskEntity>;
 
 				if (!response.item) {
+					 
 					throw new Error(
 						ERROR_TEMPLATES.validation
 							.replace('{type}', 'ValidationError')
@@ -532,6 +539,7 @@ export class BaseOperation {
 			async () => {
 				const metadata = getEntityMetadata(this.entityType);
 				if (!metadata?.isAttachment) {
+					 
 					throw new Error(
 						ERROR_TEMPLATES.validation
 							.replace('{type}', 'ValidationError')
@@ -555,6 +563,7 @@ export class BaseOperation {
 				}>;
 
 				if (!response.item?.data) {
+					 
 					throw new Error(
 						ERROR_TEMPLATES.validation
 							.replace('{type}', 'ValidationError')
@@ -585,6 +594,7 @@ export class BaseOperation {
 			async () => {
 				const metadata = getEntityMetadata(this.entityType);
 				if (!metadata?.isAttachment) {
+					 
 					throw new Error(
 						ERROR_TEMPLATES.validation
 							.replace('{type}', 'ValidationError')
@@ -619,6 +629,7 @@ export class BaseOperation {
 			async () => {
 				const metadata = getEntityMetadata(this.entityType);
 				if (!metadata?.isAttachment) {
+					 
 					throw new Error(
 						ERROR_TEMPLATES.validation
 							.replace('{type}', 'ValidationError')
@@ -638,6 +649,7 @@ export class BaseOperation {
 				) as IAutotaskResponse<IAutotaskEntity>;
 
 				if (!response.item) {
+					 
 					throw new Error(
 						ERROR_TEMPLATES.notFound
 							.replace('{type}', 'NotFoundError')

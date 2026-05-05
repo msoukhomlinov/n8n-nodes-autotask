@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, INodeExecutionData, IGetNodeParameterOptions, IDataObject } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData, IGetNodeParameterOptions, IDataObject } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import { validateParameters } from '../../helpers/aiHelper';
 import { createDryRunResponse } from '../../helpers/dry-run';
@@ -600,7 +600,7 @@ async function validateToolRequestData(
 	} catch (error) {
 		// If it's already a NodeOperationError, re-throw it
 		if (error instanceof NodeOperationError) {
-			throw error;
+			throw new NodeOperationError(this.getNode(), error as Error);
 		}
 
 		// For other validation errors, wrap with helpful context
@@ -688,7 +688,7 @@ async function applySafetyGates(
 		}
 	} catch (error) {
 		if (error instanceof NodeOperationError) {
-			throw error;
+			throw new NodeOperationError(this.getNode(), error as Error);
 		}
 
 		throw new NodeOperationError(

@@ -1,4 +1,5 @@
-import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import { formatCompoundResponse } from '../../helpers/compound-response-formatter';
 import {
@@ -121,7 +122,7 @@ export async function executeContractChargeOperation(
 				returnData.push({ json: { error: error.message } });
 				continue;
 			}
-			throw error;
+			throw new NodeOperationError(this.getNode(), error as Error);
 		}
 	}
 

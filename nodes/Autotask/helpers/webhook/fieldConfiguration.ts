@@ -1,4 +1,4 @@
-import type { IHookFunctions, IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-workflow';
+﻿import type { IHookFunctions, IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-workflow';
 import { autotaskApiRequest } from '../http';
 import { WebhookUrlType, buildWebhookUrl } from './urls';
 import { handleErrors, isAuthenticationError } from '../errorHandler';
@@ -221,6 +221,7 @@ export async function processBatchFields(
       // If throwOnError is true and we have failures, throw an error
       if (throwOnError && failedIds.length > 0) {
         const errorMsg = `Failed to configure ${failedIds.length} webhook fields after retries: ${failedIds.join(', ')}`;
+         
         throw new Error(errorMsg);
       }
 
@@ -239,6 +240,7 @@ export async function processBatchFields(
     console.error(`Batch processing failed for ${entityType} webhook ${webhookId}`);
 
     if (throwOnError) {
+      // eslint-disable-next-line @n8n/community-nodes/require-node-api-error
       throw error;
     }
 

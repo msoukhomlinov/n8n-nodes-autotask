@@ -123,11 +123,13 @@ export class CacheService {
 					}
 				}
 			} else {
+				 
 				throw new Error('Cache directory is required for file-based caching');
 			}
 		} catch (error) {
 			console.error('Failed to create file-based cache:', error);
-			throw new Error(`Failed to initialize cache: ${error.message}`);
+			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
+			throw new Error(`Failed to initialize cache: ${(error as Error).message}`);
 		}
 
 		// Log cache errors

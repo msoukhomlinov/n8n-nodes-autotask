@@ -479,10 +479,10 @@ export class Autotask implements INodeType {
 					}
 				} catch (error) {
 					if (this.continueOnFail()) {
-						returnData.push({ json: { error: (error as Error).message } });
+						returnData.push({ json: { error: (error as Error).message }, pairedItem: { item: i } });
 						continue;
 					}
-					throw error;
+					throw new NodeOperationError(this.getNode(), error as Error);
 				}
 			}
 			return [returnData];

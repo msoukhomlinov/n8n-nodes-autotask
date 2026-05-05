@@ -1,4 +1,5 @@
-import type { IExecuteFunctions, INodeExecutionData, IBinaryData, IDataObject } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData, IBinaryData, IDataObject } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import {
 	GetManyOperation,
@@ -154,7 +155,7 @@ export async function executeTicketAttachmentOperation(
 				returnData.push({ json: { error: error.message } });
 				continue;
 			}
-			throw error;
+			throw new NodeOperationError(this.getNode(), error as Error);
 		}
 	}
 

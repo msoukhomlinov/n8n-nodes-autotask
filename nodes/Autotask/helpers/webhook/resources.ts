@@ -1,4 +1,4 @@
-import type { ILoadOptionsFunctions, IHookFunctions, IExecuteFunctions } from 'n8n-workflow';
+﻿import type { ILoadOptionsFunctions, IHookFunctions, IExecuteFunctions } from 'n8n-workflow';
 import { autotaskApiRequest } from '../http';
 import { WebhookUrlType, buildWebhookUrl, validateEntityType } from './urls';
 import { handleErrors, isAuthenticationError } from '../errorHandler';
@@ -273,6 +273,7 @@ export async function processBatchResources<T>(
 					failedResources.push(resource);
 					results.failures++;
 					if (throwOnError) {
+						 
 						throw error;
 					}
 				});
@@ -319,6 +320,7 @@ export async function processBatchResources<T>(
 						if (isAuthenticationError(error)) {
 							console.error('Auth error during retry – aborting:', (error as Error).message);
 							results.failures++;
+							// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 							if (throwOnError) throw error;
 							break;
 						}
@@ -327,6 +329,7 @@ export async function processBatchResources<T>(
 						if (retryAttempt === maxRetries) {
 							results.failures++;
 							if (throwOnError) {
+								// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 								throw error;
 							}
 						}

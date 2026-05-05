@@ -1,4 +1,5 @@
-import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import { CreateOperation } from '../../operations/base';
 
@@ -66,7 +67,7 @@ export async function executeContractServiceBundleAdjustmentOperation(
 				returnData.push({ json: { error: error.message } });
 				continue;
 			}
-			throw error;
+			throw new NodeOperationError(this.getNode(), error as Error);
 		}
 	}
 

@@ -1,4 +1,4 @@
-import type { IExecuteFunctions, ILoadOptionsFunctions, IHookFunctions } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, ILoadOptionsFunctions, IHookFunctions } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import type { IApiErrorWithResponse, IApiErrorDetail } from '../types/base/api';
 import type { IAutotaskErrorDetail, IAutotaskError } from '../types/base/errors';
@@ -255,6 +255,7 @@ export async function handleErrors<T>(
 		}
 
 		// If no context available, rethrow with enhanced message
+		// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 		throw new Error(`${detailedMessage} [${errorContext.type}]`);
 	}
 }
