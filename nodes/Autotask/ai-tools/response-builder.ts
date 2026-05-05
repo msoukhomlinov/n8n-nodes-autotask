@@ -454,7 +454,7 @@ export function buildCompoundResponse(
 	},
 	context: ToolResponseContext = {},
 ): Record<string, unknown> {
-	const { outcome, id, existingId, record, dedupFields, updateFields, matchedDedupFields, fieldsUpdated, fieldsCompared } =
+	const { outcome, id, existingId, record, dedupFields, updateFields, matchedDedupFields, fieldsUpdated, fieldsCompared, context: entityContext } =
 		compoundData;
 	const canonicalId = id ?? existingId;
 	let summary: string;
@@ -484,6 +484,7 @@ export function buildCompoundResponse(
 	if (matchedDedupFields !== undefined) response.matchedDedupFields = matchedDedupFields;
 	if (fieldsCompared !== undefined) response.fieldsCompared = fieldsCompared;
 	if (fieldsUpdated !== undefined) response.fieldsUpdated = fieldsUpdated;
+	if (entityContext !== undefined) response.context = entityContext;
 	return response;
 }
 

@@ -9,6 +9,7 @@ import {
 	DeleteOperation,
 } from '../../operations/base';
 import { createHolidayIfNotExists } from '../../helpers/holiday-creator';
+import { formatCompoundResponse } from '../../helpers/compound-response-formatter';
 
 const ENTITY_TYPE = 'holiday';
 
@@ -90,7 +91,7 @@ export async function executeHolidayOperation(
 						errorOnDuplicate,
 						updateFields,
 					});
-					returnData.push({ json: result as unknown as IDataObject });
+					returnData.push({ json: formatCompoundResponse('holiday', result as unknown as Record<string, unknown>, createFields, dedupFields, updateFields) });
 					break;
 				}
 
