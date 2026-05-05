@@ -23,6 +23,9 @@ export interface CompoundRegistryEntry {
 	defaultDedupFields: string[];
 	/** Field in the result containing the entity's numeric ID (all outcomes: created/skipped/updated). */
 	entityIdField: string;
+	/** Helper-only fields present in createFields that are never written to the API as-is and must be
+	 *  excluded from the record{} echo (e.g. materialCode is resolved to billingCodeID by the helper). */
+	recordExcludeFields?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -44,7 +47,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['name', 'datePurchased'],
 		entityIdField: 'chargeId',
-
+		recordExcludeFields: ['materialCode'],
 	},
 	ticketCharge: {
 		getHandler: () =>
@@ -53,7 +56,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['name', 'datePurchased'],
 		entityIdField: 'chargeId',
-
+		recordExcludeFields: ['materialCode'],
 	},
 	projectCharge: {
 		getHandler: () =>
@@ -62,6 +65,7 @@ export const COMPOUND_REGISTRY: Record<string, CompoundRegistryEntry> = {
 			),
 		defaultDedupFields: ['name', 'datePurchased'],
 		entityIdField: 'chargeId',
+		recordExcludeFields: ['materialCode'],
 
 	},
 	configurationItems: {

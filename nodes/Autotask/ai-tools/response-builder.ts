@@ -479,7 +479,7 @@ export function buildCompoundResponse(
 	};
 	if (canonicalId !== undefined) response.id = canonicalId;
 	if (record) response.record = record;
-	if (dedupFields !== undefined && dedupFields.length > 0) response.dedupFields = dedupFields;
+	if (dedupFields !== undefined) response.dedupFields = dedupFields;
 	if (updateFields !== undefined && updateFields.length > 0) response.updateFields = updateFields;
 	if (matchedDedupFields !== undefined) response.matchedDedupFields = matchedDedupFields;
 	if (fieldsCompared !== undefined) response.fieldsCompared = fieldsCompared;
