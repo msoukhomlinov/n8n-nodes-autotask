@@ -445,6 +445,8 @@ export function buildCompoundResponse(
 		id?: number | string;
 		existingId?: number | string;
 		record?: Record<string, unknown>;
+		dedupFields?: string[];
+		updateFields?: string[];
 		matchedDedupFields?: string[];
 		fieldsUpdated?: Record<string, { from: unknown; to: unknown }>;
 		fieldsCompared?: string[];
@@ -452,7 +454,7 @@ export function buildCompoundResponse(
 	},
 	context: ToolResponseContext = {},
 ): Record<string, unknown> {
-	const { outcome, id, existingId, record, matchedDedupFields, fieldsUpdated, fieldsCompared } =
+	const { outcome, id, existingId, record, dedupFields, updateFields, matchedDedupFields, fieldsUpdated, fieldsCompared } =
 		compoundData;
 	const canonicalId = id ?? existingId;
 	let summary: string;
@@ -477,6 +479,8 @@ export function buildCompoundResponse(
 	};
 	if (canonicalId !== undefined) response.id = canonicalId;
 	if (record) response.record = record;
+	if (dedupFields !== undefined && dedupFields.length > 0) response.dedupFields = dedupFields;
+	if (updateFields !== undefined && updateFields.length > 0) response.updateFields = updateFields;
 	if (matchedDedupFields !== undefined) response.matchedDedupFields = matchedDedupFields;
 	if (fieldsCompared !== undefined) response.fieldsCompared = fieldsCompared;
 	if (fieldsUpdated !== undefined) response.fieldsUpdated = fieldsUpdated;

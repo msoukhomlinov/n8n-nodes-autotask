@@ -168,6 +168,8 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 			compoundData.existingId = compoundId;
 		}
 	}
+	compoundData.dedupFields = dedupFields;
+	if (updateFields.length > 0) compoundData.updateFields = updateFields;
 	if (compoundResult.matchedDedupFields !== undefined)
 		compoundData.matchedDedupFields = compoundResult.matchedDedupFields;
 	if (compoundResult.fieldsUpdated !== undefined)
