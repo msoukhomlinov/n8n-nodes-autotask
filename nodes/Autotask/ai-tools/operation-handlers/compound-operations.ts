@@ -162,11 +162,7 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 		outcome: compoundResult.outcome,
 	};
 	if (compoundId !== undefined) {
-		if (compoundResult.outcome === 'created') {
-			compoundData.id = compoundId;
-		} else {
-			compoundData.existingId = compoundId;
-		}
+		compoundData.id = compoundId;
 	}
 	compoundData.dedupFields = dedupFields;
 	if (updateFields.length > 0) compoundData.updateFields = updateFields;

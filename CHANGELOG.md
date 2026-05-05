@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.15.3] - 2026-05-05
+
+### Fixed
+- **`createIfNotExists` — entity ID field name now consistent across all outcomes:** `skipped` and `updated` outcomes previously returned `existingId`. All outcomes (`created`, `updated`, `skipped`) now return `id`, matching regular `create`/`update` operation responses. Affects both the standard node path (`compound-response-formatter.ts`) and the AI tools path (`buildCompoundResponse`).
+
 ## [2.15.1] - 2026-05-05
 
 ### Changed

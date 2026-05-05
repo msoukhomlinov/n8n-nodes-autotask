@@ -62,7 +62,7 @@ export function buildCompoundContextFromResult(
  * summary, operation — those are not meaningful in the standard workflow node context).
  *
  * Fields included:
- *   outcome, id/existingId, record{} (created/updated only), dedupFields,
+ *   outcome, id (same key for all outcomes), record{} (created/updated only), dedupFields,
  *   updateFields (when non-empty), matchedDedupFields, fieldsUpdated,
  *   fieldsCompared, context, warnings
  */
@@ -84,11 +84,7 @@ export function formatCompoundResponse(
 	const response: IDataObject = { outcome };
 
 	if (entityId !== undefined) {
-		if (outcome === 'created') {
-			response.id = entityId;
-		} else {
-			response.existingId = entityId;
-		}
+		response.id = entityId;
 	}
 
 	// Echo all supplied entity fields as record{} for created/updated outcomes.
