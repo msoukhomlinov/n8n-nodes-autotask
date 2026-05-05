@@ -176,6 +176,15 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 		compoundData.fieldsCompared = compoundResult.fieldsCompared;
 	if (compoundContext !== undefined) compoundData.context = compoundContext;
 
+	// Echo all supplied entity fields as record{} for created/updated outcomes.
+	// createFields contains only actual entity fields — buildFieldValues already
+	// strips dedupFields, errorOnDuplicate, updateFields, and all metadata keys.
+	if (compoundResult.outcome === 'created' || compoundResult.outcome === 'updated') {
+		const record: Record<string, unknown> = { ...createFields };
+		if (compoundId !== undefined) record.id = compoundId;
+		compoundData.record = record;
+	}
+
 	const compoundJson = JSON.stringify(
 		buildCompoundResponse(
 			resource,
