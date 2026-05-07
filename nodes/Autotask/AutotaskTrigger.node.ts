@@ -862,13 +862,14 @@ export class AutotaskTrigger implements INodeType {
 		// Map Autotask webhook payload to our expected format
 		// Autotask sends: Action, Guid, EntityType, Id, Fields, EventTime, SequenceNumber, PersonID
 		// We expect: eventType, entityType, entityId, entityData, timestamp, webhookId
+		const storedWebhookId = webhookData.webhookId as number | undefined;
 		const bodyData: IAutotaskWebhookPayload = {
 			eventType: rawBodyData.Action as AutotaskWebhookEventType,
 			entityType: rawBodyData.EntityType as AutotaskWebhookEntityType,
 			entityId: rawBodyData.Id,
 			entityData: rawBodyData.Fields || {},
 			timestamp: rawBodyData.EventTime,
-			webhookId: 0, // Not provided in the raw payload
+			webhookId: storedWebhookId ?? 0,
 		};
 
 		console.log(`Webhook event details: entityType=${bodyData.entityType}, eventType=${bodyData.eventType}, entityId=${bodyData.entityId}`);
@@ -882,6 +883,7 @@ export class AutotaskTrigger implements INodeType {
 			if (webhookData.webhookId) {
 				console.log(`Clearing webhook ID ${webhookData.webhookId} from static data due to deactivation event`);
 				webhookData.webhookId = undefined;
+				webhookData.secretKey = undefined;
 			}
 
 			// Return success response for deactivation event
@@ -1057,18 +1059,14 @@ export class AutotaskTrigger implements INodeType {
 		try {
 			console.log('Webhook deactivation request received');
 
-			// Get payload and webhook ID
-			const bodyData = this.getBodyData() as IDataObject;
-			const webhookId = bodyData.webhookId as string | number;
-
-			// Clear the webhook from static data
-			if (webhookId) {
-				const webhookData = this.getWorkflowStaticData('node');
-				// Only clear if it matches our stored webhook ID
-				if (webhookData.webhookId === webhookId) {
-					webhookData.webhookId = undefined;
-					console.log(`Autotask webhook ${webhookId} deactivated and cleared`);
-				}
+			// Clear stored webhook ID unconditionally — deactivation URL payload format is
+			// undocumented so we cannot reliably match by ID. The main webhook handler also
+			// clears on Deactivated events; this is a secondary safety net.
+			const webhookData = this.getWorkflowStaticData('node');
+			if (webhookData.webhookId) {
+				console.log(`Autotask webhook ${webhookData.webhookId} deactivated and cleared`);
+				webhookData.webhookId = undefined;
+				webhookData.secretKey = undefined;
 			}
 
 			// Return success response

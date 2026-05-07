@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.16.1] - 2026-05-07
+
+### Fixed
+- **Webhook deactivation — static data now fully cleared on both deactivation paths:** Both the `Deactivated` event (main webhook URL) and the deactivation URL callback (`setupWebhook`) now clear both `webhookId` and `secretKey` from static data. Previously `secretKey` was only cleared via `setupWebhook` but not on the `Deactivated` event path, leaving stale signing material in static data until the next activation cycle.
+- **Webhook deactivation URL handler — unconditional clear replaces unreliable ID match:** `setupWebhook` previously tried to match the incoming payload's `webhookId` field before clearing static data. Autotask's deactivation URL payload format is undocumented, making the match unreliable. Now clears unconditionally when the deactivation URL is called, since the main webhook handler is already the primary deactivation path and recovery via `checkExists`/`create` is automatic.
+- **Webhook output — `webhookId` now populated from static data:** Outgoing webhook event payloads previously always contained `webhookId: 0`. Now populated from stored static data so downstream workflows can identify which registered webhook fired.
+
 ## [2.16.0] - 2026-05-06
 
 ### Changed
