@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.17.0] - 2026-05-12
+
+### Security
+- **CVE-2026-41907 (uuid <13.0.1) — dev-tree advisory pinned out via overrides:** `uuid@13.0.0` was pulled in transitively by `@langchain/classic` → `@langchain/langgraph-sdk` (devDependency only). Source code does not import or invoke `uuid` anywhere, and `uuid` is not a runtime dependency of the published package, so installed node consumers are unaffected. Added `pnpm.overrides` and npm `overrides` entries pinning vulnerable ranges to `>=13.0.1` so contributor/CI install trees no longer flag the advisory.
+
 ## [2.16.1] - 2026-05-07
 
 ### Fixed
