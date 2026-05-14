@@ -297,133 +297,76 @@ This node is optimised for AI agents and tool-calling systems with specialised f
 
 #### Quick Start for AI Agents
 
-**1. Introspect Resources**
-```javascript
-// Discover available fields and requirements
-operation: aiHelper.describeResource
-params: { resource: "ticket", mode: "write" }
+The recommended path is the **Autotask AI Tools** node (see the [Autotask AI Tools](#autotask-ai-tools) section above). Add one node per resource, connect each to your AI Agent's `Tools` input, and the agent gets a tool named `autotask_<resource>` with a unified `operation` enum.
+
+**1. Build the request**
+
+The agent calls a tool like this (the LLM emits the JSON; you don't write it manually):
+
+```jsonc
+autotask_ticket({
+  operation: "create",
+  title: "API Integration Issue",
+  description: "Customer reporting connection problems",
+  priority: "Medium",         // human-readable label — resolved automatically
+  status: "New",              // human-readable label — resolved automatically
+  companyID: "Tech Solutions" // reference label — resolved automatically
+})
 ```
 
-**2. Prepare Data**
-```javascript
-// Use JSON parameters for direct data input
-bodyJson: {
-  "title": "API Integration Issue", 
-  "description": "Customer reporting connection problems",
-  "priority": "Medium",
-  "status": "New"
-}
-```
+Labels for picklist and reference fields are resolved to numeric IDs before the API call. Successful responses include `resolvedLabels` showing each mapping. Ambiguous matches produce `pendingConfirmations` for user confirmation rather than guessing.
 
-Note: You may provide labels for picklist/reference fields in `bodyJson` (e.g., `status: "New"`). They are automatically resolved to IDs pre-flight.
+**2. Inspect when needed**
 
-**3. Preview First (Optional)**
-```javascript
-// Test your request without making API calls
-dryRun: true
-```
+Every AI Tools node instance also exposes three helper operations automatically:
 
-**4. Execute with Optimal Output**
-```javascript
-// Choose output format for token efficiency
-outputMode: "rawIds"        // Most efficient
-outputMode: "idsAndLabels"  // Default (balanced)
-outputMode: "labelsOnly"    // Most readable
-```
+- `describeFields` — field metadata (types, required, picklist/reference, dependencies)
+- `listPicklistValues` — valid values for a picklist field
+- `describeOperation` — full documentation for one operation on the tool
 
-#### AI Helper Operations
+The agent will usually only need these on edge cases — most write operations embed a compact required-fields summary directly in their description.
 
-**Introspection Endpoint:**
-- `aiHelper.describeResource(resource, mode)` - Get field metadata, requirements, constraints, and **entity dependencies**
-- `aiHelper.listPicklistValues(resource, fieldId, query, limit, page)` - Get valid values for dropdown fields
-- `aiHelper.validateParameters(resource, mode, fieldValues)` - Validate field values without API calls (pre-flight validation)
+**3. Read the response**
 
-**Resource and Time Entry:**
-- `resource.whoAmI` - Resolve the current authenticated API user (use before user-scoped actions)
-- `timeEntry.getPosted` / `timeEntry.getUnposted` - List time entries by posting status (with optional filters)
+Responses use a flat shape — the top-level key tells you the response type: `records[]` (list), `record{}` (item), `id` + `record{}` (mutation), `matchCount` (count), `outcome` (compound). All responses include a plain-English `summary` field.
 
-**Dynamic Dependency Discovery:**
-- **Reference fields** show what entity they link to (e.g., `companyID → company`)
-- **Field dependencies** reveal required relationships (e.g., `contactID requires: companyID`)
-- **Workflow guidance** provides creation order tips (e.g., "Ensure company exists before creating contact")
+**4. Recover from errors**
 
-**Enhanced Validation:**
-- **JSON Schema validation** - Immediate feedback on malformed `bodyJson`/`selectColumnsJson`
-- **Parameter pre-validation** - Validate field values, types, dependencies without API calls
-- **Structured error responses** - Detailed validation results with field-by-field feedback
+Error responses include `errorType`, a `summary` prefixed with `REQUIRED NEXT STEP: ...` for actionable cases, and a `nextAction` string telling the agent what to call before retrying (e.g. `listPicklistValues`, `describeFields`).
 
-**JSON Parameter Fallbacks:**
-- `bodyJson` - Override UI mappings for write operations (create/update)
-- `selectColumnsJson` - Specify fields for read operations as JSON array
-
-**Agent-Friendly Features:**
-- `outputMode` - Control response format (rawIds/idsAndLabels/labelsOnly)
-- `dryRun` - Get request preview without API execution
-- Smart error hints with actionable suggestions
+> **Legacy path:** The main **Autotask** node also exposes a deprecated `aiHelper` resource (`describeResource`, `listPicklistValues`, `validateParameters`) and per-operation flags like `bodyJson`, `selectColumnsJson`, `dryRun`, `outputMode`. These remain in place for existing workflows but should not be used for new AI agent integrations — use the AI Tools node instead.
 
 #### Tool Configuration for Maximum Effectiveness
 
-For optimal AI agent integration, configure multiple instances of this node as separate tools. This provides focused, reliable access to different resource types.
+For optimal AI agent integration, add **one Autotask AI Tools node per resource** to your workflow and connect each one to the AI Agent's `Tools` input. Every instance becomes a single unified tool named `autotask_<resource>` (e.g. `autotask_contact`, `autotask_company`) with an `operation` enum the LLM selects at call time.
 
-**Recommended Tool Setup:**
+**How to add a tool (n8n UI):**
 
-```javascript
-// Tool 1: Resource Discovery and Field Introspection
-{
-  name: "autotask_inspector",
-  description: "Discover Autotask resources, fields, and valid values",
-  resource: "aiHelper",
-  operations: ["describeResource", "listPicklistValues", "validateParameters"]
-}
+1. Drag an **Autotask AI Tools** node onto the canvas.
+2. Connect its `Tools` output to the `Tools` input of your AI Agent node.
+3. Configure the node:
+   - **Resource Name or ID** — pick one resource (e.g. `contact`).
+   - **Operations Names or IDs** — multi-select the operations you want the agent to use (e.g. `get`, `getMany`, `count`). Helper operations `describeFields`, `listPicklistValues`, and `describeOperation` are always included automatically — no need to expose them as a separate inspector tool.
+   - **Allow Write Operations** — toggle on to expose `create`, `createIfNotExists`, `update`, `delete`, and resource-specific mutations. Default is off (read-only).
+   - **Tool Description Appendix** — optional free-text appended to the tool description, visible to the LLM. Use this for deployment-specific guardrails (e.g. *"Only query tickets in the MSP support queue. Never create tickets for internal IT."*).
+   - **Time Entry Notes Guidance** — appears only when Resource = Time Entry. Use it to enforce your house style for Summary Notes and Internal Notes.
+4. Repeat for each resource you want the agent to access. Common starting set:
 
-// Tool 2: Contact Management 
-{
-  name: "autotask_contacts",
-  description: "Read and write Autotask contacts and people",
-  resource: "contact",
-  operations: ["get", "getMany", "create", "update"],
-  defaultParams: {
-    outputMode: "idsAndLabels",
-    selectColumnsJson: ["id", "firstName", "lastName", "emailAddress", "companyID", "title", "phone"]
-  }
-  // Accepts labels in bodyJson; labels are auto-resolved to IDs
-}
+| Node instance | Resource | Typical operations | Write enabled |
+|---|---|---|---|
+| Companies | `company` | `get`, `getMany`, `count`, `searchByDomain` | usually off |
+| Contacts | `contact` | `get`, `getMany`, `create`, `update` | as needed |
+| Tickets | `ticket` | `get`, `getMany`, `count`, `create`, `update`, `slaHealthCheck`, `summary` | as needed |
+| Time entries | `timeEntry` | `getPosted`, `getUnposted`, `create`, `createIfNotExists` | as needed |
+| Resources (MSP staff) | `resource` | `getMany`, `whoAmI` | off |
 
-// Tool 3: Company/Account Management
-{
-  name: "autotask_companies", 
-  description: "Read and write Autotask companies and accounts",
-  resource: "company",
-  operations: ["get", "getMany", "create", "update"],
-  defaultParams: {
-    outputMode: "idsAndLabels",
-    selectColumnsJson: ["id", "companyName", "companyType", "phone", "address1", "city", "state"]
-  }
-  // Accepts labels in bodyJson; labels are auto-resolved to IDs
-}
+**Benefits of one-node-per-resource:**
+- **Focused schemas** — the LLM sees a tight, predictable set of operations per tool.
+- **Granular write control** — enable writes on `contact` without enabling them on `ticket`.
+- **Per-resource deployment context** — different appendix guidance for each resource.
+- **Cleaner execution view** — each tool call is labelled by resource in n8n's log.
 
-// Tool 4: General Resource Access
-{
-  name: "autotask_resources",
-  description: "Access any Autotask resource with full flexibility",
-  allResources: true,
-  defaultParams: {
-    outputMode: "rawIds"  // Most token-efficient for exploratory queries
-  }
-  // Accepts labels in bodyJson; labels are auto-resolved to IDs
-}
-```
-
-**Usage Pattern:**
-1. **Start with Inspector** - Use `autotask_inspector` to understand field requirements
-2. **Use Focused Tools** - Call `autotask_contacts` or `autotask_companies` for CRM related operations  
-3. **Use Specialist Tools** - Use `autotask_resources` for lookups of Autotask MSP staff (resources)
-
-**Benefits:**
-- **Faster execution** - Pre-configured tools reduce parameter complexity
-- **Better reliability** - Focused tools have predictable schemas
-- **Token efficiency** - Default parameters optimised for each use case
-- **Easier debugging** - Clear separation of concerns
+**Label resolution is automatic.** When the LLM passes a human-readable name to a picklist or reference field (e.g. `resourceID: "Will Spence"` or `status: "New"`), it's resolved to the numeric ID before the API call. Ambiguous matches return `pendingConfirmations` rather than guessing. No pre-configuration needed.
 
 #### Environment Setup
 
@@ -441,123 +384,90 @@ Configuration options:
 
 #### Example Agent Workflow
 
-**Scenario: Create a contact for a new company**
+**Scenario: Create a contact at an existing company**
 
-```javascript
-// 1. Inspect contact requirements using dedicated tool
-autotask_inspector.call({
-  operation: "describeResource",
-  targetResource: "contact", 
-  mode: "write"
+This is illustrative — the LLM picks the tool name and `operation` value, and supplies arguments matching each tool's auto-generated Zod schema. You don't write any of this code; it shows what the agent sees and does at runtime.
+
+```jsonc
+// Assumes the workflow has two AI Tools node instances configured:
+//   - Resource = company  →  exposed as tool  autotask_company
+//   - Resource = contact  →  exposed as tool  autotask_contact  (Allow Write Operations = on)
+
+// 1. Find the company by name. Helper operation describeFields is always available
+//    if the agent needs to inspect the schema first — usually it doesn't, because
+//    required-field summaries are embedded in each create operation's description.
+autotask_company({
+  operation: "getMany",
+  filter_field: "companyName",
+  filter_op: "contains",
+  filter_value: "Tech Solutions"
 })
-// Returns: { 
-//   fields: [
-//     { id: "companyID", required: true, isReference: true, referencesEntity: "company" },
-//     { id: "firstName", required: true, type: "string" },
-//     { id: "lastName", required: true, type: "string" }
-//   ],
-//   notes: [
-//     "Required fields for write: companyID, firstName, lastName",
-//     "Reference fields (must reference existing entities): companyID → company",
-//     "Workflow tip: Ensure referenced company exists before creating contact."
-//   ]
-// }
+// → { records: [{ id: 12345, companyName: "Tech Solutions Ltd", ... }], summary: "..." }
 
-// 2. Check company picklist values if needed
-autotask_inspector.call({
-  operation: "listPicklistValues",
-  targetResource: "contact",
-  fieldId: "companyID",
-  query: "Tech Solutions"  // Search for company
-})
-
-// 2.5. Validate parameters before creation (NEW!)
-autotask_inspector.call({
-  operation: "validateParameters",
-  targetResource: "contact",
-  mode: "create",
-  fieldValues: {
-    "firstName": "John",
-    "lastName": "Smith",
-    "emailAddress": "john.smith@techsolutions.com",
-    "companyID": 12345,
-    "title": "IT Manager"
-  }
-})
-// Returns: {
-//   isValid: true,
-//   errors: [],
-//   warnings: [
-//     { field: "companyID", message: "Reference field 'companyID' points to company. Ensure the referenced record exists.", code: "REFERENCE_EXISTENCE_CHECK" }
-//   ],
-//   summary: { totalFields: 15, providedFields: 5, validFields: 5, requiredFieldsMissing: 0, invalidValues: 0 }
-// }
-
-// 3. Create contact using focused tool
-autotask_contacts.call({
+// 2. Create the contact. Picklist and reference fields accept human-readable labels;
+//    they are resolved to numeric IDs automatically.
+autotask_contact({
   operation: "create",
-  bodyJson: {
-    "firstName": "John",
-    "lastName": "Smith", 
-    "emailAddress": "john.smith@techsolutions.com",
-    "companyID": 12345,
-    "title": "IT Manager"
-  },
-  dryRun: true  // Preview first
+  firstName: "John",
+  lastName: "Smith",
+  emailAddress: "john.smith@techsolutions.com",
+  companyID: 12345,            // numeric ID returned in step 1
+  title: "IT Manager"
 })
-// Dry-run response includes a `resolutions` array when labels were resolved to IDs, e.g.:
-// resolutions: [{ field: 'status', from: 'New', to: 1, method: 'picklist' }]
+// → { id: 67890, record: { ... }, resolvedLabels: [], summary: "Created contact 67890" }
 
-// 4. Execute after validation
-autotask_contacts.call({
-  operation: "create",
-  bodyJson: { /* same data */ },
-  outputMode: "idsAndLabels"
-})
-
-// 5. Retrieve company details using focused tool  
-autotask_companies.call({
-  operation: "get",
-  id: 12345
-})
+// 3. If the LLM had passed companyID: "Tech Solutions Ltd" instead of 12345, the
+//    response would include resolvedLabels showing the name→ID mapping. Ambiguous
+//    names produce pendingConfirmations rather than guessing.
 ```
+
+**Auto-included helper operations** (no configuration required, available on every AI Tools node instance):
+
+- `describeFields` — return field metadata for the resource (types, required, picklist/reference)
+- `listPicklistValues` — return valid values for a picklist field
+- `describeOperation` — return full documentation for a specific operation on the tool
 
 #### Error Self-Healing
 
-Errors include structured hints to help agents self-correct:
+Errors return a flat JSON shape with structured fields the agent can act on directly:
 
-```javascript
-// Error response includes actionable guidance
+```jsonc
 {
-  "error": "Field 'priority' has invalid value 'Urgent'",
-  "extensions": {
-    "hint": "Use aiHelper.listPicklistValues('ticket', 'priority') to get valid options, then retry with a valid value.",
-    "suggestions": [
-      "Get valid values: aiHelper.listPicklistValues('ticket', 'priority')",
-      "Use exact values from the picklist response"
-    ]
-  }
+  "error": true,
+  "errorType": "INVALID_PICKLIST_VALUE",
+  "resource": "ticket",
+  "operation": "create",
+  "summary": "REQUIRED NEXT STEP: Call autotask_ticket with operation 'listPicklistValues' for field 'priority', then retry — Field 'priority' rejected value 'Urgent'",
+  "nextAction": "Call autotask_ticket with operation 'listPicklistValues' for field 'priority', then retry",
+  "mustRetryAfter": ["listPicklistValues"],
+  "invalidField": "priority",
+  "invalidValue": "Urgent"
 }
 ```
 
+Key fields:
+- `errorType` — stable string constant (e.g. `INVALID_PICKLIST_VALUE`, `ENTITY_NOT_FOUND`, `MISSING_REQUIRED_FIELDS`, `WRITE_OPERATION_BLOCKED`). Use this to branch in agent prompts or downstream logic.
+- `summary` — human-readable. Actionable errors are prefixed with `"REQUIRED NEXT STEP: ..."` so the recovery step is visible in the instruction register, not just buried in context.
+- `nextAction` — exact recovery step in plain English. References the unified tool name (e.g. `autotask_ticket with operation 'listPicklistValues'`).
+- `mustRetryAfter` — optional list of operations the agent must call before retrying. Surfaced by `formatFieldError`, `formatRequiredFieldsError`, `formatNotFoundError`, and picklist-related failures.
+- Context fields (`invalidField`, `filtersUsed`, `missingFields`, `pendingConfirmations`, etc.) appear at the **root** of the response — no `context` wrapper.
+
 #### Best Practices for Agents
 
-- **Configure focused tools** - Set up separate tools for inspector, contacts, companies, and general resources
-- **Start with inspection** - Always call `autotask_inspector.describeResource` first to understand field requirements
-- **Use focused tools** - Prefer `autotask_contacts` or `autotask_companies` over general tools for better reliability
-- **Validate before execution** - Use `autotask_inspector.validateParameters` for pre-flight validation to catch errors early
-- **Optimise responses** - Use `selectColumnsJson` to reduce payload size and `outputMode: "rawIds"` for token efficiency
-- **Double-check with dry-run** - Use `dryRun: true` to preview requests before execution, especially for write operations
-- **Handle errors smartly** - Follow the structured hints in error responses for self-correction
-- **Cache discoveries** - Store field metadata and picklist values to avoid repeated introspection calls
-- **JSON validation** - Invalid JSON in `bodyJson`/`selectColumnsJson` is caught immediately with helpful error messages
+- **One node per resource** — gives the agent named, focused tools (`autotask_company`, `autotask_ticket`, etc.) with predictable schemas.
+- **Read-only by default** — leave **Allow Write Operations** off unless the agent genuinely needs to mutate data. Enable per-resource, not globally.
+- **Use the appendix for guardrails** — put deployment-specific constraints in **Tool Description Appendix** so they're visible to the LLM on every call.
+- **Trust label resolution** — let the LLM pass names like `"Will Spence"` or `"In Progress"`. Resolution is automatic, transparent (`resolvedLabels` in the response), and refuses to guess on ambiguous matches.
+- **Follow error `nextAction`** — error responses include a `nextAction` string the agent should execute before retrying (e.g. *call `describeFields`*, *call `listPicklistValues`*). Actionable error types prefix the summary with `"REQUIRED NEXT STEP: ..."`.
+- **Use `count` for sanity checks** — when listing tickets/charges/etc., call `count` first if the agent only needs a total. Cheaper than `getMany`.
+- **Use `createIfNotExists`** for idempotent operations — supported on charges, configuration items, contracts, contract services, change request links, and time entries. Configurable `dedupFields` decide what counts as a duplicate.
 
 #### Troubleshooting
 
-**Tool Not Available:** Ensure `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` is set
-**No Parameters Visible:** Call `aiHelper.describeResource` to inspect available fields
-**Large Responses:** Use `selectColumnsJson` and `outputMode: "rawIds"` for efficiency
-**Validation Errors:** Follow error hints to resolve field requirement issues
+**Tool Not Available:** Ensure `N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true` is set in your n8n environment.
+**Agent doesn't see a write operation:** Toggle **Allow Write Operations** on the corresponding AI Tools node, then save and re-execute.
+**LLM passes the wrong picklist value:** The response will include `pendingConfirmations` for ambiguous labels. The agent should surface the candidates to the user or call `listPicklistValues` to disambiguate.
+**Large responses overflowing the agent's context:** Reduce `limit`, narrow with `filter_field`/`filter_op`/`filter_value`, or use `count` first to gauge result size before fetching.
 
 ## Usage
 
