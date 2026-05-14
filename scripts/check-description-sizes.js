@@ -9,7 +9,6 @@
  * Usage:  node scripts/check-description-sizes.js
  */
 
-/* eslint-disable */
 const path = require('path');
 
 const distRoot = path.resolve(__dirname, '..', 'dist', 'nodes', 'Autotask');
