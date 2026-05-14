@@ -20,6 +20,7 @@ export const ERROR_TYPES = {
 	MISSING_REQUIRED_FIELDS: 'MISSING_REQUIRED_FIELDS',
 	WRITE_RESOLUTION_INCOMPLETE: 'WRITE_RESOLUTION_INCOMPLETE',
 	INVALID_INPUT: 'INVALID_INPUT',
+	INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;
 
 // ---------------------------------------------------------------------------

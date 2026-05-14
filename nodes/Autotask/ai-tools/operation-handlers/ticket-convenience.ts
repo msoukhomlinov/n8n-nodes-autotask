@@ -10,7 +10,7 @@ import { attachCorrelation, buildListResponse, buildItemResponse, buildCountResp
 import { wrapError, ERROR_TYPES } from '../error-formatter';
 import { enrichResponseJson } from '../../helpers/enrichment';
 import { getIdentifierPairConfig } from '../../constants/resource-operations';
-import { DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT, getEffectiveLimit, executeCountOperation } from '../tool-executor-helpers';
+import { DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT, getEffectiveLimit, executeCountOperation, probeLimit, applyProbeTruncation } from '../tool-executor-helpers';
 
 interface ResourceConvenienceConfig {
 	queryEndpoint: string;
@@ -177,19 +177,21 @@ export async function handleGetByCompanyAndStatus(state: ExecutorState): Promise
 
 	const queryLimitForOp = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit as number) : DEFAULT_QUERY_LIMIT);
 	const requestBody: IDataObject = { filter: apiFilters as unknown as IDataObject[] };
-	if (queryLimitForOp !== undefined) {
-		requestBody.MaxRecords = queryLimitForOp;
+	const gbcasProbe = probeLimit(queryLimitForOp);
+	if (gbcasProbe !== undefined) {
+		requestBody.MaxRecords = gbcasProbe;
 	}
 
 	const gbcasResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, requestBody) as { items?: IAutotaskEntity[] };
-	const gbcasItems = Array.isArray(gbcasResponse.items) ? gbcasResponse.items as Record<string, unknown>[] : [];
+	const gbcasRawItems = Array.isArray(gbcasResponse.items) ? gbcasResponse.items as Record<string, unknown>[] : [];
+	const { items: gbcasItems, hasMore: gbcasHasMore } = applyProbeTruncation(gbcasRawItems, queryLimitForOp);
 
 	const allGbcasWarnings = [...specialWarnings, ...labelWarnings];
 	const allGbcasResolutions = [...specialResolutions, ...labelResolutions];
 
 	const gbcasListJson = JSON.stringify(
 		buildListResponse(resource, 'getByCompanyAndStatus', gbcasItems, {
-			hasMore: queryLimitForOp !== undefined && gbcasItems.length >= queryLimitForOp,
+			hasMore: gbcasHasMore,
 			serverCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
 			clientCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
 		}, {
@@ -275,19 +277,21 @@ export async function handleGetUnassigned(state: ExecutorState): Promise<string>
 	const apiFilters: ToolFilter[] = [...unassignedFilters, ...optionalFilters, ...(recencyResult.filters as ToolFilter[])];
 	const queryLimitForOp = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit as number) : DEFAULT_QUERY_LIMIT);
 	const requestBody: IDataObject = { filter: apiFilters as unknown as IDataObject[] };
-	if (queryLimitForOp !== undefined) {
-		requestBody.MaxRecords = queryLimitForOp;
+	const unassignedProbe = probeLimit(queryLimitForOp);
+	if (unassignedProbe !== undefined) {
+		requestBody.MaxRecords = unassignedProbe;
 	}
 
 	const unassignedResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, requestBody) as { items?: IAutotaskEntity[] };
-	const unassignedItems = Array.isArray(unassignedResponse.items) ? unassignedResponse.items as Record<string, unknown>[] : [];
+	const unassignedRawItems = Array.isArray(unassignedResponse.items) ? unassignedResponse.items as Record<string, unknown>[] : [];
+	const { items: unassignedItems, hasMore: unassignedHasMore } = applyProbeTruncation(unassignedRawItems, queryLimitForOp);
 
 	const allUnassignedWarnings = [...specialWarnings, ...labelWarnings];
 	const allUnassignedResolutions = [...specialResolutions, ...labelResolutions];
 
 	const unassignedListJson = JSON.stringify(
 		buildListResponse(resource, 'getUnassigned', unassignedItems, {
-			hasMore: queryLimitForOp !== undefined && unassignedItems.length >= queryLimitForOp,
+			hasMore: unassignedHasMore,
 			serverCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
 			clientCap: queryLimitForOp ?? MAX_QUERY_LIMIT,
 		}, {
@@ -382,19 +386,21 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 	const apiSlaFilters: IDataObject[] = [...slaFilters, ...(slaOptionalFilters as unknown as IDataObject[]), ...(recencyResult.filters as unknown as IDataObject[])];
 	const queryLimitForSla = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit as number) : DEFAULT_QUERY_LIMIT);
 	const slaRequestBody: IDataObject = { filter: apiSlaFilters as IDataObject[] };
-	if (queryLimitForSla !== undefined) {
-		slaRequestBody.MaxRecords = queryLimitForSla;
+	const slaProbe = probeLimit(queryLimitForSla);
+	if (slaProbe !== undefined) {
+		slaRequestBody.MaxRecords = slaProbe;
 	}
 
 	const slaResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, slaRequestBody) as { items?: IAutotaskEntity[] };
-	const slaItems = Array.isArray(slaResponse.items) ? slaResponse.items as Record<string, unknown>[] : [];
+	const slaRawItems = Array.isArray(slaResponse.items) ? slaResponse.items as Record<string, unknown>[] : [];
+	const { items: slaItems, hasMore: slaHasMore } = applyProbeTruncation(slaRawItems, queryLimitForSla);
 
 	const allSlaWarnings = [...slaSpecialWarnings, ...labelWarnings];
 	const allSlaResolutions = [...slaSpecialResolutions, ...labelResolutions];
 
 	const slaListJson = JSON.stringify(
 		buildListResponse(resource, 'getBySLAStatus', slaItems, {
-			hasMore: queryLimitForSla !== undefined && slaItems.length >= queryLimitForSla,
+			hasMore: slaHasMore,
 			serverCap: queryLimitForSla ?? MAX_QUERY_LIMIT,
 			clientCap: queryLimitForSla ?? MAX_QUERY_LIMIT,
 		}, {
@@ -831,17 +837,19 @@ export async function handleGetByAge(state: ExecutorState): Promise<string> {
 	const ageAllFilters: ToolFilter[] = [...ageBaseFilters, ...ageOptionalFilters, ...(recencyResult.filters as ToolFilter[])];
 	const ageQueryLimit = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit as number) : DEFAULT_QUERY_LIMIT);
 	const ageRequestBody: IDataObject = { filter: ageAllFilters as unknown as IDataObject[] };
-	if (ageQueryLimit !== undefined) ageRequestBody.MaxRecords = ageQueryLimit;
+	const ageProbe = probeLimit(ageQueryLimit);
+	if (ageProbe !== undefined) ageRequestBody.MaxRecords = ageProbe;
 
 	const ageResponse = await autotaskApiRequest.call(context, 'POST', cfg.queryEndpoint, ageRequestBody) as { items?: IAutotaskEntity[] };
-	const ageItems = Array.isArray(ageResponse.items) ? ageResponse.items as Record<string, unknown>[] : [];
+	const ageRawItems = Array.isArray(ageResponse.items) ? ageResponse.items as Record<string, unknown>[] : [];
+	const { items: ageItems, hasMore: ageHasMore } = applyProbeTruncation(ageRawItems, ageQueryLimit);
 
 	const ageAllWarnings = [...ageWarnings, ...labelWarnings];
 	const ageAllResolutions = [...ageResolutions, ...labelResolutions];
 
 	const ageListJson = JSON.stringify(
 		buildListResponse(resource, 'getByAge', ageItems, {
-			hasMore: ageQueryLimit !== undefined && ageItems.length >= ageQueryLimit,
+			hasMore: ageHasMore,
 			serverCap: ageQueryLimit ?? MAX_QUERY_LIMIT,
 			clientCap: ageQueryLimit ?? MAX_QUERY_LIMIT,
 		}, {

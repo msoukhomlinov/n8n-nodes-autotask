@@ -335,16 +335,16 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// globalNotesSearch — virtual resource, custom fields only, skip all standard filter blocks
 		if (resource === 'globalNotesSearch') {
 			if (operations.includes('searchNotes')) {
-				shape['keyword'] = rz.string().optional().describe(
+				shape['keyword'] = rz.string().nullish().describe(
 					'Text to search across note titles and bodies (contains match). Applied to all 7 note entity types.',
 				);
-				shape['since'] = rz.string().optional().describe(
+				shape['since'] = rz.string().nullish().describe(
 					'ISO 8601 datetime — return only notes with createDateTime >= this value.',
 				);
-				shape['until'] = rz.string().optional().describe(
+				shape['until'] = rz.string().nullish().describe(
 					'ISO 8601 datetime — return only notes with createDateTime <= this value.',
 				);
-				shape['limit'] = rz.number().int().min(1).max(25).optional().describe(
+				shape['limit'] = rz.number().int().min(1).max(25).nullish().describe(
 					'Max results per note entity type (default 10, max 25). Total records = 7 × limit at most.',
 				);
 			}
@@ -1072,17 +1072,17 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 			}
 			if (!shape.ticketID) {
-				shape.ticketID = rz.number().optional().describe(
+				shape.ticketID = rz.number().nullish().describe(
 					'Ticket ID. If provided, derives queueID and contractID from the ticket automatically.'
 				);
 			}
 			if (!shape.queueID) {
-				shape.queueID = rz.number().optional().describe(
+				shape.queueID = rz.number().nullish().describe(
 					'Queue ID to filter roles by. Use when ticketID is not available.'
 				);
 			}
 			if (!shape.contractID) {
-				shape.contractID = rz.number().optional().describe(
+				shape.contractID = rz.number().nullish().describe(
 					'Contract ID to apply exclusion rules. If ticketID is provided this is derived automatically.'
 				);
 			}

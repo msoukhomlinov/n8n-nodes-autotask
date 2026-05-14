@@ -561,7 +561,7 @@ export class AutotaskAiTools implements INodeType {
 			? `${withAppendix}\n\nTIME ENTRY NOTES GUIDANCE:\n${timeEntryNotesGuidance}`
 			: withAppendix;
 
-		const DESCRIPTION_HARD_LIMIT = 2400;
+		const DESCRIPTION_HARD_LIMIT = 1300;
 		let description = withGuidance;
 		if (description.length > DESCRIPTION_HARD_LIMIT) {
 			const originalLength = description.length;

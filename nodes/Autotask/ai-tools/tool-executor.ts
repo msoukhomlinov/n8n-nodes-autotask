@@ -1616,6 +1616,16 @@ export async function executeAiTool(
 		return attachCorrelation(enrichedResponse, correlationId);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
+		const isInternal =
+			error instanceof TypeError
+			|| error instanceof ReferenceError
+			|| error instanceof RangeError;
+		// Internal-error summary surfaced to the LLM is sanitised to the error class name only —
+		// raw message can leak file paths or internal identifiers and the LLM is instructed
+		// not to retry anyway. Full message + stack remain in the JSONL trace for operators.
+		const internalSummary = isInternal && error instanceof Error
+			? `Internal tool error: ${error.constructor.name}`
+			: message;
 		traceError({
 			phase: 'execute-catch',
 			resource,
@@ -1625,10 +1635,24 @@ export async function executeAiTool(
 			summary: {
 				errorMessage: message,
 				beforeApiCall: false,
+				internal: isInternal || undefined,
+				...(isInternal && error instanceof Error && error.stack
+					? { stack: error.stack }
+					: {}),
 			},
 		});
 		return attachCorrelation(
-			JSON.stringify(formatApiError(message, resource, effectiveOperation)),
+			JSON.stringify(
+				isInternal
+					? wrapError(
+						resource,
+						effectiveOperation,
+						ERROR_TYPES.INTERNAL_ERROR,
+						internalSummary,
+						'This appears to be a bug in the tool. Do not retry with the same parameters.',
+					)
+					: formatApiError(message, resource, effectiveOperation),
+			),
 			correlationId,
 		);
 	} finally {

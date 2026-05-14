@@ -3,7 +3,7 @@ import { getEntityMetadata } from '../constants/entities';
 import { getAiIdentityHint } from '../constants/ai-identity';
 import { AI_TOOL_DEBUG_VERBOSE, redactForVerbose, traceDescriptionBuild } from './debug-trace';
 import { getOperationContractRuleText } from './operation-contracts';
-import { getOperationMetadata, isWriteOperation } from './operation-metadata';
+import { isWriteOperation } from './operation-metadata';
 import { RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION, RESOURCE_EXTRA_HINTS } from './resource-language';
 
 export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
@@ -42,11 +42,8 @@ const RESOURCE_LANGUAGE_CONFIG: Record<string, ResourceLanguageConfig> = {
 
 export function buildToolContractBlock(): string {
 	return [
-		'CAPABILITIES: filter, count, paging only. NO groupBy, aggregation, or server-side sort. ' +
-		'No cross-entity joins inside one call EXCEPT via documented convenience operations (e.g. ticket.getByResource handles primary+secondary lookups, ticket.searchByKeyword spans tickets/notes/time entries). ' +
-		'For other cross-entity lookups, do a two-step: query the join/child entity first, collect IDs, then query the parent with filter_op=in. ' +
-		'For breakdowns: ask user for ≤10 IDs, then run one count per ID.',
-		'ERRORS: when response has "error":true, the "nextAction" field is a directive TO YOU — execute it on your next call before responding. Never retry the same failed call unchanged.',
+		'CAPABILITIES: filter/count/paging only. No groupBy/aggregation/server-side sort. Cross-entity lookups need two steps (child first → parent with filter_op=in), except documented convenience ops.',
+		'ERRORS: when "error":true, the "nextAction" field is a directive — execute it before retrying. Never retry an unchanged failed call.',
 	].join('\n');
 }
 
@@ -545,12 +542,6 @@ export function buildResourceTransferOwnershipDescription(resourceName: string):
 	);
 }
 
-function buildCreateIfNotExistsDescription(resource: string): string {
-	const extraHint = RESOURCE_EXTRA_HINTS[resource] ?? '';
-	return `Idempotent create for ${resource} using dedupFields (array of API field names); optional updateFields for upsert; errorOnDuplicate (default false). Pass same fields as create. Outcomes: created, skipped, updated.` +
-		(extraHint ? ` ${extraHint}` : '');
-}
-
 export function buildDescribeFieldsDescription(resourceLabel: string): string {
 	return (
 		`Describe available ${resourceLabel} fields for AI usage. ` +
@@ -574,7 +565,7 @@ const TRUNCATION_SUFFIX =
  * Cuts at the last word boundary before the limit and appends a visible truncation suffix
  * so the LLM knows content was removed.
  */
-function truncateDescription(text: string, limit = 2000): string {
+function truncateDescription(text: string, limit = 1300): string {
 	if (text.length <= limit) return text;
 	const cutAt = Math.max(0, limit - TRUNCATION_SUFFIX.length);
 	const lastSpace = text.lastIndexOf(' ', cutAt);
@@ -642,10 +633,10 @@ export function buildUnifiedDescriptionTemplate(
 	];
 	const sections: string[] = [];
 
-	// Tool contract block — always first, guaranteed to survive truncation
+	// Tool contract block — always first, guaranteed to survive truncation.
 	sections.push(buildToolContractBlock());
 
-	// Safety-critical header — always present for write ops
+	// Safety-critical header — always present for write ops.
 	if (hasWriteOps) {
 		sections.push(
 			'WRITE SAFETY: name/reference resolutions must match exactly. Ambiguous or failed resolutions block writes.',
@@ -662,53 +653,23 @@ export function buildUnifiedDescriptionTemplate(
 	}
 	if (resource === 'company') {
 		sections.push(
-			'Company identifier priority rule: derive domain from email/website first; only fall back to companyName contains matching when no domain signal is available.',
+			"Company identifier priority: domain from email/website first; fall back to companyName contains only when no domain signal.",
 		);
 	}
-	sections.push(
-		`Operations: ${allOps.join(', ')}. Set 'operation' to one.`,
-		dateTimeReferenceSnippet(DESCRIPTION_REFERENCE_PLACEHOLDER),
-	);
 
+	// Operations list — single canonical source of which ops this tool exposes.
+	sections.push(`Operations: ${allOps.join(', ')}. Set 'operation' to one.`);
+	sections.push(dateTimeReferenceSnippet(DESCRIPTION_REFERENCE_PLACEHOLDER));
+
+	// Helper ops compressed into one line — full per-op detail lives in describeOperation.
 	sections.push(
-		`operation 'describeFields': field metadata. Param: mode='read'|'write'.`,
-	);
-	sections.push(
-		`operation 'listPicklistValues': picklist values. Param: fieldId (NOT targetOperation).`,
-	);
-	sections.push(
-		`operation 'describeOperation': full docs for an op. Param: targetOperation.`,
+		"For op-specific docs (required fields, params, semantics) call 'describeOperation' (param: targetOperation). " +
+		"For field metadata call 'describeFields' (param: mode='read'|'write'). " +
+		"For picklist values call 'listPicklistValues' (param: fieldId).",
 	);
 
 	if (supportsImpersonation) {
-		sections.push(`Impersonation supported: pass 'impersonationResourceId' for write attribution.`);
-	}
-
-	for (const op of operations) {
-		const metadata = getOperationMetadata(op);
-		let summary = metadata
-			? `operation '${op}': ${metadata.docsFragment}`
-			: `operation '${op}': Perform ${op} on ${resourceLabel}.`;
-
-		if (op === 'whoAmI') {
-			summary = `operation '${op}': Resolve the authenticated ${resourceLabel} record.`;
-		} else if (op === 'create') {
-			const idempotentNote = operations.includes('createIfNotExists')
-				? " Prefer 'createIfNotExists' for agent workflows — idempotent and retry-safe."
-				: '';
-			summary = `operation '${op}': ${metadata?.docsFragment ?? 'Create a new record.'} ${buildRequiredFieldsSummary(writeFields)}${idempotentNote}`;
-		} else if (op === 'update') {
-			if (resource === 'resourceTimeOffAdditional') {
-				summary = `operation '${op}': Update time-off additional quotas for a resource. Provide 'resourceID' (name or numeric ID, auto-resolved) and the fields to change (annual/additional hours per category).`;
-			} else {
-				summary = `operation '${op}': ${metadata?.docsFragment ?? "Update a record by numeric 'id'."}`;
-			}
-		} else if (op === 'createIfNotExists') {
-			summary = `operation '${op}': ${buildCreateIfNotExistsDescription(resource)}`;
-		} else if (op === 'getMany') {
-			summary = `operation '${op}': ${metadata?.docsFragment ?? ''}`.trim();
-		}
-		sections.push(summary);
+		sections.push("Impersonation supported: pass 'impersonationResourceId' for write attribution.");
 	}
 
 	const combined = sections.join(' ');

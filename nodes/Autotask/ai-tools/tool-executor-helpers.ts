@@ -16,6 +16,43 @@ export function getEffectiveLimit(limit: number | undefined): number {
 	return Math.min(Math.max(Math.trunc(limit), 1), MAX_QUERY_LIMIT);
 }
 
+/**
+ * +1 probe truncation helper for convenience handlers (per response-slimming.md Rule 2a).
+ *
+ * Given a desired `queryLimit` and the raw items fetched (where the upstream call was
+ * issued with `MaxRecords = probeLimit(queryLimit)`), returns:
+ *  - `items`: sliced back to `queryLimit` records
+ *  - `hasMore`: true ONLY when the probe actually returned more than `queryLimit`
+ *
+ * When `queryLimit === undefined` (returnAll path) the probe is skipped and items pass
+ * through unchanged with `hasMore=false`.
+ *
+ * Edge case: when `queryLimit === MAX_QUERY_LIMIT`, the +1 probe would exceed Autotask's
+ * server-side cap, so we skip the probe and fall back to the structural derivation
+ * (`items.length >= queryLimit`). This is conservatively correct: at the server cap we
+ * already know upstream may have more.
+ */
+export function probeLimit(queryLimit: number | undefined): number | undefined {
+	if (queryLimit === undefined) return undefined;
+	if (queryLimit >= MAX_QUERY_LIMIT) return queryLimit;
+	return queryLimit + 1;
+}
+
+export function applyProbeTruncation<T>(
+	items: T[],
+	queryLimit: number | undefined,
+): { items: T[]; hasMore: boolean } {
+	if (queryLimit === undefined) return { items, hasMore: false };
+	if (queryLimit >= MAX_QUERY_LIMIT) {
+		// Probe was skipped; fall back to structural derivation.
+		return { items, hasMore: items.length >= queryLimit };
+	}
+	if (items.length > queryLimit) {
+		return { items: items.slice(0, queryLimit), hasMore: true };
+	}
+	return { items, hasMore: false };
+}
+
 // Used for count-injection. Must NOT route through executeToolOperation — the two would
 // share (and race on) the same context.getNodeParameter override.
 export async function executeCountOperation(
