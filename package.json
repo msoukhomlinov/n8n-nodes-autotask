@@ -63,7 +63,7 @@
     "@types/node": "^22.15.0",
     "@types/pluralize": "^0.0.33",
     "eslint": "9.32.0",
-    "n8n-workflow": "^2.13.1",
+    "n8n-workflow": "^2.20.0",
     "prettier": "^3.8.3",
     "typescript": "^5.9.3",
     "zod": "^3.23.0"
