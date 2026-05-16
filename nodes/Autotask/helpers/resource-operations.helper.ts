@@ -1,6 +1,7 @@
 import type { INodeProperties, INodePropertyOptions } from 'n8n-workflow';
 import { entityInfoOptions } from '../operations/common/entityInfo.description';
 import { getManyAdvancedOptions } from '../operations/common/get-many-advanced';
+import { countAdvancedOptions } from '../operations/common/count-advanced';
 import { getManyOptions } from '../operations/common/get-many';
 import { addPicklistLabelOption } from '../operations/common/picklist-labels';
 import { addReferenceLabelOption } from '../operations/common/reference-labels';
@@ -159,6 +160,29 @@ export function addOperationsToResource(
 				},
 			}));
 			properties.push(...advancedOptions);
+		}
+
+		// Add countAdvanced operation if not excluded
+		if (!config.excludeOperations?.includes('countAdvanced')) {
+			operationProperty.options = [...operationProperty.options, {
+				name: 'Count (Advanced)',
+				value: 'countAdvanced',
+				description: 'Count entities matching JSON filter criteria',
+				action: 'Count entities using advanced filters',
+			}];
+			operationProperty.options = sortOperations(operationProperty.options);
+
+			const countAdvOpts = countAdvancedOptions.map(option => ({
+				...option,
+				displayOptions: {
+					...option.displayOptions,
+					show: {
+						...option.displayOptions?.show,
+						resource: [config.resourceName],
+					},
+				},
+			}));
+			properties.push(...countAdvOpts);
 		}
 
 		// Check for write operations (create, update, delete)

@@ -57,7 +57,7 @@ export function getCommonOpContext(resource: string): ICommonOpContext | undefin
 }
 
 /** Operation names that are handled by the central common-op layer. */
-export const COMMON_OPERATIONS = ['getEntityInfo', 'getFieldInfo', 'getManyAdvanced'] as const;
+export const COMMON_OPERATIONS = ['getEntityInfo', 'getFieldInfo', 'getManyAdvanced', 'countAdvanced'] as const;
 
 export function isCommonOperation(operation: string): operation is (typeof COMMON_OPERATIONS)[number] {
     return (COMMON_OPERATIONS as readonly string[]).includes(operation);

@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.19.0] - 2026-05-16
+
+### Added
+- `countAdvanced` operation: count entities matching raw JSON filter criteria using the same filter format as Get Many (Advanced). Available on all resources that support Get Many (Advanced).
+
 ## [2.18.0] - 2026-05-14
 
 ### Changed

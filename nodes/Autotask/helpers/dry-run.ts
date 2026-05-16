@@ -82,7 +82,7 @@ export async function createDryRunResponse(
     }
 
     // Add select columns for read operations
-    if (['get', 'getMany', 'getManyAdvanced'].includes(operation)) {
+    if (['get', 'getMany', 'getManyAdvanced', 'countAdvanced'].includes(operation)) {
         const selectedColumns = getSelectedColumns(context, itemIndex);
         if (selectedColumns.length > 0) {
             response.selectColumns = selectedColumns;
@@ -111,6 +111,9 @@ export async function createDryRunResponse(
             break;
         case 'getManyAdvanced':
             notes.push('This would retrieve entities using advanced filters');
+            break;
+        case 'countAdvanced':
+            notes.push('This would count entities matching advanced filter criteria');
             break;
     }
 

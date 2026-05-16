@@ -6,6 +6,7 @@ import {
 } from '../../helpers/common-operations-context';
 import { executeEntityInfoOperations } from './entityInfo.execute';
 import { handleGetManyAdvancedOperation } from './get-many-advanced';
+import { handleCountAdvancedOperation } from './count-advanced';
 
 /**
  * Execute a common operation (getEntityInfo, getFieldInfo, getManyAdvanced) from the central layer.
@@ -38,6 +39,11 @@ export async function executeCommonOperation(
         return result;
     }
 
+    if (operation === 'countAdvanced') {
+        const result = await executeCountAdvancedCentral(this, ctx, itemIndex);
+        return result;
+    }
+
     return null;
 }
 
@@ -64,5 +70,14 @@ async function executeGetManyAdvancedCentral(
     itemIndex: number,
 ): Promise<INodeExecutionData[][]> {
     const results = await handleGetManyAdvancedOperation.call(context, ctx.entityType, itemIndex);
+    return [results];
+}
+
+async function executeCountAdvancedCentral(
+    context: IExecuteFunctions,
+    ctx: ICommonOpContext,
+    itemIndex: number,
+): Promise<INodeExecutionData[][]> {
+    const results = await handleCountAdvancedOperation.call(context, ctx.entityType, itemIndex);
     return [results];
 }

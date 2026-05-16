@@ -322,6 +322,7 @@ const autotaskDescription: INodeTypeDescription = {
 					'entityInfo',
 					'getMany',
 					'getManyAdvanced',
+					'countAdvanced',
 					'picklistLabels',
 					'referenceLabels',
 					'selectColumns',
@@ -378,7 +379,7 @@ const autotaskDescription: INodeTypeDescription = {
 			...addOperationsToResource(contractTicketPurchasesFields, { resourceName: 'contractTicketPurchase' }),
 			...addOperationsToResource(countryFields, {
 				resourceName: 'country',
-				excludeOperations: ['getManyAdvanced']
+				excludeOperations: ['getManyAdvanced', 'countAdvanced']
 			}),
 			...addOperationsToResource(departmentFields, { resourceName: 'department' }),
 			...addOperationsToResource(domainRegistrarFields, { resourceName: 'DomainRegistrar' }),
