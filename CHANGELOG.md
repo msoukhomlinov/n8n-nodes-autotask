@@ -2,6 +2,18 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.19.2] - 2026-05-21
+
+### Added
+- **AI tools — conditional uncapped `returnAll`**: When the `fields` param is specified (sparse fieldset), `returnAll=true` now returns all matching records without a payload cap. Without `fields`, the cap remains at `MAX_RESPONSE_RECORDS` (500). Pair `returnAll=true` with a narrow `fields` list for efficient bulk ID/lookup patterns. A warning is included in the response when more than `MAX_RESPONSE_RECORDS` records are returned in sparse mode.
+
+### Changed
+- **AI tools — payload cap raised 100 → 500**: `MAX_RESPONSE_RECORDS` increased from 100 to 500. `returnAll=true` (without sparse fields) and large `limit` queries now return up to 500 records in a single response instead of being silently truncated at 100.
+- **AI tools — `filtersJson` description**: Documents nested AND/OR group syntax and the `in`/`notIn` operators with their JSON-array value shape (max 500 values per Autotask API OR-condition limit). Agents can now construct complex nested filters in a single call. Concrete field-name examples were intentionally omitted to avoid encouraging hallucinated field names — `describeFields` should be consulted for valid field names on each resource.
+- **AI tools — `fields` description**: Documents the `fields` param as a sparse fieldset selector (maps to Autotask's `IncludeFields`), efficiency benefits, automatic `id` inclusion, and the conditional cap-lift behaviour when paired with `returnAll=true`.
+- **AI tools — `returnAll` description**: States the conditional `MAX_RESPONSE_RECORDS` cap (without `fields`) versus uncapped behaviour (with `fields`).
+- **AI tools — `description-builders.ts`**: Updated two stale "100 records" cap strings visible to the LLM; both now reference `MAX_RESPONSE_RECORDS` dynamically.
+
 ## [2.19.1] - 2026-05-21
 
 ### Added
