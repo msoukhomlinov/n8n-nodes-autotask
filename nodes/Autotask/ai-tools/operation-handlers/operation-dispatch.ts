@@ -273,8 +273,9 @@ export function dispatchOperationResponse(
 		}
 
 		const total = records.length;
-		const truncated = total > MAX_RESPONSE_RECORDS;
-		const items = truncated ? records.slice(0, MAX_RESPONSE_RECORDS) : records;
+		const effectiveCap = context.clientCap ?? MAX_RESPONSE_RECORDS;
+		const truncated = total > effectiveCap;
+		const items = truncated ? records.slice(0, effectiveCap) : records;
 		const currentOffset = context.effectiveOffset ?? 0;
 		let totalAvailable: number | undefined;
 		const continuationContract = computeListContinuation({

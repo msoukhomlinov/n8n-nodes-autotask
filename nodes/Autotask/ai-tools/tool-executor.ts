@@ -1480,9 +1480,14 @@ export async function executeAiTool(
 		]);
 		const items = result[0] ?? [];
 		const fetchedRecords = items.map((item) => item.json);
-		const returnedCount = Math.min(fetchedRecords.length, MAX_RESPONSE_RECORDS);
+		// Cap lift: when sparse fields + returnAll both active, agent controls context cost.
+		// Gate on effectiveReturnAll — without it, fetchedRecords is already bounded by limit.
+		// Use fetchedRecords.length (not MAX_SAFE_INTEGER) so clientCap produces sensible strings downstream.
+		const responsePayloadCap =
+			selectedColumns.length > 0 && effectiveReturnAll ? fetchedRecords.length : MAX_RESPONSE_RECORDS;
+		const returnedCount = Math.min(fetchedRecords.length, responsePayloadCap);
 		const isProbablyTruncated =
-			fetchedRecords.length > MAX_RESPONSE_RECORDS ||
+			fetchedRecords.length > responsePayloadCap ||
 			(queryLimit !== undefined && fetchedRecords.length >= queryLimit);
 		let injectedCount: number | null = null;
 		let countQueryFailed = false;
@@ -1513,6 +1518,11 @@ export async function executeAiTool(
 			injectedCount = null;
 			countInjectionWarnings.push(
 				'Count result inconsistent with fetch — total unavailable (records may have changed between calls).',
+			);
+		}
+		if (selectedColumns.length > 0 && effectiveReturnAll && fetchedRecords.length > MAX_RESPONSE_RECORDS) {
+			countInjectionWarnings.push(
+				`${fetchedRecords.length} records returned — sparse fields + returnAll active, payload cap lifted. Use tight filters to reduce context cost if needed.`,
 			);
 		}
 		let records = fetchedRecords;
@@ -1589,7 +1599,7 @@ export async function executeAiTool(
 			effectiveOffset: recencyResult.isActive ? 0 : effectiveOffset,
 			readFields,
 			serverCap: queryLimit ?? MAX_QUERY_LIMIT,
-			clientCap: MAX_RESPONSE_RECORDS,
+			clientCap: responsePayloadCap,
 			serverCapReached: Boolean(
 				supportsListResponse &&
 				queryLimit !== undefined &&
