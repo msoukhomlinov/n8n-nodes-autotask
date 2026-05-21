@@ -79,7 +79,7 @@ export interface ListPaginationState {
 	nextOffset?: number;
 	/**
 	 * True total records matching filters. Populated by either:
-	 *  - returnAll-cap path: fetched count when payload is capped at 100
+	 *  - returnAll-cap path: fetched count when payload is capped (MAX_RESPONSE_RECORDS, or uncapped when sparse fields + returnAll active)
 	 *  - count-injection path: parallel/sequential CountOperation result
 	 * Absent when response is complete or count query failed.
 	 */
@@ -257,7 +257,7 @@ export function buildListResponse(
 			`Found ${count} of ${formattedTotal} ${opPrefix}${resource} records${windowSuffix} — ${formattedDeficit} more not shown. ` +
 			`Use nextOffset: ${pagination.nextOffset} or narrower filters.`;
 	} else if (totalKnown && context.wasReturnAll === true && pagination.isTruncated && !pagination.hasMore) {
-		// returnAll (user-set OR auto) hit payload cap — data was fetched but capped at 100 rows for response
+		// returnAll (user-set OR auto) hit payload cap — data was fetched but capped at MAX_RESPONSE_RECORDS rows (or uncapped when sparse fields + returnAll active)
 		summary =
 			`Found ${count} of ${formattedTotal} ${opPrefix}${resource} records${windowSuffix} — ${formattedDeficit} fetched but omitted from payload. ` +
 			`Use 'fields' to shrink rows, or narrow filters.`;
