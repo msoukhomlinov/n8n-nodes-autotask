@@ -5,6 +5,7 @@ import { AI_TOOL_DEBUG_VERBOSE, redactForVerbose, traceDescriptionBuild } from '
 import { getOperationContractRuleText } from './operation-contracts';
 import { isWriteOperation } from './operation-metadata';
 import { RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION, RESOURCE_EXTRA_HINTS } from './resource-language';
+import { MAX_RESPONSE_RECORDS } from './operation-handlers/operation-dispatch';
 
 export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
 
@@ -727,7 +728,7 @@ const DEDUP_NOTES = [
 ];
 const LIST_ADVANCED_NOTES = [
 	'filtersJson: JSON array of Autotask IFilterCondition objects for 3+ conditions or nested OR. Mutually exclusive with flat filter_field triplets. No label resolution — pass numeric IDs.',
-	'returnAll=true: fetches ALL matching records via API-native pagination. Response truncated at 100 records — use fields param to reduce payload or narrow filters.',
+	`returnAll=true: fetches ALL matching records via API-native pagination. Without fields param: capped at ${MAX_RESPONSE_RECORDS} records. With fields param (sparse): no cap — all records returned. Use fields='id' for cross-entity ID lookups.`,
 	ASCENDING_ID_WARNING,
 	RECENCY_VS_SINCE_UNTIL_RULE.trim(),
 ];
@@ -781,7 +782,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 				field: 'returnAll',
 				type: 'boolean',
 				description:
-					'Fetch ALL matching records via API pagination. Response capped at 100 records.',
+					`Fetch ALL matching records via API pagination. Without fields: capped at ${MAX_RESPONSE_RECORDS}. With fields (sparse fieldset): cap lifted — all records returned.`,
 			},
 			{ field: 'limit', type: 'number', description: 'Max records (1-500, default 10).' },
 			{ field: 'offset', type: 'number', description: 'Skip first N records (max 499).' },
