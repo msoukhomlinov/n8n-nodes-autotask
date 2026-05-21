@@ -15,7 +15,7 @@ import {
 import { MAX_QUERY_LIMIT, getEffectiveLimit } from '../tool-executor';
 import { getOperationMetadata } from '../operation-metadata';
 
-export const MAX_RESPONSE_RECORDS = 100;
+export const MAX_RESPONSE_RECORDS = 500;
 
 interface OperationResponseParams {
 	id?: number;
