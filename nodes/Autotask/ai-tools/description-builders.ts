@@ -728,7 +728,7 @@ const DEDUP_NOTES = [
 ];
 const LIST_ADVANCED_NOTES = [
 	'filtersJson: JSON array of Autotask IFilterCondition objects for 3+ conditions or nested OR. Mutually exclusive with flat filter_field triplets. No label resolution — pass numeric IDs.',
-	`returnAll=true: fetches ALL matching records via API-native pagination. Without fields param: capped at ${MAX_RESPONSE_RECORDS} records. With fields param (sparse): no cap — all records returned. Use fields='id' for cross-entity ID lookups.`,
+	`returnAll=true: fetches ALL matching records via API-native pagination. Without fields param: capped at ${MAX_RESPONSE_RECORDS} records. With fields param (sparse): no cap — all records returned. Use a narrow fields list for bulk ID/lookup patterns.`,
 	ASCENDING_ID_WARNING,
 	RECENCY_VS_SINCE_UNTIL_RULE.trim(),
 ];
