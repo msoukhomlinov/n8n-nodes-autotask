@@ -8,6 +8,7 @@ export default [
 			'dist/**',
 			'.worktrees/**',
 			'.claude/**',
+			'.remember/**',
 		],
 	},
 	{
