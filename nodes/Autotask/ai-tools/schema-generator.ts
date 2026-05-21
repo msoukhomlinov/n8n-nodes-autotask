@@ -6,6 +6,7 @@ import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
 import { RESOURCES_WITH_PRIORITY, RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } from './resource-language';
+import { MAX_RESPONSE_RECORDS } from './operation-handlers/operation-dispatch';
 
 /** Picklist inlining threshold — at or below this count, inline all values; above, tell LLM to call listPicklistValues. */
 const INLINE_PICKLIST_THRESHOLD = 4;
@@ -390,7 +391,10 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe(
-					`Comma-separated field names to return. Omit for all. Call autotask_${resource} with operation 'describeFields' if unsure.`,
+					`Sparse fieldset — comma-separated field names to return. Omit for all fields. The id field is always included automatically. ` +
+					`Reduces payload size significantly for entities with many fields. ` +
+					`With returnAll=true, specifying fields lifts the ${MAX_RESPONSE_RECORDS}-record payload cap — all matching records are returned. ` +
+					`Call autotask_${resource} with operation 'describeFields' for valid field names for this resource.`,
 				);
 		}
 
@@ -463,13 +467,22 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					'Range end (ISO-8601). Requires since or recency.',
 				);
 			shape.filtersJson = rz.string().nullish().describe(
-					'JSON IFilterCondition array. No label resolution — use numeric IDs (call listPicklistValues for picklist IDs). Mutually exclusive with filter_field. Dates UTC.',
+					`Advanced filters as JSON array of Autotask IFilterCondition objects. Mutually exclusive with filter_field. No label resolution — use numeric IDs. Dates UTC ISO-8601. ` +
+				`Supports: eq/noteq/gt/gte/lt/lte/contains/beginsWith/endsWith/exist/notExist/in/notIn. ` +
+				`in/notIn value must be a JSON array (max 500 values per Autotask API limit). ` +
+				`Nested AND group: [{"op":"and","items":[<cond1>,<cond2>]}]. ` +
+				`Nested OR group: [{"op":"or","items":[<cond1>,<cond2>]}]. ` +
+				`Each condition shape: {"field":"<fieldName>","op":"<op>","value":<value>}. ` +
+				`Call describeFields for valid field names on this resource, and listPicklistValues for valid picklist IDs.`,
 				);
 			shape.returnAll = rz
 				.coerce.boolean()
 				.nullish()
 				.describe(
-					'Fetch ALL matching records (API pagination). Default false = up to limit. Use tight filters; subject to MAX_RESPONSE_RECORDS truncation.',
+					`Fetch ALL matching records via API cursor pagination. Default false = up to limit. ` +
+				`Without fields: payload capped at ${MAX_RESPONSE_RECORDS} records. ` +
+				`With fields param (sparse fieldset): cap lifted — all records returned. ` +
+				`Pair returnAll=true with a narrow fields list for efficient bulk ID/lookup patterns.`,
 				);
 			shape.outputMode = rz
 				.enum(['idsAndLabels', 'rawIds'])
