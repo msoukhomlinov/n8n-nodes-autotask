@@ -69,7 +69,7 @@ Key AI Tools capabilities:
 - **Name-based label resolution**: The LLM can pass human-readable names for picklist and reference fields (e.g. `resourceID: "Will Spence"` instead of `resourceID: 29683`). Resolution is transparent — successful responses include a `resolvedLabels` array showing each mapping. Ambiguous matches produce `pendingConfirmations` for user confirmation. Works for both write operations and read filter values.
 - **Required fields in descriptions**: Create operation descriptions embed a compact required-fields summary with type info, eliminating the `describeFields` prerequisite for most create workflows.
 - **OR filter logic**: List operations accept a `filter_logic` parameter (`'and'` or `'or'`) to control how filter pairs are combined.
-- **Offset pagination**: List operations accept an `offset` parameter for paginating through results (up to 100 records). Responses include `hasMore` and `nextOffset` for continuation.
+- **Offset pagination**: List operations accept an `offset` parameter for paginating through results (up to 500 records). Responses include `hasMore` and `nextOffset` for continuation.
 - **Impersonation name resolution**: The `impersonationResourceId` parameter accepts a name or email in addition to numeric IDs.
 - **Idempotent creation**: `createIfNotExists` operations (see below) provide find-or-create semantics with configurable dedup fields.
 - **Automatic response enrichment**: Records that reference a ticket (via `ticketID`) or task (via `taskID`) are automatically enriched with human-readable fields (`ticketNumber`, `ticketTitle`, `taskTitle`, `taskProjectNumber`, `taskProjectName`). Enrichment is transparent — it requires no configuration and applies to all list, get, and compound responses.
