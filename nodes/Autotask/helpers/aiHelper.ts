@@ -608,8 +608,9 @@ export async function validateParameters(
                 required: field.required
             } as unknown as IDataObject;
 
-            // Check required fields
-            if (field.required && !provided) {
+            // Check required fields — only enforce on create. Update is PATCH-style
+            // (per describeOperation), so omitted required fields keep their existing value.
+            if (mode === 'create' && field.required && !provided) {
                 const message = `Required field '${field.id}' is missing`;
                 errors.push({ field: field.id, message, code: 'REQUIRED_FIELD_MISSING' });
                 fieldErrors.push(message);
@@ -666,8 +667,10 @@ export async function validateParameters(
                     }
                 }
 
-                // Dependency validation
-                if (field.dependencies && field.dependencies.length > 0) {
+                // Dependency validation — only enforce on create. On update (PATCH-style)
+                // the dependency may already be satisfied by the existing record, so a partial
+                // update that includes a dependent field without its dependency is fine.
+                if (mode === 'create' && field.dependencies && field.dependencies.length > 0) {
                     for (const depField of field.dependencies) {
                         if (!(depField in fieldValues) || fieldValues[depField] === null || fieldValues[depField] === undefined) {
                             const message = `Field '${field.id}' requires '${depField}' to be provided`;
@@ -689,9 +692,12 @@ export async function validateParameters(
             }
         }
 
-        // Check for unknown fields
+        // Check for unknown fields. 'id' is injected on update as the entity identifier
+        // (resources/tool/execute.ts) — it is not in the writable fields list, so exempt it
+        // from the unknown-field warning for update mode.
         const knownFieldIds = fields.map(f => f.id);
         for (const providedField of Object.keys(fieldValues)) {
+            if (mode === 'update' && providedField === 'id') continue;
             if (!knownFieldIds.includes(providedField)) {
                 const message = `Unknown field '${providedField}' provided. Use aiHelper.describeResource to see available fields.`;
                 warnings.push({ field: providedField, message, code: 'UNKNOWN_FIELD' });

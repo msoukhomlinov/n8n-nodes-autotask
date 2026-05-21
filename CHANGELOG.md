@@ -2,6 +2,17 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.19.3] - 2026-05-21
+
+### Fixed
+- **AI tools — `update` operations rejected with "Required field 'X' is missing"**: `validateParameters()` in `helpers/aiHelper.ts` was enforcing create-required fields on every operation regardless of mode. Update is PATCH-style (per `describeOperation`), so omitted required fields must keep their existing value. Required-field enforcement now correctly gates on `mode === 'create'`. Affected every entity with required fields (Company, Contact, Ticket, etc.) when called via the AI tool path.
+- **AI tools — spurious "Unknown field 'id' provided" warning on update**: `id` is injected by `validateToolRequestData` as the entity identifier but is not in the writable fields list. The unknown-field warning now skips `id` when `mode === 'update'`.
+- **AI tools — dependency-validation false positives on update**: `validateParameters()` was enforcing field-dependency rules on every operation. For PATCH-style update the dependency is satisfied by the existing record, so a partial update that touches a dependent field without re-supplying its dependency is valid. Dependency enforcement now gates on `mode === 'create'`.
+
+### Changed
+- **AI tools — Tool Contract block: EFFICIENCY line added**: The fixed contract header now surfaces two architectural facts LLMs frequently miss: `operation='count'` exists for totals-only questions, and pairing `getMany` with a sparse `fields` list + `returnAll=true` lifts the 500-record payload cap (needed for grouped/top-N analysis with client-side aggregation). Kept short and principled — no exhaustive operator-by-operator prescriptions.
+- **AI tools — `count` description**: Trimmed to make clear it returns the total only and accepts the same filter params as getMany.
+
 ## [2.19.2] - 2026-05-21
 
 ### Added

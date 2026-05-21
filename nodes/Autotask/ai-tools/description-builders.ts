@@ -44,6 +44,7 @@ const RESOURCE_LANGUAGE_CONFIG: Record<string, ResourceLanguageConfig> = {
 export function buildToolContractBlock(): string {
 	return [
 		'CAPABILITIES: filter/count/paging only. No groupBy/aggregation/server-side sort. Cross-entity lookups need two steps (child first → parent with filter_op=in), except documented convenience ops.',
+		"EFFICIENCY: use operation='count' for totals-only questions. For grouped/top-N analysis pair operation='getMany' with sparse fields (e.g. fields='id,city') + returnAll=true — sparse fields lifts the 500-record payload cap. Aggregation is client-side.",
 		'ERRORS: when "error":true, the "nextAction" field is a directive — execute it before retrying. Never retry an unchanged failed call.',
 	].join('\n');
 }
@@ -159,7 +160,7 @@ export function buildGetManyDescription(
 
 	return (
 		ref +
-		`Search ${resourceLabel} with up to two filters (AND default; filter_logic='or' for either-match). ` +
+		`Search ${resourceLabel} with up to two filters (AND default; filter_logic='or' for either-match; use filtersJson for 3+ filters or nested groups). ` +
 		`Example: filter_field='companyName', filter_op='contains', filter_value='Acme'. ` +
 		`Picklist/reference fields accept names (auto-resolved). Use filter_op='notExist'/'exist' for null checks. ` +
 		terminalHint +
@@ -175,8 +176,8 @@ export function buildCountDescription(resourceLabel: string, referenceUtc?: stri
 	const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
 	return (
 		ref +
-		`Count ${resourceLabel} records matching optional filters. ` +
-		`Use the same filter parameters as getMany and return only the count. ` +
+		`Count ${resourceLabel} records matching optional filters — returns the total only, no records. ` +
+		`Same filter params as getMany. ` +
 		`For efficient polling-style checks, prefer LastModifiedDate or LastActivityDate filters where available.`
 	);
 }
