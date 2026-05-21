@@ -10,6 +10,12 @@ import { RESOURCES_WITH_PRIORITY, RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } fro
 /** Picklist inlining threshold — at or below this count, inline all values; above, tell LLM to call listPicklistValues. */
 const INLINE_PICKLIST_THRESHOLD = 4;
 
+/** Anthropic API requires property keys to match this pattern. */
+const VALID_SCHEMA_KEY = /^[a-zA-Z0-9_.-]{1,64}$/;
+function isValidSchemaKey(key: string): boolean {
+	return VALID_SCHEMA_KEY.test(key);
+}
+
 const READ_ONLY_SCHEMA_CACHE_MAX = 200;
 const readOnlySchemaCache = new Map<string, unknown>();
 
@@ -391,7 +397,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// Filter fields for list operations
 		const hasSearchByKeywordForListShared = operations.includes('searchByKeyword');
 		if (hasListFamily || hasSearchByKeywordForListShared) {
-			const fieldNames = readFields.filter((f) => !f.udf).map((f) => f.id);
+			const fieldNames = readFields.filter((f) => !f.udf && isValidSchemaKey(f.id)).map((f) => f.id);
 			const filterFieldDesc =
 				"Field to filter on. Use operation 'describeFields' to see valid field names. For 'older than' / upper-bound date queries use filter_field with a date field + filter_op='lt'.";
 			shape.filter_field =
@@ -434,7 +440,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 			shape.recency = rRecencySchema;
 			const dateFields = readFields
-				.filter((f) => !f.udf && f.type.toLowerCase().includes('date'))
+				.filter((f) => !f.udf && isValidSchemaKey(f.id) && f.type.toLowerCase().includes('date'))
 				.map((f) => f.id);
 			if (dateFields.length > 0) {
 				shape.recency_field = rz
@@ -739,9 +745,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 
 		// create / update fields from metadata
 		if (hasCreate || hasUpdate) {
+			const hasUdfWriteFields = writeFields.some((f) => f.udf || !isValidSchemaKey(f.id));
 			for (const field of writeFields) {
 				if (field.id === 'id') continue;
 				if (shape[field.id]) continue;
+				if (!isValidSchemaKey(field.id)) continue;
 				const desc = buildFieldDescription(field);
 				// Picklist and reference fields accept string|number so the LLM can pass
 				// human-readable labels (e.g. "Will Spence") which the executor auto-resolves to IDs.
@@ -754,6 +762,17 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 							? rz.coerce.boolean()
 							: rz.string();
 				shape[field.id] = base.nullish().describe(desc);
+			}
+			if (hasUdfWriteFields && !shape.userDefinedFields) {
+				shape.userDefinedFields = rz
+					.string()
+					.nullish()
+					.describe(
+						'JSON object of UDF field name → value pairs for user-defined fields. ' +
+						'Keys must exactly match UDF field names as returned by describeFields (mode=write). ' +
+						'Example: {"Customer Size": "Enterprise", "Region": "APAC"}. ' +
+						'For picklist UDFs use the picklist value ID (label resolution not supported for UDFs).',
+					);
 			}
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
@@ -1094,9 +1113,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			// If create/update already ran, writeFields are already in shape.
 			// Otherwise, populate them now using the same dynamic loop.
 			if (!hasCreate && !hasUpdate) {
+				const hasUdfWriteFieldsCIN = writeFields.some((f) => f.udf || !isValidSchemaKey(f.id));
 				for (const field of writeFields) {
 					if (field.id === 'id') continue;
 					if (shape[field.id]) continue;
+					if (!isValidSchemaKey(field.id)) continue;
 					const desc = buildFieldDescription(field);
 					const needsLabelResolution = field.isPickList || field.isReference;
 					const base = needsLabelResolution
@@ -1107,6 +1128,17 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 								? rz.coerce.boolean()
 								: rz.string();
 					shape[field.id] = base.nullish().describe(desc);
+				}
+				if (hasUdfWriteFieldsCIN && !shape.userDefinedFields) {
+					shape.userDefinedFields = rz
+						.string()
+						.nullish()
+						.describe(
+							'JSON object of UDF field name → value pairs for user-defined fields. ' +
+							'Keys must exactly match UDF field names as returned by describeFields (mode=write). ' +
+							'Example: {"Customer Size": "Enterprise", "Region": "APAC"}. ' +
+							'For picklist UDFs use the picklist value ID (label resolution not supported for UDFs).',
+						);
 				}
 			}
 			// createIfNotExists-specific fields

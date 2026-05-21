@@ -992,6 +992,35 @@ export async function executeAiTool(
 		}
 	}
 
+	// Parse userDefinedFields JSON string → [{name, value}] array and inject into fieldValues.
+	// buildFieldValues excludes userDefinedFields (raw JSON string must not reach API).
+	// This runs after label resolution — UDF values are passed raw (no label resolution for UDFs).
+	if (
+		['create', 'update', 'createIfNotExists'].includes(effectiveOperation) &&
+		params.userDefinedFields !== undefined &&
+		params.userDefinedFields !== null &&
+		params.userDefinedFields !== ''
+	) {
+		try {
+			const rawUdf = typeof params.userDefinedFields === 'string'
+				? params.userDefinedFields
+				: JSON.stringify(params.userDefinedFields);
+			const parsed = JSON.parse(rawUdf) as Record<string, unknown>;
+			if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+				const udfArray = Object.entries(parsed)
+					.filter(([, v]) => v !== undefined && v !== null && v !== '')
+					.map(([name, value]) => ({ name, value: String(value) }));
+				if (udfArray.length > 0) {
+					fieldValues.userDefinedFields = udfArray;
+				}
+			} else {
+				labelWarnings.push('userDefinedFields must be a JSON object (e.g. {"Field Name": "value"}). Provided value ignored.');
+			}
+		} catch {
+			labelWarnings.push('userDefinedFields is not valid JSON. Provide a JSON object like {"Field Name": "value"}. UDF values were not set.');
+		}
+	}
+
 	// Resolve impersonationResourceId name/email → numeric ID for write operations only.
 	// Gated to write ops to avoid unnecessary Resource entity list fetch on reads.
 	const isWriteOperation = [

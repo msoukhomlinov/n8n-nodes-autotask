@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.19.1] - 2026-05-21
+
+### Added
+- **AI tools — `userDefinedFields` parameter for UDF write access:** Resources with write operations that have UDF fields whose names contain characters outside `[a-zA-Z0-9_.-]` (spaces, parentheses, etc.) now expose a `userDefinedFields` schema parameter. Pass a JSON object string where keys are the exact UDF field names (as returned by `describeFields mode=write`) and values are the field values. Example: `{"Customer Size": "Enterprise", "Region": "APAC"}`. The executor parses the JSON and converts it to the `[{name, value}]` array format that the Autotask REST API expects. UDF picklist fields require the numeric picklist value ID (label auto-resolution is not applied to UDF values).
+
+### Fixed
+- **AI tools — UDF field names with invalid characters no longer break MCP schema serialisation:** `buildUnifiedSchema` now validates every write field ID against Anthropic's property-key pattern (`^[a-zA-Z0-9_.-]{1,64}$`) before adding it to the Zod schema object. Fields with admin-defined names containing spaces, parentheses, or other disallowed characters (common in Autotask UDFs) are silently skipped instead of causing the Anthropic API to return `400 tools.N.custom.input_schema.properties: Property keys should match pattern…` (which made Claude Code unusable while the MCP server was connected). The same guard is applied to the `filter_field` enum and `recency_field` enum.
+
 ## [2.19.0] - 2026-05-16
 
 ### Added

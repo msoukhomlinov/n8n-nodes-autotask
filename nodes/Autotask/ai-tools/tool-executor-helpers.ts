@@ -123,6 +123,7 @@ export function buildFieldValues(
 		'filtersJson',
 		'returnAll',
 		'company',
+		'userDefinedFields', // parsed separately → [{name, value}] array injected after validation
 		// Companion fields for typed-reference resolution (ticketLookupField, projectLookupField, ...).
 		// These are schema fields consumed by the resolver, never sent to the API.
 		...Array.from(TYPED_REFERENCE_COMPANION_FIELDS),
