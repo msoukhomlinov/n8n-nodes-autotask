@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.19.5] - 2026-05-21
+
+### Fixed
+- **Generic list ops misinterpret top-level write fields as query body**: When an AI tool call invoked `getMany`/`getPosted`/`getUnposted`/`count` with no `filter_field`/`filtersJson` but with a top-level write-field param (e.g. `companyID` on `companyLocation.getMany`), the executor sent `fieldValues` as the query body instead of `{ filter: [...] }`. Autotask then tried to interpret reserved keys like `limit` as entity fields, yielding obscure errors such as `"Unable to find limit in the CompanyLocation Entity."` The fix is two-layered: (1) a pre-flight `INVALID_FILTER_CONSTRAINT` error scoped to the four generic list ops that detects write-field leak and tells the model to use `filter_field='X', filter_op='eq', filter_value='...'` instead; (2) defense-in-depth in `tool-executor.ts requestData` so read ops (`getMany`/`getPosted`/`getUnposted`/`count`) never fall through to `fieldValues` as the request body. Convenience list ops (`getByCompanyAndStatus`, `getByAge`, `searchByKeyword`, `getUnassigned`, `getBySLAStatus`) are explicitly excluded from the leak check — they take operation-specific params at top level by design and are handled by dedicated dispatchers.
+- **`excludeTerminalStatuses` control flag leaked into request bodies**: `excludeTerminalStatuses` is a getMany control flag that toggles terminal-status exclusion for `ticket`/`task`/`project`. It is not an entity field. It was missing from the `buildFieldValues` exclusion set, so when an LLM passed `excludeTerminalStatuses=false` the value landed in `fieldValues` and would have leaked into the request body via the bug above. Added to the exclusion set in `tool-executor-helpers.ts`.
+
 ## [2.19.4] - 2026-05-21
 
 ### Fixed

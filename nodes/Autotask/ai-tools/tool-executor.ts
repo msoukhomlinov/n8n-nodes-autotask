@@ -840,6 +840,32 @@ export async function executeAiTool(
 			filterErrors.push(`Operation '${effectiveOperation}' requires 'since' or 'recency' when 'until' is provided.`);
 		}
 
+		// Detect write-field leak: bot may pass a writable field (e.g. companyID) at
+		// top level expecting it to filter, but for read ops filters MUST go via
+		// filter_field/filter_value or filtersJson. Without this check the field falls
+		// through to the query body causing Autotask to error with confusing messages
+		// like "Unable to find limit in the <Entity>".
+		// Scoped to the generic list ops only — convenience ops (getByCompanyAndStatus,
+		// getByAge, searchByKeyword, getUnassigned, getBySLAStatus) take operation-specific
+		// params at top level by design and are handled by their own dispatchers.
+		const isGenericListLeakCheckOp = ['getMany', 'count', 'getPosted', 'getUnposted'].includes(
+			effectiveOperation,
+		);
+		if (
+			isGenericListLeakCheckOp &&
+			Object.keys(fieldValues).length > 0 &&
+			!hasFiltersJson &&
+			!hasFlatFilter1 &&
+			!hasFlatFilter2
+		) {
+			const leakedFields = Object.keys(fieldValues);
+			const firstField = leakedFields[0];
+			const firstValue = String(fieldValues[firstField]);
+			filterErrors.push(
+				`Operation '${effectiveOperation}' received top-level write-field params (${leakedFields.join(', ')}) without any filter. Top-level fields apply to create/update only. For read filters use filter_field='${firstField}', filter_op='eq', filter_value='${firstValue}' (or filtersJson for advanced filters).`,
+			);
+		}
+
 		if (filterErrors.length > 0) {
 			return attachCorrelation(
 				JSON.stringify(
@@ -1184,13 +1210,17 @@ export async function executeAiTool(
 			case 'entityId':
 				return entityId;
 			case 'requestData': {
-				const data: Record<string, unknown> =
-					['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation) &&
-					combinedFilters.length > 0
+				// Read ops must NEVER use fieldValues as the query body — writable fields
+				// leaking into the request cause Autotask to misinterpret them and reject
+				// the query (pre-flight should already catch this; defense-in-depth here).
+				const isReadOp = ['getMany', 'getPosted', 'getUnposted', 'count'].includes(effectiveOperation);
+				const data: Record<string, unknown> = isReadOp
+					? combinedFilters.length > 0
 						? { filter: combinedFilters }
-						: Object.keys(fieldValues).length > 0
-							? fieldValues
-							: {};
+						: {}
+					: Object.keys(fieldValues).length > 0
+						? fieldValues
+						: {};
 				const identifierPairConfig = getIdentifierPairConfig(resource, effectiveOperation);
 				if (identifierPairConfig) {
 					if (params.id !== undefined) {

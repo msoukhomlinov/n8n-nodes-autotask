@@ -123,6 +123,7 @@ export function buildFieldValues(
 		'filtersJson',
 		'returnAll',
 		'company',
+		'excludeTerminalStatuses', // control flag for getMany on ticket/task/project — not an entity field
 		'userDefinedFields', // parsed separately → [{name, value}] array injected after validation
 		// Companion fields for typed-reference resolution (ticketLookupField, projectLookupField, ...).
 		// These are schema fields consumed by the resolver, never sent to the API.
