@@ -480,7 +480,7 @@ export async function searchCompaniesByDomain(
 		itemIndex,
 		contactLimit,
 		contactFilters,
-		['id', 'companyID', 'companyName', 'emailAddress'],
+		['id', 'companyID', 'emailAddress'],
 	);
 
 	const companyFrequencyById = new Map<string, { companyId: string | number; count: number }>();

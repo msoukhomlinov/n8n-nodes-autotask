@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.19.4] - 2026-05-21
+
+### Fixed
+- **`searchByDomain` fallback fails with "Unable to find companyName in the Contact Entity"**: When the company-website lookup returned no matches and `searchContactEmails=true` triggered the contact-email fallback, the Contact query passed `companyName` in `IncludeFields`. Contact entity has no `companyName` field (only `companyID`), so the API rejected the query and the entire `searchByDomain` operation errored. Removed the unused `companyName` entry from the Contact `IncludeFields` list in `helpers/company-domain-search.ts:483`. The canonical `companyName` is still resolved correctly via the subsequent Company lookup (lines 521-534) using the matched `companyID` values.
+
 ## [2.19.3] - 2026-05-21
 
 ### Fixed
