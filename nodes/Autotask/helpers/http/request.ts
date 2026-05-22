@@ -583,7 +583,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 
 		const status = apiError.response?.status;
 		const url = options.url;
-		console.warn(`API ${method} ${url} failed (${status}): ${getErrorMessage(apiError as unknown as IAutotaskErrorResponse)}`);
+		console.warn(scrub(`API ${method} ${url} failed (${status}): ${getErrorMessage(apiError as unknown as IAutotaskErrorResponse)}`));
 
 		// Import the createStandardErrorObject function
 		const { createStandardErrorObject } = await import('../../helpers/errorHandler');
