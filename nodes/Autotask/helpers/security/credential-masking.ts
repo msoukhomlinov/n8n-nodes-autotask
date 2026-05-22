@@ -152,3 +152,35 @@ export function sanitizeErrorForLogging(error: any): any {
   }
 }
 
+/**
+ * Returns a function that scrubs known override credential values from any string.
+ * Call once per tool invocation; pass the result into error/logging code paths.
+ *
+ * Scrubs Secret, APIIntegrationcode, AND Username — the spec (section 7) requires
+ * Username to be redacted from error messages where it appears verbatim. Note that
+ * field-name-based masking (`maskCredentialValue`) handles cases where the Username
+ * appears as a structured field in an API response; this runtime value scrubber is a
+ * defence-in-depth measure for cases where the value leaks into a free-form error
+ * message string.
+ *
+ * The ≥8 char guard prevents over-redacting short values (e.g. a 3-char Username
+ * could collide with arbitrary substrings in unrelated text). Values shorter than
+ * 8 chars are not added to the targets list — the field-name-based masking is the
+ * primary defence for those cases.
+ */
+export function createOverrideScrubber(
+    override: { Username: string; Secret: string; APIIntegrationcode: string } | undefined,
+): (text: string) => string {
+    if (!override) return (text) => text;
+    const targets = [override.Secret, override.APIIntegrationcode, override.Username]
+        .filter((v) => typeof v === 'string' && v.length >= 8);
+    if (targets.length === 0) return (text) => text;
+    return (text: string) => {
+        let result = text;
+        for (const target of targets) {
+            result = result.split(target).join('********');
+        }
+        return result;
+    };
+}
+

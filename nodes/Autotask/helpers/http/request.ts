@@ -19,6 +19,8 @@ import type { OperationType } from '../../types/base/entity-types';
 import { handleRateLimit } from './rateLimit';
 import { endpointThreadTracker } from './threadLimit';
 import { executeWithRetry } from './retryHandler';
+import { autotaskCredentialStore } from '../credential-store';
+import { createOverrideScrubber } from '../security/credential-masking';
 
 interface IAutotaskSuccessResponse {
 	id?: number;
@@ -328,7 +330,13 @@ export async function fetchThresholdInformation(
 	} catch (error) {
 		// Import sanitization function to mask credentials in error logs
 		const { sanitizeErrorForLogging } = await import('../security/credential-masking');
-		console.error('Failed to fetch threshold information:', sanitizeErrorForLogging(error));
+		const overrideCreds = autotaskCredentialStore.getStore();
+		const scrub = createOverrideScrubber(overrideCreds);
+		const sanitized = sanitizeErrorForLogging(error);
+		if (typeof sanitized.message === 'string') {
+			sanitized.message = scrub(sanitized.message);
+		}
+		console.error('Failed to fetch threshold information:', sanitized);
 		return null;
 	}
 }
@@ -565,7 +573,13 @@ export async function autotaskApiRequest<T = JsonObject>(
 
 		// Import sanitization function to mask credentials in error logs
 		const { sanitizeErrorForLogging } = await import('../security/credential-masking');
-		console.error('API Error:', sanitizeErrorForLogging(apiError));
+		const overrideCreds = autotaskCredentialStore.getStore();
+		const scrub = createOverrideScrubber(overrideCreds);
+		const sanitized = sanitizeErrorForLogging(apiError);
+		if (typeof sanitized.message === 'string') {
+			sanitized.message = scrub(sanitized.message);
+		}
+		console.error('API Error:', sanitized);
 
 		const status = apiError.response?.status;
 		const url = options.url;

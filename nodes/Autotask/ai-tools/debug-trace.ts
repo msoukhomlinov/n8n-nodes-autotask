@@ -1,6 +1,8 @@
 import { mkdir, appendFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import type { FieldMeta } from '../helpers/aiHelper';
+import { autotaskCredentialStore } from '../helpers/credential-store';
+import { createOverrideScrubber } from '../helpers/security/credential-masking';
 
 /** Matches Autotask API credential default `cacheDirectory` (`./cache/autotask`). */
 const DEFAULT_DEBUG_LOG_DIR = resolve(process.cwd(), 'cache', 'autotask');
@@ -52,7 +54,10 @@ export interface AiTraceEvent {
 export function writeAiTrace(event: Omit<AiTraceEvent, 'ts'>): void {
 	if (!AI_TOOL_DEBUG_ENABLED) return;
 	try {
-		const line = `${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`;
+		const overrideCreds = autotaskCredentialStore.getStore();
+		const scrub = createOverrideScrubber(overrideCreds);
+		const rawLine = `${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`;
+		const line = scrub(rawLine);
 		const filePath = getAiToolDebugFilePath();
 		mkdir(dirname(filePath), { recursive: true })
 			.then(() => appendFile(filePath, line, 'utf8'))
