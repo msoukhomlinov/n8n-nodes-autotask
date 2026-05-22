@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.19.6] - 2026-05-22
+
+### Fixed
+- **Update `describeOperation` output surfaces create-required fields**: `buildUpdateDescription()` now accepts `writeFields` and appends a compact "Fields required on create (PATCH preserves existing value if omitted)" note when required fields exist. LLMs calling `describeOperation` with `targetOperation='update'` see the relevant field names upfront, eliminating the need for a `describeFields` round-trip to discover parent anchor fields like `companyID`.
+- **Write-field leak detection fires even when filters are present**: The pre-flight check for top-level write-field params on `getMany`/`count`/`getPosted`/`getUnposted` previously required no filters to be present. Write-field params are always wrong on read ops regardless of filter state. Widened the check to fire unconditionally; message branches: "remove top-level X" when filters exist vs "use filter_field=X" when no filter was provided.
+- **"Invalid parent ID type for Company" errors now name the field**: `formatApiError` has a new pattern that matches the internal `base-operation.ts` "Invalid parent ID type for \<Entity\>" message, cross-references the resource's `parentIdField` via `getEntityMetadata()`, and returns a `MISSING_REQUIRED_FIELDS` error naming the exact field (e.g. `companyID`) rather than falling through to the generic `API_ERROR` with no actionable context.
+
 ## [2.19.5] - 2026-05-21
 
 ### Fixed
