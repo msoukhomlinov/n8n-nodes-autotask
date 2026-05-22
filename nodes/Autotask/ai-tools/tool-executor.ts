@@ -859,7 +859,7 @@ export async function executeAiTool(
 			const hasAnyFilter = hasFiltersJson || hasFlatFilter1 || hasFlatFilter2;
 			if (hasAnyFilter) {
 				filterErrors.push(
-					`Operation '${effectiveOperation}' received top-level write-field params (${leakedFields.join(', ')}) alongside filter params. Top-level fields apply to create/update only — remove them. To add a second filter use filter_field_2/filter_op_2/filter_value_2.`,
+					`Operation '${effectiveOperation}' received top-level write-field params (${leakedFields.join(', ')}) alongside filter params. Top-level fields apply to create/update only — remove them.${!hasFlatFilter2 ? ' To add a second filter use filter_field_2/filter_op_2/filter_value_2.' : ''}`,
 				);
 			} else {
 				const firstField = leakedFields[0];

@@ -249,7 +249,7 @@ export function buildUpdateDescription(
 	const requiredOnCreate = writeFields.filter((f) => f.required);
 	const createFieldsNote =
 		requiredOnCreate.length > 0
-			? `Fields required on create (PATCH preserves existing value if omitted — only supply if changing): ${buildRequiredFieldsSummary(writeFields)} `
+			? `Fields required on create (PATCH preserves existing value if omitted — only supply if changing): ${buildRequiredFieldsSummary(writeFields).replace(/^Required fields: /i, '')} `
 			: '';
 	return (
 		ref +
