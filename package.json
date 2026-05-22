@@ -53,7 +53,8 @@
     "nodes": [
       "dist/nodes/Autotask/Autotask.node.js",
       "dist/nodes/Autotask/AutotaskTrigger.node.js",
-      "dist/nodes/Autotask/AutotaskAiTools.node.js"
+      "dist/nodes/Autotask/AutotaskAiTools.node.js",
+      "dist/nodes/Autotask/AutotaskMcpTrigger.node.js"
     ]
   },
   "devDependencies": {
