@@ -1,3 +1,5 @@
+import { getEntityMetadata } from '../constants/entities';
+
 // ---------------------------------------------------------------------------
 // Error type constants
 // ---------------------------------------------------------------------------
@@ -213,6 +215,22 @@ export function formatApiError(
 			message,
 			`Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID, then retry.`,
 		);
+	}
+
+	const parentMatch = message.match(/Invalid parent ID type for (\w+)/i);
+	if (parentMatch) {
+		const parentField = getEntityMetadata(resource)?.parentIdField;
+		if (parentField) {
+			return wrapError(
+				resource,
+				operation,
+				ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+				`Missing required parent ID '${parentField}' on ${resource}.${operation} (parent entity: ${parentMatch[1]}).`,
+				`Provide '${parentField}' as a top-level field with a valid numeric ID. Call autotask_${resource} with operation 'describeFields' with mode 'write' to confirm required fields.`,
+				{ missingFields: [parentField] },
+				['describeFields'],
+			);
+		}
 	}
 
 	return wrapError(

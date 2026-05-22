@@ -241,16 +241,23 @@ export function buildCreateDescription(
 export function buildUpdateDescription(
 	resourceLabel: string,
 	resourceName: string,
+	writeFields: FieldMeta[],
 	referenceUtc?: string,
 ): string {
 	const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
 	const extraHint = RESOURCE_EXTRA_HINTS[resourceName] ?? '';
+	const requiredOnCreate = writeFields.filter((f) => f.required);
+	const createFieldsNote =
+		requiredOnCreate.length > 0
+			? `Fields required on create (PATCH preserves existing value if omitted — only supply if changing): ${buildRequiredFieldsSummary(writeFields).replace(/^Required fields: /i, '')} `
+			: '';
 	return (
 		ref +
 		`Update an existing ${resourceLabel} record by numeric ID. ` +
 		`PREREQUISITE: you need the numeric ID. If you only have a name or text, call autotask_${resourceName} with operation 'getMany' with a filter to find the record and get its 'id' first. ` +
 		`Only provide fields to change (PATCH-style behaviour). ` +
 		`Do not assume PUT-style replacement where omitted fields become null. ` +
+		createFieldsNote +
 		`Picklist and reference fields accept human-readable names — auto-resolved to IDs. ` +
 		`Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
 		`Confirm field values with user before executing when acting autonomously. ` +
@@ -1226,7 +1233,7 @@ function getOperationPurpose(
 		case 'create':
 			return buildCreateDescription(resourceLabel, resource, writeFields);
 		case 'update':
-			return buildUpdateDescription(resourceLabel, resource);
+			return buildUpdateDescription(resourceLabel, resource, writeFields);
 		case 'delete':
 			return buildDeleteDescription(resourceLabel, resource);
 		case 'whoAmI':
