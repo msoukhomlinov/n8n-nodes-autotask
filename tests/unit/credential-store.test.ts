@@ -129,8 +129,8 @@ describe('probe cache', () => {
     const creds = { Username: 'net-u', Secret: 's', APIIntegrationcode: 'c', zone: 'https://ws.test' };
     let calls = 0;
     const http = async () => { calls += 1; const e: any = new Error('ECONNREFUSED'); throw e; };
-    await probeCredentials(creds, http);
-    await probeCredentials(creds, http);
+    expect(await probeCredentials(creds, http)).toBe(true);
+    expect(await probeCredentials(creds, http)).toBe(true);
     expect(calls).toBe(2);
   });
 });

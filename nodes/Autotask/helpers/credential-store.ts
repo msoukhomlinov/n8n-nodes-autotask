@@ -80,8 +80,12 @@ export function setProbeCache(identity: string, ok: boolean): void {
  * Do NOT call for fresh probe failures — probeCredentials() handles those.
  */
 export function invalidateProbeCache(identity: string): void {
+    const existed = probeCache.has(identity);
     probeCache.delete(identity);
-    setProbeCache(identity, false);
+    // Only re-insert negative entry if it was present; if it already expired, nothing to invalidate.
+    if (existed) {
+        probeCache.set(identity, { ok: false, expiresAt: Date.now() + PROBE_NEGATIVE_TTL_MS });
+    }
 }
 
 /**
