@@ -853,17 +853,21 @@ export async function executeAiTool(
 		);
 		if (
 			isGenericListLeakCheckOp &&
-			Object.keys(fieldValues).length > 0 &&
-			!hasFiltersJson &&
-			!hasFlatFilter1 &&
-			!hasFlatFilter2
+			Object.keys(fieldValues).length > 0
 		) {
 			const leakedFields = Object.keys(fieldValues);
-			const firstField = leakedFields[0];
-			const firstValue = String(fieldValues[firstField]);
-			filterErrors.push(
-				`Operation '${effectiveOperation}' received top-level write-field params (${leakedFields.join(', ')}) without any filter. Top-level fields apply to create/update only. For read filters use filter_field='${firstField}', filter_op='eq', filter_value='${firstValue}' (or filtersJson for advanced filters).`,
-			);
+			const hasAnyFilter = hasFiltersJson || hasFlatFilter1 || hasFlatFilter2;
+			if (hasAnyFilter) {
+				filterErrors.push(
+					`Operation '${effectiveOperation}' received top-level write-field params (${leakedFields.join(', ')}) alongside filter params. Top-level fields apply to create/update only — remove them. To add a second filter use filter_field_2/filter_op_2/filter_value_2.`,
+				);
+			} else {
+				const firstField = leakedFields[0];
+				const firstValue = String(fieldValues[firstField]);
+				filterErrors.push(
+					`Operation '${effectiveOperation}' received top-level write-field params (${leakedFields.join(', ')}) without any filter. Top-level fields apply to create/update only. For read filters use filter_field='${firstField}', filter_op='eq', filter_value='${firstValue}' (or filtersJson for advanced filters).`,
+				);
+			}
 		}
 
 		if (filterErrors.length > 0) {
