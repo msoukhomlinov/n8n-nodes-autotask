@@ -37,8 +37,9 @@ import type {
 import { NodeConnectionTypes } from 'n8n-workflow';
 import {
     requestHeaderStore,
+    probeCredentials,
 } from './helpers/credential-store';
-import { normaliseIncomingHeaders } from './helpers/credential-proxy';
+import { normaliseIncomingHeaders, parseAndValidateHeaders } from './helpers/credential-proxy';
 import { AutotaskMcpServer, type N8nLikeTool } from './mcp-trigger/McpServer';
 
 const MCP_SSE_SETUP_PATH = 'sse';
@@ -166,6 +167,12 @@ export class AutotaskMcpTrigger implements INodeType {
             false,
         ) as boolean;
 
+        const authentication = this.getNodeParameter('authentication', 'none') as string;
+
+        // Node ID is stable per workflow node — used to scope SSE sessions so two
+        // trigger instances with different paths cannot share session entries.
+        const nodeId = this.getNode().id;
+
         // Queue-mode incompatibility check (runtime warning, not a hard fail —
         // operators can still use the node without injection).
         if (injectAutotaskCredentials && process.env.EXECUTIONS_MODE === 'queue') {
@@ -248,6 +255,32 @@ export class AutotaskMcpTrigger implements INodeType {
             });
         };
 
+        // Enforce webhook-level authentication before any MCP processing.
+        // When authentication='autotaskCredentials', the caller MUST provide valid
+        // X-Autotask-* headers — absent or invalid headers are rejected with 401.
+        if (authentication === 'autotaskCredentials') {
+            const parsed = parseAndValidateHeaders(normalisedHeaders);
+            if (parsed.type === 'none') {
+                res.status(401).json({ error: 'Authentication required: X-Autotask-Username, X-Autotask-Secret, X-Autotask-IntegrationCode, and X-Autotask-Zone headers are required.' });
+                return { noWebhookResponse: true };
+            }
+            if (parsed.type === 'error') {
+                res.status(401).json({ error: `Authentication failed: ${parsed.message}` });
+                return { noWebhookResponse: true };
+            }
+            // Probe the credentials — returns true on network errors (fail-open).
+            let probeOk = true;
+            try {
+                probeOk = await probeCredentials(parsed.creds, httpRequestFn);
+            } catch {
+                probeOk = true;
+            }
+            if (!probeOk) {
+                res.status(401).json({ error: 'Authentication failed: Autotask rejected the provided credentials (401/403). Verify X-Autotask-* header values.' });
+                return { noWebhookResponse: true };
+            }
+        }
+
         let mcpServer: AutotaskMcpServer;
         try {
             mcpServer = new AutotaskMcpServer({
@@ -281,12 +314,13 @@ export class AutotaskMcpTrigger implements INodeType {
                         const { transport, server } = await mcpServer.openSseConnection(messageEndpoint, res);
                         const sessionId = transport.sessionId as string | undefined;
                         if (sessionId) {
+                            const sessionKey = `${nodeId}:${sessionId}`;
                             if (sseSessions.size >= MAX_SSE_SESSIONS) {
                                 await evictOldestSseSession();
                             }
-                            sseSessions.set(sessionId, { transport, server });
+                            sseSessions.set(sessionKey, { transport, server });
                             const cleanup = async () => {
-                                sseSessions.delete(sessionId);
+                                sseSessions.delete(sessionKey);
                                 try { await server.close?.(); } catch { /* ignore */ }
                             };
                             transport.onclose = cleanup;
@@ -298,8 +332,11 @@ export class AutotaskMcpTrigger implements INodeType {
 
                 if (webhookName === 'default' && req.method === 'POST') {
                     // SSE message — route to the existing transport.
+                    // Key is scoped to this node (nodeId:sessionId) so sessions from other
+                    // trigger instances cannot be cross-routed.
                     const sessionId = (req.query?.sessionId as string | undefined) ?? '';
-                    const session = sessionId ? sseSessions.get(sessionId) : undefined;
+                    const sessionKey = sessionId ? `${nodeId}:${sessionId}` : '';
+                    const session = sessionKey ? sseSessions.get(sessionKey) : undefined;
                     if (!session) {
                         res.status(404).json({ error: 'No active SSE session for sessionId' });
                         return { noWebhookResponse: true };
@@ -312,11 +349,12 @@ export class AutotaskMcpTrigger implements INodeType {
 
                 if (req.method === 'DELETE') {
                     const sessionId = (req.query?.sessionId as string | undefined) ?? '';
-                    if (sessionId && sseSessions.has(sessionId)) {
-                        const { transport, server } = sseSessions.get(sessionId)!;
+                    const sessionKey = sessionId ? `${nodeId}:${sessionId}` : '';
+                    if (sessionKey && sseSessions.has(sessionKey)) {
+                        const { transport, server } = sseSessions.get(sessionKey)!;
                         try { await transport.close?.(); } catch { /* ignore */ }
                         try { await server.close?.(); } catch { /* ignore */ }
-                        sseSessions.delete(sessionId);
+                        sseSessions.delete(sessionKey);
                     }
                     res.status(204).end();
                     return { noWebhookResponse: true };
