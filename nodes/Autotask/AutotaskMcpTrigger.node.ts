@@ -197,6 +197,38 @@ export class AutotaskMcpTrigger implements INodeType {
             });
         };
 
+        // SSE POST short-circuit — route directly to existing transport without
+        // loading tools or building an McpServer. The McpServer for this session was
+        // already constructed on the SSE setup GET; tool loading here would needlessly
+        // trigger supplyData() API calls on every tool invocation.
+        if (isSseTransport && webhookName === 'default' && req.method === 'POST') {
+            const sessionId = (req.query?.sessionId as string | undefined) ?? '';
+            const sessionKey = sessionId ? `${nodeId}:${sessionId}` : '';
+            const session = sessionKey ? sseSessions.get(sessionKey) : undefined;
+            if (!session) {
+                res.status(404).json({ error: 'No active SSE session for sessionId' });
+                return { noWebhookResponse: true };
+            }
+            await requestHeaderStore.run(normalisedHeaders, async () => {
+                await session.transport.handlePostMessage(req, res, (req as { body?: unknown }).body);
+            });
+            return { noWebhookResponse: true };
+        }
+
+        // SSE DELETE short-circuit — close + delete session without loading tools.
+        if (isSseTransport && req.method === 'DELETE') {
+            const sessionId = (req.query?.sessionId as string | undefined) ?? '';
+            const sessionKey = sessionId ? `${nodeId}:${sessionId}` : '';
+            if (sessionKey && sseSessions.has(sessionKey)) {
+                const { transport, server } = sseSessions.get(sessionKey)!;
+                try { await transport.close?.(); } catch { /* ignore */ }
+                try { await server.close?.(); } catch { /* ignore */ }
+                sseSessions.delete(sessionKey);
+            }
+            res.status(204).end();
+            return { noWebhookResponse: true };
+        }
+
         // Queue-mode check. In queue mode ALS cannot cross process boundaries so
         // injected credentials are silently unavailable in workers.
         // - With authentication='autotaskCredentials': reject hard (503) — the caller's
@@ -222,11 +254,14 @@ export class AutotaskMcpTrigger implements INodeType {
             }
         }
 
-        // Enforce webhook-level authentication BEFORE loading connected tools.
-        // Loading tools triggers supplyData() on each AutotaskAiTools node, which
-        // can include Autotask API metadata calls — unauthenticated callers must not
-        // consume that quota or cause that work.
-        if (authentication === 'autotaskCredentials') {
+        // Enforce webhook-level authentication BEFORE loading connected tools — only
+        // for Streamable HTTP. For SSE, the auth gate would reject the GET setup
+        // when MCP clients send X-Autotask-* headers only on POST /messages tool
+        // calls (not on the SSE setup GET). The McpServer already validates
+        // credentials per tools/call via requestHeaderStore + ALS, so the
+        // webhook-level gate is only meaningful for Streamable HTTP where each
+        // POST is a complete session.
+        if (!isSseTransport && authentication === 'autotaskCredentials') {
             const parsed = parseAndValidateHeaders(normalisedHeaders);
             if (parsed.type === 'none') {
                 res.status(401).json({ error: 'Authentication required: X-Autotask-Username, X-Autotask-Secret, X-Autotask-IntegrationCode, and X-Autotask-Zone headers are required.' });
@@ -365,36 +400,6 @@ export class AutotaskMcpTrigger implements INodeType {
                             res.on('close', cleanup);
                         }
                     });
-                    return { noWebhookResponse: true };
-                }
-
-                if (webhookName === 'default' && req.method === 'POST') {
-                    // SSE message — route to the existing transport.
-                    // Key is scoped to this node (nodeId:sessionId) so sessions from other
-                    // trigger instances cannot be cross-routed.
-                    const sessionId = (req.query?.sessionId as string | undefined) ?? '';
-                    const sessionKey = sessionId ? `${nodeId}:${sessionId}` : '';
-                    const session = sessionKey ? sseSessions.get(sessionKey) : undefined;
-                    if (!session) {
-                        res.status(404).json({ error: 'No active SSE session for sessionId' });
-                        return { noWebhookResponse: true };
-                    }
-                    await requestHeaderStore.run(normalisedHeaders, async () => {
-                        await mcpServer.handleSsePostMessage(session.transport, req, res, (req as { body?: unknown }).body);
-                    });
-                    return { noWebhookResponse: true };
-                }
-
-                if (req.method === 'DELETE') {
-                    const sessionId = (req.query?.sessionId as string | undefined) ?? '';
-                    const sessionKey = sessionId ? `${nodeId}:${sessionId}` : '';
-                    if (sessionKey && sseSessions.has(sessionKey)) {
-                        const { transport, server } = sseSessions.get(sessionKey)!;
-                        try { await transport.close?.(); } catch { /* ignore */ }
-                        try { await server.close?.(); } catch { /* ignore */ }
-                        sseSessions.delete(sessionKey);
-                    }
-                    res.status(204).end();
                     return { noWebhookResponse: true };
                 }
 
