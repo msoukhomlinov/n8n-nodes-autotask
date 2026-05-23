@@ -269,17 +269,18 @@ export class AutotaskMcpTrigger implements INodeType {
 
         // If injection is enabled and the client actually sent a username header,
         // verify each connected AutotaskAiTools node has acceptInjectedCredentials
-        // enabled. We can only inspect node parameters via getChildNodes(); the
-        // tools array itself does not expose the source node parameters.
+        // enabled. AutotaskAiTools nodes connect to the trigger's AiTool INPUT, making
+        // them parent nodes — getParentNodes() is the correct direction, not getChildNodes().
         if (
             effectiveInjectCredentials &&
             typeof normalisedHeaders['x-autotask-username'] === 'string'
         ) {
             try {
-                const children = this.getChildNodes(this.getNode().name, {
+                const parents = this.getParentNodes(this.getNode().name, {
                     includeNodeParameters: true,
+                    connectionType: NodeConnectionTypes.AiTool,
                 }) as Array<{ name?: string; type?: string; parameters?: Record<string, unknown> }>;
-                const autotaskAiTools = children.filter((c) => c.type === 'n8n-nodes-autotask.autotaskAiTools');
+                const autotaskAiTools = parents.filter((c) => c.type === 'n8n-nodes-autotask.autotaskAiTools');
                 const rejecting = autotaskAiTools.filter(
                     (c) => !(c.parameters && c.parameters['acceptInjectedCredentials'] === true),
                 );
@@ -307,7 +308,7 @@ export class AutotaskMcpTrigger implements INodeType {
                     );
                 }
             } catch {
-                // getChildNodes may be unavailable in some n8n contexts (older versions).
+                // getParentNodes may be unavailable in some n8n contexts (older versions).
                 // This check is advisory only — do not fail the request.
             }
         }
