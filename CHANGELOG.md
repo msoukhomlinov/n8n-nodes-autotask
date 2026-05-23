@@ -2,6 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.20.0] - 2026-05-23
+
+### Changed
+- **Per-user Autotask credential injection via X-Autotask-* MCP headers**: `AutotaskMcpTrigger` now supports two new authentication modes. `Inject Autotask Credentials` passes caller-supplied `X-Autotask-Username`, `X-Autotask-Secret`, `X-Autotask-IntegrationCode`, and `X-Autotask-Zone` request headers into tool calls so each MCP client executes as their own Autotask user. `Autotask Credentials (Per-User)` additionally enforces these headers at the webhook level, probes credentials before accepting requests, and hard-rejects misconfigurations. Per-user credentials are isolated via AsyncLocalStorage so concurrent callers never bleed across sessions.
+- **`AutotaskAiTools` opt-in for credential injection**: New `Accept Injected Credentials` toggle on `AutotaskAiTools` nodes. When enabled, per-user headers replace the workflow-owner credential for that tool's API calls. When disabled, the node always uses the configured workflow credential.
+- **Credential probe cache**: Validated credentials are cached for 60 s (positive) / 5 s (negative) to avoid re-probing on every tool call. Network errors (ECONNREFUSED, timeout) are not cached — the cache fails open on infrastructure faults.
+- **SSE transport security hardening**: SSE POST (`/messages`) short-circuits before tool loading for performance; enforces header-level auth and `acceptInjectedCredentials` opt-in check before routing to the session transport. `getParentNodes` failures in `autotaskCredentials` mode fail closed (503) rather than silently proceeding.
+- **Credential scrubbing in error logs**: `createOverrideScrubber` applied to all error logging paths in `request.ts`, `rateLimit.ts`, and `initRateTracker.ts` so Username/Secret/IntegrationCode values are never exposed in n8n server logs.
+- **New unit test suite**: 30 unit tests covering `credential-store` (ALS singletons, probe cache TTLs, invalidation logic) and `credential-proxy` (header validation, SSRF allowlist, proxy merging).
+
 ## [2.19.6] - 2026-05-22
 
 ### Fixed
