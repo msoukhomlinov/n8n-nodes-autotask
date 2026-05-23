@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import type { ISupplyDataFunctions, ICredentialDataDecryptedObject } from 'n8n-workflow';
+import type { ISupplyDataFunctions } from 'n8n-workflow';
 import { normaliseZone, type OverrideAutotaskCredentials } from './credential-store';
 
 // Zone URL must be HTTPS and match known Autotask domain patterns.
@@ -71,31 +71,28 @@ export function parseAndValidateHeaders(headers: Record<string, string | undefin
     };
 }
 
-export function mapToN8nCredentialShape(
-    override: Readonly<OverrideAutotaskCredentials>,
-): ICredentialDataDecryptedObject {
-    return Object.freeze({
-        Username: override.Username,
-        Secret: override.Secret,
-        APIIntegrationcode: override.APIIntegrationcode,
-        zone: override.zone,
-    }) as unknown as ICredentialDataDecryptedObject;
-}
-
 export function buildCredentialProxy(
     context: ISupplyDataFunctions,
     override: Readonly<OverrideAutotaskCredentials>,
 ): ISupplyDataFunctions {
-    const credShape = mapToN8nCredentialShape(override);
     return new Proxy(context, {
         get(target, prop, _receiver) {
             if (prop === 'getCredentials') {
-                // Forward all arguments (including itemIndex) to preserve n8n's per-item credential semantics.
                 // Override only 'autotaskApi'; delegate all other credential names to the original context.
-                return (...args: Parameters<typeof target.getCredentials>) =>
-                    args[0] === 'autotaskApi'
-                        ? Promise.resolve(credShape)
-                        : target.getCredentials(...args);
+                // For 'autotaskApi': merge override auth fields into the original credentials so that
+                // non-auth settings (cacheEnabled, cacheTTL, etc.) continue to work under injection.
+                return (...args: Parameters<typeof target.getCredentials>) => {
+                    if (args[0] !== 'autotaskApi') return target.getCredentials(...args);
+                    return target.getCredentials('autotaskApi', args[1]).then(
+                        (originalCreds) => Object.freeze({
+                            ...originalCreds,
+                            Username: override.Username,
+                            Secret: override.Secret,
+                            APIIntegrationcode: override.APIIntegrationcode,
+                            zone: override.zone,
+                        }),
+                    );
+                };
             }
             // Bind to target (not proxy) to preserve this-binding for class methods with private fields.
             const value = Reflect.get(target, prop, target);

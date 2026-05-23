@@ -59,7 +59,9 @@ const MAX_SSE_SESSIONS = 256;
 const sseSessions = new Map<string, { transport: any; server: any }>();
 
 async function evictOldestSseSession(): Promise<void> {
-    const [oldestId, oldest] = sseSessions.entries().next().value as [string, { transport: any; server: any }];
+    const entry = sseSessions.entries().next().value as [string, { transport: any; server: any }] | undefined;
+    if (!entry) return;
+    const [oldestId, oldest] = entry;
     sseSessions.delete(oldestId);
     try { await oldest.transport?.close?.(); } catch { /* ignore */ }
     try { await oldest.server?.close?.(); } catch { /* ignore */ }
@@ -212,9 +214,15 @@ export class AutotaskMcpTrigger implements INodeType {
                     (c) => !(c.parameters && c.parameters['acceptInjectedCredentials'] === true),
                 );
                 if (rejecting.length > 0) {
+                    // Injection is opt-in per tool node. Tools without acceptInjectedCredentials=true
+                    // intentionally fall through to the workflow-owner credentials — this lets operators
+                    // mix injected-credential tools with fixed-credential tools in the same workflow.
+                    // If you want all tools to enforce injection, enable acceptInjectedCredentials on each node.
                     console.warn(
                         `[AutotaskMcpTrigger] X-Autotask-* headers received but the following connected AutotaskAiTools node(s) ` +
-                        `do not have "Accept Injected Credentials" enabled — those tools will continue using the workflow-owner credentials: ` +
+                        `do not have "Accept Injected Credentials" enabled — those tools will use the workflow-owner credentials, ` +
+                        `not the caller's injected credentials. Enable "Accept Injected Credentials" on those nodes if injection ` +
+                        `should be enforced end-to-end: ` +
                         `${rejecting.map((n) => n.name ?? '(unnamed)').join(', ')}`,
                     );
                 }

@@ -678,14 +678,14 @@ export async function autotaskApiRequest<T = JsonObject>(
 		// Log error details (useful for debugging)
 		const hasSpecificErrors = Array.isArray(errorsArray) && errorsArray.length > 0;
 
-		console.debug('Error details:', {
+		console.debug('Error details:', scrub(JSON.stringify({
 			status,
 			hasSpecificErrors,
 			errorCount: errorsArray.length || 0,
 			errorMessages: apiErrorMessages,
 			responseDataErrors: responseErrors,
 			errorObjectErrors: directErrors,
-		});
+		})));
 
 		// Throw standardized error with the detailed message.
 		// Pass message explicitly so NodeApiError.message is guaranteed to be the
