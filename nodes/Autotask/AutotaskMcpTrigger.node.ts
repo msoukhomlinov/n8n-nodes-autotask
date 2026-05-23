@@ -209,6 +209,20 @@ export class AutotaskMcpTrigger implements INodeType {
                 res.status(404).json({ error: 'No active SSE session for sessionId' });
                 return { noWebhookResponse: true };
             }
+            // Enforce header-level auth on SSE POST when configured, so unauthenticated
+            // clients cannot reach tools/list or initialize on an open session.
+            // Full credential probe happens inside McpServer.setupHandlers per tools/call.
+            if (authentication === 'autotaskCredentials') {
+                const parsed = parseAndValidateHeaders(normalisedHeaders);
+                if (parsed.type === 'none') {
+                    res.status(401).json({ error: 'Authentication required: X-Autotask-Username, X-Autotask-Secret, X-Autotask-IntegrationCode, and X-Autotask-Zone headers are required.' });
+                    return { noWebhookResponse: true };
+                }
+                if (parsed.type === 'error') {
+                    res.status(401).json({ error: `Authentication failed: ${parsed.message}` });
+                    return { noWebhookResponse: true };
+                }
+            }
             await requestHeaderStore.run(normalisedHeaders, async () => {
                 await session.transport.handlePostMessage(req, res, (req as { body?: unknown }).body);
             });
