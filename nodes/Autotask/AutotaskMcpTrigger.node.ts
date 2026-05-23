@@ -315,8 +315,14 @@ export class AutotaskMcpTrigger implements INodeType {
             if (isSseTransport) {
                 if (webhookName === 'setup' && req.method === 'GET') {
                     // SSE setup — open a long-lived connection.
-                    const basePath = this.getNodeParameter('path', '') as string;
-                    const messageEndpoint = `/${basePath.replace(/^\/+/, '').replace(/\/+$/, '')}/${MCP_SSE_MESSAGES_PATH}`;
+                    // Derive messageEndpoint from the actual incoming request path so that
+                    // any n8n webhook prefix or reverse-proxy prefix is preserved in the
+                    // `event: endpoint` value sent to clients. Building it from the raw
+                    // node parameter loses those prefixes and clients would POST to the wrong URL.
+                    const incomingPath = (req.url ?? '').split('?')[0];
+                    const messageEndpoint = incomingPath.endsWith(`/${MCP_SSE_SETUP_PATH}`)
+                        ? incomingPath.slice(0, -MCP_SSE_SETUP_PATH.length) + MCP_SSE_MESSAGES_PATH
+                        : `/${(this.getNodeParameter('path', '') as string).replace(/^\/+/, '').replace(/\/+$/, '')}/${MCP_SSE_MESSAGES_PATH}`;
                     await requestHeaderStore.run(normalisedHeaders, async () => {
                         const { transport, server } = await mcpServer.openSseConnection(messageEndpoint, res);
                         const sessionId = transport.sessionId as string | undefined;
