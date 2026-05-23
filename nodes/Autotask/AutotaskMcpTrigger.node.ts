@@ -255,8 +255,16 @@ export class AutotaskMcpTrigger implements INodeType {
                         );
                     }
                 } catch {
-                    // getParentNodes may be unavailable in some n8n contexts (older versions).
-                    // This check is advisory only — do not fail the request.
+                    if (authentication === 'autotaskCredentials') {
+                        res.status(503).json({
+                            error: 'Unable to verify connected tool configuration. ' +
+                                'getParentNodes() failed — cannot confirm AutotaskAiTools nodes have ' +
+                                '"Accept Injected Credentials" enabled. ' +
+                                'Check n8n version compatibility or disable per-user authentication on this trigger.',
+                        });
+                        return { noWebhookResponse: true };
+                    }
+                    // In injection-only mode the check is advisory — proceed without it.
                 }
             }
             await requestHeaderStore.run(normalisedHeaders, async () => {
