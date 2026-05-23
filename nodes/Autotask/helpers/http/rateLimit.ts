@@ -200,9 +200,12 @@ class RequestRateTracker {
             }
         } catch (error) {
             this.debugLog('Threshold sync error:', error);
-            // Import sanitization function to mask credentials in error logs
-            const { sanitizeErrorForLogging } = await import('../security/credential-masking');
-            console.error('Failed to sync with Autotask API threshold information:', sanitizeErrorForLogging(error));
+            const { sanitizeErrorForLogging, createOverrideScrubber } = await import('../security/credential-masking');
+            const { autotaskCredentialStore } = await import('../credential-store');
+            const scrub = createOverrideScrubber(autotaskCredentialStore.getStore());
+            const sanitized = sanitizeErrorForLogging(error);
+            if (typeof sanitized.message === 'string') sanitized.message = scrub(sanitized.message);
+            console.error('Failed to sync with Autotask API threshold information:', sanitized);
             // Fall back to local tracking on error
         }
     }

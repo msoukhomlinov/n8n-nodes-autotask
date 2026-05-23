@@ -20,7 +20,7 @@ import { handleRateLimit } from './rateLimit';
 import { endpointThreadTracker } from './threadLimit';
 import { executeWithRetry } from './retryHandler';
 import { autotaskCredentialStore } from '../credential-store';
-import { createOverrideScrubber } from '../security/credential-masking';
+import { createOverrideScrubber, sanitizeErrorForLogging } from '../security/credential-masking';
 
 interface IAutotaskSuccessResponse {
 	id?: number;
@@ -328,8 +328,6 @@ export async function fetchThresholdInformation(
 
 		return null;
 	} catch (error) {
-		// Import sanitization function to mask credentials in error logs
-		const { sanitizeErrorForLogging } = await import('../security/credential-masking');
 		const overrideCreds = autotaskCredentialStore.getStore();
 		const scrub = createOverrideScrubber(overrideCreds);
 		const sanitized = sanitizeErrorForLogging(error);
@@ -571,8 +569,6 @@ export async function autotaskApiRequest<T = JsonObject>(
 			description?: string;
 		};
 
-		// Import sanitization function to mask credentials in error logs
-		const { sanitizeErrorForLogging } = await import('../security/credential-masking');
 		const overrideCreds = autotaskCredentialStore.getStore();
 		const scrub = createOverrideScrubber(overrideCreds);
 		const sanitized = sanitizeErrorForLogging(apiError);
