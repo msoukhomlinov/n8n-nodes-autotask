@@ -223,6 +223,42 @@ export class AutotaskMcpTrigger implements INodeType {
                     return { noWebhookResponse: true };
                 }
             }
+            if (
+                effectiveInjectCredentials &&
+                typeof normalisedHeaders['x-autotask-username'] === 'string'
+            ) {
+                try {
+                    const parents = this.getParentNodes(this.getNode().name, {
+                        includeNodeParameters: true,
+                        connectionType: NodeConnectionTypes.AiTool,
+                    }) as Array<{ name?: string; type?: string; parameters?: Record<string, unknown> }>;
+                    const autotaskAiTools = parents.filter((c) => c.type === 'n8n-nodes-autotask.autotaskAiTools');
+                    const rejecting = autotaskAiTools.filter(
+                        (c) => !(c.parameters && c.parameters['acceptInjectedCredentials'] === true),
+                    );
+                    if (rejecting.length > 0) {
+                        const names = rejecting.map((n) => n.name ?? '(unnamed)').join(', ');
+                        if (authentication === 'autotaskCredentials') {
+                            res.status(403).json({
+                                error: 'Workflow misconfiguration: the following connected AutotaskAiTools node(s) do not have ' +
+                                    '"Accept Injected Credentials" enabled. When per-user authentication is active, all connected ' +
+                                    'tool nodes must opt in — otherwise callers run tools under the workflow-owner credential. ' +
+                                    `Enable "Accept Injected Credentials" on: ${names}`,
+                            });
+                            return { noWebhookResponse: true };
+                        }
+                        console.warn(
+                            `[AutotaskMcpTrigger] X-Autotask-* headers received but the following connected AutotaskAiTools node(s) ` +
+                            `do not have "Accept Injected Credentials" enabled — those tools will use the workflow-owner credentials, ` +
+                            `not the caller's injected credentials. Enable "Accept Injected Credentials" on those nodes if injection ` +
+                            `should be enforced end-to-end: ${names}`,
+                        );
+                    }
+                } catch {
+                    // getParentNodes may be unavailable in some n8n contexts (older versions).
+                    // This check is advisory only — do not fail the request.
+                }
+            }
             await requestHeaderStore.run(normalisedHeaders, async () => {
                 await session.transport.handlePostMessage(req, res, (req as { body?: unknown }).body);
             });
@@ -357,8 +393,16 @@ export class AutotaskMcpTrigger implements INodeType {
                     );
                 }
             } catch {
-                // getParentNodes may be unavailable in some n8n contexts (older versions).
-                // This check is advisory only — do not fail the request.
+                if (authentication === 'autotaskCredentials') {
+                    res.status(503).json({
+                        error: 'Unable to verify connected tool configuration. ' +
+                            'getParentNodes() failed — cannot confirm AutotaskAiTools nodes have ' +
+                            '"Accept Injected Credentials" enabled. ' +
+                            'Check n8n version compatibility or disable per-user authentication on this trigger.',
+                    });
+                    return { noWebhookResponse: true };
+                }
+                // In injection-only mode the check is advisory — proceed without it.
             }
         }
 
