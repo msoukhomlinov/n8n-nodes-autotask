@@ -653,6 +653,9 @@ export async function autotaskApiRequest<T = JsonObject>(
 				'Check Admin > Account Settings & Users > Resources > Security Levels for the impersonated resource\'s security level.';
 		}
 
+		// Scrub override credential values from the final message before it reaches the n8n UI.
+		detailedMessage = scrub(detailedMessage);
+
 		// Set consistent properties on the error object to ensure n8n displays the right message
 		apiError.message = detailedMessage;
 		(apiError as { description?: string }).description = detailedMessage;

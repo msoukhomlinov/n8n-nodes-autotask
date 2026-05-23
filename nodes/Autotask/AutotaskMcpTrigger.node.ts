@@ -55,7 +55,15 @@ const MCP_SSE_MESSAGES_PATH = 'messages';
 // the n8n webhook perspective (the MCP SDK transport handles its own
 // streaming response on the same request).
 // ---------------------------------------------------------------------------
+const MAX_SSE_SESSIONS = 256;
 const sseSessions = new Map<string, { transport: any; server: any }>();
+
+async function evictOldestSseSession(): Promise<void> {
+    const [oldestId, oldest] = sseSessions.entries().next().value as [string, { transport: any; server: any }];
+    sseSessions.delete(oldestId);
+    try { await oldest.transport?.close?.(); } catch { /* ignore */ }
+    try { await oldest.server?.close?.(); } catch { /* ignore */ }
+}
 
 export class AutotaskMcpTrigger implements INodeType {
     description: INodeTypeDescription = {
@@ -265,6 +273,9 @@ export class AutotaskMcpTrigger implements INodeType {
                         const { transport, server } = await mcpServer.openSseConnection(messageEndpoint, res);
                         const sessionId = transport.sessionId as string | undefined;
                         if (sessionId) {
+                            if (sseSessions.size >= MAX_SSE_SESSIONS) {
+                                await evictOldestSseSession();
+                            }
                             sseSessions.set(sessionId, { transport, server });
                             const cleanup = async () => {
                                 sseSessions.delete(sessionId);
