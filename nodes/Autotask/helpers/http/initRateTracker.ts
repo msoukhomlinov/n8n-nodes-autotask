@@ -1,6 +1,8 @@
 import type { IExecuteFunctions, IHookFunctions, ILoadOptionsFunctions } from 'n8n-workflow';
 import { rateTracker } from './rateLimit';
 import { fetchThresholdInformation } from './request';
+import { autotaskCredentialStore } from '../credential-store';
+import { sanitizeErrorForLogging, createOverrideScrubber } from '../security/credential-masking';
 
 let lastInitTime = 0;
 const INIT_COOLDOWN_MS = 300_000; // 5 minutes
@@ -31,9 +33,10 @@ export async function initializeRateTracker(
 
 				return result;
 			} catch (error) {
-				// Import sanitization function to mask credentials in error logs
-				const { sanitizeErrorForLogging } = await import('../security/credential-masking');
-				console.error('[RateTracker] Error in threshold fetcher:', sanitizeErrorForLogging(error));
+				const scrub = createOverrideScrubber(autotaskCredentialStore.getStore());
+				const sanitized = sanitizeErrorForLogging(error);
+				if (typeof sanitized.message === 'string') sanitized.message = scrub(sanitized.message);
+				console.error('[RateTracker] Error in threshold fetcher:', sanitized);
 				return null;
 			}
 		});
@@ -41,7 +44,10 @@ export async function initializeRateTracker(
 		// Trigger an initial sync
 		await rateTracker.syncWithApi();
 	} catch (error) {
-		console.error('[RateTracker] Failed to initialize rate tracker:', error);
+		const scrub = createOverrideScrubber(autotaskCredentialStore.getStore());
+		const sanitized = sanitizeErrorForLogging(error);
+		if (typeof sanitized.message === 'string') sanitized.message = scrub(sanitized.message);
+		console.error('[RateTracker] Failed to initialize rate tracker:', sanitized);
 	}
 }
 

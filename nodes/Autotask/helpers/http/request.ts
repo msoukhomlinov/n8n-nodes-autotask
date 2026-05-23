@@ -19,6 +19,8 @@ import type { OperationType } from '../../types/base/entity-types';
 import { handleRateLimit } from './rateLimit';
 import { endpointThreadTracker } from './threadLimit';
 import { executeWithRetry } from './retryHandler';
+import { autotaskCredentialStore } from '../credential-store';
+import { createOverrideScrubber, sanitizeErrorForLogging } from '../security/credential-masking';
 
 interface IAutotaskSuccessResponse {
 	id?: number;
@@ -326,9 +328,13 @@ export async function fetchThresholdInformation(
 
 		return null;
 	} catch (error) {
-		// Import sanitization function to mask credentials in error logs
-		const { sanitizeErrorForLogging } = await import('../security/credential-masking');
-		console.error('Failed to fetch threshold information:', sanitizeErrorForLogging(error));
+		const overrideCreds = autotaskCredentialStore.getStore();
+		const scrub = createOverrideScrubber(overrideCreds);
+		const sanitized = sanitizeErrorForLogging(error);
+		if (typeof sanitized.message === 'string') {
+			sanitized.message = scrub(sanitized.message);
+		}
+		console.error('Failed to fetch threshold information:', sanitized);
 		return null;
 	}
 }
@@ -563,13 +569,17 @@ export async function autotaskApiRequest<T = JsonObject>(
 			description?: string;
 		};
 
-		// Import sanitization function to mask credentials in error logs
-		const { sanitizeErrorForLogging } = await import('../security/credential-masking');
-		console.error('API Error:', sanitizeErrorForLogging(apiError));
+		const overrideCreds = autotaskCredentialStore.getStore();
+		const scrub = createOverrideScrubber(overrideCreds);
+		const sanitized = sanitizeErrorForLogging(apiError);
+		if (typeof sanitized.message === 'string') {
+			sanitized.message = scrub(sanitized.message);
+		}
+		console.error('API Error:', sanitized);
 
 		const status = apiError.response?.status;
 		const url = options.url;
-		console.warn(`API ${method} ${url} failed (${status}): ${getErrorMessage(apiError as unknown as IAutotaskErrorResponse)}`);
+		console.warn(scrub(`API ${method} ${url} failed (${status}): ${getErrorMessage(apiError as unknown as IAutotaskErrorResponse)}`));
 
 		// Import the createStandardErrorObject function
 		const { createStandardErrorObject } = await import('../../helpers/errorHandler');
@@ -639,6 +649,9 @@ export async function autotaskApiRequest<T = JsonObject>(
 				'Check Admin > Account Settings & Users > Resources > Security Levels for the impersonated resource\'s security level.';
 		}
 
+		// Scrub override credential values from the final message before it reaches the n8n UI.
+		detailedMessage = scrub(detailedMessage);
+
 		// Set consistent properties on the error object to ensure n8n displays the right message
 		apiError.message = detailedMessage;
 		(apiError as { description?: string }).description = detailedMessage;
@@ -661,14 +674,14 @@ export async function autotaskApiRequest<T = JsonObject>(
 		// Log error details (useful for debugging)
 		const hasSpecificErrors = Array.isArray(errorsArray) && errorsArray.length > 0;
 
-		console.debug('Error details:', {
+		console.debug('Error details:', scrub(JSON.stringify({
 			status,
 			hasSpecificErrors,
 			errorCount: errorsArray.length || 0,
 			errorMessages: apiErrorMessages,
 			responseDataErrors: responseErrors,
 			errorObjectErrors: directErrors,
-		});
+		})));
 
 		// Throw standardized error with the detailed message.
 		// Pass message explicitly so NodeApiError.message is guaranteed to be the

@@ -46,6 +46,8 @@ import {
 	traceExecutor,
 	traceToolBuild,
 } from './ai-tools/debug-trace';
+import { autotaskCredentialStore, probeCredentialIdentity } from './helpers/credential-store';
+import { buildCredentialProxy } from './helpers/credential-proxy';
 
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
 const TOOL_BUILD_CACHE_TTL_MS = 90_000;
@@ -358,6 +360,17 @@ export class AutotaskAiTools implements INodeType {
 					'Whether to enable mutating tools (create, createIfNotExists, moveToCompany, moveConfigurationItem, transferOwnership, update, delete). Disabled = read-only.',
 			},
 			{
+				displayName: 'Accept Injected Credentials',
+				name: 'acceptInjectedCredentials',
+				type: 'boolean',
+				default: false,
+				description:
+					'When enabled, accepts per-user Autotask credentials injected by the Autotask MCP Trigger. ' +
+					'Requires the connected trigger to have "Inject Autotask Credentials" enabled. ' +
+					'Note: changing this toggle requires saving and re-activating the workflow.',
+				noDataExpression: true,
+			},
+			{
 				displayName: 'Tool Description Appendix',
 				name: 'toolDescriptionAppendix',
 				type: 'string',
@@ -437,6 +450,11 @@ export class AutotaskAiTools implements INodeType {
 		const referenceUtc = getReferenceUtcNow();
 		const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
 		const credentialIdentity = await resolveCredentialIdentity(this);
+		const acceptInjectedCredentials = this.getNodeParameter(
+			'acceptInjectedCredentials',
+			itemIndex,
+			false,
+		) as boolean;
 		// Trace tool-construction decisions to understand what the AI can see.
 		traceToolBuild({
 			phase: 'supplyData-start',
@@ -604,6 +622,41 @@ export class AutotaskAiTools implements INodeType {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			schema: schema as any,
 			func: async (rawParams: Record<string, unknown>) => {
+				// Read override credentials from AsyncLocalStorage (injected by AutotaskMcpTrigger).
+				// ALS is populated only on the supplyData()->func() path (MCP Trigger).
+				// The execute() path has no ALS context — autotaskCredentialStore.getStore() returns undefined there.
+				const overrideCreds = autotaskCredentialStore.getStore();
+
+				let effectiveContext: ISupplyDataFunctions = supplyDataContext;
+				let effectiveMetadata = metadata;
+				let effectiveCredentialIdentity = credentialIdentity;
+
+				if (acceptInjectedCredentials && overrideCreds) {
+					effectiveContext = buildCredentialProxy(supplyDataContext, overrideCreds);
+					// Use probeCredentialIdentity rather than re-implementing the hash inline — it
+					// applies the same zone normalisation as the probe cache, so identity values
+					// stay consistent across the probe path and the func() cache key.
+					effectiveCredentialIdentity = probeCredentialIdentity(overrideCreds);
+					// Re-fetch metadata under the override credential — different Autotask security
+					// levels surface different readable/writable fields. Using the configured user's
+					// field set for a restricted override user would silently allow the LLM to attempt
+					// fields the override user cannot access.
+					//
+					// Verify CacheService isolation here: helpers in this code path call
+					// `context.getCredentials('autotaskApi')` and `CacheService.getInstance(credentialsId)`.
+					// Because the proxy returns the override creds for that getCredentials call, the
+					// derived `credentialsId` will be the override user's — producing a separate
+					// CacheService instance from the configured user's. No code change needed; this
+					// is what makes the proxy approach work without threading override params downstream.
+					effectiveMetadata = await resolveMetadataForTool(
+						effectiveContext,
+						resource,
+						effectiveOps,
+						effectiveCredentialIdentity,
+						itemIndex,
+					);
+				}
+
 				const operation = rawParams.operation as string;
 				if (!operation || !allAllowedOps.includes(operation)) {
 					if (operation && isWriteOperation(operation) && !allowWriteOperations) {
@@ -628,13 +681,13 @@ export class AutotaskAiTools implements INodeType {
 					);
 				}
 				return executeAiTool(
-					supplyDataContext as unknown as IExecuteFunctions,
+					effectiveContext as unknown as IExecuteFunctions,
 					resource,
 					operation,
 					rawParams as unknown as ToolExecutorParams,
 					{
-						readFields: metadata.readFields,
-						writeFields: metadata.writeFields,
+						readFields: effectiveMetadata.readFields,
+						writeFields: effectiveMetadata.writeFields,
 						allAllowedOps,
 					},
 				);
@@ -670,6 +723,16 @@ export class AutotaskAiTools implements INodeType {
 	 */
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
+		// Defensive guard: ALS store should never be populated on the execute() path.
+		// If it is, something unexpected has happened — log and ignore rather than using
+		// the override, to prevent cross-path credential leakage.
+		const unexpectedOverride = autotaskCredentialStore.getStore();
+		if (unexpectedOverride) {
+			console.warn(
+				'[AutotaskAiTools] execute(): autotaskCredentialStore unexpectedly populated — ' +
+				'override credentials are not supported on the Agent V3 execute() path. Ignoring.',
+			);
+		}
 		const resource = this.getNodeParameter('resource', 0) as string;
 		const operations = this.getNodeParameter('operations', 0) as string[];
 		const allowWriteOperations = this.getNodeParameter('allowWriteOperations', 0, false) as boolean;

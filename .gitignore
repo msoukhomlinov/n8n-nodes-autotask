@@ -15,7 +15,11 @@ pnpm-lock.yaml
 
 # testing
 /coverage
-/tests/
+# Ignore tests/ contents except tracked source files.
+# git cannot re-include files inside an ignored directory with negation alone,
+# so we ignore specific leaf patterns instead of the whole /tests/ directory.
+/tests/node_modules/
+/tests/.env.test
 
 # next.js
 /.next/

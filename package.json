@@ -53,12 +53,14 @@
     "nodes": [
       "dist/nodes/Autotask/Autotask.node.js",
       "dist/nodes/Autotask/AutotaskTrigger.node.js",
-      "dist/nodes/Autotask/AutotaskAiTools.node.js"
+      "dist/nodes/Autotask/AutotaskAiTools.node.js",
+      "dist/nodes/Autotask/AutotaskMcpTrigger.node.js"
     ]
   },
   "devDependencies": {
     "@langchain/classic": "^1.0.29",
     "@langchain/core": "^1.1.39",
+    "@modelcontextprotocol/sdk": "~1.26.0",
     "@n8n/node-cli": ">=0.29.0",
     "@types/node": "^22.15.0",
     "@types/pluralize": "^0.0.33",

@@ -200,9 +200,12 @@ class RequestRateTracker {
             }
         } catch (error) {
             this.debugLog('Threshold sync error:', error);
-            // Import sanitization function to mask credentials in error logs
-            const { sanitizeErrorForLogging } = await import('../security/credential-masking');
-            console.error('Failed to sync with Autotask API threshold information:', sanitizeErrorForLogging(error));
+            const { sanitizeErrorForLogging, createOverrideScrubber } = await import('../security/credential-masking');
+            const { autotaskCredentialStore } = await import('../credential-store');
+            const scrub = createOverrideScrubber(autotaskCredentialStore.getStore());
+            const sanitized = sanitizeErrorForLogging(error);
+            if (typeof sanitized.message === 'string') sanitized.message = scrub(sanitized.message);
+            console.error('Failed to sync with Autotask API threshold information:', sanitized);
             // Fall back to local tracking on error
         }
     }
@@ -283,6 +286,8 @@ export async function handleRateLimit(maxWaitMs = 600000): Promise<void> {
         let totalWaitTime = 0;
 
         while (rateTracker.shouldThrottle() && totalWaitTime < maxWaitMs) {
+            // ALS context (autotaskCredentialStore) propagates through setTimeout on Node >=12.17 — safe.
+            // This project requires node >=18.10 (package.json engines), so ALS propagation is guaranteed.
             await new Promise(resolve => setTimeout(resolve, waitInterval));
             totalWaitTime += waitInterval;
 
@@ -309,6 +314,8 @@ export async function handleRateLimit(maxWaitMs = 600000): Promise<void> {
     const throttleDelay = rateTracker.getThrottleDuration();
     if (throttleDelay > 0) {
         console.debug(`[RateLimit] Applying throttle delay of ${throttleDelay}ms (usage: ${usagePercent.toFixed(1)}%)`);
+        // ALS context (autotaskCredentialStore) propagates through setTimeout on Node >=12.17 — safe.
+        // This project requires node >=18.10 (package.json engines), so ALS propagation is guaranteed.
         await new Promise(resolve => setTimeout(resolve, throttleDelay));
     }
 }
