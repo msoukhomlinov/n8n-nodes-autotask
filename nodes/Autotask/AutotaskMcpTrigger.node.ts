@@ -169,13 +169,20 @@ export class AutotaskMcpTrigger implements INodeType {
 
         const authentication = this.getNodeParameter('authentication', 'none') as string;
 
+        // When per-user auth is active, injection must also be active — otherwise the
+        // credentials used to pass the auth gate (X-Autotask-* headers) are validated
+        // but then ignored, and tool calls run under the workflow-owner credential.
+        // That is a privilege-escalation path: an external caller with any valid Autotask
+        // credential gains access to a potentially higher-privileged account.
+        const effectiveInjectCredentials = injectAutotaskCredentials || authentication === 'autotaskCredentials';
+
         // Node ID is stable per workflow node — used to scope SSE sessions so two
         // trigger instances with different paths cannot share session entries.
         const nodeId = this.getNode().id;
 
         // Queue-mode incompatibility check (runtime warning, not a hard fail —
         // operators can still use the node without injection).
-        if (injectAutotaskCredentials && process.env.EXECUTIONS_MODE === 'queue') {
+        if (effectiveInjectCredentials && process.env.EXECUTIONS_MODE === 'queue') {
             console.warn(
                 '[AutotaskMcpTrigger] "Inject Autotask Credentials" is enabled but n8n is running in queue mode. ' +
                 'AsyncLocalStorage cannot cross process boundaries — injection will not work in workers.',
@@ -209,7 +216,7 @@ export class AutotaskMcpTrigger implements INodeType {
         // enabled. We can only inspect node parameters via getChildNodes(); the
         // tools array itself does not expose the source node parameters.
         if (
-            injectAutotaskCredentials &&
+            effectiveInjectCredentials &&
             typeof normalisedHeaders['x-autotask-username'] === 'string'
         ) {
             try {
@@ -286,7 +293,7 @@ export class AutotaskMcpTrigger implements INodeType {
             mcpServer = new AutotaskMcpServer({
                 serverInfo: { name: 'autotask-mcp-trigger', version: '1.0.0' },
                 tools,
-                injectAutotaskCredentials,
+                injectAutotaskCredentials: effectiveInjectCredentials,
                 httpRequest: httpRequestFn,
             });
         } catch (err) {
