@@ -60,25 +60,17 @@ export class McpTestClient {
    * Prefers result.structuredContent when present (newer MCP versions).
    * Falls back to parsing content[0].text.
    *
-   * Note: result.isError signals an MCP transport-level error, not a tool error.
-   * Our tools always return structured JSON — even application errors come back
-   * as { error: true, errorType, ... } inside content[0].text.
-   * We parse unconditionally and let the caller's assertions surface the error shape.
+   * result.isError is the MCP protocol flag for tool-level errors — the server sets it
+   * when the tool itself signals failure (e.g. PERMISSION_DENIED, INVALID_OPERATION).
+   * The content array still carries the structured error payload in content[0].text,
+   * so we parse unconditionally and let the caller's assertions surface the error shape.
+   * We never throw on isError — that would hide the structured body from tests.
    */
   async callTool(
     name: string,
     args: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     const result = await this.client.callTool({ name, arguments: args });
-
-    // result.isError signals an MCP transport-level error (e.g. server crash, protocol failure).
-    // Application-level errors from our tools come back as { error: true, errorType, ... } in
-    // structuredContent or content[0].text — those are expected and handled by assertions.
-    if (result.isError === true) {
-      throw new Error(
-        `MCP transport error calling "${name}": ${JSON.stringify(result)}`
-      );
-    }
 
     if (
       result.structuredContent !== undefined &&
