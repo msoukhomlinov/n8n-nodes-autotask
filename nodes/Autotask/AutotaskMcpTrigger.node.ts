@@ -55,7 +55,7 @@ const MCP_SSE_MESSAGES_PATH = 'messages';
 // the n8n webhook perspective (the MCP SDK transport handles its own
 // streaming response on the same request).
 // ---------------------------------------------------------------------------
-const sseSessions = new Map<string, any>();
+const sseSessions = new Map<string, { transport: any; server: any }>();
 
 export class AutotaskMcpTrigger implements INodeType {
     description: INodeTypeDescription = {
@@ -262,11 +262,14 @@ export class AutotaskMcpTrigger implements INodeType {
                     const basePath = this.getNodeParameter('path', '') as string;
                     const messageEndpoint = `/${basePath.replace(/^\/+/, '').replace(/\/+$/, '')}/${MCP_SSE_MESSAGES_PATH}`;
                     await requestHeaderStore.run(normalisedHeaders, async () => {
-                        const transport = await mcpServer.openSseConnection(messageEndpoint, res);
+                        const { transport, server } = await mcpServer.openSseConnection(messageEndpoint, res);
                         const sessionId = transport.sessionId as string | undefined;
                         if (sessionId) {
-                            sseSessions.set(sessionId, transport);
-                            const cleanup = () => sseSessions.delete(sessionId);
+                            sseSessions.set(sessionId, { transport, server });
+                            const cleanup = async () => {
+                                sseSessions.delete(sessionId);
+                                try { await server.close?.(); } catch { /* ignore */ }
+                            };
                             transport.onclose = cleanup;
                             res.on('close', cleanup);
                         }
@@ -277,13 +280,13 @@ export class AutotaskMcpTrigger implements INodeType {
                 if (webhookName === 'default' && req.method === 'POST') {
                     // SSE message — route to the existing transport.
                     const sessionId = (req.query?.sessionId as string | undefined) ?? '';
-                    const transport = sessionId ? sseSessions.get(sessionId) : undefined;
-                    if (!transport) {
+                    const session = sessionId ? sseSessions.get(sessionId) : undefined;
+                    if (!session) {
                         res.status(404).json({ error: 'No active SSE session for sessionId' });
                         return { noWebhookResponse: true };
                     }
                     await requestHeaderStore.run(normalisedHeaders, async () => {
-                        await mcpServer.handleSsePostMessage(transport, req, res, (req as { body?: unknown }).body);
+                        await mcpServer.handleSsePostMessage(session.transport, req, res, (req as { body?: unknown }).body);
                     });
                     return { noWebhookResponse: true };
                 }
@@ -291,8 +294,9 @@ export class AutotaskMcpTrigger implements INodeType {
                 if (req.method === 'DELETE') {
                     const sessionId = (req.query?.sessionId as string | undefined) ?? '';
                     if (sessionId && sseSessions.has(sessionId)) {
-                        const transport = sseSessions.get(sessionId);
+                        const { transport, server } = sseSessions.get(sessionId)!;
                         try { await transport.close?.(); } catch { /* ignore */ }
+                        try { await server.close?.(); } catch { /* ignore */ }
                         sseSessions.delete(sessionId);
                     }
                     res.status(204).end();

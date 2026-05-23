@@ -364,15 +364,16 @@ export class AutotaskMcpServer {
      * `messageEndpoint` is the URL clients should POST messages to (relative
      * or absolute as the deployment requires).
      *
-     * Returns the underlying transport so the caller can plug in POST message
-     * routing via `transport.handlePostMessage(req, res, body)`.
+     * Returns both the transport and the server so the caller can call
+     * `server.close()` when the session ends — necessary to release SDK-internal
+     * listeners that `server.connect(transport)` registers on the transport.
      */
-    async openSseConnection(messageEndpoint: string, res: ServerResponse): Promise<any> {
+    async openSseConnection(messageEndpoint: string, res: ServerResponse): Promise<{ transport: any; server: any }> {
         const { SSEServerTransport } = this._sdk;
         const transport = new SSEServerTransport(messageEndpoint, res);
         const server = this.createServer();
         await server.connect(transport);
-        return transport;
+        return { transport, server };
     }
 
     /**
