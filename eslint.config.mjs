@@ -44,6 +44,29 @@ export default [
 		},
 	},
 	{
+		// McpServer.ts dynamically resolves @modelcontextprotocol/sdk at runtime via createRequire
+		// — same justification as runtime.ts. SDK types are intentionally `any` at the boundary.
+		files: ['nodes/Autotask/mcp-trigger/McpServer.ts'],
+		rules: {
+			'@typescript-eslint/no-require-imports': 'off',
+			'@typescript-eslint/no-explicit-any': 'off',
+		},
+	},
+	{
+		// AutotaskMcpTrigger handles HTTP req/res from express, MCP SDK transports, and connected tools
+		// — the surface is intentionally untyped at the boundary.
+		// webhook-lifecycle-complete applies to third-party webhook registration (GitHub, Slack, etc.) —
+		// not applicable to a self-hosted MCP webhook where n8n itself manages the lifecycle.
+		files: ['nodes/Autotask/AutotaskMcpTrigger.node.ts'],
+		rules: {
+			'@typescript-eslint/no-explicit-any': 'off',
+			'@n8n/community-nodes/webhook-lifecycle-complete': 'off',
+			// Trigger node has no execute() — usableAsTool would be meaningless and the TS type
+			// only accepts `true | undefined` (cannot set explicit false to satisfy this rule).
+			'@n8n/community-nodes/node-usable-as-tool': 'off',
+		},
+	},
+	{
 		// credential-masking deals with arbitrary error/object shapes — any is correct here
 		files: ['nodes/Autotask/helpers/security/credential-masking.ts'],
 		rules: {
