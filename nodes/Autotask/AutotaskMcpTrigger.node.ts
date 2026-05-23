@@ -180,22 +180,78 @@ export class AutotaskMcpTrigger implements INodeType {
         // trigger instances with different paths cannot share session entries.
         const nodeId = this.getNode().id;
 
-        // Queue-mode incompatibility check (runtime warning, not a hard fail —
-        // operators can still use the node without injection).
-        if (effectiveInjectCredentials && process.env.EXECUTIONS_MODE === 'queue') {
-            console.warn(
-                '[AutotaskMcpTrigger] "Inject Autotask Credentials" is enabled but n8n is running in queue mode. ' +
-                'AsyncLocalStorage cannot cross process boundaries — injection will not work in workers.',
-            );
-        }
-
-        // Normalise headers once, then propagate via ALS.
+        // Normalise headers once — needed for auth gate which must run before tool loading.
         const normalisedHeaders = normaliseIncomingHeaders(req.headers);
 
+        // Build httpRequestFn early — needed by the auth probe below.
+        const helpers = this.helpers;
+        const httpRequestFn = async (opts: {
+            method: string;
+            url: string;
+            headers: Record<string, string>;
+        }) => {
+            return helpers.httpRequest({
+                method: opts.method as 'GET',
+                url: opts.url,
+                headers: opts.headers,
+            });
+        };
+
+        // Queue-mode check. In queue mode ALS cannot cross process boundaries so
+        // injected credentials are silently unavailable in workers.
+        // - With authentication='autotaskCredentials': reject hard (503) — the caller's
+        //   credentials would pass the auth gate but tool calls would run under the
+        //   workflow-owner credential, breaking per-caller isolation.
+        // - With injection-only (no auth gate): warn only — tools fall back to
+        //   workflow-owner creds, which is a usability issue but not a security regression.
+        if (process.env.EXECUTIONS_MODE === 'queue') {
+            if (authentication === 'autotaskCredentials') {
+                res.status(503).json({
+                    error: 'Per-user Autotask credential authentication is not supported in queue mode. ' +
+                        'AsyncLocalStorage cannot cross process boundaries — injected credentials would ' +
+                        'be unavailable in workers, causing tool calls to run under the workflow-owner credential. ' +
+                        'Switch n8n to regular (non-queue) mode or disable per-user authentication on this trigger.',
+                });
+                return { noWebhookResponse: true };
+            }
+            if (effectiveInjectCredentials) {
+                console.warn(
+                    '[AutotaskMcpTrigger] "Inject Autotask Credentials" is enabled but n8n is running in queue mode. ' +
+                    'AsyncLocalStorage cannot cross process boundaries — injection will not work in workers.',
+                );
+            }
+        }
+
+        // Enforce webhook-level authentication BEFORE loading connected tools.
+        // Loading tools triggers supplyData() on each AutotaskAiTools node, which
+        // can include Autotask API metadata calls — unauthenticated callers must not
+        // consume that quota or cause that work.
+        if (authentication === 'autotaskCredentials') {
+            const parsed = parseAndValidateHeaders(normalisedHeaders);
+            if (parsed.type === 'none') {
+                res.status(401).json({ error: 'Authentication required: X-Autotask-Username, X-Autotask-Secret, X-Autotask-IntegrationCode, and X-Autotask-Zone headers are required.' });
+                return { noWebhookResponse: true };
+            }
+            if (parsed.type === 'error') {
+                res.status(401).json({ error: `Authentication failed: ${parsed.message}` });
+                return { noWebhookResponse: true };
+            }
+            // Probe the credentials — returns true on network errors (fail-open).
+            let probeOk = true;
+            try {
+                probeOk = await probeCredentials(parsed.creds, httpRequestFn);
+            } catch {
+                probeOk = true;
+            }
+            if (!probeOk) {
+                res.status(401).json({ error: 'Authentication failed: Autotask rejected the provided credentials (401/403). Verify X-Autotask-* header values.' });
+                return { noWebhookResponse: true };
+            }
+        }
+
         // Fetch the connected AI tools. supplyData() runs on each AutotaskAiTools
-        // node and returns its DynamicStructuredTool. We treat the result as an
-        // array of objects with name/description/schema/invoke (the n8n public
-        // shape of supplied tools).
+        // node and returns its DynamicStructuredTool. This happens AFTER the auth gate
+        // so unauthenticated callers do not trigger API/metadata work.
         let tools: N8nLikeTool[] = [];
         try {
             const supplied = await this.getInputConnectionData(NodeConnectionTypes.AiTool, 0);
@@ -243,48 +299,6 @@ export class AutotaskMcpTrigger implements INodeType {
             } catch {
                 // getChildNodes may be unavailable in some n8n contexts (older versions).
                 // This check is advisory only — do not fail the request.
-            }
-        }
-
-        // Build the MCP server. We use a per-request wrapper around helpers.httpRequest
-        // for the credential probe so the probe runs inside n8n's normal HTTP stack
-        // (proxy support, TLS config, etc.).
-        const helpers = this.helpers;
-        const httpRequestFn = async (opts: {
-            method: string;
-            url: string;
-            headers: Record<string, string>;
-        }) => {
-            return helpers.httpRequest({
-                method: opts.method as 'GET',
-                url: opts.url,
-                headers: opts.headers,
-            });
-        };
-
-        // Enforce webhook-level authentication before any MCP processing.
-        // When authentication='autotaskCredentials', the caller MUST provide valid
-        // X-Autotask-* headers — absent or invalid headers are rejected with 401.
-        if (authentication === 'autotaskCredentials') {
-            const parsed = parseAndValidateHeaders(normalisedHeaders);
-            if (parsed.type === 'none') {
-                res.status(401).json({ error: 'Authentication required: X-Autotask-Username, X-Autotask-Secret, X-Autotask-IntegrationCode, and X-Autotask-Zone headers are required.' });
-                return { noWebhookResponse: true };
-            }
-            if (parsed.type === 'error') {
-                res.status(401).json({ error: `Authentication failed: ${parsed.message}` });
-                return { noWebhookResponse: true };
-            }
-            // Probe the credentials — returns true on network errors (fail-open).
-            let probeOk = true;
-            try {
-                probeOk = await probeCredentials(parsed.creds, httpRequestFn);
-            } catch {
-                probeOk = true;
-            }
-            if (!probeOk) {
-                res.status(401).json({ error: 'Authentication failed: Autotask rejected the provided credentials (401/403). Verify X-Autotask-* header values.' });
-                return { noWebhookResponse: true };
             }
         }
 
