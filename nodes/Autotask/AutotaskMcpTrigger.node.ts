@@ -284,16 +284,26 @@ export class AutotaskMcpTrigger implements INodeType {
                     (c) => !(c.parameters && c.parameters['acceptInjectedCredentials'] === true),
                 );
                 if (rejecting.length > 0) {
-                    // Injection is opt-in per tool node. Tools without acceptInjectedCredentials=true
-                    // intentionally fall through to the workflow-owner credentials — this lets operators
-                    // mix injected-credential tools with fixed-credential tools in the same workflow.
-                    // If you want all tools to enforce injection, enable acceptInjectedCredentials on each node.
+                    const names = rejecting.map((n) => n.name ?? '(unnamed)').join(', ');
+                    if (authentication === 'autotaskCredentials') {
+                        // Hard reject: caller passed the auth gate with their Autotask credentials,
+                        // but these tool nodes would silently fall back to the workflow-owner credential.
+                        // That is a privilege-escalation path — fail closed.
+                        res.status(403).json({
+                            error: 'Workflow misconfiguration: the following connected AutotaskAiTools node(s) do not have ' +
+                                '"Accept Injected Credentials" enabled. When per-user authentication is active, all connected ' +
+                                'tool nodes must opt in — otherwise callers run tools under the workflow-owner credential. ' +
+                                `Enable "Accept Injected Credentials" on: ${names}`,
+                        });
+                        return { noWebhookResponse: true };
+                    }
+                    // Injection-only mode (no auth gate): warn. Caller is already using the workflow-owner
+                    // credential context; the fall-through is a usability issue, not a security regression.
                     console.warn(
                         `[AutotaskMcpTrigger] X-Autotask-* headers received but the following connected AutotaskAiTools node(s) ` +
                         `do not have "Accept Injected Credentials" enabled — those tools will use the workflow-owner credentials, ` +
                         `not the caller's injected credentials. Enable "Accept Injected Credentials" on those nodes if injection ` +
-                        `should be enforced end-to-end: ` +
-                        `${rejecting.map((n) => n.name ?? '(unnamed)').join(', ')}`,
+                        `should be enforced end-to-end: ${names}`,
                     );
                 }
             } catch {
