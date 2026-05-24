@@ -8,6 +8,7 @@ const ZONE_ALLOWLIST = /^https:\/\/webservices\d+\.autotask\.(net|com|com\.au|co
 // Reject control characters (0x00-0x1F, 0x7F DEL); max 1024 chars. Unicode allowed.
 // Permits non-ASCII names (e.g. josé@example.com) and Unicode passwords while still
 // blocking header-injection vectors (CR/LF/NUL).
+// eslint-disable-next-line no-control-regex
 const SAFE_HEADER_VALUE = /^[^\x00-\x1F\x7F]{1,1024}$/;
 
 const HEADER_NAMES = [

@@ -106,8 +106,8 @@ export class AutotaskMcpTrigger implements INodeType {
                 name: 'authentication',
                 type: 'options',
                 options: [
-                    { name: 'None', value: 'none' },
                     { name: 'Autotask Credentials (Per-User)', value: 'autotaskCredentials' },
+                    { name: 'None', value: 'none' },
                 ],
                 default: 'none',
                 description: 'The way to authenticate inbound MCP requests',

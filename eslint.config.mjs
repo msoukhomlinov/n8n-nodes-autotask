@@ -103,6 +103,8 @@ export default [
 		files: ['package.json'],
 		rules: {
 			'n8n-nodes-base/community-package-json-name-still-default': 'off',
+			// Runtime deps (keyv, moment, change-case, etc.) are real dependencies; bundling not yet set up
+			'@n8n/community-nodes/no-runtime-dependencies': 'off',
 		},
 	},
 ];

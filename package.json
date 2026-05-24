@@ -79,16 +79,12 @@
     "pluralize": "^8.0.0"
   },
   "peerDependencies": {
-    "n8n-workflow": ">=1.0.0"
+    "n8n-workflow": "*"
   },
   "pnpm": {
     "overrides": {
       "uuid@>=13.0.0 <13.0.1": ">=13.0.1",
       "langsmith@<0.6.0": "^0.6.3"
     }
-  },
-  "overrides": {
-    "uuid@>=13.0.0 <13.0.1": ">=13.0.1",
-    "langsmith@<0.6.0": "^0.6.3"
   }
 }
