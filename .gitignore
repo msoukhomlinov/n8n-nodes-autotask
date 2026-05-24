@@ -15,11 +15,7 @@ pnpm-lock.yaml
 
 # testing
 /coverage
-# Ignore tests/ contents except tracked source files.
-# git cannot re-include files inside an ignored directory with negation alone,
-# so we ignore specific leaf patterns instead of the whole /tests/ directory.
-/tests/node_modules/
-/tests/.env.test
+/tests/
 
 # next.js
 /.next/
@@ -41,7 +37,6 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
-tests/.env.test
 #.env.example
 
 # vercel
