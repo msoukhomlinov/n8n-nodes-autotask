@@ -426,10 +426,14 @@ export class AutotaskTrigger implements INodeType {
 								webhookData.secretKey = newSecretKey;
 								console.log(`HMAC secret auto-rotated for webhook ID ${webhookId}. Signature verification is now active.`);
 							} catch (patchError) {
-								console.warn(
+								// PATCH failed — the existing webhook cannot be secured. Clear the
+								// stored ID so n8n calls create() and registers a fresh signed webhook.
+								console.error(
 									`Auto-migration failed — could not rotate secretKey for webhook ID ${webhookId}: ${(patchError as Error).message}. ` +
-									`Deactivate and re-activate this trigger to restore HMAC authentication.`,
+									`Clearing stored webhook ID so a new signed webhook will be created.`,
 								);
+								webhookData.webhookId = undefined;
+								return false;
 							}
 						}
 
@@ -898,19 +902,15 @@ export class AutotaskTrigger implements INodeType {
 
 		console.log(`Webhook event details: entityType=${bodyData.entityType}, eventType=${bodyData.eventType}, entityId=${bodyData.entityId}`);
 
-		// Special handling for Deactivated events - these don't have an entityType
+		// Special handling for Deactivated events - these don't have an entityType.
+		// No static data is mutated here — this request is unverified (arrives before HMAC).
+		// Mutating webhookId on an unsigned event would allow an attacker to forge a Deactivated
+		// payload and cause workflow deactivation to skip deleting the real Autotask webhook,
+		// leaving an orphaned remote subscription. The delete() lifecycle hook handles cleanup
+		// and already recovers gracefully from 404s on the Autotask side.
 		if (bodyData.eventType === AutotaskWebhookEventType.DEACTIVATED ||
 			(bodyData.eventType as string) === 'Deactivated') {
 			console.log('Received webhook deactivation event. Processing without validation.');
-
-			// Clear webhook ID from static data to prevent further deletion attempts.
-			// secretKey is intentionally NOT cleared here — this event arrives before HMAC
-			// verification, so we cannot trust it. Clearing the key would allow an attacker to
-			// send a fake Deactivated event that permanently disables signature verification.
-			if (webhookData.webhookId) {
-				console.log(`Clearing webhook ID ${webhookData.webhookId} from static data due to deactivation event`);
-				webhookData.webhookId = undefined;
-			}
 
 			// Return success response for deactivation event
 			return {
