@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.20.3] - 2026-05-28
+
+### Fixed
+- **Security: force `langsmith >= 0.6.0`**: Added npm `overrides` and `pnpm.overrides` to resolve three Dependabot advisories (CVE-2026-45134 high — untrusted manifest deserialization; CVE-2026-41182 medium — streaming token bypass of output redaction; CVE-2026-40190 medium — prototype pollution via incomplete `__proto__` guard). Transitive chain: `@n8n/node-cli` → `@n8n/ai-utilities` → `@langchain/classic` → `langsmith@0.3.87`. Forced to 0.7.3 via override.
+- **Security: force `tmp >= 0.2.6`**: Added npm `overrides` and `pnpm.overrides` to resolve CVE-2026-44705 (high — path traversal via unsanitised prefix/postfix). Transitive chain: `@n8n/node-cli` → `@n8n/ai-utilities` → `tmp-promise` → `tmp@0.2.5`. Forced to 0.2.7 via override.
+
 ## [2.20.2] - 2026-05-28
 
 ### Fixed
