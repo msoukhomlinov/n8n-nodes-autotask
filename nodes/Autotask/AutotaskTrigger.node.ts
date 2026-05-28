@@ -914,30 +914,14 @@ export class AutotaskTrigger implements INodeType {
 		console.log(`Webhook event details: entityType=${bodyData.entityType}, eventType=${bodyData.eventType}, entityId=${bodyData.entityId}`);
 
 		// Special handling for Deactivated events - these don't have an entityType.
-		// No static data is mutated here — this request is unverified (arrives before HMAC).
-		// Mutating webhookId on an unsigned event would allow an attacker to forge a Deactivated
-		// payload and cause workflow deactivation to skip deleting the real Autotask webhook,
-		// leaving an orphaned remote subscription. The delete() lifecycle hook handles cleanup
-		// and already recovers gracefully from 404s on the Autotask side.
+		// Deactivated events arrive before HMAC verification and carry no signature guarantee.
+		// No static data is mutated (webhookId/secretKey preserved — see checkExists() isActive
+		// check for legitimate deactivation recovery). Return empty workflowData so the workflow
+		// does not execute with unverified attacker-controlled payload.
 		if (bodyData.eventType === AutotaskWebhookEventType.DEACTIVATED ||
 			(bodyData.eventType as string) === 'Deactivated') {
-			console.log('Received webhook deactivation event. Processing without validation.');
-
-			// Return success response for deactivation event
-			return {
-				workflowData: [
-					this.helpers.returnJsonArray([
-						{
-							headers: headerData,
-							body: rawBodyData,
-							eventType: bodyData.eventType,
-							deactivated: true,
-							guid: rawBodyData.Guid,
-							timestamp: bodyData.timestamp,
-						},
-					]),
-				],
-			};
+			console.log('Received webhook deactivation event. Acknowledging without triggering workflow.');
+			return { workflowData: [[]] };
 		}
 
 		// Validate content type - accept application/json with any parameters
