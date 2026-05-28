@@ -381,10 +381,21 @@ export class AutotaskTrigger implements INodeType {
 								id: webhookId as string | number,
 							}),
 							{},
-						) as { item?: { webhookUrl?: string } };
+						) as { item?: { webhookUrl?: string; isActive?: boolean } };
 
-						const existingUrl = existingWebhook?.item?.webhookUrl;
-						const currentUrl  = this.getNodeWebhookUrl('default');
+						const existingUrl    = existingWebhook?.item?.webhookUrl;
+						const existingActive = existingWebhook?.item?.isActive;
+						const currentUrl     = this.getNodeWebhookUrl('default');
+
+						// Autotask can deactivate a webhook (e.g. repeated delivery failures).
+						// When isActive is explicitly false, treat it as gone: clear state so
+						// n8n calls create() and registers a fresh active webhook.
+						if (existingActive === false) {
+							console.log(`Webhook ID ${webhookId} exists in Autotask but is inactive. Clearing stored ID so a new webhook will be created.`);
+							webhookData.webhookId = undefined;
+							webhookData.secretKey = undefined;
+							return false;
+						}
 
 						if (existingUrl && existingUrl !== currentUrl) {
 							console.log(
@@ -409,6 +420,34 @@ export class AutotaskTrigger implements INodeType {
 						}
 
 						console.log(`Webhook ID: ${webhookId} exists in Autotask and URL is current`);
+
+						// Auto-migrate legacy webhooks that were registered without a secretKey.
+						// PATCH the Autotask webhook record with a freshly generated secret so that
+						// subsequent requests are HMAC-verified without any user action.
+						if (!webhookData.secretKey) {
+							console.log(`Legacy webhook detected (no secretKey). Rotating HMAC secret for webhook ID ${webhookId}...`);
+							try {
+								const newSecretKey = randomBytes(16).toString('hex');
+								await autotaskApiRequest.call(
+									this,
+									'PATCH',
+									buildWebhookUrl(WebhookUrlType.WEBHOOK_BASE, { entityType }),
+									{ id: webhookId, secretKey: newSecretKey },
+								);
+								webhookData.secretKey = newSecretKey;
+								console.log(`HMAC secret auto-rotated for webhook ID ${webhookId}. Signature verification is now active.`);
+							} catch (patchError) {
+								// PATCH failed — the existing webhook cannot be secured. Clear the
+								// stored ID so n8n calls create() and registers a fresh signed webhook.
+								console.error(
+									`Auto-migration failed — could not rotate secretKey for webhook ID ${webhookId}: ${(patchError as Error).message}. ` +
+									`Clearing stored webhook ID so a new signed webhook will be created.`,
+								);
+								webhookData.webhookId = undefined;
+								return false;
+							}
+						}
+
 						return true;
 					} catch (error) {
 						// If we get a 404, the webhook doesn't exist
@@ -874,33 +913,15 @@ export class AutotaskTrigger implements INodeType {
 
 		console.log(`Webhook event details: entityType=${bodyData.entityType}, eventType=${bodyData.eventType}, entityId=${bodyData.entityId}`);
 
-		// Special handling for Deactivated events - these don't have an entityType
+		// Special handling for Deactivated events - these don't have an entityType.
+		// Deactivated events arrive before HMAC verification and carry no signature guarantee.
+		// No static data is mutated (webhookId/secretKey preserved — see checkExists() isActive
+		// check for legitimate deactivation recovery). Return empty workflowData so the workflow
+		// does not execute with unverified attacker-controlled payload.
 		if (bodyData.eventType === AutotaskWebhookEventType.DEACTIVATED ||
 			(bodyData.eventType as string) === 'Deactivated') {
-			console.log('Received webhook deactivation event. Processing without validation.');
-
-			// Clear webhook ID from static data to prevent further deletion attempts
-			if (webhookData.webhookId) {
-				console.log(`Clearing webhook ID ${webhookData.webhookId} from static data due to deactivation event`);
-				webhookData.webhookId = undefined;
-				webhookData.secretKey = undefined;
-			}
-
-			// Return success response for deactivation event
-			return {
-				workflowData: [
-					this.helpers.returnJsonArray([
-						{
-							headers: headerData,
-							body: rawBodyData,
-							eventType: bodyData.eventType,
-							deactivated: true,
-							guid: rawBodyData.Guid,
-							timestamp: bodyData.timestamp,
-						},
-					]),
-				],
-			};
+			console.log('Received webhook deactivation event. Acknowledging without triggering workflow.');
+			return { workflowData: [[]] };
 		}
 
 		// Validate content type - accept application/json with any parameters
@@ -1020,8 +1041,11 @@ export class AutotaskTrigger implements INodeType {
 				}
 			}
 		} else {
-			console.warn('No secret key found in workflow static data. Skipping signature verification.');
-			// This case should only happen for webhooks created before this change
+			console.error('No secret key found in workflow static data. Rejecting request to prevent unauthenticated access.');
+			throw new NodeOperationError(
+				this.getNode(),
+				'Webhook signature verification failed: no secret key configured. Deactivate and re-activate this trigger to restore HMAC authentication.',
+			);
 		}
 
 		console.log('Webhook event processing completed successfully');

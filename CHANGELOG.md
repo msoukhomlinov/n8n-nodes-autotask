@@ -2,6 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.20.2] - 2026-05-28
+
+### Fixed
+- **Security (GHSA-hh59-fgrr-93hf): HMAC bypass via unsigned Deactivated event**: `AutotaskTrigger.webhook()` processed `Action=Deactivated` payloads before HMAC verification and cleared `webhookData.secretKey`. An unauthenticated attacker could send a fake Deactivated event to permanently disable signature verification, then inject arbitrary forged webhook events. Fix: (1) the pre-HMAC deactivated handler no longer clears `secretKey` — only `webhookId` is cleared; (2) the no-secretKey fallback is now fail-closed, throwing a `NodeOperationError` instead of accepting unsigned requests; (3) `checkExists()` auto-migrates legacy webhooks — if `webhookId` is stored but `secretKey` is absent, a new HMAC secret is generated and PATCHed onto the Autotask webhook record automatically on next workflow load, with no user action required. If the PATCH fails, a warning is logged and the user must re-activate manually. CWE-287 / CVSS 8.2 (AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:L).
+
+## [2.20.1] - 2026-05-26
+
+### Fixed
+- **Security: force `uuid >= 11.1.1`**: Added npm `overrides` to resolve CVE-2026-41907 (missing buffer bounds check in uuid v3/v5/v6 when `buf` is provided). Transitive copy pulled in by `@langchain/classic` was pinned to `10.0.0`.
+
 ## [2.20.0] - 2026-05-23
 
 ### Changed
