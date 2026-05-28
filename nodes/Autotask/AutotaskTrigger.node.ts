@@ -381,10 +381,21 @@ export class AutotaskTrigger implements INodeType {
 								id: webhookId as string | number,
 							}),
 							{},
-						) as { item?: { webhookUrl?: string } };
+						) as { item?: { webhookUrl?: string; isActive?: boolean } };
 
-						const existingUrl = existingWebhook?.item?.webhookUrl;
-						const currentUrl  = this.getNodeWebhookUrl('default');
+						const existingUrl    = existingWebhook?.item?.webhookUrl;
+						const existingActive = existingWebhook?.item?.isActive;
+						const currentUrl     = this.getNodeWebhookUrl('default');
+
+						// Autotask can deactivate a webhook (e.g. repeated delivery failures).
+						// When isActive is explicitly false, treat it as gone: clear state so
+						// n8n calls create() and registers a fresh active webhook.
+						if (existingActive === false) {
+							console.log(`Webhook ID ${webhookId} exists in Autotask but is inactive. Clearing stored ID so a new webhook will be created.`);
+							webhookData.webhookId = undefined;
+							webhookData.secretKey = undefined;
+							return false;
+						}
 
 						if (existingUrl && existingUrl !== currentUrl) {
 							console.log(
