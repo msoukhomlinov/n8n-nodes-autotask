@@ -1,36 +1,39 @@
-import type { IExecuteFunctions, IHookFunctions, ILoadOptionsFunctions } from 'n8n-workflow';
-import { rateTracker } from './rateLimit';
+import type { IExecuteFunctions, IHookFunctions, ILoadOptionsFunctions, ISupplyDataFunctions } from 'n8n-workflow';
+import { getTrackerForCredential, rateTracker } from './rateLimit';
 import { fetchThresholdInformation } from './request';
 import { autotaskCredentialStore } from '../credential-store';
 import { sanitizeErrorForLogging, createOverrideScrubber } from '../security/credential-masking';
 
-let lastInitTime = 0;
+const initTimes = new Map<string, number>();
 const INIT_COOLDOWN_MS = 300_000; // 5 minutes
 
 /**
- * Initializes the rate tracker with the proper threshold information fetcher
+ * Initializes the rate tracker for a specific credential with the proper
+ * threshold information fetcher. Uses a per-credential cooldown so concurrent
+ * executions do not all trigger a threshold information request.
  *
  * @param context Execution context with access to credentials
- * @returns Promise that resolves when initialization is complete
+ * @param credentialKey Unique key identifying the credential (zone|Username|APIIntegrationcode)
  */
 export async function initializeRateTracker(
-	context: IExecuteFunctions | IHookFunctions | ILoadOptionsFunctions,
+	context: IExecuteFunctions | IHookFunctions | ILoadOptionsFunctions | ISupplyDataFunctions,
+	credentialKey = 'default',
 ): Promise<void> {
 	const now = Date.now();
+	const lastInit = initTimes.get(credentialKey) ?? 0;
 
-	// Simple cooldown so multiple concurrent executions do not all trigger a sync
-	if (now - lastInitTime < INIT_COOLDOWN_MS) {
+	if (now - lastInit < INIT_COOLDOWN_MS) {
 		return;
 	}
 
-	lastInitTime = now;
+	initTimes.set(credentialKey, now);
 
 	try {
-		// Set up the threshold info fetcher to use the context for credentials
-		rateTracker.setThresholdInfoFetcher(async () => {
-			try {
-				const result = await fetchThresholdInformation.call(context);
+		const tracker = getTrackerForCredential(credentialKey);
 
+		tracker.setThresholdInfoFetcher(async () => {
+			try {
+				const result = await fetchThresholdInformation.call(context as IExecuteFunctions);
 				return result;
 			} catch (error) {
 				const scrub = createOverrideScrubber(autotaskCredentialStore.getStore());
@@ -41,8 +44,7 @@ export async function initializeRateTracker(
 			}
 		});
 
-		// Trigger an initial sync
-		await rateTracker.syncWithApi();
+		await tracker.syncWithApi();
 	} catch (error) {
 		const scrub = createOverrideScrubber(autotaskCredentialStore.getStore());
 		const sanitized = sanitizeErrorForLogging(error);
@@ -52,19 +54,15 @@ export async function initializeRateTracker(
 }
 
 /**
- * Simplified version that doesn't require an execution context.
- * This can be used during module initialization if context isn't available yet.
- * The rate tracker will start with local counting only, and sync when it gets a context later.
+ * Simplified early-init that doesn't require an execution context.
+ * The default tracker starts with local counting only and syncs when
+ * a context is available via initializeRateTracker.
  */
 export function initializeRateTrackerEarly(): void {
-    try {
-        // Silently initialize the rate tracker without logging
-        // This line ensures the singleton is instantiated
-        rateTracker;
-
-        // No console output to keep n8n startup clean
-    } catch (error) {
-        // Only log critical errors
-        console.error('[RateTracker] Critical initialization error:', error);
-    }
+	try {
+		// Touch the default tracker to ensure the singleton is instantiated
+		void rateTracker;
+	} catch (error) {
+		console.error('[RateTracker] Critical initialization error:', error);
+	}
 }

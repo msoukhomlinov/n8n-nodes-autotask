@@ -48,6 +48,8 @@ import {
 } from './ai-tools/debug-trace';
 import { autotaskCredentialStore, probeCredentialIdentity } from './helpers/credential-store';
 import { buildCredentialProxy } from './helpers/credential-proxy';
+import { initializeRateTracker } from './helpers/http/initRateTracker';
+import type { IAutotaskCredentials } from './types/base/auth';
 
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
 const TOOL_BUILD_CACHE_TTL_MS = 90_000;
@@ -409,6 +411,15 @@ export class AutotaskAiTools implements INodeType {
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
 		const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
 
+		// Initialize rate tracker with credential context (mirrors Autotask.node.ts)
+		try {
+			const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+			const credentialKey = `${creds.zone}|${creds.Username}|${creds.APIIntegrationcode}`;
+			await initializeRateTracker(this, credentialKey);
+		} catch {
+			// Non-fatal — rate tracker falls back to local counting
+		}
+
 		const resource = this.getNodeParameter('resource', itemIndex) as string;
 		const operations = this.getNodeParameter('operations', itemIndex) as string[];
 		const allowWriteOperations = this.getNodeParameter(
@@ -732,6 +743,14 @@ export class AutotaskAiTools implements INodeType {
 				'[AutotaskAiTools] execute(): autotaskCredentialStore unexpectedly populated — ' +
 				'override credentials are not supported on the Agent V3 execute() path. Ignoring.',
 			);
+		}
+		// Initialize rate tracker with credential context (mirrors Autotask.node.ts)
+		try {
+			const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+			const credentialKey = `${creds.zone}|${creds.Username}|${creds.APIIntegrationcode}`;
+			await initializeRateTracker(this, credentialKey);
+		} catch {
+			// Non-fatal — rate tracker falls back to local counting
 		}
 		const resource = this.getNodeParameter('resource', 0) as string;
 		const operations = this.getNodeParameter('operations', 0) as string[];
