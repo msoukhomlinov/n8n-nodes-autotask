@@ -411,12 +411,29 @@ export class AutotaskAiTools implements INodeType {
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
 		const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
 
-		// Initialize rate tracker with credential context (mirrors Autotask.node.ts)
+		// Initialize rate tracker with credential context (mirrors Autotask.node.ts).
+		// On the MCP/supplyData path, injected override credentials may already be in the
+		// ALS store. Prefer those so the tracker key matches the actual credential used for
+		// subsequent API calls (which run through buildCredentialProxy with the override).
+		// OverrideAutotaskCredentials.zone is already normalised (no 'other'/customZoneUrl
+		// distinction). IAutotaskCredentials.zone may be 'other' and require customZoneUrl.
 		try {
-			const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-			const resolvedZone = creds.zone === 'other' ? (creds.customZoneUrl ?? '') : creds.zone;
-			if (resolvedZone && creds.Username && creds.APIIntegrationcode) {
-				const credentialKey = `${resolvedZone}|${creds.Username}|${creds.APIIntegrationcode}`;
+			const overrideCreds = autotaskCredentialStore.getStore();
+			let resolvedZone: string;
+			let username: string;
+			let integrationCode: string;
+			if (overrideCreds) {
+				resolvedZone = overrideCreds.zone;
+				username = overrideCreds.Username;
+				integrationCode = overrideCreds.APIIntegrationcode;
+			} else {
+				const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+				resolvedZone = creds.zone === 'other' ? (creds.customZoneUrl ?? '') : creds.zone;
+				username = creds.Username;
+				integrationCode = creds.APIIntegrationcode;
+			}
+			if (resolvedZone && username && integrationCode) {
+				const credentialKey = `${resolvedZone}|${username}|${integrationCode}`;
 				await initializeRateTracker(this, credentialKey);
 			}
 		} catch (error) {
