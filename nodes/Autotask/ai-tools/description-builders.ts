@@ -861,6 +861,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
 			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
 			{ field: 'fields', type: 'string', description: 'Comma-separated field names to return.' },
+			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default) or 'rawIds'." },
 		],
 	},
 	getUnposted: {
@@ -885,6 +886,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
 			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
 			{ field: 'fields', type: 'string', description: 'Comma-separated field names to return.' },
+			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default) or 'rawIds'." },
 		],
 	},
 	searchByDomain: {
