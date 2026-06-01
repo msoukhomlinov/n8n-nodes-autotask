@@ -95,28 +95,11 @@ export async function executeWithRetry<T>(
 			await new Promise((resolve) => setTimeout(resolve, waitMs));
 
 			totalWaitTime += waitMs;
-
-			// Stop retrying once the cumulative wait budget is exhausted.
-			if (totalWaitTime >= MAX_TOTAL_WAIT_MS) {
-				const rateLimitError = {
-					message:
-						'Autotask API rate limit exceeded (429 Too Many Requests). ' +
-						`Retried ${attempt} times over ${(totalWaitTime / 1_000).toFixed(0)} seconds, ` +
-						'but the limit persists. This indicates sustained high API usage. ' +
-						'Suggestions: ' +
-						'(1) Reduce workflow trigger frequency or concurrency. ' +
-						'(2) Enable response caching on read operations to reduce API calls. ' +
-						'(3) Spread bulk operations over a longer time period. ' +
-						'(4) Consider that other n8n instances or integrations may be consuming the API quota.',
-					statusCode: 429,
-					description:
-						'Rate limit exceeded after ' +
-						`${attempt} retry attempts ` +
-						`(${(totalWaitTime / 1_000).toFixed(0)}s total wait).`,
-				};
-
-				throw new NodeApiError(context.getNode(), rateLimitError);
-			}
+			// No post-sleep budget check here. The pre-sleep guard above
+			// (`waitMs > remainingBudget`) is the sole enforcement point.
+			// A post-sleep `>= MAX_TOTAL_WAIT_MS` check would incorrectly abort
+			// when a Retry-After wait lands exactly on the remaining budget —
+			// the server asked us to wait that long and we should retry, not throw.
 		}
 	}
 }
