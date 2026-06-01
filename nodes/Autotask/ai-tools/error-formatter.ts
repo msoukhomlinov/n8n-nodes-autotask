@@ -183,7 +183,6 @@ export function formatApiError(
 
 	if (
 		lowerMessage.includes('rate limit')
-		|| lowerMessage.includes('429')
 		|| lowerMessage.includes('too many requests')
 	) {
 		// Only extract retry hint from genuine "retry after N seconds" phrasing.
