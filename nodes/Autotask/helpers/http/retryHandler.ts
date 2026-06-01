@@ -7,7 +7,8 @@ import { NodeApiError } from 'n8n-workflow';
 
 const MAX_TOTAL_WAIT_MS = 300_000; // 5 minutes
 const BASE_DELAY_MS = 1_000; // Start with 1 second
-const MAX_DELAY_MS = 60_000; // Cap individual waits at 1 minute
+const MAX_DELAY_MS = 60_000; // Cap exponential backoff at 1 minute
+const MAX_RETRY_AFTER_MS = 600_000; // Respect Retry-After up to 10 minutes
 
 type AutotaskContexts = IExecuteFunctions | IHookFunctions | ILoadOptionsFunctions;
 
@@ -37,13 +38,24 @@ export async function executeWithRetry<T>(
 
 			attempt += 1;
 
-			// Parse Retry-After header if present
+			// Parse Retry-After header if present (RFC 7231: integer seconds or HTTP-date)
 			const retryAfter = err.response?.headers?.['retry-after'];
 			let waitMs: number;
 
 			if (retryAfter) {
 				const parsed = Number.parseInt(retryAfter, 10);
-				waitMs = Number.isNaN(parsed) ? 60_000 : Math.min(parsed * 1_000, MAX_DELAY_MS);
+				if (!Number.isNaN(parsed)) {
+					// Integer seconds: respect server value, cap at 10 min
+					waitMs = Math.min(parsed * 1_000, MAX_RETRY_AFTER_MS);
+				} else {
+					// HTTP-date format: compute delta from now
+					const httpDate = Date.parse(retryAfter);
+					if (!Number.isNaN(httpDate)) {
+						waitMs = Math.max(1_000, Math.min(httpDate - Date.now(), MAX_RETRY_AFTER_MS));
+					} else {
+						waitMs = 60_000; // unparseable — fall back to 60s
+					}
+				}
 			} else {
 				// Exponential backoff with jitter (+/-25%)
 				const backoff = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), MAX_DELAY_MS);
