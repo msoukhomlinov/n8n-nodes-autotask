@@ -414,8 +414,9 @@ export class AutotaskAiTools implements INodeType {
 		// Initialize rate tracker with credential context (mirrors Autotask.node.ts)
 		try {
 			const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-			if (creds.zone && creds.Username && creds.APIIntegrationcode) {
-				const credentialKey = `${creds.zone}|${creds.Username}|${creds.APIIntegrationcode}`;
+			const resolvedZone = creds.zone === 'other' ? (creds.customZoneUrl ?? '') : creds.zone;
+			if (resolvedZone && creds.Username && creds.APIIntegrationcode) {
+				const credentialKey = `${resolvedZone}|${creds.Username}|${creds.APIIntegrationcode}`;
 				await initializeRateTracker(this, credentialKey);
 			}
 		} catch (error) {
@@ -750,8 +751,9 @@ export class AutotaskAiTools implements INodeType {
 		// Initialize rate tracker with credential context (mirrors Autotask.node.ts)
 		try {
 			const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-			if (creds.zone && creds.Username && creds.APIIntegrationcode) {
-				const credentialKey = `${creds.zone}|${creds.Username}|${creds.APIIntegrationcode}`;
+			const resolvedZone = creds.zone === 'other' ? (creds.customZoneUrl ?? '') : creds.zone;
+			if (resolvedZone && creds.Username && creds.APIIntegrationcode) {
+				const credentialKey = `${resolvedZone}|${creds.Username}|${creds.APIIntegrationcode}`;
 				await initializeRateTracker(this, credentialKey);
 			}
 		} catch (error) {
