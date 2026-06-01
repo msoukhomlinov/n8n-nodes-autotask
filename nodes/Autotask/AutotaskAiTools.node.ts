@@ -411,36 +411,6 @@ export class AutotaskAiTools implements INodeType {
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
 		const { buildUnifiedSchema } = getRuntimeSchemaBuilders(runtimeZod);
 
-		// Initialize rate tracker with credential context (mirrors Autotask.node.ts).
-		// On the MCP/supplyData path, injected override credentials may already be in the
-		// ALS store. Prefer those so the tracker key matches the actual credential used for
-		// subsequent API calls (which run through buildCredentialProxy with the override).
-		// OverrideAutotaskCredentials.zone is already normalised (no 'other'/customZoneUrl
-		// distinction). IAutotaskCredentials.zone may be 'other' and require customZoneUrl.
-		try {
-			const overrideCreds = autotaskCredentialStore.getStore();
-			let resolvedZone: string;
-			let username: string;
-			let integrationCode: string;
-			if (overrideCreds) {
-				resolvedZone = overrideCreds.zone;
-				username = overrideCreds.Username;
-				integrationCode = overrideCreds.APIIntegrationcode;
-			} else {
-				const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-				resolvedZone = creds.zone === 'other' ? (creds.customZoneUrl ?? '') : creds.zone;
-				username = creds.Username;
-				integrationCode = creds.APIIntegrationcode;
-			}
-			if (resolvedZone && username && integrationCode) {
-				const credentialKey = `${resolvedZone}|${username}|${integrationCode}`;
-				await initializeRateTracker(this, credentialKey);
-			}
-		} catch (error) {
-			// Non-fatal — rate tracker falls back to local counting
-			console.warn('[AutotaskAiTools] initializeRateTracker failed; falling back to local counting.', error instanceof Error ? error.message : String(error));
-		}
-
 		const resource = this.getNodeParameter('resource', itemIndex) as string;
 		const operations = this.getNodeParameter('operations', itemIndex) as string[];
 		const allowWriteOperations = this.getNodeParameter(
@@ -687,6 +657,32 @@ export class AutotaskAiTools implements INodeType {
 						effectiveCredentialIdentity,
 						itemIndex,
 					);
+				}
+
+				// Initialize rate tracker using the actual credential for this invocation.
+				// Deferred to here (inside func) so that MCP per-user credential injection
+				// is resolved first — the tracker key must match the proxied request path.
+				try {
+					let trackerZone: string;
+					let trackerUsername: string;
+					let trackerIntegrationCode: string;
+					if (overrideCreds) {
+						// zone is already normalised in OverrideAutotaskCredentials (no 'other'/customZoneUrl)
+						trackerZone = overrideCreds.zone;
+						trackerUsername = overrideCreds.Username;
+						trackerIntegrationCode = overrideCreds.APIIntegrationcode;
+					} else {
+						const creds = await supplyDataContext.getCredentials('autotaskApi') as IAutotaskCredentials;
+						trackerZone = creds.zone === 'other' ? (creds.customZoneUrl ?? '') : creds.zone;
+						trackerUsername = creds.Username;
+						trackerIntegrationCode = creds.APIIntegrationcode;
+					}
+					if (trackerZone && trackerUsername && trackerIntegrationCode) {
+						const credentialKey = `${trackerZone}|${trackerUsername}|${trackerIntegrationCode}`;
+						await initializeRateTracker(effectiveContext as unknown as IExecuteFunctions, credentialKey);
+					}
+				} catch (error) {
+					console.warn('[AutotaskAiTools] initializeRateTracker failed; falling back to local counting.', error instanceof Error ? error.message : String(error));
 				}
 
 				const operation = rawParams.operation as string;
