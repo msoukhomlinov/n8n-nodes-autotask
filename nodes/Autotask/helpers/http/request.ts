@@ -364,8 +364,11 @@ export async function autotaskApiRequest<T = JsonObject>(
 		);
 	}
 	const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
-	const credentialKey = credentials.zone && credentials.Username && credentials.APIIntegrationcode
-		? `${credentials.zone}|${credentials.Username}|${credentials.APIIntegrationcode}`
+	// Key on the resolved base URL (not the literal zone) so two distinct custom
+	// zones (zone === 'other') with the same Username + integration code do not
+	// collide onto a single rate tracker / cooldown / ThresholdInformation fetcher.
+	const credentialKey = baseUrl && credentials.Username && credentials.APIIntegrationcode
+		? `${baseUrl}|${credentials.Username}|${credentials.APIIntegrationcode}`
 		: 'default';
 	if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) {
 		 

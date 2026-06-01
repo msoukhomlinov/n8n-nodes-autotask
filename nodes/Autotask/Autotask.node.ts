@@ -466,8 +466,11 @@ export class Autotask implements INodeType {
 		// will not all trigger a threshold information request.
 		try {
 			const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-			if (creds.zone && creds.Username && creds.APIIntegrationcode) {
-				const credentialKey = `${creds.zone}|${creds.Username}|${creds.APIIntegrationcode}`;
+			// Resolve the base URL so the tracker key matches the one used in request.ts.
+			// For zone === 'other' this is the custom zone URL; otherwise it is the zone.
+			const resolvedBaseUrl = creds.zone === 'other' ? creds.customZoneUrl || '' : creds.zone;
+			if (resolvedBaseUrl && creds.Username && creds.APIIntegrationcode) {
+				const credentialKey = `${resolvedBaseUrl}|${creds.Username}|${creds.APIIntegrationcode}`;
 				await initializeRateTracker(this, credentialKey);
 			}
 		} catch (error) {

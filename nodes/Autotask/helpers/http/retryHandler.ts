@@ -8,7 +8,7 @@ import { NodeApiError } from 'n8n-workflow';
 const MAX_TOTAL_WAIT_MS = 300_000; // 5 minutes
 const BASE_DELAY_MS = 1_000; // Start with 1 second
 const MAX_DELAY_MS = 60_000; // Cap exponential backoff at 1 minute
-const MAX_RETRY_AFTER_MS = 600_000; // Upper bound for a single Retry-After wait; effective ceiling is MAX_TOTAL_WAIT_MS (5 min) — a wait longer than the budget triggers an immediate throw
+const MAX_RETRY_AFTER_MS = 600_000; // Upper bound for a single Retry-After wait (10 min). The wait is honoured (slept) first; the cumulative MAX_TOTAL_WAIT_MS budget is checked afterwards
 
 type AutotaskContexts = IExecuteFunctions | IHookFunctions | ILoadOptionsFunctions;
 
@@ -65,9 +65,23 @@ export async function executeWithRetry<T>(
 				waitMs = Math.max(1_000, backoff + jitter);
 			}
 
+			// Log and wait before retry. We sleep the full requested duration FIRST,
+			// then accumulate and check the budget. This honours individual Retry-After
+			// values (e.g. Retry-After: 300) that are within MAX_RETRY_AFTER_MS — a single
+			// long wait would otherwise trip the budget check and throw before sleeping.
+			console.warn(
+				`[429 Retry] Attempt ${attempt}, waiting ${(waitMs / 1_000).toFixed(
+					1,
+				)}s (total wait so far: ${(totalWaitTime / 1_000).toFixed(0)}s / ${
+					MAX_TOTAL_WAIT_MS / 1_000
+				}s)`,
+			);
+
+			await new Promise((resolve) => setTimeout(resolve, waitMs));
+
 			totalWaitTime += waitMs;
 
-			// Check if exceeded total wait time
+			// After waiting, stop retrying once the cumulative wait budget is exhausted.
 			if (totalWaitTime >= MAX_TOTAL_WAIT_MS) {
 				const rateLimitError = {
 					message:
@@ -88,17 +102,6 @@ export async function executeWithRetry<T>(
 
 				throw new NodeApiError(context.getNode(), rateLimitError);
 			}
-
-			// Log and wait before retry
-			console.warn(
-				`[429 Retry] Attempt ${attempt}, waiting ${(waitMs / 1_000).toFixed(
-					1,
-				)}s (total wait: ${(totalWaitTime / 1_000).toFixed(0)}s / ${
-					MAX_TOTAL_WAIT_MS / 1_000
-				}s)`,
-			);
-
-			await new Promise((resolve) => setTimeout(resolve, waitMs));
 		}
 	}
 }
