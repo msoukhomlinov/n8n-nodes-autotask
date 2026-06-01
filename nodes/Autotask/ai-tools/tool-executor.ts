@@ -856,16 +856,19 @@ export async function executeAiTool(
 			Object.keys(fieldValues).length > 0
 		) {
 			const leakedFields = Object.keys(fieldValues);
+			const firstField = leakedFields[0];
+			const firstValue = String(fieldValues[firstField]);
 			const hasAnyFilter = hasFiltersJson || hasFlatFilter1 || hasFlatFilter2;
 			if (hasAnyFilter) {
+				const filter2Hint = !hasFlatFilter2
+					? ` To filter by ${firstField}, add it to the second filter slot: filter_field_2='${firstField}', filter_op_2='eq', filter_value_2='${firstValue}'.`
+					: ` Use filtersJson to include ${firstField} alongside existing filters.`;
 				filterErrors.push(
-					`Operation '${effectiveOperation}' received top-level write-field params (${leakedFields.join(', ')}) alongside filter params. Top-level fields apply to create/update only — remove them.${!hasFlatFilter2 ? ' To add a second filter use filter_field_2/filter_op_2/filter_value_2.' : ''}`,
+					`Operation '${effectiveOperation}' received entity fields (${leakedFields.join(', ')}) as top-level params alongside filter params. Entity fields must be passed via filter slots, not directly. Remove the top-level fields.${filter2Hint}`,
 				);
 			} else {
-				const firstField = leakedFields[0];
-				const firstValue = String(fieldValues[firstField]);
 				filterErrors.push(
-					`Operation '${effectiveOperation}' received top-level write-field params (${leakedFields.join(', ')}) without any filter. Top-level fields apply to create/update only. For read filters use filter_field='${firstField}', filter_op='eq', filter_value='${firstValue}' (or filtersJson for advanced filters).`,
+					`Operation '${effectiveOperation}' received entity fields (${leakedFields.join(', ')}) as top-level params without any filter. Entity fields must be passed via filter slots. Use filter_field='${firstField}', filter_op='eq', filter_value='${firstValue}' (or filtersJson for advanced filters).`,
 				);
 			}
 		}
