@@ -292,7 +292,7 @@ export function buildPostedTimeEntriesDescription(
 	return (
 		ref +
 		`Get posted time entries (entries with matching Billing Items). ` +
-		`Supports optional filters: filter_field/filter_op/filter_value (up to two, AND by default; set filter_logic='or' for either-match), or filtersJson for advanced multi-condition queries. Also accepts limit, returnAll, since, until, recency, and fields. ` +
+		`Supports optional filters: filter_field/filter_op/filter_value (up to two, AND by default; set filter_logic='or' for either-match), or filtersJson for advanced multi-condition queries (mutually exclusive with filter_field). Also accepts limit, offset, returnAll, since, until, recency, fields, and outputMode. ` +
 		`${ASCENDING_ID_WARNING} ` +
 		describeFieldsHint(resourceName)
 	);
@@ -306,7 +306,7 @@ export function buildUnpostedTimeEntriesDescription(
 	return (
 		ref +
 		`Get unposted time entries (entries without matching Billing Items). ` +
-		`Supports optional filters: filter_field/filter_op/filter_value (up to two, AND by default; set filter_logic='or' for either-match), or filtersJson for advanced multi-condition queries. Also accepts limit, returnAll, since, until, recency, and fields. ` +
+		`Supports optional filters: filter_field/filter_op/filter_value (up to two, AND by default; set filter_logic='or' for either-match), or filtersJson for advanced multi-condition queries (mutually exclusive with filter_field). Also accepts limit, offset, returnAll, since, until, recency, fields, and outputMode. ` +
 		`${ASCENDING_ID_WARNING} ` +
 		describeFieldsHint(resourceName)
 	);
@@ -857,6 +857,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array. Mutually exclusive with filter_field.' },
 			{ field: 'returnAll', type: 'boolean', description: 'Fetch ALL matching records.' },
 			{ field: 'limit', type: 'number', description: 'Max records (1-500, default 10).' },
+			{ field: 'offset', type: 'number', description: 'Client-side offset for pagination (0–499).' },
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
 			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
 			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
@@ -882,6 +883,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array. Mutually exclusive with filter_field.' },
 			{ field: 'returnAll', type: 'boolean', description: 'Fetch ALL matching records.' },
 			{ field: 'limit', type: 'number', description: 'Max records (1-500, default 10).' },
+			{ field: 'offset', type: 'number', description: 'Client-side offset for pagination (0–499).' },
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
 			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
 			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
