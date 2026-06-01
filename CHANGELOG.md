@@ -2,6 +2,21 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.21.0] - 2026-06-01
+
+### Fixed
+
+- **Rate limit: `Retry-After` cap bug** — `retryHandler.ts` was capping the `Retry-After` header at 60 s regardless of what the server specified. If Autotask responded with `Retry-After: 300`, the handler retried after 60 s and immediately hit 429 again. Now respects the server value up to a 10-minute ceiling (`MAX_RETRY_AFTER_MS = 600_000`).
+- **Rate limit: HTTP-date `Retry-After` format** — RFC 7231 allows `Retry-After` as either integer seconds or an HTTP-date string. Only the integer form was handled; HTTP-date fell back to 60 s silently. Both forms are now parsed; unparseable values still fall back to 60 s.
+- **Rate limit: no structured error type for LLM** — HTTP 429 errors surfaced through the AI tools path as generic `API_ERROR` with no actionable guidance. LLMs would retry indefinitely. New `RATE_LIMITED` error type added with a stop instruction and optional `retryAfterSeconds` field in the flat response envelope.
+- **Rate limit: AI tools node never initialized rate tracker** — `AutotaskAiTools.node.ts` never called `initializeRateTracker`, so the ThresholdInformation API sync was never wired up for AI tool executions. The tracker ran on pure local counting only. Both `supplyData()` and `execute()` now initialize the tracker.
+- **Rate limit: stale `actualUsageCount` after window reset** — `resetCounterIfNeeded()` only reset the local request counter but not the API-synced `actualUsageCount`. Stale counts from the previous window continued to drive throttle decisions after the hourly boundary.
+- **Rate limit: sync interval too long** — `syncIntervalMs` was 3,600,000 ms (1 hour). Reduced to 300,000 ms (5 minutes) for more accurate usage tracking.
+
+### Changed
+
+- **Per-credential rate tracker** — `RequestRateTracker` is now instantiated per credential key (derived from zone + Username + APIIntegrationcode) via a new `getTrackerForCredential(key)` factory. Multi-tenant n8n instances with multiple Autotask credentials no longer share rate limit state. `handleRateLimit(tracker?)` accepts an optional tracker parameter; the `rateTracker` default export is retained for backward compatibility.
+
 ## [2.20.2] - 2026-05-28
 
 ### Fixed
