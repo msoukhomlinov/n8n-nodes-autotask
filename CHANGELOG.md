@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.21.1] - 2026-06-01
+
+### Fixed
+
+- **Supply chain: axios dev-dependency CVEs** — Four Dependabot security advisories detected in `axios` (transitive dev-only dependency via `@n8n/node-cli` → `@n8n/ai-utilities` → `@langchain/community` → `ibm-cloud-sdk-core`; axios is not present in the published package). Forced `axios>=1.16.1` via npm `overrides` and `pnpm.overrides` to address: MitM via Prototype Pollution in `config.proxy` (High), IPv4-mapped IPv6 `NO_PROXY` bypass (High, CVE-2025-62718 incomplete fix), DoS/Header Injection via merge-function Prototype Pollution (Moderate), and Proxy-Authorization Header Injection (Low). No end-user runtime impact; this is a development environment hygiene fix.
+
 ## [2.21.0] - 2026-06-01
 
 ### Fixed
