@@ -2,16 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
-## [2.21.1] - 2026-06-01
-
-### Fixed
-
-- **Supply chain: axios dev-dependency CVEs** — Four Dependabot security advisories detected in `axios` (transitive dev-only dependency via `@n8n/node-cli` → `@n8n/ai-utilities` → `@langchain/community` → `ibm-cloud-sdk-core`; axios is not present in the published package). Forced `axios>=1.16.1` via npm `overrides` and `pnpm.overrides` to address: MitM via Prototype Pollution in `config.proxy` (High), IPv4-mapped IPv6 `NO_PROXY` bypass (High, CVE-2025-62718 incomplete fix), DoS/Header Injection via merge-function Prototype Pollution (Moderate), and Proxy-Authorization Header Injection (Low). No end-user runtime impact; this is a development environment hygiene fix.
-
 ## [2.21.0] - 2026-06-01
 
 ### Fixed
 
+- **Supply chain: axios dev-dependency CVEs** — Four Dependabot security advisories detected in `axios` (transitive dev-only dependency via `@n8n/node-cli` → `@n8n/ai-utilities` → `@langchain/community` → `ibm-cloud-sdk-core`; axios is not present in the published package). Forced `axios>=1.16.1` via npm `overrides` and `pnpm.overrides` to address: MitM via Prototype Pollution in `config.proxy` (High), IPv4-mapped IPv6 `NO_PROXY` bypass (High, CVE-2025-62718 incomplete fix), DoS/Header Injection via merge-function Prototype Pollution (Moderate), and Proxy-Authorization Header Injection (Low). No end-user runtime impact; this is a development environment hygiene fix.
 - **Rate limit: `Retry-After` cap bug** — `retryHandler.ts` was capping the `Retry-After` header at 60 s regardless of what the server specified. If Autotask responded with `Retry-After: 300`, the handler retried after 60 s and immediately hit 429 again. Now parses the server value (integer-seconds and HTTP-date formats) and applies it within the 5-minute total-wait budget; zero/negative values are floored to 1 s.
 - **Rate limit: HTTP-date `Retry-After` format** — RFC 7231 allows `Retry-After` as either integer seconds or an HTTP-date string. Only the integer form was handled; HTTP-date fell back to 60 s silently. Both forms are now parsed; unparseable values still fall back to 60 s.
 - **Rate limit: no structured error type for LLM** — HTTP 429 errors surfaced through the AI tools path as generic `API_ERROR` with no actionable guidance. LLMs would retry indefinitely. New `RATE_LIMITED` error type added with a stop instruction and optional `retryAfterSeconds` field in the flat response envelope.
