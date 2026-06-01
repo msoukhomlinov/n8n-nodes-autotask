@@ -82,7 +82,7 @@ export async function handleGetAvailableRoles(state: ExecutorState): Promise<str
 
 	const toNumericId = (v: unknown): number | undefined => {
 		const n = Number(v);
-		return Number.isFinite(n) && n > 0 ? n : undefined;
+		return Number.isInteger(n) && n > 0 ? n : undefined;
 	};
 	let queueId = toNumericId((params as Record<string, unknown>).queueID);
 	let contractId = toNumericId((params as Record<string, unknown>).contractID);
