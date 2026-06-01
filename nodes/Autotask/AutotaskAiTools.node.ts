@@ -48,6 +48,8 @@ import {
 } from './ai-tools/debug-trace';
 import { autotaskCredentialStore, probeCredentialIdentity } from './helpers/credential-store';
 import { buildCredentialProxy } from './helpers/credential-proxy';
+import { initializeRateTracker } from './helpers/http/initRateTracker';
+import type { IAutotaskCredentials } from './types/base/auth';
 
 const EXCLUDED_RESOURCES = ['aiHelper', 'apiThreshold'];
 const TOOL_BUILD_CACHE_TTL_MS = 90_000;
@@ -657,6 +659,32 @@ export class AutotaskAiTools implements INodeType {
 					);
 				}
 
+				// Initialize rate tracker using the actual credential for this invocation.
+				// Deferred to here (inside func) so that MCP per-user credential injection
+				// is resolved first — the tracker key must match the proxied request path.
+				try {
+					let trackerZone: string;
+					let trackerUsername: string;
+					let trackerIntegrationCode: string;
+					if (overrideCreds) {
+						// zone is already normalised in OverrideAutotaskCredentials (no 'other'/customZoneUrl)
+						trackerZone = overrideCreds.zone;
+						trackerUsername = overrideCreds.Username;
+						trackerIntegrationCode = overrideCreds.APIIntegrationcode;
+					} else {
+						const creds = await supplyDataContext.getCredentials('autotaskApi') as IAutotaskCredentials;
+						trackerZone = creds.zone === 'other' ? (creds.customZoneUrl ?? '') : creds.zone;
+						trackerUsername = creds.Username;
+						trackerIntegrationCode = creds.APIIntegrationcode;
+					}
+					if (trackerZone && trackerUsername && trackerIntegrationCode) {
+						const credentialKey = `${trackerZone}|${trackerUsername}|${trackerIntegrationCode}`;
+						await initializeRateTracker(effectiveContext as unknown as IExecuteFunctions, credentialKey);
+					}
+				} catch (error) {
+					console.warn('[AutotaskAiTools] initializeRateTracker failed; falling back to local counting.', error instanceof Error ? error.message : String(error));
+				}
+
 				const operation = rawParams.operation as string;
 				if (!operation || !allAllowedOps.includes(operation)) {
 					if (operation && isWriteOperation(operation) && !allowWriteOperations) {
@@ -732,6 +760,18 @@ export class AutotaskAiTools implements INodeType {
 				'[AutotaskAiTools] execute(): autotaskCredentialStore unexpectedly populated — ' +
 				'override credentials are not supported on the Agent V3 execute() path. Ignoring.',
 			);
+		}
+		// Initialize rate tracker with credential context (mirrors Autotask.node.ts)
+		try {
+			const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+			const resolvedZone = creds.zone === 'other' ? (creds.customZoneUrl ?? '') : creds.zone;
+			if (resolvedZone && creds.Username && creds.APIIntegrationcode) {
+				const credentialKey = `${resolvedZone}|${creds.Username}|${creds.APIIntegrationcode}`;
+				await initializeRateTracker(this, credentialKey);
+			}
+		} catch (error) {
+			// Non-fatal — rate tracker falls back to local counting
+			console.warn('[AutotaskAiTools] initializeRateTracker failed; falling back to local counting.', error instanceof Error ? error.message : String(error));
 		}
 		const resource = this.getNodeParameter('resource', 0) as string;
 		const operations = this.getNodeParameter('operations', 0) as string[];

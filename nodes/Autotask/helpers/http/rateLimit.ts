@@ -11,7 +11,7 @@ class RequestRateTracker {
 
     // Threshold sync properties
     private lastSyncTime = 0;
-    private syncIntervalMs = 3600000;    // Sync every hour
+    private syncIntervalMs = 300_000;    // Sync every 5 minutes
     private actualUsageCount = 0;
     private thresholdLimit = 10000;
     private syncPromise: Promise<void> | null = null;
@@ -26,6 +26,10 @@ class RequestRateTracker {
             RequestRateTracker.instance = new RequestRateTracker();
         }
         return RequestRateTracker.instance;
+    }
+
+    public static create(): RequestRateTracker {
+        return new RequestRateTracker();
     }
 
     /**
@@ -73,6 +77,7 @@ class RequestRateTracker {
         if (now >= this.counterResetTime) {
             const oldCount = this.requestCount;
             this.requestCount = 0;
+            this.actualUsageCount = 0;
             this.counterResetTime = now + this.hourInMs;
             this.debugLog(`Counter reset: ${oldCount} → 0, next reset at ${new Date(this.counterResetTime).toISOString()}`);
         }
@@ -266,17 +271,18 @@ export function calculateThrottleDuration(usagePercent: number): number {
  * - 75%+ usage: +1s per request
  * See: https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/General_Topics/REST_Thresholds_Limits.htm
  *
+ * @param tracker Per-credential tracker from getTrackerForCredential(); defaults to the shared rateTracker singleton
  * @param maxWaitMs Maximum time to wait before giving up (default: 10 minutes)
  * @throws Error if rate limit cannot be satisfied within maxWaitMs
  */
-export async function handleRateLimit(maxWaitMs = 600000): Promise<void> {
-    const rateTracker = RequestRateTracker.getInstance();
-    const usagePercent = rateTracker.trackRequest();
+export async function handleRateLimit(tracker?: RequestRateTracker, maxWaitMs = 600_000): Promise<void> {
+    const rt = tracker ?? rateTracker;
+    const usagePercent = rt.trackRequest();
 
     // If we're at or over the rate limit, wait until the rolling window allows new requests
-    if (rateTracker.shouldThrottle()) {
-        const currentCount = rateTracker.getCurrentCount();
-        const limit = rateTracker.getThresholdLimit();
+    if (rt.shouldThrottle()) {
+        const currentCount = rt.getCurrentCount();
+        const limit = rt.getThresholdLimit();
 
         console.warn(`[RateLimit] Rate limit reached: ${currentCount}/${limit} requests. Waiting for rolling window to reset...`);
 
@@ -285,7 +291,7 @@ export async function handleRateLimit(maxWaitMs = 600000): Promise<void> {
         const waitInterval = 5000; // Check every 5 seconds
         let totalWaitTime = 0;
 
-        while (rateTracker.shouldThrottle() && totalWaitTime < maxWaitMs) {
+        while (rt.shouldThrottle() && totalWaitTime < maxWaitMs) {
             // ALS context (autotaskCredentialStore) propagates through setTimeout on Node >=12.17 — safe.
             // This project requires node >=18.10 (package.json engines), so ALS propagation is guaranteed.
             await new Promise(resolve => setTimeout(resolve, waitInterval));
@@ -294,11 +300,11 @@ export async function handleRateLimit(maxWaitMs = 600000): Promise<void> {
             // Try to sync with API to get updated count every 30 seconds
             if (totalWaitTime >= 30000 && totalWaitTime % 30000 < waitInterval) {
                 console.debug(`[RateLimit] Still waiting... (${(totalWaitTime / 1000).toFixed(0)}s elapsed)`);
-                await rateTracker.syncWithApi();
+                await rt.syncWithApi();
             }
         }
 
-        if (rateTracker.shouldThrottle()) {
+        if (rt.shouldThrottle()) {
             throw new Error(
                 `Rate limit exceeded: Unable to proceed after waiting ${(maxWaitMs / 1000).toFixed(0)} seconds. ` +
                 `Current usage: ${currentCount}/${limit} requests in the last 60 minutes. ` +
@@ -311,7 +317,7 @@ export async function handleRateLimit(maxWaitMs = 600000): Promise<void> {
     }
 
     // Apply progressive throttling based on current usage
-    const throttleDelay = rateTracker.getThrottleDuration();
+    const throttleDelay = rt.getThrottleDuration();
     if (throttleDelay > 0) {
         console.debug(`[RateLimit] Applying throttle delay of ${throttleDelay}ms (usage: ${usagePercent.toFixed(1)}%)`);
         // ALS context (autotaskCredentialStore) propagates through setTimeout on Node >=12.17 — safe.
@@ -320,4 +326,17 @@ export async function handleRateLimit(maxWaitMs = 600000): Promise<void> {
     }
 }
 
-export const rateTracker = RequestRateTracker.getInstance();
+// Per-credential tracker registry. Each unique credential key gets its own
+// tracker so multi-tenant n8n instances don't share rate limit state.
+const trackerRegistry = new Map<string, RequestRateTracker>();
+
+export function getTrackerForCredential(credentialKey: string): RequestRateTracker {
+	if (!trackerRegistry.has(credentialKey)) {
+		trackerRegistry.set(credentialKey, RequestRateTracker.create());
+	}
+	return trackerRegistry.get(credentialKey)!;
+}
+
+// Default singleton retained for backward compatibility (early-init and callers
+// that don't yet have credential context).
+export const rateTracker = getTrackerForCredential('default');

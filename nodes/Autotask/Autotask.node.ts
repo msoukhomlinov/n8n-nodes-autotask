@@ -102,6 +102,7 @@ import { getResourceMapperFields } from './helpers/resourceMapper';
 import { getEntityMetadata } from './constants/entities';
 import { RESOURCE_DEFINITIONS } from './resources/definitions';
 import { initializeRateTracker } from './helpers/http/initRateTracker';
+import type { IAutotaskCredentials } from './types/base/auth';
 import { projectTaskFields } from './resources/projectTasks/description';
 import { taskSecondaryResourceFields } from './resources/taskSecondaryResources/description';
 import { projectFields } from './resources/projects/description';
@@ -463,7 +464,18 @@ export class Autotask implements INodeType {
 		// Initialise rate tracker with actual Autotask usage.
 		// This uses a cooldown guard, so multiple concurrent executions
 		// will not all trigger a threshold information request.
-		await initializeRateTracker(this);
+		try {
+			const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+			// Resolve the base URL so the tracker key matches the one used in request.ts.
+			// For zone === 'other' this is the custom zone URL; otherwise it is the zone.
+			const resolvedBaseUrl = creds.zone === 'other' ? creds.customZoneUrl || '' : creds.zone;
+			if (resolvedBaseUrl && creds.Username && creds.APIIntegrationcode) {
+				const credentialKey = `${resolvedBaseUrl}|${creds.Username}|${creds.APIIntegrationcode}`;
+				await initializeRateTracker(this, credentialKey);
+			}
+		} catch (error) {
+			console.warn('[Autotask] initializeRateTracker failed; falling back to local counting.', error instanceof Error ? error.message : String(error));
+		}
 
 		const resource = this.getNodeParameter('resource', 0) as string;
 		const operation = this.getNodeParameter('operation', 0) as string;

@@ -16,7 +16,7 @@ import { getEntityMetadata } from '../../constants/entities';
 import type { IQueryResponse } from '../../types/base/entity-types';
 import type { IApiError, IApiErrorDetail, IApiErrorWithResponse } from '../../types/base/api';
 import type { OperationType } from '../../types/base/entity-types';
-import { handleRateLimit } from './rateLimit';
+import { handleRateLimit, getTrackerForCredential } from './rateLimit';
 import { endpointThreadTracker } from './threadLimit';
 import { executeWithRetry } from './retryHandler';
 import { autotaskCredentialStore } from '../credential-store';
@@ -364,6 +364,12 @@ export async function autotaskApiRequest<T = JsonObject>(
 		);
 	}
 	const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
+	// Key on the resolved base URL (not the literal zone) so two distinct custom
+	// zones (zone === 'other') with the same Username + integration code do not
+	// collide onto a single rate tracker / cooldown / ThresholdInformation fetcher.
+	const credentialKey = baseUrl && credentials.Username && credentials.APIIntegrationcode
+		? `${baseUrl}|${credentials.Username}|${credentials.APIIntegrationcode}`
+		: 'default';
 	if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) {
 		 
 		throw new Error(
@@ -442,7 +448,7 @@ export async function autotaskApiRequest<T = JsonObject>(
 		await endpointThreadTracker.acquireThread(baseEndpoint);
 
 		// Handle rate limiting before making the request (single attempt)
-		await handleRateLimit();
+		await handleRateLimit(getTrackerForCredential(credentialKey));
 
 		const response = await executeWithRetry(this, async () => {
 			return this.helpers.request(options);

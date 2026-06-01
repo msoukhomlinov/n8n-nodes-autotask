@@ -23,6 +23,7 @@ export const ERROR_TYPES = {
 	WRITE_RESOLUTION_INCOMPLETE: 'WRITE_RESOLUTION_INCOMPLETE',
 	INVALID_INPUT: 'INVALID_INPUT',
 	INTERNAL_ERROR: 'INTERNAL_ERROR',
+	RATE_LIMITED: 'RATE_LIMITED',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,7 @@ export interface FlatErrorResponse {
 	operation: string;
 	summary: string;
 	mustRetryAfter?: string[];
+	retryAfterSeconds?: number;
 	correlationId?: string;
 }
 
@@ -149,12 +151,46 @@ export function formatFilterConstraintError(
 	);
 }
 
+export function formatRateLimitError(
+	resource: string,
+	operation: string,
+	retryAfterSeconds?: number,
+): FlatErrorResponse {
+	// Sanitise: only propagate a finite positive integer; 0/negative/NaN would instruct "retry immediately"
+	const safeSeconds = Number.isFinite(retryAfterSeconds) && (retryAfterSeconds as number) > 0
+		? retryAfterSeconds
+		: undefined;
+	const waitHint = safeSeconds !== undefined ? ` Retry after ${safeSeconds}s.` : '';
+	const base = wrapError(
+		resource,
+		operation,
+		ERROR_TYPES.RATE_LIMITED,
+		`Autotask API rate limit hit.${waitHint}`,
+		'Stop retrying. Tell the user the Autotask API rate limit has been reached. Ask them to reduce workflow frequency or wait before retrying.',
+	);
+	if (safeSeconds !== undefined) {
+		return { ...base, retryAfterSeconds: safeSeconds };
+	}
+	return base;
+}
+
 export function formatApiError(
 	message: string,
 	resource: string,
 	operation: string,
 ): FlatErrorResponse {
 	const lowerMessage = message.toLowerCase();
+
+	if (
+		lowerMessage.includes('rate limit')
+		|| lowerMessage.includes('too many requests')
+	) {
+		// Only extract retry hint from genuine "retry after N seconds" phrasing.
+		// Excludes "over N seconds" (elapsed time in handler exhaustion messages).
+		const secondsMatch = message.match(/retry.{1,20}?(\d+)\s*s(?:ec|econds?)?/i);
+		const retryAfterSeconds = secondsMatch ? Number.parseInt(secondsMatch[1], 10) : undefined;
+		return formatRateLimitError(resource, operation, retryAfterSeconds);
+	}
 
 	if (
 		lowerMessage.includes('lock')
