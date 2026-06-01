@@ -23,6 +23,7 @@ export const ERROR_TYPES = {
 	WRITE_RESOLUTION_INCOMPLETE: 'WRITE_RESOLUTION_INCOMPLETE',
 	INVALID_INPUT: 'INVALID_INPUT',
 	INTERNAL_ERROR: 'INTERNAL_ERROR',
+	RATE_LIMITED: 'RATE_LIMITED',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,7 @@ export interface FlatErrorResponse {
 	operation: string;
 	summary: string;
 	mustRetryAfter?: string[];
+	retryAfterSeconds?: number;
 	correlationId?: string;
 }
 
@@ -149,12 +151,41 @@ export function formatFilterConstraintError(
 	);
 }
 
+export function formatRateLimitError(
+	resource: string,
+	operation: string,
+	retryAfterSeconds?: number,
+): FlatErrorResponse {
+	const waitHint = retryAfterSeconds !== undefined ? ` Retry after ${retryAfterSeconds}s.` : '';
+	const base = wrapError(
+		resource,
+		operation,
+		ERROR_TYPES.RATE_LIMITED,
+		`Autotask API rate limit hit.${waitHint}`,
+		'Stop retrying. Tell the user the Autotask API rate limit has been reached. Ask them to reduce workflow frequency or wait before retrying.',
+	);
+	if (retryAfterSeconds !== undefined) {
+		return { ...base, retryAfterSeconds };
+	}
+	return base;
+}
+
 export function formatApiError(
 	message: string,
 	resource: string,
 	operation: string,
 ): FlatErrorResponse {
 	const lowerMessage = message.toLowerCase();
+
+	if (
+		lowerMessage.includes('rate limit')
+		|| lowerMessage.includes('429')
+		|| lowerMessage.includes('too many requests')
+	) {
+		const secondsMatch = message.match(/(\d+)\s*second/i);
+		const retryAfterSeconds = secondsMatch ? Number.parseInt(secondsMatch[1], 10) : undefined;
+		return formatRateLimitError(resource, operation, retryAfterSeconds);
+	}
 
 	if (
 		lowerMessage.includes('lock')
