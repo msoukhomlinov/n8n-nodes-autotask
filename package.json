@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-autotask",
-  "version": "2.21.0",
+  "version": "2.21.1",
   "description": "n8n node for Autotask PSA integration",
   "keywords": [
     "n8n-community-node-package",
@@ -82,12 +82,14 @@
     "n8n-workflow": "*"
   },
   "overrides": {
+    "axios": ">=1.16.1",
     "uuid": ">=11.1.1",
     "langsmith": ">=0.6.0",
     "tmp": ">=0.2.6"
   },
   "pnpm": {
     "overrides": {
+      "axios@<1.16.0": ">=1.16.1",
       "uuid": ">=11.1.1",
       "uuid@>=13.0.0 <13.0.1": ">=13.0.1",
       "langsmith@<0.6.0": "^0.6.3",
