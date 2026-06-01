@@ -156,7 +156,11 @@ export function formatRateLimitError(
 	operation: string,
 	retryAfterSeconds?: number,
 ): FlatErrorResponse {
-	const waitHint = retryAfterSeconds !== undefined ? ` Retry after ${retryAfterSeconds}s.` : '';
+	// Sanitise: only propagate a finite positive integer; 0/negative/NaN would instruct "retry immediately"
+	const safeSeconds = Number.isFinite(retryAfterSeconds) && (retryAfterSeconds as number) > 0
+		? retryAfterSeconds
+		: undefined;
+	const waitHint = safeSeconds !== undefined ? ` Retry after ${safeSeconds}s.` : '';
 	const base = wrapError(
 		resource,
 		operation,
@@ -164,8 +168,8 @@ export function formatRateLimitError(
 		`Autotask API rate limit hit.${waitHint}`,
 		'Stop retrying. Tell the user the Autotask API rate limit has been reached. Ask them to reduce workflow frequency or wait before retrying.',
 	);
-	if (retryAfterSeconds !== undefined) {
-		return { ...base, retryAfterSeconds };
+	if (safeSeconds !== undefined) {
+		return { ...base, retryAfterSeconds: safeSeconds };
 	}
 	return base;
 }

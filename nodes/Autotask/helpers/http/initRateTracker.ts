@@ -13,7 +13,8 @@ const INIT_COOLDOWN_MS = 300_000; // 5 minutes
  * executions do not all trigger a threshold information request.
  *
  * @param context Execution context with access to credentials
- * @param credentialKey Unique key identifying the credential (zone|Username|APIIntegrationcode)
+ * @param credentialKey Unique key identifying the credential (zone|Username|APIIntegrationcode).
+ *   Defaults to 'default', which shares the global singleton — always pass an explicit key for per-credential isolation.
  */
 export async function initializeRateTracker(
 	context: IExecuteFunctions | IHookFunctions | ILoadOptionsFunctions | ISupplyDataFunctions,
@@ -46,6 +47,8 @@ export async function initializeRateTracker(
 
 		await tracker.syncWithApi();
 	} catch (error) {
+		// Allow immediate retry on next invocation rather than blocking for 5 min
+		initTimes.delete(credentialKey);
 		const scrub = createOverrideScrubber(autotaskCredentialStore.getStore());
 		const sanitized = sanitizeErrorForLogging(error);
 		if (typeof sanitized.message === 'string') sanitized.message = scrub(sanitized.message);

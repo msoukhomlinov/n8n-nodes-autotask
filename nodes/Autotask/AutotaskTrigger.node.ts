@@ -22,6 +22,7 @@ import { randomBytes } from 'node:crypto';
 import { normalizeFieldId, processBatchFields } from './helpers/webhook/fieldConfiguration';
 import { fetchThresholdInformation } from './helpers/http/request';
 import { initializeRateTracker } from './helpers/http/initRateTracker';
+import type { IAutotaskCredentials } from './types/base/auth';
 
 // Create a more specific interface for the ResourceMapperField
 interface IWebhookResourceMapperField {
@@ -474,7 +475,9 @@ export class AutotaskTrigger implements INodeType {
 			async create(this: IHookFunctions): Promise<boolean> {
 				try {
 					// Initialize rate tracker with API threshold information
-					await initializeRateTracker(this);
+					const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
+					const credentialKey = `${creds.zone}|${creds.Username}|${creds.APIIntegrationcode}`;
+					await initializeRateTracker(this, credentialKey);
 
 					// Check Autotask API usage
 					try {

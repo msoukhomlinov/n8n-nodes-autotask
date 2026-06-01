@@ -6,7 +6,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Fixed
 
-- **Rate limit: `Retry-After` cap bug** — `retryHandler.ts` was capping the `Retry-After` header at 60 s regardless of what the server specified. If Autotask responded with `Retry-After: 300`, the handler retried after 60 s and immediately hit 429 again. Now respects the server value up to a 10-minute ceiling (`MAX_RETRY_AFTER_MS = 600_000`).
+- **Rate limit: `Retry-After` cap bug** — `retryHandler.ts` was capping the `Retry-After` header at 60 s regardless of what the server specified. If Autotask responded with `Retry-After: 300`, the handler retried after 60 s and immediately hit 429 again. Now parses the server value (integer-seconds and HTTP-date formats) and applies it within the 5-minute total-wait budget; zero/negative values are floored to 1 s.
 - **Rate limit: HTTP-date `Retry-After` format** — RFC 7231 allows `Retry-After` as either integer seconds or an HTTP-date string. Only the integer form was handled; HTTP-date fell back to 60 s silently. Both forms are now parsed; unparseable values still fall back to 60 s.
 - **Rate limit: no structured error type for LLM** — HTTP 429 errors surfaced through the AI tools path as generic `API_ERROR` with no actionable guidance. LLMs would retry indefinitely. New `RATE_LIMITED` error type added with a stop instruction and optional `retryAfterSeconds` field in the flat response envelope.
 - **Rate limit: AI tools node never initialized rate tracker** — `AutotaskAiTools.node.ts` never called `initializeRateTracker`, so the ThresholdInformation API sync was never wired up for AI tool executions. The tracker ran on pure local counting only. Both `supplyData()` and `execute()` now initialize the tracker.

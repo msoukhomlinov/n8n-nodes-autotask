@@ -364,7 +364,9 @@ export async function autotaskApiRequest<T = JsonObject>(
 		);
 	}
 	const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
-	const credentialKey = `${credentials.zone}|${credentials.Username}|${credentials.APIIntegrationcode}`;
+	const credentialKey = credentials.zone && credentials.Username && credentials.APIIntegrationcode
+		? `${credentials.zone}|${credentials.Username}|${credentials.APIIntegrationcode}`
+		: 'default';
 	if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) {
 		 
 		throw new Error(

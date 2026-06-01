@@ -8,7 +8,7 @@ import { NodeApiError } from 'n8n-workflow';
 const MAX_TOTAL_WAIT_MS = 300_000; // 5 minutes
 const BASE_DELAY_MS = 1_000; // Start with 1 second
 const MAX_DELAY_MS = 60_000; // Cap exponential backoff at 1 minute
-const MAX_RETRY_AFTER_MS = 600_000; // Respect Retry-After up to 10 minutes
+const MAX_RETRY_AFTER_MS = 600_000; // Upper bound for a single Retry-After wait; effective ceiling is MAX_TOTAL_WAIT_MS (5 min) — a wait longer than the budget triggers an immediate throw
 
 type AutotaskContexts = IExecuteFunctions | IHookFunctions | ILoadOptionsFunctions;
 

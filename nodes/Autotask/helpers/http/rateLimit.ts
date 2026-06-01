@@ -271,6 +271,7 @@ export function calculateThrottleDuration(usagePercent: number): number {
  * - 75%+ usage: +1s per request
  * See: https://www.autotask.net/help/DeveloperHelp/Content/APIs/REST/General_Topics/REST_Thresholds_Limits.htm
  *
+ * @param tracker Per-credential tracker from getTrackerForCredential(); defaults to the shared rateTracker singleton
  * @param maxWaitMs Maximum time to wait before giving up (default: 10 minutes)
  * @throws Error if rate limit cannot be satisfied within maxWaitMs
  */

@@ -414,10 +414,13 @@ export class AutotaskAiTools implements INodeType {
 		// Initialize rate tracker with credential context (mirrors Autotask.node.ts)
 		try {
 			const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-			const credentialKey = `${creds.zone}|${creds.Username}|${creds.APIIntegrationcode}`;
-			await initializeRateTracker(this, credentialKey);
-		} catch {
+			if (creds.zone && creds.Username && creds.APIIntegrationcode) {
+				const credentialKey = `${creds.zone}|${creds.Username}|${creds.APIIntegrationcode}`;
+				await initializeRateTracker(this, credentialKey);
+			}
+		} catch (error) {
 			// Non-fatal — rate tracker falls back to local counting
+			console.warn('[AutotaskAiTools] initializeRateTracker failed; falling back to local counting.', error instanceof Error ? error.message : String(error));
 		}
 
 		const resource = this.getNodeParameter('resource', itemIndex) as string;
@@ -747,10 +750,13 @@ export class AutotaskAiTools implements INodeType {
 		// Initialize rate tracker with credential context (mirrors Autotask.node.ts)
 		try {
 			const creds = await this.getCredentials('autotaskApi') as IAutotaskCredentials;
-			const credentialKey = `${creds.zone}|${creds.Username}|${creds.APIIntegrationcode}`;
-			await initializeRateTracker(this, credentialKey);
-		} catch {
+			if (creds.zone && creds.Username && creds.APIIntegrationcode) {
+				const credentialKey = `${creds.zone}|${creds.Username}|${creds.APIIntegrationcode}`;
+				await initializeRateTracker(this, credentialKey);
+			}
+		} catch (error) {
 			// Non-fatal — rate tracker falls back to local counting
+			console.warn('[AutotaskAiTools] initializeRateTracker failed; falling back to local counting.', error instanceof Error ? error.message : String(error));
 		}
 		const resource = this.getNodeParameter('resource', 0) as string;
 		const operations = this.getNodeParameter('operations', 0) as string[];
