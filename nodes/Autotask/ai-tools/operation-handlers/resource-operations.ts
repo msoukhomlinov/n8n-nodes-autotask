@@ -80,13 +80,17 @@ export async function handleGetAvailableRoles(state: ExecutorState): Promise<str
 		}
 	}
 
-	let queueId = (params as Record<string, unknown>).queueID as number | undefined;
-	let contractId = (params as Record<string, unknown>).contractID as number | undefined;
+	const toNumericId = (v: unknown): number | undefined => {
+		const n = Number(v);
+		return Number.isFinite(n) && n > 0 ? n : undefined;
+	};
+	let queueId = toNumericId((params as Record<string, unknown>).queueID);
+	let contractId = toNumericId((params as Record<string, unknown>).contractID);
 	let suggestedDefaultRoleId: number | undefined;
 	const garWarnings: string[] = [];
 
 	// Fetch ticket if ticketID provided and we need queueID/contractID
-	const ticketId = (params as Record<string, unknown>).ticketID as number | undefined;
+	const ticketId = toNumericId((params as Record<string, unknown>).ticketID);
 	if (ticketId && (!queueId || !contractId)) {
 		try {
 			const ticketResponse = await autotaskApiRequest.call(

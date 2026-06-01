@@ -249,7 +249,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			if (hasIdPairOps && idPairConfig) {
 				idDesc += ` Omit if using '${idPairConfig.altIdField}'.`;
 			}
-			shape.id = rz.number().nullish().describe(idDesc);
+			shape.id = rz.coerce.string().nullish().describe(idDesc);
 		}
 
 		// resourceID — used by getByResource and getByYear (parent-path operations)
@@ -1104,17 +1104,17 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				);
 			}
 			if (!shape.ticketID) {
-				shape.ticketID = rz.number().nullish().describe(
+				shape.ticketID = rz.coerce.string().nullish().describe(
 					'Ticket ID. If provided, derives queueID and contractID from the ticket automatically.'
 				);
 			}
 			if (!shape.queueID) {
-				shape.queueID = rz.number().nullish().describe(
+				shape.queueID = rz.coerce.string().nullish().describe(
 					'Queue ID to filter roles by. Use when ticketID is not available.'
 				);
 			}
 			if (!shape.contractID) {
-				shape.contractID = rz.number().nullish().describe(
+				shape.contractID = rz.coerce.string().nullish().describe(
 					'Contract ID to apply exclusion rules. If ticketID is provided this is derived automatically.'
 				);
 			}
