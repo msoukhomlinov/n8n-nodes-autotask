@@ -182,7 +182,9 @@ export function formatApiError(
 		|| lowerMessage.includes('429')
 		|| lowerMessage.includes('too many requests')
 	) {
-		const secondsMatch = message.match(/(\d+)\s*second/i);
+		// Only extract retry hint from genuine "retry after N seconds" phrasing.
+		// Excludes "over N seconds" (elapsed time in handler exhaustion messages).
+		const secondsMatch = message.match(/retry.{1,20}?(\d+)\s*s(?:ec|econds?)?/i);
 		const retryAfterSeconds = secondsMatch ? Number.parseInt(secondsMatch[1], 10) : undefined;
 		return formatRateLimitError(resource, operation, retryAfterSeconds);
 	}

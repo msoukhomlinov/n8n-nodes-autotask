@@ -45,8 +45,9 @@ export async function executeWithRetry<T>(
 			if (retryAfter) {
 				const parsed = Number.parseInt(retryAfter, 10);
 				if (!Number.isNaN(parsed)) {
-					// Integer seconds: respect server value, cap at 10 min
-					waitMs = Math.min(parsed * 1_000, MAX_RETRY_AFTER_MS);
+					// Integer seconds: respect server value, floor at 1s, cap at 10 min
+					// Floor prevents Retry-After: 0 or negative values from creating a hot retry loop
+					waitMs = Math.max(1_000, Math.min(parsed * 1_000, MAX_RETRY_AFTER_MS));
 				} else {
 					// HTTP-date format: compute delta from now
 					const httpDate = Date.parse(retryAfter);
