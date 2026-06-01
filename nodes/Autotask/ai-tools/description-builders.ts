@@ -292,9 +292,8 @@ export function buildPostedTimeEntriesDescription(
 	return (
 		ref +
 		`Get posted time entries (entries with matching Billing Items). ` +
-		`Supports the same optional filters as getMany (up to two filters, AND by default; set filter_logic='or' for either-match), plus 'limit', 'offset', and 'fields'. ` +
+		`Supports optional filters: filter_field/filter_op/filter_value (up to two, AND by default; set filter_logic='or' for either-match), or filtersJson for advanced multi-condition queries. Also accepts limit, returnAll, since, until, recency, and fields. ` +
 		`${ASCENDING_ID_WARNING} ` +
-		`For date-range and advanced posting filters, use the standard Time Entry node operation if needed. ` +
 		describeFieldsHint(resourceName)
 	);
 }
@@ -307,9 +306,8 @@ export function buildUnpostedTimeEntriesDescription(
 	return (
 		ref +
 		`Get unposted time entries (entries without matching Billing Items). ` +
-		`Supports the same optional filters as getMany (up to two filters, AND by default; set filter_logic='or' for either-match), plus 'limit', 'offset', and 'fields'. ` +
+		`Supports optional filters: filter_field/filter_op/filter_value (up to two, AND by default; set filter_logic='or' for either-match), or filtersJson for advanced multi-condition queries. Also accepts limit, returnAll, since, until, recency, and fields. ` +
 		`${ASCENDING_ID_WARNING} ` +
-		`For date-range and advanced posting filters, use the standard Time Entry node operation if needed. ` +
 		describeFieldsHint(resourceName)
 	);
 }

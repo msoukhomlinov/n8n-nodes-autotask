@@ -1099,8 +1099,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// getAvailableRoles fields
 		if (operations.includes('getAvailableRoles')) {
 			if (!shape.resourceID) {
-				shape.resourceID = rz.coerce.string().describe(
-					'Required. The resource (technician) ID or name to find available roles for.'
+				shape.resourceID = rz.coerce.string().nullish().describe(
+					'Required for getAvailableRoles. The resource (technician) ID or name to find available roles for.'
 				);
 			}
 			if (!shape.ticketID) {

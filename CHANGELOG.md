@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.22.0] - 2026-06-01
+
+### Fixed
+
+- **AI tools: `getMany` on timeEntry produced false `INVALID_FILTER_CONSTRAINT` error mentioning `resourceID`** — `getAvailableRoles` added `resourceID` to the unified Zod schema as `rz.coerce.string()` (required, no `.nullish()`). When the LLM called `getMany` without providing `resourceID`, Zod coerced the absent field via `String(undefined)` → the literal string `"undefined"`, which passed parse validation. `buildFieldValues` then included `resourceID: "undefined"` (non-empty string, not excluded), triggering the entity-field leak guard with a misleading `INVALID_FILTER_CONSTRAINT` error. Fixed by adding `.nullish()` to the `resourceID` schema entry for `getAvailableRoles`; the handler in `resource-operations.ts` already validates `resourceID` at runtime for that operation, making schema-level enforcement redundant.
+- **AI tools: `getPosted`/`getUnposted` descriptions referenced `getMany` confusingly** — Both operation descriptions said "Supports the same optional filters as getMany", which led LLMs to infer `getMany` was a distinct, callable operation for time entries and call it directly. Replaced with explicit filter parameter documentation that does not reference `getMany`.
+
 ## [2.21.0] - 2026-06-01
 
 ### Fixed
