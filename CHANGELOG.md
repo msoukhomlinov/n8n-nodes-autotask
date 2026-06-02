@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.22.2] - 2026-06-03
+
+### Fixed
+
+- **AI tools: unfiltered `getMany` on Agent V3 path sent `limit` as a filter field name** — When a read operation (`getMany`, `count`, `getPosted`, `getUnposted`) was invoked with no filter parameters via the Agent V3 `execute()` path, `requestData` contained only `{limit: N}`. The `fieldsToMap` override fell through to `value: requestData`, leaking `limit` into the filter body constructed by `convertFieldsToFilters`. The Autotask API received `{filter: [{field:"limit", op:"eq", value:5}]}`, found no field named `limit` on the entity, and returned `"Unable to find limit in the <Entity>"`. Fixed by returning `{value:{}}` for read ops when `requestData.filter` is absent, allowing the `{op:exist, field:id}` fallback in `finalizeResourceMapperFilters` to fire. Affects all entities; was most visible on `company` because `ticket`/`contact` callers almost always include at least one filter.
+
 ## [2.22.1] - 2026-06-03
 
 ### Fixed
