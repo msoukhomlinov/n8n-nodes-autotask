@@ -221,6 +221,7 @@ import {
 	executeCountOperation,
 	buildFieldValues,
 	parseFieldsParam,
+	resolveVirtualLabelFields,
 	normaliseOperation,
 	buildContractViolationNextAction,
 } from './tool-executor-helpers';
@@ -345,6 +346,8 @@ export async function executeAiTool(
 		pendingConfirmations: filterPendingConfirmations,
 		unresolvedIdLikeFilters,
 		unresolvedIdLikeFilterDetails,
+		unresolvedPicklistFilters,
+		unresolvedPicklistFilterDetails,
 	} = await resolveAndClassifyFilters(
 		context,
 		resource,
@@ -374,8 +377,14 @@ export async function executeAiTool(
 			);
 		}
 	}
-	const selectedColumns = parseFieldsParam(params.fields);
-	const selectedSlaTicketColumns = parseFieldsParam(params.ticketFields);
+	const selectedColumns = resolveVirtualLabelFields(
+		parseFieldsParam(params.fields),
+		readFields,
+	);
+	const selectedSlaTicketColumns = resolveVirtualLabelFields(
+		parseFieldsParam(params.ticketFields),
+		readFields,
+	);
 	const effectiveLimit = getEffectiveLimit(params.limit);
 	const effectiveOffset =
 		typeof params.offset === 'number' && Number.isFinite(params.offset) && params.offset >= 0
@@ -729,6 +738,7 @@ export async function executeAiTool(
 			)
 			.join(', ');
 		const hasPendingCandidates = filterPendingConfirmations.length > 0;
+		const hasResolved = filterResolutions.length > 0;
 		const pendingSummary = filterPendingConfirmations.map((entry) => {
 			const uniqueIds = Array.from(
 				new Set(entry.candidates.map((candidate) => String(candidate.id))),
@@ -739,6 +749,27 @@ export async function executeAiTool(
 				ids: uniqueIds,
 			};
 		});
+
+		const resolvedText = filterResolutions
+			.map((r) => `${r.field}: ${String(r.from)}→${String(r.to)}`)
+			.join(', ');
+		const pendingText = filterPendingConfirmations
+			.map((pc) => `${pc.label} (${pc.candidates.length} candidates)`)
+			.join(', ');
+
+		let nextAction: string;
+		if (hasResolved && hasPendingCandidates) {
+			nextAction = `Resolved: ${resolvedText}. Pending: ${pendingText} — pick IDs from pendingConfirmations, then retry with all numeric IDs.`;
+		} else if (hasPendingCandidates) {
+			nextAction = `Candidates were found during resolution. Review pendingConfirmations from this response, choose the correct numeric ID, then retry autotask_${resource} with numeric ID filter values.`;
+		} else {
+			nextAction = `Use autotask_${resource} with operation 'getMany' to resolve names to numeric IDs, then retry autotask_${resource} with numeric ID filter values.`;
+		}
+
+		const resolvedElements = hasResolved
+			? filterResolutions.map((r) => ({ field: r.field, label: r.from, id: r.to }))
+			: undefined;
+
 		return attachCorrelation(
 			JSON.stringify(
 				wrapError(
@@ -746,9 +777,7 @@ export async function executeAiTool(
 					effectiveOperation,
 					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
 					`One or more ID-like filters are unresolved and still non-numeric: ${unresolvedSummary}.`,
-					hasPendingCandidates
-						? `Candidates were found during resolution. Review pendingConfirmations from this response, choose the correct numeric ID, then retry autotask_${resource} with numeric ID filter values.`
-						: `Use autotask_${resource} with operation 'getMany' to resolve names to numeric IDs, then retry autotask_${resource} with numeric ID filter values.`,
+					nextAction,
 					{
 						unresolvedFilters: unresolvedIdLikeFilters,
 						unresolvedFilterDetails: unresolvedIdLikeFilterDetails,
@@ -758,7 +787,30 @@ export async function executeAiTool(
 									pendingSummary,
 								}
 							: {}),
+						...(resolvedElements ? { resolvedElements } : {}),
 					},
+				),
+			),
+			correlationId,
+		);
+	}
+
+	if (unresolvedPicklistFilters.length > 0) {
+		const summary = unresolvedPicklistFilterDetails
+			.map((d) => {
+				const avail = d.availableValues.length > 0 ? d.availableValues.join(', ') : 'none';
+				return `'${d.field}'='${d.attemptedValue}' — available: ${avail}`;
+			})
+			.join('; ');
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					effectiveOperation,
+					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+					`Picklist filter value(s) not found: ${summary}.`,
+					`Retry autotask_${resource} using one of the listed available labels or the corresponding numeric ID for each picklist field.`,
+					{ unresolvedPicklistFilters: unresolvedPicklistFilterDetails },
 				),
 			),
 			correlationId,
