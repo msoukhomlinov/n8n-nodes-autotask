@@ -150,6 +150,37 @@ export function parseFieldsParam(fields: string | undefined): string[] {
 }
 
 /**
+ * Strip virtual label-suffix columns (_label, _name) from a selectedColumns list,
+ * re-injecting the canonical base field from readFields when it exists.
+ * Silent — no warnings emitted. Mirrors include-fields.ts behaviour for the AI tools path.
+ */
+export function resolveVirtualLabelFields(
+	columns: string[],
+	readFields: FieldMeta[],
+): string[] {
+	const readFieldMap = new Map(readFields.map((f) => [f.id.toLowerCase(), f.id]));
+	const result: string[] = [];
+	const seen = new Set<string>();
+
+	for (const column of columns) {
+		let effective = column;
+		if (column.endsWith('_label') || column.endsWith('_name')) {
+			const suffix = column.endsWith('_label') ? '_label' : '_name';
+			const baseRaw = column.slice(0, -suffix.length);
+			const canonical = readFieldMap.get(baseRaw.toLowerCase());
+			if (!canonical) continue; // base not in readFields — drop silently
+			effective = canonical;
+		}
+		const lower = effective.toLowerCase();
+		if (!seen.has(lower)) {
+			seen.add(lower);
+			result.push(effective);
+		}
+	}
+	return result;
+}
+
+/**
  * Normalise operation names to canonical forms used by the executor.
  */
 export function normaliseOperation(operation: string): string {
