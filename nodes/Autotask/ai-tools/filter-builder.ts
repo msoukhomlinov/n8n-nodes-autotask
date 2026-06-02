@@ -36,6 +36,12 @@ export interface FilterResolutionResult {
         field: string;
         unresolvedElements: Array<string | number | boolean>;
     }>;
+    unresolvedPicklistFilters: ToolFilter[];
+    unresolvedPicklistFilterDetails: Array<{
+        field: string;
+        attemptedValue: string;
+        availableValues: string[];
+    }>;
 }
 
 interface ToolExecutorFilterParams {
@@ -58,6 +64,18 @@ export function coerceFilterValueByFieldType(
 ): string | number | boolean | Array<string | number | boolean> {
     const normalisedType = (fieldType ?? '').toLowerCase();
     const toTypedScalar = (input: string | number | boolean): string | number | boolean => {
+        // Options fields (isBilled, isBillableToCompany, isAnnouncement, etc.) store boolean 0/1.
+        // Coerce bool and canonical string representations to numeric so the API never receives
+        // a varchar like "false" or a JS boolean that causes a type-conversion error.
+        if (normalisedType === 'options') {
+            if (typeof input === 'boolean') return input ? 1 : 0;
+            if (typeof input === 'string') {
+                const lower = input.toLowerCase();
+                if (lower === 'true' || lower === '1') return 1;
+                if (lower === 'false' || lower === '0') return 0;
+            }
+            return input; // numeric values and label strings pass through unchanged
+        }
         if (typeof input === 'number' || typeof input === 'boolean') {
             return input;
         }
@@ -304,6 +322,25 @@ export async function resolveAndClassifyFilters(
         );
     }
 
+    // Detect picklist filters whose values are still non-numeric strings after resolution
+    // (label not found, no pending candidates). Must be blocked before API dispatch to prevent
+    // type-conversion errors — e.g. chargeType="material" when only "Operational"/"Capitalized" exist.
+    const unresolvedPicklistFilterDetails: Array<{
+        field: string;
+        attemptedValue: string;
+        availableValues: string[];
+    }> = [];
+    const unresolvedPicklistFilters = filters.filter((filter) => {
+        if (typeof filter.value !== 'string' || filter.value.trim() === '' || isLikelyId(filter.value)) return false;
+        const field = readFields.find((f) => f.id.toLowerCase() === filter.field.toLowerCase());
+        if (!field?.isPickList) return false;
+        // Pending confirmations mean candidates were found — those are handled by the pending flow
+        if (allPendingConfirmations.some((pc) => pc.field.toLowerCase() === filter.field.toLowerCase())) return false;
+        const availableValues = (field.allowedValues ?? []).map((v) => v.label);
+        unresolvedPicklistFilterDetails.push({ field: filter.field, attemptedValue: filter.value, availableValues });
+        return true;
+    });
+
     return {
         filters,
         resolutions: allResolutions,
@@ -311,6 +348,8 @@ export async function resolveAndClassifyFilters(
         pendingConfirmations: allPendingConfirmations,
         unresolvedIdLikeFilters,
         unresolvedIdLikeFilterDetails,
+        unresolvedPicklistFilters,
+        unresolvedPicklistFilterDetails,
     };
 }
 

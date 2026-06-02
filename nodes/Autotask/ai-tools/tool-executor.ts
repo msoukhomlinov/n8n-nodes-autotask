@@ -346,6 +346,8 @@ export async function executeAiTool(
 		pendingConfirmations: filterPendingConfirmations,
 		unresolvedIdLikeFilters,
 		unresolvedIdLikeFilterDetails,
+		unresolvedPicklistFilters,
+		unresolvedPicklistFilterDetails,
 	} = await resolveAndClassifyFilters(
 		context,
 		resource,
@@ -787,6 +789,28 @@ export async function executeAiTool(
 							: {}),
 						...(resolvedElements ? { resolvedElements } : {}),
 					},
+				),
+			),
+			correlationId,
+		);
+	}
+
+	if (unresolvedPicklistFilters.length > 0) {
+		const summary = unresolvedPicklistFilterDetails
+			.map((d) => {
+				const avail = d.availableValues.length > 0 ? d.availableValues.join(', ') : 'none';
+				return `'${d.field}'='${d.attemptedValue}' — available: ${avail}`;
+			})
+			.join('; ');
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					effectiveOperation,
+					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+					`Picklist filter value(s) not found: ${summary}.`,
+					`Retry autotask_${resource} using one of the listed available labels or the corresponding numeric ID for each picklist field.`,
+					{ unresolvedPicklistFilters: unresolvedPicklistFilterDetails },
 				),
 			),
 			correlationId,
