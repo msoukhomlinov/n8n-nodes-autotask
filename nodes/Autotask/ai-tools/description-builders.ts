@@ -750,7 +750,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 	get: {
 		required: [{ field: 'id', type: 'number', description: 'Numeric entity ID.' }],
 		optional: [
-			{ field: 'fields', type: 'string', description: 'Comma-separated field names to return.' },
+			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
 		],
 	},
 	getMany: {
@@ -767,7 +767,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 				field: 'filter_value',
 				type: 'string',
 				description:
-					"Filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3'). Booleans: 'true'/'false'.",
+					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs ('Neil,Andrew' or '123,456'); each resolved independently — unresolved names with multiple candidates return pendingConfirmations; already-resolved in resolvedElements. Booleans: 'true'/'false'.",
 			},
 			{ field: 'filter_field_2', type: 'string', description: 'Second filter field.' },
 			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
@@ -799,8 +799,8 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			},
 			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
 			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
-			{ field: 'fields', type: 'string', description: 'Comma-separated field names to return.' },
-			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default) or 'rawIds'." },
+			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
+			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default): appends label fields automatically (resourceFullName, *_label etc.) — do NOT request these via fields. 'rawIds': numeric IDs only." },
 		],
 	},
 	count: {
@@ -812,7 +812,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 				field: 'filter_value',
 				type: 'string',
 				description:
-					"Filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
+					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs; each resolved independently.",
 			},
 			{ field: 'filter_field_2', type: 'string', description: 'Second filter field.' },
 			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
@@ -836,7 +836,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 	whoAmI: {
 		required: [],
 		optional: [
-			{ field: 'fields', type: 'string', description: 'Comma-separated field names to return.' },
+			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
 		],
 	},
 	getPosted: {
@@ -848,7 +848,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 				field: 'filter_value',
 				type: 'string',
 				description:
-					"Filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
+					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs; each resolved independently.",
 			},
 			{ field: 'filter_field_2', type: 'string', description: 'Second field to filter on.' },
 			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
@@ -861,8 +861,8 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
 			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
 			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
-			{ field: 'fields', type: 'string', description: 'Comma-separated field names to return.' },
-			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default) or 'rawIds'." },
+			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
+			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default): appends label fields automatically (resourceFullName, *_label etc.) — do NOT request these via fields. 'rawIds': numeric IDs only." },
 		],
 	},
 	getUnposted: {
@@ -874,7 +874,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 				field: 'filter_value',
 				type: 'string',
 				description:
-					"Filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
+					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs; each resolved independently.",
 			},
 			{ field: 'filter_field_2', type: 'string', description: 'Second field to filter on.' },
 			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
@@ -887,8 +887,8 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
 			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
 			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
-			{ field: 'fields', type: 'string', description: 'Comma-separated field names to return.' },
-			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default) or 'rawIds'." },
+			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
+			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default): appends label fields automatically (resourceFullName, *_label etc.) — do NOT request these via fields. 'rawIds': numeric IDs only." },
 		],
 	},
 	searchByDomain: {
@@ -1112,7 +1112,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
 			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
 			{ field: 'excludeTerminalStatuses', type: 'boolean', description: 'Exclude Complete/Cancelled (ticket only, default true).' },
-			{ field: 'fields', type: 'string', description: 'Comma-separated field names to return.' },
+			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
 		],
 	},
 	getByYear: {
