@@ -333,8 +333,9 @@ export async function resolveAndClassifyFilters(
     const unresolvedPicklistFilters = filters.filter((filter) => {
         const field = readFields.find((f) => f.id.toLowerCase() === filter.field.toLowerCase());
         if (!field?.isPickList) return false;
-        // Pending confirmations mean candidates were found — those are handled by the pending flow
-        if (allPendingConfirmations.some((pc) => pc.field.toLowerCase() === filter.field.toLowerCase())) return false;
+        // NOTE: do NOT exclude pending-confirmation picklist entries here — those partial-match
+        // strings are never resolved to IDs and will hit the API as raw varchar values.
+        // The blocker below catches both "no match" and "partial match" cases uniformly.
         const availableValues = (field.allowedValues ?? []).map((v) => v.label);
 
         if (typeof filter.value === 'string') {
