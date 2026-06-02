@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.22.1] - 2026-06-03
+
+### Fixed
+
+- **AI tools: picklist filter guard now covers `in`/`notIn` array elements** — The `unresolvedPicklistFilters` pre-dispatch check only inspected scalar string values. A request such as `chargeType in ['Operational','material']` had its array value bypass the guard (`typeof array !== 'string'`), and the unresolved string element reached the API unchanged, causing the same `Conversion failed when converting varchar` error as scalar mismatches. The guard now iterates array elements for picklist fields when `filter_op` is `in`/`notIn`, blocking dispatch if any element is a non-numeric, unrecognised string.
+- **AI tools: picklist filter partial-match values no longer bypass pre-dispatch guard** — When a picklist filter value (e.g. `chargeType='Op'`) partially matched an allowed label, `resolveFilterLabelsToIds` left the raw string in `filter.value` and recorded a `pendingConfirmation`. The `unresolvedPicklistFilters` guard previously excluded any filter with a pending confirmation, assuming a separate path would block dispatch — but no such path existed for picklist fields. Partial-match picklist strings now flow through the same `INVALID_FILTER_CONSTRAINT` blocker as no-match values, with available labels listed in the error response.
+
 ## [2.22.0] - 2026-06-01
 
 ### Fixed
