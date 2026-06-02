@@ -331,14 +331,31 @@ export async function resolveAndClassifyFilters(
         availableValues: string[];
     }> = [];
     const unresolvedPicklistFilters = filters.filter((filter) => {
-        if (typeof filter.value !== 'string' || filter.value.trim() === '' || isLikelyId(filter.value)) return false;
         const field = readFields.find((f) => f.id.toLowerCase() === filter.field.toLowerCase());
         if (!field?.isPickList) return false;
         // Pending confirmations mean candidates were found — those are handled by the pending flow
         if (allPendingConfirmations.some((pc) => pc.field.toLowerCase() === filter.field.toLowerCase())) return false;
         const availableValues = (field.allowedValues ?? []).map((v) => v.label);
-        unresolvedPicklistFilterDetails.push({ field: filter.field, attemptedValue: filter.value, availableValues });
-        return true;
+
+        if (typeof filter.value === 'string') {
+            if (filter.value.trim() === '' || isLikelyId(filter.value)) return false;
+            unresolvedPicklistFilterDetails.push({ field: filter.field, attemptedValue: filter.value, availableValues });
+            return true;
+        }
+
+        // in/notIn arrays: resolution is skipped for arrays, so catch non-numeric string elements here
+        if (Array.isArray(filter.value) && (filter.op === 'in' || filter.op === 'notIn')) {
+            const badElements = (filter.value as Array<string | number | boolean>).filter(
+                (el) => typeof el === 'string' && el.trim() !== '' && !isLikelyId(el),
+            );
+            if (badElements.length === 0) return false;
+            for (const el of badElements) {
+                unresolvedPicklistFilterDetails.push({ field: filter.field, attemptedValue: String(el), availableValues });
+            }
+            return true;
+        }
+
+        return false;
     });
 
     return {
