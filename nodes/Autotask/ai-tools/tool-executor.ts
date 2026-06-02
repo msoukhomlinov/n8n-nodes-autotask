@@ -736,6 +736,7 @@ export async function executeAiTool(
 			)
 			.join(', ');
 		const hasPendingCandidates = filterPendingConfirmations.length > 0;
+		const hasResolved = filterResolutions.length > 0;
 		const pendingSummary = filterPendingConfirmations.map((entry) => {
 			const uniqueIds = Array.from(
 				new Set(entry.candidates.map((candidate) => String(candidate.id))),
@@ -746,6 +747,27 @@ export async function executeAiTool(
 				ids: uniqueIds,
 			};
 		});
+
+		const resolvedText = filterResolutions
+			.map((r) => `${r.field}: ${String(r.from)}→${String(r.to)}`)
+			.join(', ');
+		const pendingText = filterPendingConfirmations
+			.map((pc) => `${pc.label} (${pc.candidates.length} candidates)`)
+			.join(', ');
+
+		let nextAction: string;
+		if (hasResolved && hasPendingCandidates) {
+			nextAction = `Resolved: ${resolvedText}. Pending: ${pendingText} — pick IDs from pendingConfirmations, then retry with all numeric IDs.`;
+		} else if (hasPendingCandidates) {
+			nextAction = `Candidates were found during resolution. Review pendingConfirmations from this response, choose the correct numeric ID, then retry autotask_${resource} with numeric ID filter values.`;
+		} else {
+			nextAction = `Use autotask_${resource} with operation 'getMany' to resolve names to numeric IDs, then retry autotask_${resource} with numeric ID filter values.`;
+		}
+
+		const resolvedElements = hasResolved
+			? filterResolutions.map((r) => ({ field: r.field, label: r.from, id: r.to }))
+			: undefined;
+
 		return attachCorrelation(
 			JSON.stringify(
 				wrapError(
@@ -753,9 +775,7 @@ export async function executeAiTool(
 					effectiveOperation,
 					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
 					`One or more ID-like filters are unresolved and still non-numeric: ${unresolvedSummary}.`,
-					hasPendingCandidates
-						? `Candidates were found during resolution. Review pendingConfirmations from this response, choose the correct numeric ID, then retry autotask_${resource} with numeric ID filter values.`
-						: `Use autotask_${resource} with operation 'getMany' to resolve names to numeric IDs, then retry autotask_${resource} with numeric ID filter values.`,
+					nextAction,
 					{
 						unresolvedFilters: unresolvedIdLikeFilters,
 						unresolvedFilterDetails: unresolvedIdLikeFilterDetails,
@@ -765,6 +785,7 @@ export async function executeAiTool(
 									pendingSummary,
 								}
 							: {}),
+						...(resolvedElements ? { resolvedElements } : {}),
 					},
 				),
 			),
