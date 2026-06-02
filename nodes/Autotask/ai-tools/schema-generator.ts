@@ -144,7 +144,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 	const rFilterValueSchema = rz
 		.string()
 		.describe(
-			"Filter value as string. For reference/picklist fields, pass human-readable name (e.g. 'In Progress', 'Contoso', 'High') — auto-resolves to ID, or pass numeric ID directly. For in/notIn operators, comma-separate values (e.g. '1,2,3'). Booleans: 'true'/'false'.",
+			"Filter value as string. For reference/picklist fields, pass human-readable name (e.g. 'In Progress', 'Contoso', 'High') — auto-resolves to ID, or pass numeric ID directly. For in/notIn: comma-separate names or IDs (e.g. 'Neil,Andrew' or '123,456'). Each name resolved independently; names with multiple candidates return pendingConfirmations, already-resolved names shown in resolvedElements. Booleans: 'true'/'false'.",
 		);
 	const rRecencySchema = rz
 		.string()
@@ -394,7 +394,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					`Sparse fieldset — comma-separated field names to return. Omit for all fields. The id field is always included automatically. ` +
 					`Reduces payload size significantly for entities with many fields. ` +
 					`With returnAll=true, specifying fields lifts the ${MAX_RESPONSE_RECORDS}-record payload cap — all matching records are returned. ` +
-					`Call autotask_${resource} with operation 'describeFields' for valid field names for this resource.`,
+					`Real API field names only (call describeFields for the full list). Do not request *_label or *_name fields — those are auto-added by outputMode=idsAndLabels.`,
 				);
 		}
 
@@ -467,7 +467,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					'Range end (ISO-8601). Requires since or recency.',
 				);
 			shape.filtersJson = rz.string().nullish().describe(
-					`Advanced filters as JSON array of Autotask IFilterCondition objects. Mutually exclusive with filter_field. No label resolution — use numeric IDs. Dates UTC ISO-8601. ` +
+					`Advanced filters as JSON array of Autotask IFilterCondition objects. Mutually exclusive with filter_field. No label resolution — use numeric IDs for all values including in/notIn (for name-based in/notIn use the filter_value param path instead). Dates UTC ISO-8601. ` +
 				`Supports: eq/noteq/gt/gte/lt/lte/contains/beginsWith/endsWith/exist/notExist/in/notIn. ` +
 				`in/notIn value must be a JSON array (max 500 values per Autotask API limit). ` +
 				`Nested AND group: [{"op":"and","items":[<cond1>,<cond2>]}]. ` +
@@ -488,7 +488,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.enum(['idsAndLabels', 'rawIds'])
 				.nullish()
 				.describe(
-					"'idsAndLabels' (default, enriched with labels) or 'rawIds' (lighter).",
+					"'idsAndLabels' (default): appends derived label fields to results (e.g. resourceID → resourceFullName + resourceEmail; picklist IDs → *_label). Do NOT include these in the fields param — they are auto-added. 'rawIds': numeric IDs only.",
 				);
 
 			// excludeTerminalStatuses — only for resources that have terminal status semantics
