@@ -221,6 +221,7 @@ import {
 	executeCountOperation,
 	buildFieldValues,
 	parseFieldsParam,
+	resolveVirtualLabelFields,
 	normaliseOperation,
 	buildContractViolationNextAction,
 } from './tool-executor-helpers';
@@ -374,8 +375,14 @@ export async function executeAiTool(
 			);
 		}
 	}
-	const selectedColumns = parseFieldsParam(params.fields);
-	const selectedSlaTicketColumns = parseFieldsParam(params.ticketFields);
+	const selectedColumns = resolveVirtualLabelFields(
+		parseFieldsParam(params.fields),
+		readFields,
+	);
+	const selectedSlaTicketColumns = resolveVirtualLabelFields(
+		parseFieldsParam(params.ticketFields),
+		readFields,
+	);
 	const effectiveLimit = getEffectiveLimit(params.limit);
 	const effectiveOffset =
 		typeof params.offset === 'number' && Number.isFinite(params.offset) && params.offset >= 0
