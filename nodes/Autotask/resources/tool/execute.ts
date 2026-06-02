@@ -470,14 +470,17 @@ export async function executeToolOperation(
 			// Resource mapper format for create/update and getMany filter fields
 			case 'fieldsToMap':
 				if (Object.keys(requestData).length > 0) {
-					if (['getMany', 'count'].includes(resourceOperation) && Array.isArray(requestData.filter)) {
-						const value: Record<string, string | number> = {};
-						for (const f of requestData.filter) {
-							if (typeof f === 'object' && f !== null && 'field' in f && 'value' in f) {
-								value[(f as { field: string }).field] = (f as { value: string | number }).value;
+					if (['getMany', 'count', 'getPosted', 'getUnposted'].includes(resourceOperation)) {
+						if (Array.isArray(requestData.filter)) {
+							const value: Record<string, string | number> = {};
+							for (const f of requestData.filter) {
+								if (typeof f === 'object' && f !== null && 'field' in f && 'value' in f) {
+									value[(f as { field: string }).field] = (f as { value: string | number }).value;
+								}
 							}
+							return { value };
 						}
-						return { value };
+						return { value: {} };
 					}
 					return { mappingMode: 'defineBelow', value: requestData };
 				}
