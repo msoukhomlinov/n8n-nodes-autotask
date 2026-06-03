@@ -802,6 +802,7 @@ export async function executeAiTool(
 				return `'${d.field}'='${d.attemptedValue}' — available: ${avail}`;
 			})
 			.join('; ');
+		const hasPicklistCandidates = filterPendingConfirmations.length > 0;
 		return attachCorrelation(
 			JSON.stringify(
 				wrapError(
@@ -809,8 +810,13 @@ export async function executeAiTool(
 					effectiveOperation,
 					ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
 					`Picklist filter value(s) not found: ${summary}.`,
-					`Retry autotask_${resource} using one of the listed available labels or the corresponding numeric ID for each picklist field.`,
-					{ unresolvedPicklistFilters: unresolvedPicklistFilterDetails },
+					hasPicklistCandidates
+						? `Partial match candidates found — pick the correct ID from pendingConfirmations, then retry autotask_${resource} with the numeric ID.`
+						: `Retry autotask_${resource} using one of the listed available labels or the corresponding numeric ID for each picklist field.`,
+					{
+						unresolvedPicklistFilters: unresolvedPicklistFilterDetails,
+						...(hasPicklistCandidates ? { pendingConfirmations: filterPendingConfirmations } : {}),
+					},
 				),
 			),
 			correlationId,

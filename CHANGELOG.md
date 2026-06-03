@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.22.3] - 2026-06-03
+
+### Fixed
+
+- **AI tools: picklist partial-filter now surfaces candidate IDs in error response** — When a picklist filter value was a partial/substring match (e.g. `chargeType='Ope'` matching `'Operational'`), the pre-dispatch blocker correctly returned `INVALID_FILTER_CONSTRAINT`, but the error body omitted the `pendingConfirmations` candidates collected during label resolution. The model received no candidate IDs and had to make an extra `listPicklistValues` call to find the correct label. The error response now includes `pendingConfirmations` (with candidate IDs) and an updated `nextAction` directing the model to pick the correct ID immediately.
+
 ## [2.22.2] - 2026-06-03
 
 ### Fixed
