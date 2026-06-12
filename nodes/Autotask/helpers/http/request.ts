@@ -45,7 +45,6 @@ async function acquireConcurrencySlot(
 ): Promise<() => Promise<void>> {
 	if (redis) {
 		const deadline = Date.now() + THREAD_ACQUIRE_MAX_WAIT_MS;
-		// eslint-disable-next-line no-constant-condition
 		while (true) {
 			try {
 				const { acquired, member } = await acquireThreadSlot(

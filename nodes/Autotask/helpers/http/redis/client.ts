@@ -92,7 +92,7 @@ export async function getRedisClient(cfg: RedisConfig): Promise<RedisLike | null
 	entry.connecting = (async () => {
 		try {
 			// Lazy require — keeps the node load-safe if `redis` is missing.
-			// eslint-disable-next-line @typescript-eslint/no-var-requires
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
 			const { createClient } = require('redis') as typeof import('redis');
 			const socketOpts = cfg.tls
 				? { host: cfg.host, port: cfg.port, tls: true as const }

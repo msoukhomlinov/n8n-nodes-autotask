@@ -2,6 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.23.0] - 2026-06-12
+
+### Changed
+- Cross-worker coordination of Autotask's 3-concurrent thread limit via Redis (opt-in per credential), preventing Itgenatr005 hard rejections under multi-container/queue-mode deployments.
+- ThresholdInformation polling deduplicated to once per ~90s cluster-wide via a shared Redis key; the same snapshot powers cluster-wide usage reporting on the API Usage operation.
+
+### Fixed
+- Retry handler now retries Autotask thread-limit rejections (Itgenatr005), which may arrive with a non-429 status, not just HTTP 429.
+- Thread slot is acquired per HTTP attempt and after rate pacing, so a rate-limit wait never holds a concurrency slot.
+
 ## [2.22.3] - 2026-06-03
 
 ### Fixed
