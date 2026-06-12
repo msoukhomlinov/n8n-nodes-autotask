@@ -534,14 +534,21 @@ export async function autotaskApiRequest<T = JsonObject>(
 	// Resolve Redis (fail-open: null when disabled/unhealthy) and the shared keys.
 	const redisConfig = getRedisConfigFromCredentials(credentials as unknown as Record<string, unknown>);
 	const redis = redisConfig ? await getRedisClient(redisConfig) : null;
+	// Normalise the base URL (strip trailing slash[es]) BEFORE feeding it to any Redis
+	// key hash — mirrors the request-URL normalisation at line ~486. Without this, two
+	// credentials pointing at the same custom zone but differing only by a trailing slash
+	// (e.g. ".../" vs "...") would hash to different keys and each grant its own 3 slots,
+	// oversubscribing the shared Autotask integration-code thread budget. The zone (enum)
+	// branch holds fixed URLs without trailing slashes, so this is a harmless no-op there.
+	const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
 	// Thread semaphore identity: {baseUrl, integrationCode} — NO Username (the Autotask
 	// thread limit is scoped by integration code; users sharing a code share one budget).
-	const threadHash = redisKeyHash(baseUrl, String(credentials.APIIntegrationcode ?? ''));
+	const threadHash = redisKeyHash(normalizedBaseUrl, String(credentials.APIIntegrationcode ?? ''));
 	const threadKey = `n8n-autotask:thr:${threadHash}:${getEndpointFromUrl(options.url as string)}`;
 	// Poll/usage identity: {baseUrl, integrationCode, Username} — Username IS included to
 	// stop one API user's ThresholdInformation snapshot/poll-lock bleeding into another's.
 	const usageHash = redisUsageKeyHash(
-		baseUrl,
+		normalizedBaseUrl,
 		String(credentials.APIIntegrationcode ?? ''),
 		String(credentials.Username ?? ''),
 	);

@@ -26,9 +26,12 @@ export async function executeApiThresholdOperation(this: IExecuteFunctions): Pro
 				const redis = await getRedisClient(redisConfig);
 				if (redis) {
 					// MUST match the poller's identity in request.ts (baseUrl + integrationCode + Username),
-					// or this read never finds the snapshot the poller wrote.
+					// or this read never finds the snapshot the poller wrote. The writer normalises
+					// baseUrl (strips trailing slash[es]) before hashing, so the reader MUST too —
+					// otherwise a trailing-slash credential reads a different key than it wrote.
+					const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
 					const hash = redisUsageKeyHash(
-						baseUrl,
+						normalizedBaseUrl,
 						String(credentials.APIIntegrationcode ?? ''),
 						String(credentials.Username ?? ''),
 					);
