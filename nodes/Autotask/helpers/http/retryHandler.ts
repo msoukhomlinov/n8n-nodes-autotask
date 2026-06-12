@@ -13,6 +13,29 @@ const MAX_RETRY_AFTER_MS = 600_000; // Upper bound for a single Retry-After wait
 type AutotaskContexts = IExecuteFunctions | IHookFunctions | ILoadOptionsFunctions;
 
 /**
+ * Detects Autotask thread-concurrency rejections (Itgenatr005 / "thread threshold ... exceeded").
+ * These may arrive with a non-429 HTTP status, so we inspect the error body/message too.
+ */
+function isThreadLimitError(error: unknown): boolean {
+	const err = error as {
+		message?: string;
+		response?: { data?: { errors?: Array<string | { message?: string }> } };
+	};
+	const parts: string[] = [];
+	if (typeof err.message === 'string') parts.push(err.message);
+	const errs = err.response?.data?.errors;
+	if (Array.isArray(errs)) {
+		for (const e of errs) parts.push(typeof e === 'string' ? e : e?.message ?? '');
+	}
+	const haystack = parts.join(' ').toLowerCase();
+	return (
+		haystack.includes('itgenatr005') ||
+		/thread\s+threshold.*exceeded/.test(haystack) ||
+		/thread limit/.test(haystack)
+	);
+}
+
+/**
  * Wraps a request function with automatic retry logic for 429 rate limit errors.
  * Uses exponential backoff with jitter to naturally spread retry attempts.
  */
@@ -30,8 +53,8 @@ export async function executeWithRetry<T>(
 			const err = error as { response?: { status?: number; headers?: Record<string, string> } };
 			const status = err.response?.status;
 
-			// Only retry 429s - throw other errors immediately
-			if (status !== 429) {
+			// Retry 429s AND Autotask thread-limit rejections (which may use a non-429 status)
+			if (status !== 429 && !isThreadLimitError(error)) {
 				// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 				throw error;
 			}
