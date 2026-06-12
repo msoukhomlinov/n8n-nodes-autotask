@@ -17,10 +17,76 @@ import type { IQueryResponse } from '../../types/base/entity-types';
 import type { IApiError, IApiErrorDetail, IApiErrorWithResponse } from '../../types/base/api';
 import type { OperationType } from '../../types/base/entity-types';
 import { handleRateLimit, getTrackerForCredential } from './rateLimit';
-import { endpointThreadTracker } from './threadLimit';
+import { endpointThreadTracker, getEndpointFromUrl } from './threadLimit';
 import { executeWithRetry } from './retryHandler';
 import { autotaskCredentialStore } from '../credential-store';
 import { createOverrideScrubber, sanitizeErrorForLogging } from '../security/credential-masking';
+import { getRedisConfigFromCredentials, getRedisClient, redisKeyHash, type RedisLike } from './redis/client';
+import { acquireThreadSlot, releaseThreadSlot } from './redis/threadStore';
+import { tryAcquirePollLock, writeUsage } from './redis/usageStore';
+
+const THREAD_LIMIT = 3;
+const THREAD_LEASE_MS = 300_000;        // Autotask 5-min REST exec timeout
+const THREAD_KEY_TTL_MS = 330_000;      // lease + skew buffer
+const THREAD_ACQUIRE_MAX_WAIT_MS = 45_000;
+const THREAD_POLL_BASE_MS = 300;
+const POLL_DEDUP_WINDOW_MS = 90_000;
+const USAGE_TTL_MS = 95_000;
+
+/**
+ * Acquires one concurrency slot for `endpoint` via Redis when healthy, else the
+ * in-memory tracker. Returns a release function. Bounded wait; on timeout it
+ * proceeds WITHOUT a slot (the broadened retry handler + Autotask are the backstop).
+ */
+async function acquireConcurrencySlot(
+	redis: RedisLike | null,
+	threadKey: string,
+	inMemoryEndpoint: string,
+): Promise<() => Promise<void>> {
+	if (redis) {
+		const deadline = Date.now() + THREAD_ACQUIRE_MAX_WAIT_MS;
+		// eslint-disable-next-line no-constant-condition
+		while (true) {
+			try {
+				const { acquired, member } = await acquireThreadSlot(
+					redis, threadKey, THREAD_LIMIT, THREAD_LEASE_MS, THREAD_KEY_TTL_MS,
+				);
+				if (acquired) {
+					return async () => { try { await releaseThreadSlot(redis, threadKey, member); } catch { /* ignore */ } };
+				}
+			} catch {
+				break; // redis error mid-wait → fall through to in-memory
+			}
+			if (Date.now() >= deadline) {
+				console.warn(`[redis] thread slot wait exceeded ${THREAD_ACQUIRE_MAX_WAIT_MS}ms for ${threadKey}; proceeding without a slot`);
+				return async () => { /* no slot held */ };
+			}
+			const jitter = THREAD_POLL_BASE_MS + Math.floor(Math.random() * 100) - 50; // 250–350ms
+			await new Promise((r) => setTimeout(r, jitter));
+		}
+	}
+	// Fail-open: in-memory per-worker semaphore (endpointThreadTracker already statically imported)
+	await endpointThreadTracker.acquireThread(inMemoryEndpoint);
+	return async () => { endpointThreadTracker.releaseThread(inMemoryEndpoint); };
+}
+
+/**
+ * Best-effort: at most once per POLL_DEDUP_WINDOW_MS cluster-wide, poll
+ * ThresholdInformation and publish it to the shared usage key. Never throws.
+ */
+async function maybePollThreshold(
+	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
+	redis: RedisLike,
+	hash: string,
+): Promise<void> {
+	try {
+		if (!(await tryAcquirePollLock(redis, hash, POLL_DEDUP_WINDOW_MS))) return;
+		const info = await fetchThresholdInformation.call(this);
+		if (info) {
+			await writeUsage(redis, hash, { ...info, syncedAt: Date.now() }, USAGE_TTL_MS);
+		}
+	} catch { /* best-effort; never block the request */ }
+}
 
 interface IAutotaskSuccessResponse {
 	id?: number;
@@ -443,15 +509,29 @@ export async function autotaskApiRequest<T = JsonObject>(
 		);
 	}
 
+	// Resolve Redis (fail-open: null when disabled/unhealthy) and the shared keys.
+	const redisConfig = getRedisConfigFromCredentials(credentials as unknown as Record<string, unknown>);
+	const redis = redisConfig ? await getRedisClient(redisConfig) : null;
+	const idHash = redisKeyHash(baseUrl, String(credentials.APIIntegrationcode ?? ''));
+	const threadKey = `n8n-autotask:thr:${idHash}:${getEndpointFromUrl(options.url as string)}`;
+
 	try {
-		// Acquire a thread for this endpoint before proceeding
-		await endpointThreadTracker.acquireThread(baseEndpoint);
+		// Best-effort cluster-wide ThresholdInformation poll (deduped via Redis).
+		if (redis) {
+			await maybePollThreshold.call(this, redis, idHash);
+		}
 
 		// Handle rate limiting before making the request (single attempt)
 		await handleRateLimit(getTrackerForCredential(credentialKey));
 
 		const response = await executeWithRetry(this, async () => {
-			return this.helpers.request(options);
+			// Acquire one concurrency slot per attempt (Redis when healthy, else in-memory).
+			const release = await acquireConcurrencySlot(redis, threadKey, baseEndpoint);
+			try {
+				return await this.helpers.request(options);
+			} finally {
+				await release();
+			}
 		});
 
 		// Handle empty responses
@@ -694,8 +774,5 @@ export async function autotaskApiRequest<T = JsonObject>(
 		// Autotask-specific error regardless of how this n8n version's constructor
 		// extracts it from the error object (behaviour varies across n8n versions).
 		throw new NodeApiError(this.getNode(), apiError as unknown as JsonObject, { message: detailedMessage });
-	} finally {
-		// Release the thread when done (whether successful or failed)
-		endpointThreadTracker.releaseThread(baseEndpoint);
 	}
 }
