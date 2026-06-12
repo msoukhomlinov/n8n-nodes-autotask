@@ -39,26 +39,11 @@ class EndpointThreadTracker {
      * This is a fallback method for when endpoint names aren't directly available
      */
     private getEndpointFromUrl(url: string): string {
-        // Try different regex patterns to cover more URL formats
-        const patterns = [
-            /\/V\d+\/(\w+)/i,           // /V1.0/Tickets
-            /\/v\d+\/(\w+)/i,           // /v1.0/Tickets
-            /\/api\/v\d+\/(\w+)/i,      // /api/v1.0/Tickets
-            /\/\w+\/v\d+\/(\w+)/i,      // /ATServicesRest/v1.0/Tickets
-            /\/([^/]+)\/query/i,        // /Tickets/query
-            /\/([^/]+)\/\d+/i,          // /Tickets/123
-            /\/([^/]+)\/?$/i            // /Tickets or /Tickets/
-        ];
-
-        for (const pattern of patterns) {
-            const match = url.match(pattern);
-            if (match?.[1]) {
-                return match[1].toLowerCase();
-            }
+        const endpoint = getEndpointFromUrl(url);
+        if (endpoint === 'unknown') {
+            this.debugLog(`Could not extract endpoint from URL: ${url}`);
         }
-
-        this.debugLog(`Could not extract endpoint from URL: ${url}`);
-        return "unknown";
+        return endpoint;
     }
 
     /**
@@ -113,6 +98,29 @@ class EndpointThreadTracker {
             this.debugLog(`Thread released for ${endpoint}: ${this.activeThreadsPerEndpoint[endpoint]}/${this.threadLimit}`);
         }
     }
+}
+
+/**
+ * Extracts the endpoint (entity) name from an Autotask URL or endpoint string.
+ * Exported for reuse by the Redis thread-limit keying (helpers/http/redis/threadStore.ts).
+ */
+export function getEndpointFromUrl(url: string): string {
+	const patterns = [
+		/\/V\d+\/(\w+)/i,           // /V1.0/Tickets
+		/\/v\d+\/(\w+)/i,           // /v1.0/Tickets
+		/\/api\/v\d+\/(\w+)/i,      // /api/v1.0/Tickets
+		/\/\w+\/v\d+\/(\w+)/i,      // /ATServicesRest/v1.0/Tickets
+		/\/([^/]+)\/query/i,        // /Tickets/query
+		/\/([^/]+)\/\d+/i,          // /Tickets/123
+		/\/([^/]+)\/?$/i,           // /Tickets or /Tickets/
+	];
+	for (const pattern of patterns) {
+		const match = url.match(pattern);
+		if (match?.[1]) {
+			return match[1].toLowerCase();
+		}
+	}
+	return 'unknown';
 }
 
 /**
