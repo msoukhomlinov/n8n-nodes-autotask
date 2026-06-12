@@ -14,7 +14,7 @@ export async function executeApiThresholdOperation(this: IExecuteFunctions): Pro
 	// For now we only have one operation: get
 	if (operation === 'get') {
 		const credentials = (await this.getCredentials('autotaskApi')) as IAutotaskCredentials;
-		const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl ?? '' : credentials.zone;
+		const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
 
 		let source: 'redis' | 'api' = 'api';
 		let thresholdInfo: Awaited<ReturnType<typeof fetchThresholdInformation>> | null = null;
