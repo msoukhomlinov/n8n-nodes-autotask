@@ -116,6 +116,13 @@ export async function executeWithRetry<T>(
 				waitMs = Math.max(1_000, backoff + jitter);
 			}
 
+			// `retryAfter` is truthy only when this wait was derived from a server
+			// Retry-After header (integer seconds or HTTP-date). When it is falsy the
+			// wait came from exponential backoff (429 with no header, or a thread-limit
+			// rejection). This flag distinguishes "server told us how long to wait" from
+			// "we chose a backoff" and decides which over-budget error fires below.
+			const fromRetryAfterHeader = Boolean(retryAfter);
+
 			console.warn(
 				`[429 Retry] Attempt ${attempt}, waiting ${(waitMs / 1_000).toFixed(
 					1,
@@ -123,6 +130,29 @@ export async function executeWithRetry<T>(
 					MAX_TOTAL_WAIT_MS / 1_000
 				}s)`,
 			);
+
+			// Reject immediately if a single SERVER-REQUESTED Retry-After wait would
+			// overshoot the remaining budget. This runs BEFORE the generic wall-clock
+			// guard so an over-budget server hint (e.g. Retry-After: 600s on the very
+			// first attempt) throws the SPECIFIC "Retry-After exceeds remaining budget"
+			// error rather than the generic budget-exhausted error. Gated on
+			// `fromRetryAfterHeader` so backoff-sourced waits (including the full-semaphore
+			// thread-limit path, which has no Retry-After header) fall through to the
+			// wall-clock guard below — preserving the wall-clock bound for acquire waits.
+			const remainingBudget = MAX_TOTAL_WAIT_MS - totalWaitTime;
+			if (fromRetryAfterHeader && waitMs > remainingBudget) {
+				const rateLimitError = {
+					message:
+						'Autotask API rate limit exceeded (429 Too Many Requests). ' +
+						`Retry-After of ${(waitMs / 1_000).toFixed(0)}s exceeds remaining budget of ${(remainingBudget / 1_000).toFixed(0)}s. ` +
+						'Suggestions: (1) Reduce workflow trigger frequency or concurrency. ' +
+						'(2) Enable response caching on read operations. ' +
+						'(3) Spread bulk operations over a longer time period.',
+					statusCode: 429,
+					description: `Retry-After exceeds budget after ${attempt} attempt(s).`,
+				};
+				throw new NodeApiError(context.getNode(), rateLimitError);
+			}
 
 			// WALL-CLOCK budget guard. Bounds REAL elapsed time across the whole loop —
 			// including time spent inside requestFn (e.g. a 45s thread-slot acquire wait
@@ -135,8 +165,8 @@ export async function executeWithRetry<T>(
 			// This does NOT regress the Retry-After path: for a single 429 retry the
 			// callback returns/throws instantly under fake timers, so `elapsed` is ~0 at
 			// this point and a within-budget Retry-After (e.g. 120s) still sleeps. The
-			// long-Retry-After-overshoot case (e.g. 600s > remaining budget) is still
-			// caught by the totalWaitTime pre-sleep guard below, exactly as before.
+			// over-budget Retry-After case is handled by the specific guard above; this
+			// branch catches backoff waits and the full-semaphore acquire-wait scenario.
 			const elapsed = Date.now() - startTime;
 			if (elapsed + waitMs > MAX_TOTAL_WAIT_MS) {
 				const threadLimited = isThreadLimitError(error);
@@ -166,33 +196,16 @@ export async function executeWithRetry<T>(
 				throw new NodeApiError(context.getNode(), budgetError);
 			}
 
-			// Reject immediately if the single wait would overshoot the remaining budget.
-			// This prevents blocking the workflow for the full capped duration (up to 600s)
-			// before throwing — which would violate the 5-minute MAX_TOTAL_WAIT_MS contract.
-			const remainingBudget = MAX_TOTAL_WAIT_MS - totalWaitTime;
-			if (waitMs > remainingBudget) {
-				const rateLimitError = {
-					message:
-						'Autotask API rate limit exceeded (429 Too Many Requests). ' +
-						`Retry-After of ${(waitMs / 1_000).toFixed(0)}s exceeds remaining budget of ${(remainingBudget / 1_000).toFixed(0)}s. ` +
-						'Suggestions: (1) Reduce workflow trigger frequency or concurrency. ' +
-						'(2) Enable response caching on read operations. ' +
-						'(3) Spread bulk operations over a longer time period.',
-					statusCode: 429,
-					description: `Retry-After exceeds budget after ${attempt} attempt(s).`,
-				};
-				throw new NodeApiError(context.getNode(), rateLimitError);
-			}
-
-			// Sleep is within budget — honour it.
+			// Sleep is within budget — honour it. Both guards above have cleared this
+			// wait: the specific Retry-After overshoot guard (server-requested waits) and
+			// the generic wall-clock guard (backoff + acquire-wait elapsed time).
 			await new Promise((resolve) => setTimeout(resolve, waitMs));
 
 			totalWaitTime += waitMs;
-			// No post-sleep budget check here. The pre-sleep guard above
-			// (`waitMs > remainingBudget`) is the sole enforcement point.
-			// A post-sleep `>= MAX_TOTAL_WAIT_MS` check would incorrectly abort
-			// when a Retry-After wait lands exactly on the remaining budget —
-			// the server asked us to wait that long and we should retry, not throw.
+			// No post-sleep budget check here. The pre-sleep guards above are the sole
+			// enforcement points. A post-sleep `>= MAX_TOTAL_WAIT_MS` check would
+			// incorrectly abort when a Retry-After wait lands exactly on the remaining
+			// budget — the server asked us to wait that long and we should retry, not throw.
 		}
 	}
 }
