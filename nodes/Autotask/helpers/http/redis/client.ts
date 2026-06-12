@@ -68,7 +68,8 @@ const registry = new Map<string, Entry>();
 const RETRY_AFTER_FAIL_MS = 30_000;
 
 function connectionKey(cfg: RedisConfig): string {
-	return `${cfg.host}:${cfg.port}:${cfg.tls ? 1 : 0}`;
+	const pwTag = cfg.password ? hashCachePayload({ pw: cfg.password }).slice(0, 8) : 'nopw';
+	return `${cfg.host}:${cfg.port}:${cfg.tls ? 1 : 0}:${pwTag}`;
 }
 
 /**
@@ -104,6 +105,8 @@ export async function getRedisClient(cfg: RedisConfig): Promise<RedisLike | null
 			client.on('error', (err: unknown) => {
 				entry.healthy = false;
 				entry.lastFailedAt = Date.now();
+				try { (entry.client as RedisLike | null)?.destroy?.(); } catch { /* ignore */ }
+				entry.client = null;
 				const msg = err instanceof Error ? err.message : String(err);
 				console.warn(`[redis] client error: ${scrubRedisSecret(msg, cfg.password)}`);
 			});
