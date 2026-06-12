@@ -102,9 +102,25 @@ interface Entry {
 const registry = new Map<string, Entry>();
 const RETRY_AFTER_FAIL_MS = 30_000;
 
+// Opaque per-password token for the registry key. The password is NOT hashed
+// (a fast hash of a credential trips js/insufficient-password-hash) and never
+// leaves the process — this token only distinguishes registry entries so two
+// credentials sharing host:port:tls but using different Redis passwords never
+// share a client. The password is already held in memory on RedisConfig; this
+// adds no new exposure and is never logged, persisted, or transmitted.
+const pwTokens = new Map<string, string>();
+function passwordToken(password?: string): string {
+	if (!password) return 'nopw';
+	let token = pwTokens.get(password);
+	if (!token) {
+		token = `pw${pwTokens.size}`;
+		pwTokens.set(password, token);
+	}
+	return token;
+}
+
 function connectionKey(cfg: RedisConfig): string {
-	const pwTag = cfg.password ? hashCachePayload({ pw: cfg.password }).slice(0, 8) : 'nopw';
-	return `${cfg.host}:${cfg.port}:${cfg.tls ? 1 : 0}:${pwTag}`;
+	return `${cfg.host}:${cfg.port}:${cfg.tls ? 1 : 0}:${passwordToken(cfg.password)}`;
 }
 
 /**
@@ -175,4 +191,5 @@ export function __resetRedisRegistry(): void {
 		try { entry.client?.destroy?.(); } catch { /* ignore */ }
 	}
 	registry.clear();
+	pwTokens.clear();
 }
