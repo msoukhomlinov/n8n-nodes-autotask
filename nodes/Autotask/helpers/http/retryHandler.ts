@@ -16,17 +16,33 @@ type AutotaskContexts = IExecuteFunctions | IHookFunctions | ILoadOptionsFunctio
  * Detects Autotask thread-concurrency rejections (Itgenatr005 / "thread threshold ... exceeded").
  * These may arrive with a non-429 HTTP status, so we inspect the error body/message too.
  */
+type ErrorEntry = string | { message?: string } | null | undefined;
+
 function isThreadLimitError(error: unknown): boolean {
 	const err = error as {
 		message?: string;
-		response?: { data?: { errors?: Array<string | { message?: string }> } };
+		errors?: ErrorEntry[];
+		error?: { errors?: ErrorEntry[] };
+		response?: { data?: { errors?: ErrorEntry[] } };
 	};
 	const parts: string[] = [];
 	if (typeof err.message === 'string') parts.push(err.message);
-	const errs = err.response?.data?.errors;
-	if (Array.isArray(errs)) {
-		for (const e of errs) parts.push(typeof e === 'string' ? e : e?.message ?? '');
-	}
+
+	// Autotask/n8n error bodies expose the errors array at several shapes
+	// (see request.ts: response.data.errors, error.errors, top-level errors).
+	// Inspect all of them so a non-429 thread-limit rejection is detected
+	// regardless of which shape the error arrives in.
+	const collectErrors = (errs: ErrorEntry[] | undefined): void => {
+		if (!Array.isArray(errs)) return;
+		for (const e of errs) {
+			if (typeof e === 'string') parts.push(e);
+			else if (e && typeof e.message === 'string') parts.push(e.message);
+		}
+	};
+	collectErrors(err.response?.data?.errors);
+	collectErrors(err.errors);
+	collectErrors(err.error?.errors);
+
 	const haystack = parts.join(' ').toLowerCase();
 	return (
 		haystack.includes('itgenatr005') ||
