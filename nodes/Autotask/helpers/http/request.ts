@@ -21,7 +21,7 @@ import { endpointThreadTracker, getEndpointFromUrl } from './threadLimit';
 import { executeWithRetry } from './retryHandler';
 import { autotaskCredentialStore } from '../credential-store';
 import { createOverrideScrubber, sanitizeErrorForLogging } from '../security/credential-masking';
-import { getRedisConfigFromCredentials, getRedisClient, redisKeyHash, type RedisLike } from './redis/client';
+import { getRedisConfigFromCredentials, getRedisClient, redisKeyHash, redisUsageKeyHash, type RedisLike } from './redis/client';
 import { acquireThreadSlot, releaseThreadSlot } from './redis/threadStore';
 import { tryAcquirePollLock, writeUsage } from './redis/usageStore';
 
@@ -511,13 +511,22 @@ export async function autotaskApiRequest<T = JsonObject>(
 	// Resolve Redis (fail-open: null when disabled/unhealthy) and the shared keys.
 	const redisConfig = getRedisConfigFromCredentials(credentials as unknown as Record<string, unknown>);
 	const redis = redisConfig ? await getRedisClient(redisConfig) : null;
-	const idHash = redisKeyHash(baseUrl, String(credentials.APIIntegrationcode ?? ''));
-	const threadKey = `n8n-autotask:thr:${idHash}:${getEndpointFromUrl(options.url as string)}`;
+	// Thread semaphore identity: {baseUrl, integrationCode} — NO Username (the Autotask
+	// thread limit is scoped by integration code; users sharing a code share one budget).
+	const threadHash = redisKeyHash(baseUrl, String(credentials.APIIntegrationcode ?? ''));
+	const threadKey = `n8n-autotask:thr:${threadHash}:${getEndpointFromUrl(options.url as string)}`;
+	// Poll/usage identity: {baseUrl, integrationCode, Username} — Username IS included to
+	// stop one API user's ThresholdInformation snapshot/poll-lock bleeding into another's.
+	const usageHash = redisUsageKeyHash(
+		baseUrl,
+		String(credentials.APIIntegrationcode ?? ''),
+		String(credentials.Username ?? ''),
+	);
 
 	try {
 		// Best-effort cluster-wide ThresholdInformation poll (deduped via Redis).
 		if (redis) {
-			await maybePollThreshold.call(this, redis, idHash);
+			await maybePollThreshold.call(this, redis, usageHash);
 		}
 
 		// Handle rate limiting before making the request (single attempt)

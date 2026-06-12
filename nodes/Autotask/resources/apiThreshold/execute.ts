@@ -1,7 +1,7 @@
 ﻿import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { fetchThresholdInformation } from '../../helpers/http/request';
 import type { IAutotaskCredentials } from '../../types/base/auth';
-import { getRedisConfigFromCredentials, getRedisClient, redisKeyHash } from '../../helpers/http/redis/client';
+import { getRedisConfigFromCredentials, getRedisClient, redisUsageKeyHash } from '../../helpers/http/redis/client';
 import { readUsage } from '../../helpers/http/redis/usageStore';
 
 /**
@@ -25,7 +25,13 @@ export async function executeApiThresholdOperation(this: IExecuteFunctions): Pro
 			try {
 				const redis = await getRedisClient(redisConfig);
 				if (redis) {
-					const hash = redisKeyHash(baseUrl, String(credentials.APIIntegrationcode ?? ''));
+					// MUST match the poller's identity in request.ts (baseUrl + integrationCode + Username),
+					// or this read never finds the snapshot the poller wrote.
+					const hash = redisUsageKeyHash(
+						baseUrl,
+						String(credentials.APIIntegrationcode ?? ''),
+						String(credentials.Username ?? ''),
+					);
 					const shared = await readUsage(redis, hash);
 					if (shared) {
 						thresholdInfo = shared;
