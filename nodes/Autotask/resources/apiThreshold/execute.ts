@@ -1,5 +1,8 @@
 ﻿import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { fetchThresholdInformation } from '../../helpers/http/request';
+import type { IAutotaskCredentials } from '../../types/base/auth';
+import { getRedisConfigFromCredentials, getRedisClient, redisUsageKeyHash } from '../../helpers/http/redis/client';
+import { readUsage } from '../../helpers/http/redis/usageStore';
 
 /**
  * Executes the API threshold information operation
@@ -10,8 +13,41 @@ export async function executeApiThresholdOperation(this: IExecuteFunctions): Pro
 
 	// For now we only have one operation: get
 	if (operation === 'get') {
-		// Fetch the threshold information
-		const thresholdInfo = await fetchThresholdInformation.call(this);
+		const credentials = (await this.getCredentials('autotaskApi')) as IAutotaskCredentials;
+		const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
+
+		let source: 'redis' | 'api' = 'api';
+		let thresholdInfo: Awaited<ReturnType<typeof fetchThresholdInformation>> | null = null;
+
+		// Prefer the cluster-wide shared snapshot when Redis coordination is on and healthy.
+		const redisConfig = getRedisConfigFromCredentials(credentials as unknown as Record<string, unknown>);
+		if (redisConfig) {
+			try {
+				const redis = await getRedisClient(redisConfig);
+				if (redis) {
+					// MUST match the poller's identity in request.ts (baseUrl + integrationCode + Username),
+					// or this read never finds the snapshot the poller wrote. The writer normalises
+					// baseUrl (strips trailing slash[es]) before hashing, so the reader MUST too —
+					// otherwise a trailing-slash credential reads a different key than it wrote.
+					const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+					const hash = redisUsageKeyHash(
+						normalizedBaseUrl,
+						String(credentials.APIIntegrationcode ?? ''),
+						String(credentials.Username ?? ''),
+					);
+					const shared = await readUsage(redis, hash);
+					if (shared) {
+						thresholdInfo = shared;
+						source = 'redis';
+					}
+				}
+			} catch { /* fall back to direct fetch */ }
+		}
+
+		if (!thresholdInfo) {
+			// Fetch the threshold information directly from the API
+			thresholdInfo = await fetchThresholdInformation.call(this);
+		}
 
 		if (!thresholdInfo) {
 			// If we couldn't get the information, return empty array
@@ -40,6 +76,10 @@ export async function executeApiThresholdOperation(this: IExecuteFunctions): Pro
 					usageLevel,
 					remainingRequests: thresholdInfo.externalRequestThreshold - thresholdInfo.currentTimeframeRequestCount,
 					timeframeDuration: `${thresholdInfo.requestThresholdTimeframe} minutes`,
+					source,
+					...('syncedAt' in thresholdInfo && thresholdInfo.syncedAt
+						? { syncedAt: new Date(thresholdInfo.syncedAt as number).toISOString() }
+						: {}),
 				},
 			]),
 		];

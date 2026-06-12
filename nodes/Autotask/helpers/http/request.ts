@@ -17,10 +17,98 @@ import type { IQueryResponse } from '../../types/base/entity-types';
 import type { IApiError, IApiErrorDetail, IApiErrorWithResponse } from '../../types/base/api';
 import type { OperationType } from '../../types/base/entity-types';
 import { handleRateLimit, getTrackerForCredential } from './rateLimit';
-import { endpointThreadTracker } from './threadLimit';
+import { endpointThreadTracker, getEndpointFromUrl } from './threadLimit';
 import { executeWithRetry } from './retryHandler';
 import { autotaskCredentialStore } from '../credential-store';
 import { createOverrideScrubber, sanitizeErrorForLogging } from '../security/credential-masking';
+import { getRedisConfigFromCredentials, getRedisClient, redisKeyHash, redisUsageKeyHash, type RedisLike } from './redis/client';
+import { acquireThreadSlot, releaseThreadSlot } from './redis/threadStore';
+import { tryAcquirePollLock, writeUsage } from './redis/usageStore';
+
+const THREAD_LIMIT = 3;
+const THREAD_LEASE_MS = 300_000;        // Autotask 5-min REST exec timeout
+const THREAD_KEY_TTL_MS = 330_000;      // lease + skew buffer
+const THREAD_ACQUIRE_MAX_WAIT_MS = 45_000;
+const THREAD_POLL_BASE_MS = 300;
+const POLL_DEDUP_WINDOW_MS = 90_000;
+const USAGE_TTL_MS = 95_000;
+
+/**
+ * Synthetic error thrown when the Redis semaphore is genuinely full after the
+ * maxWait window. Its message deliberately matches `isThreadLimitError` in
+ * retryHandler.ts (contains "thread limit" + "Itgenatr005") so the broadened
+ * retry handler backs off and re-runs the request callback — applying real
+ * backpressure WITHOUT firing a request at Autotask that is almost certain to be
+ * rejected (a full cluster-wide semaphore usually reflects a genuinely-occupied
+ * Autotask thread budget). The retry handler's MAX_TOTAL_WAIT_MS budget bounds the
+ * total wait, so the acquire→backoff→re-acquire cycle cannot loop forever.
+ */
+const REDIS_SEMAPHORE_FULL_MESSAGE =
+	'Autotask thread limit reached (Itgenatr005): all concurrency slots are in use cluster-wide. ' +
+	'Backing off before retrying without firing a request likely to be rejected.';
+
+/**
+ * Acquires one concurrency slot for `endpoint` via Redis when healthy, else the
+ * in-memory tracker. Returns a release function.
+ *
+ * Behaviour when Redis is healthy but the semaphore stays full past the maxWait
+ * window: THROW a synthetic, retryable thread-limit error (Option A). This keeps
+ * the semaphore applying backpressure exactly when contention is highest instead
+ * of firing a doomed request at Autotask (which would burn a request against the
+ * db-wide budget and, via the retry handler, re-enter this function and bypass
+ * again). The throw only happens on the Redis-full-after-maxWait path — the
+ * Redis-error fall-through and the in-memory path remain fail-open and unchanged.
+ */
+export async function acquireConcurrencySlot(
+	redis: RedisLike | null,
+	threadKey: string,
+	inMemoryEndpoint: string,
+): Promise<() => Promise<void>> {
+	if (redis) {
+		const deadline = Date.now() + THREAD_ACQUIRE_MAX_WAIT_MS;
+		while (true) {
+			try {
+				const { acquired, member } = await acquireThreadSlot(
+					redis, threadKey, THREAD_LIMIT, THREAD_LEASE_MS, THREAD_KEY_TTL_MS,
+				);
+				if (acquired) {
+					return async () => { try { await releaseThreadSlot(redis, threadKey, member); } catch { /* ignore */ } };
+				}
+			} catch {
+				break; // redis error mid-wait → fall through to in-memory (fail-open, unchanged)
+			}
+			if (Date.now() >= deadline) {
+				// Semaphore genuinely full after maxWait. Apply local backpressure via the
+				// retry handler rather than firing an unguarded request at Autotask.
+				console.warn(`[redis] thread slot wait exceeded ${THREAD_ACQUIRE_MAX_WAIT_MS}ms for ${threadKey}; backing off via retryable thread-limit error`);
+				throw new Error(REDIS_SEMAPHORE_FULL_MESSAGE);
+			}
+			const jitter = THREAD_POLL_BASE_MS + Math.floor(Math.random() * 100) - 50; // 250–350ms
+			await new Promise((r) => setTimeout(r, jitter));
+		}
+	}
+	// Fail-open: in-memory per-worker semaphore (endpointThreadTracker already statically imported)
+	await endpointThreadTracker.acquireThread(inMemoryEndpoint);
+	return async () => { endpointThreadTracker.releaseThread(inMemoryEndpoint); };
+}
+
+/**
+ * Best-effort: at most once per POLL_DEDUP_WINDOW_MS cluster-wide, poll
+ * ThresholdInformation and publish it to the shared usage key. Never throws.
+ */
+async function maybePollThreshold(
+	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
+	redis: RedisLike,
+	hash: string,
+): Promise<void> {
+	try {
+		if (!(await tryAcquirePollLock(redis, hash, POLL_DEDUP_WINDOW_MS))) return;
+		const info = await fetchThresholdInformation.call(this);
+		if (info) {
+			await writeUsage(redis, hash, { ...info, syncedAt: Date.now() }, USAGE_TTL_MS);
+		}
+	} catch { /* best-effort; never block the request */ }
+}
 
 interface IAutotaskSuccessResponse {
 	id?: number;
@@ -443,15 +531,45 @@ export async function autotaskApiRequest<T = JsonObject>(
 		);
 	}
 
+	// Resolve Redis (fail-open: null when disabled/unhealthy) and the shared keys.
+	const redisConfig = getRedisConfigFromCredentials(credentials as unknown as Record<string, unknown>);
+	const redis = redisConfig ? await getRedisClient(redisConfig) : null;
+	// Normalise the base URL (strip trailing slash[es]) BEFORE feeding it to any Redis
+	// key hash — mirrors the request-URL normalisation at line ~486. Without this, two
+	// credentials pointing at the same custom zone but differing only by a trailing slash
+	// (e.g. ".../" vs "...") would hash to different keys and each grant its own 3 slots,
+	// oversubscribing the shared Autotask integration-code thread budget. The zone (enum)
+	// branch holds fixed URLs without trailing slashes, so this is a harmless no-op there.
+	const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+	// Thread semaphore identity: {baseUrl, integrationCode} — NO Username (the Autotask
+	// thread limit is scoped by integration code; users sharing a code share one budget).
+	const threadHash = redisKeyHash(normalizedBaseUrl, String(credentials.APIIntegrationcode ?? ''));
+	const threadKey = `n8n-autotask:thr:${threadHash}:${getEndpointFromUrl(options.url as string)}`;
+	// Poll/usage identity: {baseUrl, integrationCode, Username} — Username IS included to
+	// stop one API user's ThresholdInformation snapshot/poll-lock bleeding into another's.
+	const usageHash = redisUsageKeyHash(
+		normalizedBaseUrl,
+		String(credentials.APIIntegrationcode ?? ''),
+		String(credentials.Username ?? ''),
+	);
+
 	try {
-		// Acquire a thread for this endpoint before proceeding
-		await endpointThreadTracker.acquireThread(baseEndpoint);
+		// Best-effort cluster-wide ThresholdInformation poll (deduped via Redis).
+		if (redis) {
+			await maybePollThreshold.call(this, redis, usageHash);
+		}
 
 		// Handle rate limiting before making the request (single attempt)
 		await handleRateLimit(getTrackerForCredential(credentialKey));
 
 		const response = await executeWithRetry(this, async () => {
-			return this.helpers.request(options);
+			// Acquire one concurrency slot per attempt (Redis when healthy, else in-memory).
+			const release = await acquireConcurrencySlot(redis, threadKey, baseEndpoint);
+			try {
+				return await this.helpers.request(options);
+			} finally {
+				await release();
+			}
 		});
 
 		// Handle empty responses
@@ -694,8 +812,5 @@ export async function autotaskApiRequest<T = JsonObject>(
 		// Autotask-specific error regardless of how this n8n version's constructor
 		// extracts it from the error object (behaviour varies across n8n versions).
 		throw new NodeApiError(this.getNode(), apiError as unknown as JsonObject, { message: detailedMessage });
-	} finally {
-		// Release the thread when done (whether successful or failed)
-		endpointThreadTracker.releaseThread(baseEndpoint);
 	}
 }
