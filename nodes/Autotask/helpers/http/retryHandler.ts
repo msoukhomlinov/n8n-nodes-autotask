@@ -60,7 +60,19 @@ export async function executeWithRetry<T>(
 	requestFn: () => Promise<T>,
 ): Promise<T> {
 	let attempt = 0;
+	// `totalWaitTime` accumulates ONLY the backoff/Retry-After sleeps this handler
+	// schedules. It still drives the Retry-After pre-sleep guard (a single
+	// server-requested wait must not overshoot the remaining budget) and the log line.
 	let totalWaitTime = 0;
+	// `startTime` anchors a WALL-CLOCK budget that bounds the FULL elapsed time of the
+	// retry loop — including time spent inside `requestFn` itself. This matters because
+	// the request callback can block before failing (e.g. acquireConcurrencySlot waits
+	// up to THREAD_ACQUIRE_MAX_WAIT_MS for a Redis thread slot, then throws a retryable
+	// thread-limit error). That acquire-wait is invisible to `totalWaitTime` (which only
+	// sums sleeps), so without a wall-clock bound a permanently-full semaphore could keep
+	// a workflow blocked for MAX_TOTAL_WAIT_MS + N × acquire-wait. Gating on real elapsed
+	// time makes acquire waits, request time, and backoff all count toward the 5-min budget.
+	const startTime = Date.now();
 
 	while (true) {
 		try {
@@ -111,6 +123,48 @@ export async function executeWithRetry<T>(
 					MAX_TOTAL_WAIT_MS / 1_000
 				}s)`,
 			);
+
+			// WALL-CLOCK budget guard. Bounds REAL elapsed time across the whole loop —
+			// including time spent inside requestFn (e.g. a 45s thread-slot acquire wait
+			// that then throws a retryable thread-limit error). The backoff-only
+			// `totalWaitTime` cannot see that wait, so under a permanently-full semaphore
+			// it would let the loop run for MAX_TOTAL_WAIT_MS + N × acquire-wait. Here we
+			// throw once the time already elapsed plus the next sleep would exceed the
+			// budget — i.e. when there is no room left to wait again and retry usefully.
+			//
+			// This does NOT regress the Retry-After path: for a single 429 retry the
+			// callback returns/throws instantly under fake timers, so `elapsed` is ~0 at
+			// this point and a within-budget Retry-After (e.g. 120s) still sleeps. The
+			// long-Retry-After-overshoot case (e.g. 600s > remaining budget) is still
+			// caught by the totalWaitTime pre-sleep guard below, exactly as before.
+			const elapsed = Date.now() - startTime;
+			if (elapsed + waitMs > MAX_TOTAL_WAIT_MS) {
+				const threadLimited = isThreadLimitError(error);
+				const elapsedSeconds = (elapsed / 1_000).toFixed(0);
+				const budgetSeconds = (MAX_TOTAL_WAIT_MS / 1_000).toFixed(0);
+				const budgetError = threadLimited
+					? {
+							message:
+								'Autotask thread-concurrency limit could not be satisfied within the retry budget. ' +
+								`Spent ${elapsedSeconds}s of the ${budgetSeconds}s budget waiting for a free concurrency slot. ` +
+								'Suggestions: (1) Reduce workflow concurrency targeting the same Autotask integration code. ' +
+								'(2) Stagger bulk operations so fewer requests contend for the 3-thread limit at once. ' +
+								'(3) Verify no other integration is saturating the shared thread budget.',
+							statusCode: 429,
+							description: `Thread-limit retry budget of ${budgetSeconds}s exhausted after ${attempt} attempt(s).`,
+						}
+					: {
+							message:
+								'Autotask API rate limit exceeded (429 Too Many Requests). ' +
+								`Retry budget of ${budgetSeconds}s exhausted (${elapsedSeconds}s elapsed) after ${attempt} attempt(s). ` +
+								'Suggestions: (1) Reduce workflow trigger frequency or concurrency. ' +
+								'(2) Enable response caching on read operations. ' +
+								'(3) Spread bulk operations over a longer time period.',
+							statusCode: 429,
+							description: `Retry budget of ${budgetSeconds}s exhausted after ${attempt} attempt(s).`,
+						};
+				throw new NodeApiError(context.getNode(), budgetError);
+			}
 
 			// Reject immediately if the single wait would overshoot the remaining budget.
 			// This prevents blocking the workflow for the full capped duration (up to 600s)
