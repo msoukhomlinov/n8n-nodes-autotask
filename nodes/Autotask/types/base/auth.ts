@@ -11,6 +11,11 @@ export interface IAutotaskCredentials {
 	changeInfoField3Alias?: string;
 	changeInfoField4Alias?: string;
 	changeInfoField5Alias?: string;
+	redisEnabled?: boolean;
+	redisHost?: string;
+	redisPort?: number;
+	redisPassword?: string;
+	redisTls?: boolean;
 }
 
 export interface ICredentialsConfig {
