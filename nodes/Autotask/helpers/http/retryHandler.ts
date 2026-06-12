@@ -18,7 +18,7 @@ type AutotaskContexts = IExecuteFunctions | IHookFunctions | ILoadOptionsFunctio
  */
 type ErrorEntry = string | { message?: string } | null | undefined;
 
-function isThreadLimitError(error: unknown): boolean {
+export function isThreadLimitError(error: unknown): boolean {
 	const err = error as {
 		message?: string;
 		errors?: ErrorEntry[];

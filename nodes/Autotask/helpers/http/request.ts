@@ -34,11 +34,32 @@ const POLL_DEDUP_WINDOW_MS = 90_000;
 const USAGE_TTL_MS = 95_000;
 
 /**
- * Acquires one concurrency slot for `endpoint` via Redis when healthy, else the
- * in-memory tracker. Returns a release function. Bounded wait; on timeout it
- * proceeds WITHOUT a slot (the broadened retry handler + Autotask are the backstop).
+ * Synthetic error thrown when the Redis semaphore is genuinely full after the
+ * maxWait window. Its message deliberately matches `isThreadLimitError` in
+ * retryHandler.ts (contains "thread limit" + "Itgenatr005") so the broadened
+ * retry handler backs off and re-runs the request callback — applying real
+ * backpressure WITHOUT firing a request at Autotask that is almost certain to be
+ * rejected (a full cluster-wide semaphore usually reflects a genuinely-occupied
+ * Autotask thread budget). The retry handler's MAX_TOTAL_WAIT_MS budget bounds the
+ * total wait, so the acquire→backoff→re-acquire cycle cannot loop forever.
  */
-async function acquireConcurrencySlot(
+const REDIS_SEMAPHORE_FULL_MESSAGE =
+	'Autotask thread limit reached (Itgenatr005): all concurrency slots are in use cluster-wide. ' +
+	'Backing off before retrying without firing a request likely to be rejected.';
+
+/**
+ * Acquires one concurrency slot for `endpoint` via Redis when healthy, else the
+ * in-memory tracker. Returns a release function.
+ *
+ * Behaviour when Redis is healthy but the semaphore stays full past the maxWait
+ * window: THROW a synthetic, retryable thread-limit error (Option A). This keeps
+ * the semaphore applying backpressure exactly when contention is highest instead
+ * of firing a doomed request at Autotask (which would burn a request against the
+ * db-wide budget and, via the retry handler, re-enter this function and bypass
+ * again). The throw only happens on the Redis-full-after-maxWait path — the
+ * Redis-error fall-through and the in-memory path remain fail-open and unchanged.
+ */
+export async function acquireConcurrencySlot(
 	redis: RedisLike | null,
 	threadKey: string,
 	inMemoryEndpoint: string,
@@ -54,11 +75,13 @@ async function acquireConcurrencySlot(
 					return async () => { try { await releaseThreadSlot(redis, threadKey, member); } catch { /* ignore */ } };
 				}
 			} catch {
-				break; // redis error mid-wait → fall through to in-memory
+				break; // redis error mid-wait → fall through to in-memory (fail-open, unchanged)
 			}
 			if (Date.now() >= deadline) {
-				console.warn(`[redis] thread slot wait exceeded ${THREAD_ACQUIRE_MAX_WAIT_MS}ms for ${threadKey}; proceeding without a slot`);
-				return async () => { /* no slot held */ };
+				// Semaphore genuinely full after maxWait. Apply local backpressure via the
+				// retry handler rather than firing an unguarded request at Autotask.
+				console.warn(`[redis] thread slot wait exceeded ${THREAD_ACQUIRE_MAX_WAIT_MS}ms for ${threadKey}; backing off via retryable thread-limit error`);
+				throw new Error(REDIS_SEMAPHORE_FULL_MESSAGE);
 			}
 			const jitter = THREAD_POLL_BASE_MS + Math.floor(Math.random() * 100) - 50; // 250–350ms
 			await new Promise((r) => setTimeout(r, jitter));
