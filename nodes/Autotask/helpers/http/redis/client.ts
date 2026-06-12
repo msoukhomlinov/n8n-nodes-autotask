@@ -94,9 +94,14 @@ export async function getRedisClient(cfg: RedisConfig): Promise<RedisLike | null
 			// Lazy require — keeps the node load-safe if `redis` is missing.
 			// eslint-disable-next-line @typescript-eslint/no-require-imports
 			const { createClient } = require('redis') as typeof import('redis');
+			// reconnectStrategy:false — first connection failure is final and connect() rejects.
+			// Without this, node-redis retries indefinitely and connect() never settles,
+			// causing every caller to hang until n8n's execution timeout (fail-open defeated).
+			// connectTimeout:3000 — bound the OS-default SYN timeout so a silently-dropped
+			// packet doesn't stall the promise for tens of seconds.
 			const socketOpts = cfg.tls
-				? { host: cfg.host, port: cfg.port, tls: true as const }
-				: { host: cfg.host, port: cfg.port };
+				? { host: cfg.host, port: cfg.port, tls: true as const, reconnectStrategy: false as const, connectTimeout: 3000 }
+				: { host: cfg.host, port: cfg.port, reconnectStrategy: false as const, connectTimeout: 3000 };
 			const client = createClient({
 				socket: socketOpts,
 				password: cfg.password,
