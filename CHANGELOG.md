@@ -9,8 +9,13 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - ThresholdInformation polling deduplicated to once per ~90s cluster-wide via a shared Redis key; the same snapshot powers cluster-wide usage reporting on the API Usage operation.
 
 ### Fixed
-- Retry handler now retries Autotask thread-limit rejections (Itgenatr005), which may arrive with a non-429 status, not just HTTP 429.
+- Retry handler now retries Autotask thread-limit rejections (Itgenatr005), which may arrive with a non-429 status, not just HTTP 429. Detection inspects all n8n/Autotask error-body shapes (`message`, `response.data.errors`, top-level `errors`, `error.errors`).
 - Thread slot is acquired per HTTP attempt and after rate pacing, so a rate-limit wait never holds a concurrency slot.
+- Redis client fails fast on an unreachable or misconfigured host (no infinite reconnect) and degrades to the in-memory guards, instead of hanging the worker.
+- Poll/usage keys are scoped per credential `Username` (the thread-semaphore key stays per integration code, matching Autotask's thread-limit scope), so distinct API users on one integration code no longer share each other's ThresholdInformation snapshot or poll-lock.
+- Custom-zone base URLs are normalised (trailing slashes stripped) before key hashing, so `.../zone` and `.../zone/` share one semaphore instead of each granting three slots.
+- A full thread semaphore applies local backpressure (a retryable thread-limit error) instead of firing an unguarded request, and the retry budget bounds total wall-clock time (including slot-acquire waits), so a workflow cannot block materially past the 5-minute budget.
+- Redis coordination keys are derived from hashed, opaque credential identity (Username and Secret excluded from key material); the Redis password is never hashed or written to logs.
 
 ## [2.22.3] - 2026-06-03
 
