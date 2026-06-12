@@ -20,7 +20,7 @@
     "url": "git+https://github.com/msoukhomlinov/n8n-nodes-autotask.git"
   },
   "engines": {
-    "node": ">=18.10",
+    "node": ">=18.19",
     "pnpm": ">=9.1"
   },
   "packageManager": "pnpm@9.1.4",
@@ -76,7 +76,8 @@
     "keyv-file": "^5.3.3",
     "moment": "^2.30.1",
     "moment-timezone": "^0.5.48",
-    "pluralize": "^8.0.0"
+    "pluralize": "^8.0.0",
+    "redis": "^5"
   },
   "peerDependencies": {
     "n8n-workflow": "*"
