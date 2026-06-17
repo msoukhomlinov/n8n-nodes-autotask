@@ -147,6 +147,17 @@ function normaliseNameInput(value: string | undefined): string {
 		.replace(/\s+/g, ' ');
 }
 
+/**
+ * Resolve the effective searchContactEmails flag.
+ * Defaults to true when omitted (undefined/null); honours an explicit false (or 0,
+ * which some clients coerce booleans to). This is the single source of the runtime
+ * default — the schema/description steer the model to keep it true, but a user can
+ * still opt into website-only matching by passing false.
+ */
+export function resolveSearchContactEmailsDefault(value: unknown): boolean {
+	return value !== false && value !== 0;
+}
+
 function normaliseOperator(operator: string | undefined): DomainOperator {
 	const lower = (operator ?? 'contains').trim().toLowerCase();
 	if (lower === 'like') return 'contains';
@@ -317,7 +328,7 @@ export async function searchCompaniesByDomain(
 	const requestedOperator = options.domainOperator ?? 'contains';
 	const requestedNormalisedOperator = normaliseOperator(requestedOperator);
 	const limit = clampLimit(options.limit);
-	const searchContactEmails = options.searchContactEmails !== false && (options.searchContactEmails as unknown) !== 0;
+	const searchContactEmails = resolveSearchContactEmailsDefault(options.searchContactEmails);
 	const notes: string[] = [];
 
 	if (!domainNormalised) {

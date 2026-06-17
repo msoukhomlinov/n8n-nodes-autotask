@@ -319,7 +319,7 @@ export function buildCompanySearchByDomainDescription(resourceName: string): str
 		'Input can be a bare domain or full URL; the tool normalises it to a domain fragment (for example autotask.net). ' +
 		'IMPORTANT: Autotask typically stores company websites as full URLs (for example https://www.autotask.net/), so exact operator matches can fail on bare domain input. ' +
 		'To avoid false negatives, eq/like semantics are handled safely for website matching. ' +
-		'When searchContactEmails is true (default), if no company website matches exist, the tool searches Contact.emailAddress by domain and resolves the most common canonical company name from companyID references. ' +
+		'searchContactEmails defaults to true and you should keep it true: when no company website field matches, the tool searches Contact.emailAddress by domain and resolves the canonical company from companyID references. Many companies have no website field populated, so disabling this fallback typically yields zero matches. Only pass searchContactEmails=false when the user explicitly requests website-only matching. ' +
 		"Use the 'fields' parameter to limit which company fields are returned per result (comma-separated); omit to receive the full company entity. matchedField and matchedValue are always included to indicate which website field matched and its value. " +
 		describeFieldsHint(resourceName)
 	);
@@ -909,7 +909,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{
 				field: 'searchContactEmails',
 				type: 'boolean',
-				description: 'Fall back to contact email search if no website match (default true).',
+				description: 'Default true — keep it true. Falls back to contact-email domain search when no company website matches (many companies have no website field set, so false typically returns zero results). Set false ONLY if the user explicitly asks for website-only matching.',
 			},
 			{
 				field: 'fields',

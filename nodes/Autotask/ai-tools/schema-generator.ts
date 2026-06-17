@@ -547,7 +547,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.searchContactEmails = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('When true (default), fall back to contact email search if no website match.');
+				.describe('Defaults to true; keep it true. When true, falls back to contact-email domain search if no company website matches — required because many companies have no website field populated. Only set false if the user explicitly asks to match company website fields ONLY.');
 			shape.limit = rz
 				.number()
 				.int()
