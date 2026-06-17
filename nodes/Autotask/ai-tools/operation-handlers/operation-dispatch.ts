@@ -407,25 +407,52 @@ export function dispatchOperationResponse(
 		}
 
 		case 'searchByDomain': {
-			if (records.length === 0) {
+			// The companies handler pushes the full search ENVELOPE as a single object
+			// (returnData.push({ json: response })), so `records` is always [<envelope>]
+			// — records.length === 1 even on a genuine no-match. Inspect the envelope's
+			// `source`/`results` to distinguish a real match from a no-match. The actual
+			// company rows live in envelope.results (CompanyDomainResultItem[]).
+			const envelope = (records[0] ?? null) as Record<string, unknown> | null;
+			const envelopeResults = Array.isArray(envelope?.results)
+				? (envelope?.results as Record<string, unknown>[])
+				: [];
+			const isNoMatch = envelope?.source === 'none' || envelopeResults.length === 0;
+
+			if (isNoMatch) {
+				const unresolvedSearch =
+					envelope && typeof envelope.unresolvedSearch === 'object' && envelope.unresolvedSearch !== null
+						? (envelope.unresolvedSearch as Record<string, unknown>)
+						: undefined;
+				const directive =
+					typeof unresolvedSearch?.nextAction === 'string' && unresolvedSearch.nextAction.trim() !== ''
+						? (unresolvedSearch.nextAction as string)
+						: `Verify the domain and retry, or use autotask_${resource} with operation 'getMany' with a filter.`;
+				const notes = Array.isArray(envelope?.notes)
+					? (envelope?.notes as unknown[]).filter((note): note is string => typeof note === 'string')
+					: [];
 				return JSON.stringify(
 					wrapError(
 						resource,
 						operation,
 						ERROR_TYPES.NO_RESULTS_FOUND,
 						`No ${resource} found matching the supplied domain.`,
-						`Verify the domain and retry, or use autotask_${resource} with operation 'getMany' with a filter.`,
+						directive,
+						notes.length > 0 ? { notes } : undefined,
 					),
 				);
 			}
+
+			// Real match — unwrap the envelope's results into the list response so the model
+			// sees the actual company rows and an accurate count, not "Found 1 records".
+			const matchedRecords = envelopeResults;
 			// searchByDomain uses list shape — no domain-specific qualifier in summary since params.domain is not passed
 			const resolvedLabels = toResolvedLabels(context.resolutions);
 			return JSON.stringify({
-				summary: `Found ${records.length} ${resource} records — complete set, no further calls needed.`,
+				summary: `Found ${matchedRecords.length} ${resource} records — complete set, no further calls needed.`,
 				resource,
 				operation: `${resource}.${operation}`,
-				records,
-				returnedCount: records.length,
+				records: matchedRecords,
+				returnedCount: matchedRecords.length,
 				hasMore: false,
 				continuation: null,
 				isTruncated: false,

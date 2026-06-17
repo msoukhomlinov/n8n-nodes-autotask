@@ -2,7 +2,8 @@ import type { IExecuteFunctions } from 'n8n-workflow';
 import { CountOperation } from '../operations/base/count-operation';
 import type { IAutotaskEntity } from '../types';
 import type { FieldMeta } from '../helpers/aiHelper';
-import { buildFieldLookup } from './filter-builder';
+import { buildFieldLookup, coerceFilterValueByFieldType } from './filter-builder';
+import type { ToolFilter } from './filter-builder';
 import { TYPED_REFERENCE_COMPANION_FIELDS } from '../helpers/typed-reference';
 import type { OperationContractViolation } from './operation-contracts';
 
@@ -136,6 +137,54 @@ export function buildFieldValues(
 		}
 	}
 	return result;
+}
+
+/**
+ * Promote top-level entity fields that are valid READ fields into `eq` filters.
+ *
+ * The model sometimes passes a parent-scope / read field (e.g. `companyID` on a
+ * child resource) as a top-level param expecting it to scope the query. For read
+ * operations these are NOT part of any request body — the query body is built from
+ * `combinedFilters`, not `fieldValues` — so without promotion the field is silently
+ * dropped and the query returns unscoped results.
+ *
+ * For each non-empty `fieldValues` entry present in `readFields`, this pushes an `eq`
+ * filter (using the canonical field id + type-coerced value) and DELETES the entry from
+ * `fieldValues` (mutates in place). Empty/blank read-field values (`''`, `null`,
+ * `undefined`) are NOT promoted and are left intact so they flow to the downstream leak
+ * check rather than being silently dropped. Entries NOT in `readFields` are also left
+ * untouched so the leak check still fires on genuine write-only leaks.
+ *
+ * Caller is responsible for scoping this to generic list operations
+ * (getMany / count / getPosted / getUnposted).
+ */
+export function promoteReadFieldsToFilters(
+	fieldValues: Record<string, unknown>,
+	readFields: FieldMeta[],
+): ToolFilter[] {
+	if (readFields.length === 0) return [];
+	const readFieldLookup = buildFieldLookup(readFields);
+	const promoted: ToolFilter[] = [];
+	for (const key of Object.keys(fieldValues)) {
+		const canonical = readFieldLookup.get(key.toLowerCase());
+		if (!canonical) continue; // not a read field → leave for the leak check
+		const rawValue = fieldValues[key];
+		// Empty/blank values are never promoted to a filter. Check BEFORE deleting so an
+		// empty value is left intact in fieldValues (fail-safe): it then flows to the
+		// downstream leak check rather than being silently deleted-and-dropped here.
+		if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+		delete fieldValues[key];
+		promoted.push({
+			field: canonical.id,
+			op: 'eq',
+			value: coerceFilterValueByFieldType(
+				rawValue as string | number | boolean | Array<string | number | boolean>,
+				canonical.type,
+				'eq',
+			),
+		});
+	}
+	return promoted;
 }
 
 /**

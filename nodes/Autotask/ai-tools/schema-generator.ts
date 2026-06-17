@@ -544,10 +544,12 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe(
 					"Domain comparison operator (default 'contains'). When a domain is available, do domain matching first; avoid strict exact-name-only matching.",
 				);
-			shape.searchContactEmails = rz
-				.coerce.boolean()
-				.nullish()
-				.describe('When true (default), fall back to contact email search if no website match.');
+			// searchContactEmails intentionally NOT exposed to the AI schema.
+			// The contact-email fallback is always on for AI calls (a public-domain
+			// guard in the helper prevents over-matching consumer domains). Models
+			// previously emitted searchContactEmails=false nondeterministically,
+			// silently disabling the only match path for companies with no website
+			// field. The manual node retains the toggle for human users.
 			shape.limit = rz
 				.number()
 				.int()

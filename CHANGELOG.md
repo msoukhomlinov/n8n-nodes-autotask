@@ -2,6 +2,15 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.23.1] - 2026-06-17
+
+### Changed
+- AI tools: `company.searchByDomain` always searches both company website fields and contact-email domains — the `searchContactEmails` toggle is removed from the AI tool schema. The model previously emitted `searchContactEmails=false` nondeterministically, silently disabling the only match path for companies with no website field and returning zero results; prompt steering alone did not prevent it. A public email-provider guard (gmail.com, outlook.com, etc.) skips the contact-email fallback for consumer domains to avoid over-matching. The manual (non-AI) node keeps the website-only toggle for human users.
+
+### Fixed
+- AI tools: parent-scoped list queries no longer return `INVALID_FILTER_CONSTRAINT` when a valid read field is passed as a top-level param. Calling a child resource's `getMany`/`count`/`getPosted`/`getUnposted` with a parent-scope field (e.g. `companyID` on `companyLocation`) now auto-promotes that field to an `eq` filter so the query is correctly scoped, rather than being rejected. Fields that are not valid read fields (genuine write-only leaks) still raise the leak error. Previously the field was treated as a leaked write field even though it is a queryable read field. Empty/blank read-field values are left in place (and flow to the leak check) rather than being silently dropped.
+- AI tools: `company.searchByDomain` no-match responses now return a `NO_RESULTS_FOUND` error carrying the resolution directive, and successful matches report the actual company rows and count. The standard companies handler returns the search result as a single envelope object, so the AI dispatch path always saw exactly one "record" — every search (including genuine no-matches and the public-domain skip) reported `Found 1 company records — complete set, no further calls needed`, burying the `unresolvedSearch` directive inside the envelope. The dispatch case now unwraps the envelope: no-match (`source: 'none'` or empty results) surfaces the directive as the error `nextAction`, and a real match returns `envelope.results` with the correct `returnedCount`.
+
 ## [2.23.0] - 2026-06-12
 
 ### Changed

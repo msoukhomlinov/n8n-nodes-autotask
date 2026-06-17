@@ -220,6 +220,7 @@ import {
 	getEffectiveLimit,
 	executeCountOperation,
 	buildFieldValues,
+	promoteReadFieldsToFilters,
 	parseFieldsParam,
 	resolveVirtualLabelFields,
 	normaliseOperation,
@@ -338,6 +339,15 @@ export async function executeAiTool(
 	const writeFields = metadata.writeFields ?? [];
 	const fieldValues = buildFieldValues(params, ['id'], writeFields);
 	const filters = buildFilterFromParams(params, readFields, timezone, resource);
+	// Promote top-level read fields (e.g. parent-scope companyID on a child resource)
+	// into eq filters for generic list ops. Without this they are silently dropped for
+	// reads (the query body is built from combinedFilters, not fieldValues) and the leak
+	// check below would reject them. Runs before resolveAndClassifyFilters so promoted
+	// filters get label resolution and flow into combinedFilters; deletes the promoted
+	// keys from fieldValues so the leak check only sees genuine write-only leftovers.
+	if (['getMany', 'count', 'getPosted', 'getUnposted'].includes(normalisedOperation)) {
+		filters.push(...promoteReadFieldsToFilters(fieldValues, readFields));
+	}
 	const entityId = params.id !== undefined ? String(params.id) : '';
 
 	const {

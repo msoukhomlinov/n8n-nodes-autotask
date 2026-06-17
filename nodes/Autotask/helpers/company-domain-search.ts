@@ -17,6 +17,27 @@ const COMPANY_DOMAIN_FIELD_PRIORITY = [
 	'domain',
 ] as const;
 
+/**
+ * Public/consumer email-provider domains. The contact-email fallback is skipped for
+ * these because a domain like `gmail.com` belongs to no single company — searching
+ * every contact with that address would mass-match unrelated records. AI callers can
+ * no longer disable the fallback, so this guard is the safety valve against over-match.
+ */
+const PUBLIC_EMAIL_DOMAINS = new Set([
+	'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com',
+	'yahoo.com', 'yahoo.com.au', 'icloud.com', 'me.com', 'aol.com',
+	'proton.me', 'protonmail.com', 'msn.com', 'bigpond.com', 'bigpond.net.au',
+]);
+
+/**
+ * True when the (already-normalised) domain belongs to a public/consumer email
+ * provider. Such domains map to no single company, so the contact-email fallback
+ * is skipped to avoid mass-matching unrelated contacts.
+ */
+export function isPublicEmailDomain(domain: string): boolean {
+	return PUBLIC_EMAIL_DOMAINS.has(domain.trim().toLowerCase());
+}
+
 type DomainOperator = 'eq' | 'beginsWith' | 'endsWith' | 'contains';
 
 interface DomainSearchOptions {
@@ -145,6 +166,17 @@ function normaliseNameInput(value: string | undefined): string {
 		.trim()
 		.toLowerCase()
 		.replace(/\s+/g, ' ');
+}
+
+/**
+ * Resolve the effective searchContactEmails flag.
+ * Defaults to true when omitted (undefined/null); honours an explicit false (or 0,
+ * which some clients coerce booleans to). This is the single source of the runtime
+ * default — the schema/description steer the model to keep it true, but a user can
+ * still opt into website-only matching by passing false.
+ */
+export function resolveSearchContactEmailsDefault(value: unknown): boolean {
+	return value !== false && value !== 0;
 }
 
 function normaliseOperator(operator: string | undefined): DomainOperator {
@@ -317,7 +349,8 @@ export async function searchCompaniesByDomain(
 	const requestedOperator = options.domainOperator ?? 'contains';
 	const requestedNormalisedOperator = normaliseOperator(requestedOperator);
 	const limit = clampLimit(options.limit);
-	const searchContactEmails = options.searchContactEmails !== false && (options.searchContactEmails as unknown) !== 0;
+	const searchContactEmails = resolveSearchContactEmailsDefault(options.searchContactEmails);
+	const isPublicDomain = isPublicEmailDomain(domainNormalised);
 	const notes: string[] = [];
 
 	if (!domainNormalised) {
@@ -436,8 +469,16 @@ export async function searchCompaniesByDomain(
 		};
 	}
 
-	if (!searchContactEmails) {
-		notes.push('No company website/domain records matched and contact email fallback is disabled.');
+	if (!searchContactEmails || isPublicDomain) {
+		if (isPublicDomain) {
+			notes.push(
+				`Domain '${domainNormalised}' is a public email provider; contact-email fallback skipped. Provide a company name or business domain.`,
+			);
+		} else {
+			notes.push(
+				'No company website/domain records matched and contact email fallback is disabled.',
+			);
+		}
 		return {
 			source: 'none',
 			domainInput,
