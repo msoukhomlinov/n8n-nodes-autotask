@@ -148,10 +148,12 @@ export function buildFieldValues(
  * `combinedFilters`, not `fieldValues` — so without promotion the field is silently
  * dropped and the query returns unscoped results.
  *
- * For each `fieldValues` entry present in `readFields`, this pushes an `eq` filter
- * (using the canonical field id + type-coerced value) and DELETES the entry from
- * `fieldValues` (mutates in place). Entries NOT in `readFields` are left untouched
- * so the downstream write-field leak check still fires on genuine write-only leaks.
+ * For each non-empty `fieldValues` entry present in `readFields`, this pushes an `eq`
+ * filter (using the canonical field id + type-coerced value) and DELETES the entry from
+ * `fieldValues` (mutates in place). Empty/blank read-field values (`''`, `null`,
+ * `undefined`) are NOT promoted and are left intact so they flow to the downstream leak
+ * check rather than being silently dropped. Entries NOT in `readFields` are also left
+ * untouched so the leak check still fires on genuine write-only leaks.
  *
  * Caller is responsible for scoping this to generic list operations
  * (getMany / count / getPosted / getUnposted).
@@ -167,8 +169,11 @@ export function promoteReadFieldsToFilters(
 		const canonical = readFieldLookup.get(key.toLowerCase());
 		if (!canonical) continue; // not a read field → leave for the leak check
 		const rawValue = fieldValues[key];
-		delete fieldValues[key];
+		// Empty/blank values are never promoted to a filter. Check BEFORE deleting so an
+		// empty value is left intact in fieldValues (fail-safe): it then flows to the
+		// downstream leak check rather than being silently deleted-and-dropped here.
 		if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+		delete fieldValues[key];
 		promoted.push({
 			field: canonical.id,
 			op: 'eq',
