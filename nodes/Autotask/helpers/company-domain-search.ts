@@ -17,6 +17,27 @@ const COMPANY_DOMAIN_FIELD_PRIORITY = [
 	'domain',
 ] as const;
 
+/**
+ * Public/consumer email-provider domains. The contact-email fallback is skipped for
+ * these because a domain like `gmail.com` belongs to no single company — searching
+ * every contact with that address would mass-match unrelated records. AI callers can
+ * no longer disable the fallback, so this guard is the safety valve against over-match.
+ */
+const PUBLIC_EMAIL_DOMAINS = new Set([
+	'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com',
+	'yahoo.com', 'yahoo.com.au', 'icloud.com', 'me.com', 'aol.com',
+	'proton.me', 'protonmail.com', 'msn.com', 'bigpond.com', 'bigpond.net.au',
+]);
+
+/**
+ * True when the (already-normalised) domain belongs to a public/consumer email
+ * provider. Such domains map to no single company, so the contact-email fallback
+ * is skipped to avoid mass-matching unrelated contacts.
+ */
+export function isPublicEmailDomain(domain: string): boolean {
+	return PUBLIC_EMAIL_DOMAINS.has(domain.trim().toLowerCase());
+}
+
 type DomainOperator = 'eq' | 'beginsWith' | 'endsWith' | 'contains';
 
 interface DomainSearchOptions {
@@ -329,6 +350,7 @@ export async function searchCompaniesByDomain(
 	const requestedNormalisedOperator = normaliseOperator(requestedOperator);
 	const limit = clampLimit(options.limit);
 	const searchContactEmails = resolveSearchContactEmailsDefault(options.searchContactEmails);
+	const isPublicDomain = isPublicEmailDomain(domainNormalised);
 	const notes: string[] = [];
 
 	if (!domainNormalised) {
@@ -447,8 +469,16 @@ export async function searchCompaniesByDomain(
 		};
 	}
 
-	if (!searchContactEmails) {
-		notes.push('No company website/domain records matched and contact email fallback is disabled.');
+	if (!searchContactEmails || isPublicDomain) {
+		if (isPublicDomain) {
+			notes.push(
+				`Domain '${domainNormalised}' is a public email provider; contact-email fallback skipped. Provide a company name or business domain.`,
+			);
+		} else {
+			notes.push(
+				'No company website/domain records matched and contact email fallback is disabled.',
+			);
+		}
 		return {
 			source: 'none',
 			domainInput,
