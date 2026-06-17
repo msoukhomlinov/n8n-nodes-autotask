@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.23.1] - 2026-06-17
+
+### Fixed
+- AI tools: parent-scoped list queries no longer return `INVALID_FILTER_CONSTRAINT` when a valid read field is passed as a top-level param. Calling a child resource's `getMany`/`count`/`getPosted`/`getUnposted` with a parent-scope field (e.g. `companyID` on `companyLocation`) now auto-promotes that field to an `eq` filter so the query is correctly scoped, rather than being rejected. Fields that are not valid read fields (genuine write-only leaks) still raise the leak error. Previously the field was treated as a leaked write field even though it is a queryable read field.
+
 ## [2.23.0] - 2026-06-12
 
 ### Changed
