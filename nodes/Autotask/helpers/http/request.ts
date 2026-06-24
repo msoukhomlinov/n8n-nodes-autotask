@@ -415,12 +415,13 @@ export async function fetchThresholdInformation(
 		const redis = redisConfig ? await getRedisClient(redisConfig) : null;
 		const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
 		const threadHash = redisKeyHash(normalizedBaseUrl, String(credentials.APIIntegrationcode ?? ''));
-		const threadKey = `n8n-autotask:thr:${threadHash}:${getEndpointFromUrl(options.url as string)}`;
+		const endpoint = getEndpointFromUrl(options.url as string);
+		const threadKey = `n8n-autotask:thr:${threadHash}:${endpoint}`;
 
 		// Bypass the RATE limiter (circular dependency, see function docs above) but NOT
 		// the concurrency semaphore. A semaphore-full throw propagates to the outer
 		// try/catch and surfaces as null ("no data") — consistent with existing behaviour.
-		const release = await acquireConcurrencySlot(redis, threadKey, getEndpointFromUrl(options.url as string));
+		const release = await acquireConcurrencySlot(redis, threadKey, endpoint);
 		let response: unknown;
 		try {
 			response = await this.helpers.request(options);
