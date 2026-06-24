@@ -403,14 +403,37 @@ export async function fetchThresholdInformation(
 			json: true,
 		};
 
-		// Bypass rate limiter to avoid circular dependency (see function documentation above)
-		const response = await this.helpers.request(options);
+		// This poll IS a real Autotask request and counts against the 3-concurrent
+		// thread limit (Itgenatr005) like any entity call. It MUST therefore acquire a
+		// concurrency slot just like autotaskApiRequest() does — bypassing the semaphore
+		// here re-opens the unguarded-poller hole that trips the thread limit in queue
+		// mode with multiple workers. Resolve Redis fail-open (null when disabled/
+		// unhealthy → in-memory fallback inside acquireConcurrencySlot), then build the
+		// per-endpoint thread key with the SAME identity the entity path uses
+		// (redisKeyHash over normalised baseUrl + integration code; NO Username).
+		const redisConfig = getRedisConfigFromCredentials(credentials as unknown as Record<string, unknown>);
+		const redis = redisConfig ? await getRedisClient(redisConfig) : null;
+		const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+		const threadHash = redisKeyHash(normalizedBaseUrl, String(credentials.APIIntegrationcode ?? ''));
+		const threadKey = `n8n-autotask:thr:${threadHash}:${getEndpointFromUrl(options.url as string)}`;
+
+		// Bypass the RATE limiter (circular dependency, see function docs above) but NOT
+		// the concurrency semaphore. A semaphore-full throw propagates to the outer
+		// try/catch and surfaces as null ("no data") — consistent with existing behaviour.
+		const release = await acquireConcurrencySlot(redis, threadKey, getEndpointFromUrl(options.url as string));
+		let response: unknown;
+		try {
+			response = await this.helpers.request(options);
+		} finally {
+			await release();
+		}
 
 		if (response && typeof response === 'object') {
+			const r = response as Record<string, number | undefined>;
 			return {
-				externalRequestThreshold: response.externalRequestThreshold || 10000,
-				requestThresholdTimeframe: response.requestThresholdTimeframe || 60,
-				currentTimeframeRequestCount: response.currentTimeframeRequestCount || 0,
+				externalRequestThreshold: r.externalRequestThreshold || 10000,
+				requestThresholdTimeframe: r.requestThresholdTimeframe || 60,
+				currentTimeframeRequestCount: r.currentTimeframeRequestCount || 0,
 			};
 		}
 
