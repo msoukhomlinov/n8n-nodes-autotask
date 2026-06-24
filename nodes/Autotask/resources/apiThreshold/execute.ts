@@ -1,8 +1,6 @@
 ﻿import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { fetchThresholdInformation } from '../../helpers/http/request';
-import type { IAutotaskCredentials } from '../../types/base/auth';
-import { getRedisConfigFromCredentials, getRedisClient, redisUsageKeyHash } from '../../helpers/http/redis/client';
-import { readUsage } from '../../helpers/http/redis/usageStore';
+import { readSharedUsageSnapshot } from '../../helpers/http/redis/usageStore';
 
 /**
  * Executes the API threshold information operation
@@ -13,35 +11,17 @@ export async function executeApiThresholdOperation(this: IExecuteFunctions): Pro
 
 	// For now we only have one operation: get
 	if (operation === 'get') {
-		const credentials = (await this.getCredentials('autotaskApi')) as IAutotaskCredentials;
-		const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
-
 		let source: 'redis' | 'api' = 'api';
 		let thresholdInfo: Awaited<ReturnType<typeof fetchThresholdInformation>> | null = null;
 
 		// Prefer the cluster-wide shared snapshot when Redis coordination is on and healthy.
-		const redisConfig = getRedisConfigFromCredentials(credentials as unknown as Record<string, unknown>);
-		if (redisConfig) {
-			try {
-				const redis = await getRedisClient(redisConfig);
-				if (redis) {
-					// MUST match the poller's identity in request.ts (baseUrl + integrationCode + Username),
-					// or this read never finds the snapshot the poller wrote. The writer normalises
-					// baseUrl (strips trailing slash[es]) before hashing, so the reader MUST too —
-					// otherwise a trailing-slash credential reads a different key than it wrote.
-					const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
-					const hash = redisUsageKeyHash(
-						normalizedBaseUrl,
-						String(credentials.APIIntegrationcode ?? ''),
-						String(credentials.Username ?? ''),
-					);
-					const shared = await readUsage(redis, hash);
-					if (shared) {
-						thresholdInfo = shared;
-						source = 'redis';
-					}
-				}
-			} catch { /* fall back to direct fetch */ }
+		// readSharedUsageSnapshot resolves the same poll/usage identity the poller writes
+		// under (normalised baseUrl + integration code + Username) and is best-effort (null
+		// on any miss/error), so a miss falls through to the direct API fetch below.
+		const shared = await readSharedUsageSnapshot(this);
+		if (shared) {
+			thresholdInfo = shared;
+			source = 'redis';
 		}
 
 		if (!thresholdInfo) {

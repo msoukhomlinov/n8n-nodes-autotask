@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.23.2] - 2026-06-24
+
+### Fixed
+- ThresholdInformation polling now acquires a Redis concurrency slot, closing the unguarded-poller hole that tripped the 3-thread limit on getThresholdAndUsageInfo in queue mode. The guard sits at the fetchThresholdInformation chokepoint, covering both in-request polling and the apiThreshold resource fallback. The rate tracker now prefers the shared Redis usage snapshot before polling, reducing redundant poll volume.
+
 ## [2.23.1] - 2026-06-17
 
 ### Changed

@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IHookFunctions, ILoadOptionsFunctions, ISupplyDataFunctions } from 'n8n-workflow';
 import { getTrackerForCredential, rateTracker } from './rateLimit';
 import { fetchThresholdInformation } from './request';
+import { readSharedUsageSnapshot } from './redis/usageStore';
 import { autotaskCredentialStore } from '../credential-store';
 import { sanitizeErrorForLogging, createOverrideScrubber } from '../security/credential-masking';
 
@@ -34,6 +35,17 @@ export async function initializeRateTracker(
 
 		tracker.setThresholdInfoFetcher(async () => {
 			try {
+				// Snapshot-first: prefer the shared Redis usage snapshot a peer worker
+				// already polled, avoiding a redundant ThresholdInformation request (which
+				// itself consumes a thread slot). Only poll the API directly on a miss.
+				const shared = await readSharedUsageSnapshot(context);
+				if (shared) {
+					return {
+						externalRequestThreshold: shared.externalRequestThreshold,
+						requestThresholdTimeframe: shared.requestThresholdTimeframe,
+						currentTimeframeRequestCount: shared.currentTimeframeRequestCount,
+					};
+				}
 				const result = await fetchThresholdInformation.call(context as IExecuteFunctions);
 				return result;
 			} catch (error) {
