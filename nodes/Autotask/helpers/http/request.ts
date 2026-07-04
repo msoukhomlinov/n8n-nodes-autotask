@@ -26,8 +26,9 @@ import { acquireThreadSlot, releaseThreadSlot } from './redis/threadStore';
 import { tryAcquirePollLock, writeUsage } from './redis/usageStore';
 
 const THREAD_LIMIT = 3;
-const THREAD_LEASE_MS = 300_000;        // Autotask 5-min REST exec timeout
-const THREAD_KEY_TTL_MS = 330_000;      // lease + skew buffer
+const POLL_THREAD_LIMIT = 1;
+const THREAD_LEASE_MS = 330_000;        // sits ABOVE Autotask's 5-min (300s) REST exec timeout: our semaphore slot is only reclaimed after Autotask has already timed out and decremented its own thread count, so a lease eviction can never free a slot while Autotask still counts the request as live
+const THREAD_KEY_TTL_MS = 360_000;      // whole-key TTL must stay > lease; only cost of the longer lease is a crashed worker's slot lingering ~30s longer
 const THREAD_ACQUIRE_MAX_WAIT_MS = 45_000;
 const THREAD_POLL_BASE_MS = 300;
 const POLL_DEDUP_WINDOW_MS = 90_000;
@@ -63,13 +64,14 @@ export async function acquireConcurrencySlot(
 	redis: RedisLike | null,
 	threadKey: string,
 	inMemoryEndpoint: string,
+	limit: number = THREAD_LIMIT,
 ): Promise<() => Promise<void>> {
 	if (redis) {
 		const deadline = Date.now() + THREAD_ACQUIRE_MAX_WAIT_MS;
 		while (true) {
 			try {
 				const { acquired, member } = await acquireThreadSlot(
-					redis, threadKey, THREAD_LIMIT, THREAD_LEASE_MS, THREAD_KEY_TTL_MS,
+					redis, threadKey, limit, THREAD_LEASE_MS, THREAD_KEY_TTL_MS,
 				);
 				if (acquired) {
 					return async () => { try { await releaseThreadSlot(redis, threadKey, member); } catch { /* ignore */ } };
@@ -88,7 +90,7 @@ export async function acquireConcurrencySlot(
 		}
 	}
 	// Fail-open: in-memory per-worker semaphore (endpointThreadTracker already statically imported)
-	await endpointThreadTracker.acquireThread(inMemoryEndpoint);
+	await endpointThreadTracker.acquireThread(inMemoryEndpoint, limit);
 	return async () => { endpointThreadTracker.releaseThread(inMemoryEndpoint); };
 }
 
@@ -421,7 +423,12 @@ export async function fetchThresholdInformation(
 		// Bypass the RATE limiter (circular dependency, see function docs above) but NOT
 		// the concurrency semaphore. A semaphore-full throw propagates to the outer
 		// try/catch and surfaces as null ("no data") — consistent with existing behaviour.
-		const release = await acquireConcurrencySlot(redis, threadKey, endpoint);
+		//
+		// A threshold poll is a singleton measurement — one snapshot suffices, it never needs 3
+		// concurrent threads. Capping it at 1 leaves 2 of Autotask's 3 (tracking-id +
+		// ThresholdInformation) slots as headroom, absorbing release/decrement skew, co-tenant
+		// noise, and lease eviction so an uncoordinated 4th poll can never trip the limit.
+		const release = await acquireConcurrencySlot(redis, threadKey, endpoint, POLL_THREAD_LIMIT);
 		let response: unknown;
 		try {
 			response = await this.helpers.request(options);
