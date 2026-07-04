@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.24.0] - 2026-07-04
+
+### Fixed
+- The ThresholdInformation poll could exceed Autotask's 3-thread limit on the (tracking-id + ThresholdInformation) endpoint. Autotask scopes its concurrent-thread limit to 3 per (tracking identifier + object endpoint), so the poll shared the cap of 3 with Autotask's own concurrent count on that endpoint with zero headroom — multiple uncoordinated poll sources plus release/decrement skew could admit a 4th request, surfacing as "Thread Threshold Exceeded" on method getThresholdAndUsageInfo. The poll now uses a dedicated concurrency limit of 1, leaving 2 slots of headroom. This also closes a lease-eviction race where a request running the full 5-minute Autotask exec timeout could have its semaphore lease evicted mid-flight: the lease has been raised above that ceiling so a slot is only reclaimed after Autotask has already timed out and decremented its own thread count.
+
+### Changed
+- The in-memory concurrency fallback now honours per-call limits, so the poll's cap-1 holds even during a Redis degradation. The per-endpoint thread key is retained (Autotask's limit is per tracking-id + endpoint, so cross-object parallelism stays permitted) and entity requests keep the full 3-slot budget per endpoint.
+
 ## [2.23.2] - 2026-06-24
 
 ### Fixed

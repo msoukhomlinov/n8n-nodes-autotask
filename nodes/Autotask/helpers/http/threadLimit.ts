@@ -50,7 +50,7 @@ class EndpointThreadTracker {
      * Acquires a thread for the specified endpoint or URL
      * Waits until a thread is available if all are in use
      */
-    public async acquireThread(endpointOrUrl: string): Promise<void> {
+    public async acquireThread(endpointOrUrl: string, limit: number = this.threadLimit): Promise<void> {
         let endpoint: string;
 
         // Check if this is an endpoint name or a URL
@@ -67,15 +67,16 @@ class EndpointThreadTracker {
             this.activeThreadsPerEndpoint[endpoint] = 0;
         }
 
-        // Wait until a thread is available
-        while (this.activeThreadsPerEndpoint[endpoint] >= this.threadLimit) {
+        // Wait until a thread is available (honours the caller-supplied limit so the
+        // poll's cap-1 holds even when Redis has degraded to this in-memory fallback)
+        while (this.activeThreadsPerEndpoint[endpoint] >= limit) {
             this.debugLog(`Waiting for thread availability for endpoint: ${endpoint}`);
             await new Promise(resolve => setTimeout(resolve, 500));
         }
 
         // Acquire thread
         this.activeThreadsPerEndpoint[endpoint]++;
-        this.debugLog(`Thread acquired for ${endpoint}: ${this.activeThreadsPerEndpoint[endpoint]}/${this.threadLimit}`);
+        this.debugLog(`Thread acquired for ${endpoint}: ${this.activeThreadsPerEndpoint[endpoint]}/${limit}`);
     }
 
     /**
