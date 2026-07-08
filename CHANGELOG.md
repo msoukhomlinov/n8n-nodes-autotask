@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.25.0] - 2026-07-08
+
+### Fixed
+- `autotaskAiTools` sub-nodes no longer crash n8n's MCP Server Trigger with HTTP 500 under pnpm-isolated installs (n8n >=2.29.x). Under pnpm's strict dependency isolation, community nodes installed outside n8n's own workspace have no `node_modules` edge into `@n8n/n8n-nodes-langchain`'s isolated LangChain bundle, so both host-anchored resolution strategies in `runtime.ts` always failed and resolution threw synchronously inside `supplyData()` — since n8n's MCP Server Trigger calls `supplyData()` on every connected AI-tool sub-node in the same synchronous pass, this single throw took down all `autotaskAiTools` sub-nodes in the workflow. `runtime.ts` now falls back to scanning Node's process-global `require.cache` when the host's LangChain module tree is unreachable by directory-based resolution: n8n's own Agent/MCP Trigger machinery always loads `@langchain/core/tools` (and `zod`, and `@n8n/ai-utilities`) into the process before it ever calls `supplyData()` on a connected sub-node, so the exact instances n8n itself uses are already resident in the cache and can be recovered by cache key even from an isolated install location. This preserves `instanceof` class identity with the host (a locally-bundled copy could not) and adds no new runtime dependency — `@langchain/core` stays a type-only `devDependency`. Fixes #108.
+- The zod fallback path is now identity-safe: when host-anchor resolution fails, `zod` is recovered from the same `require.cache` scan (validated to be zod by checking `ZodType`/`object`) rather than falling through to a differently-instanced copy, so `normalizeToolSchema`'s `instanceof ZodType` check keeps working. `getLazyLogWrapper()` no longer latches a permanent `null` result if invoked before the runtime is resolved.
+
 ## [2.24.0] - 2026-07-04
 
 ### Fixed

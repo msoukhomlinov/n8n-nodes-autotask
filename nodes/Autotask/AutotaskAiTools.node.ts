@@ -725,7 +725,6 @@ export class AutotaskAiTools implements INodeType {
 		// Wrap with logWrapper for n8n execution view visibility.
 		// getLazyLogWrapper() returns null if @n8n/ai-utilities is unavailable
 		// (graceful degradation — tool works without it).
-		// ensureRuntime() was already called above via runtimeZod/RuntimeDynamicStructuredTool.
 		const logWrapFn = getLazyLogWrapper();
 		const wrappedTool = logWrapFn ? logWrapFn(unifiedTool, this) : unifiedTool;
 
