@@ -358,6 +358,7 @@ export class AutotaskAiTools implements INodeType {
 					loadOptionsDependsOn: ['resource', 'allowWriteOperations'],
 				},
 				default: [],
+				// eslint-disable-next-line n8n-nodes-base/node-param-description-wrong-for-dynamic-multi-options -- noDataExpression:true (see above); config-time selector, not an expression-driven field, so the "specify IDs using an expression" boilerplate does not apply.
 				description:
 					'Select which Autotask operations this tool exposes to the AI agent. The agent picks one of these per call via the tool\'s required "operation" argument — this configured set cannot be model-defined. The helper operations describeFields, listPicklistValues and describeOperation are always available regardless of selection.',
 			},
