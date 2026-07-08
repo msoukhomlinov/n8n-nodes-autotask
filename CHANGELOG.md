@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.25.1] - 2026-07-08
+
+### Fixed
+- `autotaskAiTools`: the "Operations Names or IDs" field can no longer be switched to expression / "Let the model define this parameter" mode, which previously produced a persistent error (issue #105). That field configures *which* operations the tool exposes — it is not a runtime value. Its option list is populated by a `loadOptionsMethod` that depends on the selected `resource`, so in expression/model-defined mode the list can never resolve and n8n raised an error. The field now sets `noDataExpression: true` (mirroring the `resource` field), so the expression toggle is not offered. This does not reduce capability: the AI agent still selects the operation on every call via the tool schema's required `operation` argument — the configured set here is just the menu the agent chooses from. The field description was updated to explain this.
+- "Thread Threshold Exceeded" (Itgenatr005) surfacing on `getFieldInfo`/`entityInformation` field-metadata fetches, especially right after an upgrade (the version bump invalidates the field-info cache, forcing a cold-cache burst of metadata calls). The per-endpoint thread semaphore keys each request by the entity extracted from its URL via `getEndpointFromUrl`, but that extractor's version-matching patterns used `\d+` for the API version segment — which cannot match Autotask's dotted `v1.0` (the character after the `1` is a `.`, not the required `/`). All four version patterns silently failed for every real Autotask URL, so extraction fell through to the last-path-segment pattern. For entityInformation URLs (`/v1.0/Tickets/entityInformation/fields`) that returned `fields` / `userdefinedfields` instead of the entity name, so field-info fetches were **not** scoped to their entity's thread bucket: the concurrent read+write × standard+UDF metadata fetches `describeResource` issues for a single entity split across two shared keys, each stayed under the limit, and all fired at Autotask's single per-object thread bucket → thread-limit rejection. The version patterns now accept dotted versions (`v[\d.]+`), so every URL — queries, single-record GETs, ThresholdInformation, and entityInformation field/UDF metadata — keys to the correct entity endpoint and field-info fetches share their entity's 3-slot budget. Regression test added covering all URL shapes.
+
 ## [2.25.0] - 2026-07-08
 
 ### Fixed

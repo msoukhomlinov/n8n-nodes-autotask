@@ -106,11 +106,20 @@ class EndpointThreadTracker {
  * Exported for reuse by the Redis thread-limit keying (helpers/http/redis/threadStore.ts).
  */
 export function getEndpointFromUrl(url: string): string {
+	// NOTE: the version segment is DOTTED ("v1.0"), so the version-matching patterns
+	// MUST use [\d.]+ not \d+. With \d+ the trailing "\/" never matches (the char after
+	// the "1" is "."), so patterns 1-4 silently failed for EVERY real Autotask URL and
+	// extraction fell through to the last-segment pattern. For entityInformation URLs
+	// (/v1.0/Tickets/entityInformation/fields) that returned "fields"/"userdefinedfields"
+	// instead of the entity name, so field-info fetches were NOT scoped to their entity's
+	// thread bucket — concurrent read+write × standard+udf metadata fetches for one entity
+	// split across two shared keys, each under the limit, and all fired at Autotask's single
+	// per-object thread bucket → Itgenatr005 thread-limit errors on getFieldInfo.
 	const patterns = [
-		/\/V\d+\/(\w+)/i,           // /V1.0/Tickets
-		/\/v\d+\/(\w+)/i,           // /v1.0/Tickets
-		/\/api\/v\d+\/(\w+)/i,      // /api/v1.0/Tickets
-		/\/\w+\/v\d+\/(\w+)/i,      // /ATServicesRest/v1.0/Tickets
+		/\/V[\d.]+\/(\w+)/i,        // /V1.0/Tickets
+		/\/v[\d.]+\/(\w+)/i,        // /v1.0/Tickets
+		/\/api\/v[\d.]+\/(\w+)/i,   // /api/v1.0/Tickets
+		/\/\w+\/v[\d.]+\/(\w+)/i,   // /ATServicesRest/v1.0/Tickets
 		/\/([^/]+)\/query/i,        // /Tickets/query
 		/\/([^/]+)\/\d+/i,          // /Tickets/123
 		/\/([^/]+)\/?$/i,           // /Tickets or /Tickets/
