@@ -2,6 +2,17 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.26.0] - 2026-07-08
+
+### Changed
+- `autotaskAiTools` runtime resolution (`ai-tools/runtime.ts`) is now anchored on **package identity** rather than a bare-module-path match, closing a residual correctness gap under pnpm strict isolation (n8n >=2.29.x) surfaced while reviewing the sibling `n8n-nodes-connectwise-cpq` package. The deferral fix from #108/#109 already prevented the total-package crash; this change prevents the AI tool being **silently rejected** on multi-community-node installs. Under pnpm the `require.cache` key is the flat virtual-store realpath, which does not encode *who* required a module — so the previous blind first-match scan for a bare `@langchain/core` / `zod` path could return **another installed community node's private bundled copy**, whose class identity fails n8n's `instanceof DynamicStructuredTool` / `instanceof ZodType` checks in `normalizeToolSchema`, causing the tool to be dropped with no clear error. The fallback now finds a cached module inside an **n8n-owned** anchor tree (a package a community node never bundles) and `createRequire()`s the dependency from that module's filename, walking n8n's real dependency graph to n8n's own copy — independent of cache ordering and store-path naming:
+  - `DynamicStructuredTool`: anchor patterns `@n8n/n8n-nodes-langchain` (first — its `normalizeToolSchema` runs the `instanceof` check and it is always resident by the time `supplyData()` runs), then `@langchain/classic`.
+  - `zod`: anchor patterns `@n8n/n8n-nodes-langchain` (first), then `n8n-workflow`, `n8n-core`. Deliberately **not** anchored off `@langchain/classic` — that reaches its nested zod copy, which fails n8n's top-level `instanceof ZodType`.
+- The blind `require.cache` scans for bare `@langchain/core` and `zod` paths (`findCachedExports`) are removed. If the identity anchor cannot resolve, resolution now **fails clean** (the Proxy throws a clear, actionable diagnostic) rather than returning a first-match guess — guessing wrong is worse than failing because it fails `instanceof` silently.
+- `require.main`-first resolution is retained and symmetric across both the zod and `DynamicStructuredTool` paths, with **no `__filename` fallback** (anchoring off this module's own filename would resolve this package's bundled copy, whose class identity fails the host's checks).
+- Host-anchor resolution (`_anchorRequire`) is now memoised on **success only**; a negative result no longer latches permanently, so a fallback that can only succeed once n8n has finished loading its langchain-dependent nodes is not permanently disabled. (The DST/zod resolvers were already success-only.)
+- `getLazyLogWrapper()` migrated to the same identity-anchored helper for consistency (`@n8n/ai-utilities` is n8n-owned and never bundled by a community node, so it was not a correctness risk — this is a consistency change only).
+
 ## [2.25.1] - 2026-07-08
 
 ### Fixed
