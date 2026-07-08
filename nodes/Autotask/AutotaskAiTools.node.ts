@@ -345,13 +345,21 @@ export class AutotaskAiTools implements INodeType {
 				name: 'operations',
 				type: 'multiOptions',
 				required: true,
+				// noDataExpression: this field configures WHICH operations the tool exposes; it is not a
+				// runtime value. It must not be switchable to expression / "Let the model define this
+				// parameter" mode — the multiOptions list is populated by a loadOptionsMethod that depends
+				// on `resource`, so in expression/model-defined mode the option list can never resolve and
+				// n8n surfaces an error (issue #105). The AI agent already selects the operation per call
+				// via the tool schema's required `operation` argument; the model does not define this
+				// configured set. Mirrors the `resource` field above.
+				noDataExpression: true,
 				typeOptions: {
 					loadOptionsMethod: 'getToolResourceOperations',
 					loadOptionsDependsOn: ['resource', 'allowWriteOperations'],
 				},
 				default: [],
 				description:
-					'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+					'Select which Autotask operations this tool exposes to the AI agent. The agent picks one of these per call via the tool\'s required "operation" argument — this configured set cannot be model-defined. The helper operations describeFields, listPicklistValues and describeOperation are always available regardless of selection.',
 			},
 			{
 				displayName: 'Allow Write Operations',
