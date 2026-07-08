@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.25.0] - 2026-07-08
+
+### Fixed
+- `autotaskAiTools` sub-nodes no longer crash n8n's MCP Server Trigger with HTTP 500 under pnpm-isolated installs (n8n >=2.29.x). Under pnpm's strict dependency isolation, community nodes installed outside n8n's own workspace have no `node_modules` edge into `@n8n/n8n-nodes-langchain`'s isolated LangChain bundle, so both host-anchored resolution strategies in `runtime.ts` always failed and `ensureRuntime()` threw synchronously inside `supplyData()` — since n8n's MCP Server Trigger calls `supplyData()` on every connected AI-tool sub-node in the same synchronous pass, this single throw took down all `autotaskAiTools` sub-nodes in the workflow. `runtime.ts` now falls back to its own bundled `@langchain/core` when the host's LangChain module tree is unreachable. `@langchain/core` is promoted from `devDependencies` to a real `dependencies` entry so this fallback always has something to find. Fixes #108.
+
 ## [2.24.0] - 2026-07-04
 
 ### Fixed

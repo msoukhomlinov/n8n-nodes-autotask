@@ -16,6 +16,24 @@ const ANCHOR_CANDIDATES = [
     'langchain/agents',
 ] as const;
 
+// Last-resort anchor: this package's OWN bundled @langchain/core copy.
+// Under pnpm's strict dependency isolation (observed on n8n >=2.29.x),
+// community nodes installed outside n8n's own workspace have NO
+// node_modules edge into @n8n/n8n-nodes-langchain's isolated LangChain
+// bundle — neither ANCHOR_CANDIDATES entry can ever resolve from this
+// module's context in that topology, regardless of which file anchors
+// the probe. n8n-nodes-autotask declares @langchain/core as a real
+// `dependency` (see package.json) specifically so this fallback always
+// has something to find. This trades DynamicStructuredTool class-identity
+// purity (the resolved class may be a different module instance than
+// n8n's own) for the tool actually working — safe because both
+// @n8n/ai-utilities's fromLcTool (converters/tool.js) and this repo's own
+// AutotaskMcpTrigger (N8nLikeTool in mcp-trigger/McpServer.ts) duck-type
+// tools on name/description/schema/invoke rather than instanceof-checking
+// the LangChain base class.
+// See: https://github.com/msoukhomlinov/n8n-nodes-autotask/issues/108
+const OWN_PACKAGE_ANCHOR = '@langchain/core/tools';
+
 function getRuntimeRequire(): NodeRequire {
     const { createRequire } = require('module') as { createRequire: (f: string) => NodeRequire };
     const errors: string[] = [];
@@ -51,11 +69,19 @@ function getRuntimeRequire(): NodeRequire {
         }
     }
 
+    // Strategy 3: Own-package fallback. See OWN_PACKAGE_ANCHOR comment above.
+    try {
+        const anchorPath = require.resolve(OWN_PACKAGE_ANCHOR);
+        return createRequire(anchorPath);
+    } catch (err) {
+        errors.push(`  own-package:${OWN_PACKAGE_ANCHOR}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     throw new Error(
         `runtime.ts: Failed to resolve any LangChain anchor module. ` +
-        `Tried ${ANCHOR_CANDIDATES.length} candidates across 2 strategies:\n${errors.join('\n')}\n` +
+        `Tried ${ANCHOR_CANDIDATES.length} host candidates across 2 strategies plus an own-package fallback:\n${errors.join('\n')}\n` +
         `This means DynamicStructuredTool instanceof checks will fail. ` +
-        `Ensure @langchain/classic is installed.`,
+        `Ensure @langchain/core is installed.`,
     );
 }
 

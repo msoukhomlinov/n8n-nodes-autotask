@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-autotask",
-  "version": "2.24.0",
+  "version": "2.25.0",
   "description": "n8n node for Autotask PSA integration",
   "keywords": [
     "n8n-community-node-package",
@@ -59,7 +59,6 @@
   },
   "devDependencies": {
     "@langchain/classic": "^1.0.29",
-    "@langchain/core": "^1.1.39",
     "@modelcontextprotocol/sdk": "~1.26.0",
     "@n8n/node-cli": ">=0.29.0",
     "@types/node": "^22.15.0",
@@ -71,6 +70,7 @@
     "zod": "^3.23.0"
   },
   "dependencies": {
+    "@langchain/core": "^1.1.39",
     "change-case": "^4.1.2",
     "keyv": "^5.6.0",
     "keyv-file": "^5.3.3",
