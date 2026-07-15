@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-autotask",
-  "version": "2.26.1",
+  "version": "2.26.0",
   "description": "n8n node for Autotask PSA integration",
   "keywords": [
     "n8n-community-node-package",
@@ -36,8 +36,7 @@
     "lint:fix": "n8n-node lint --fix",
     "typecheck": "tsc --noEmit",
     "release": "n8n-node release",
-    "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm build && pnpm validate:package",
-    "validate:package": "node scripts/validate-package.js"
+    "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm build"
   },
   "files": [
     "dist"
@@ -66,7 +65,7 @@
     "@types/node": "^22.15.0",
     "@types/pluralize": "^0.0.33",
     "eslint": "9.32.0",
-    "n8n-workflow": "^2.30.0",
+    "n8n-workflow": "^2.20.0",
     "prettier": "^3.8.3",
     "typescript": "^5.9.3",
     "zod": "^3.23.0"
@@ -82,11 +81,6 @@
   },
   "peerDependencies": {
     "n8n-workflow": "*"
-  },
-  "peerDependenciesMeta": {
-    "n8n-workflow": {
-      "optional": true
-    }
   },
   "pnpm": {
     "overrides": {
