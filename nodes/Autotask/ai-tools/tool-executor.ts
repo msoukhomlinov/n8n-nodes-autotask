@@ -221,6 +221,7 @@ import {
 	executeCountOperation,
 	buildFieldValues,
 	promoteReadFieldsToFilters,
+	isFilterFieldCovered,
 	parseFieldsParam,
 	resolveVirtualLabelFields,
 	normaliseOperation,
@@ -875,11 +876,15 @@ export async function executeAiTool(
 
 		const filterErrors: string[] = [];
 
+		// Suppress "requires filter_value" when the field is already a value-bearing filter
+		// (e.g. a top-level param promoted to an eq filter above) — see isFilterFieldCovered.
 		if (hasFiltersJson && (hasFlatFilter1 || hasFlatFilter2)) {
 			filterErrors.push(`Operation '${effectiveOperation}' does not allow mixing 'filtersJson' with flat filter fields.`);
 		}
 		const isNullCheckOp1 = ['exist', 'notexist'].includes(String(p.filter_op ?? '').toLowerCase());
-		if (hasProvidedValue(p.filter_field) && !hasProvidedValue(p.filter_value) && !isNullCheckOp1) {
+		const filterField1Covered =
+			hasProvidedValue(p.filter_field) && isFilterFieldCovered(String(p.filter_field), filters);
+		if (hasProvidedValue(p.filter_field) && !hasProvidedValue(p.filter_value) && !isNullCheckOp1 && !filterField1Covered) {
 			filterErrors.push(`Operation '${effectiveOperation}' requires 'filter_value' when 'filter_field' is provided (not needed when filter_op is 'exist' or 'notExist').`);
 		}
 		if (!hasProvidedValue(p.filter_field) && hasProvidedValue(p.filter_value)) {
@@ -889,7 +894,9 @@ export async function executeAiTool(
 			const hasFilter2Field = hasProvidedValue(p.filter_field_2);
 			const hasFilter2Value = hasProvidedValue(p.filter_value_2);
 			const isNullCheckOp2 = ['exist', 'notexist'].includes(String(p.filter_op_2 ?? '').toLowerCase());
-			if (!hasFilter2Field || (!hasFilter2Value && !isNullCheckOp2)) {
+			const filterField2Covered =
+				hasFilter2Field && isFilterFieldCovered(String(p.filter_field_2), filters);
+			if (!hasFilter2Field || (!hasFilter2Value && !isNullCheckOp2 && !filterField2Covered)) {
 				filterErrors.push(
 					`Operation '${effectiveOperation}' requires 'filter_field_2' and 'filter_value_2' when using a second filter (filter_value_2 not needed when filter_op_2 is 'exist' or 'notExist').`,
 				);

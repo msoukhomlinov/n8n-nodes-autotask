@@ -188,6 +188,25 @@ export function promoteReadFieldsToFilters(
 }
 
 /**
+ * True when `filterField` is already covered by a value-bearing filter in `filters`.
+ *
+ * A model often restates a field it has already scoped via a top-level read-field param
+ * (e.g. `companyID` on a child resource — promoted to an eq filter by
+ * `promoteReadFieldsToFilters`) by ALSO naming it in `filter_field` with an empty
+ * `filter_value`. That incomplete triple is a redundant restatement, not a broken filter,
+ * so the pre-flight "requires filter_value" validation must not reject it. Only filters
+ * carrying a real value (headed for the API) count as coverage — a value-less filter never
+ * lands in `filters`, so a genuinely incomplete filter is never treated as covered.
+ * Case-insensitive to match the canonical casing promotion normalises to.
+ */
+export function isFilterFieldCovered(filterField: string, filters: ToolFilter[]): boolean {
+	const target = filterField.toLowerCase();
+	return filters.some(
+		(f) => f.value !== undefined && f.value !== '' && f.field.toLowerCase() === target,
+	);
+}
+
+/**
  * Parse the 'fields' param into a selectColumns-compatible array.
  */
 export function parseFieldsParam(fields: string | undefined): string[] {

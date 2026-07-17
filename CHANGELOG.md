@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.26.1] - 2026-07-17
+
+### Fixed
+- `autotaskAiTools` generic list ops (`getMany`, `count`, `getPosted`, `getUnposted`): a tool call that scoped a query via a top-level read-field param (e.g. `companyID` on `companyLocation`) **and** redundantly restated that same field as an incomplete generic filter triple (`filter_field=companyID`, `filter_op=eq`, no `filter_value`) was rejected with `INVALID_FILTER_CONSTRAINT` — "requires 'filter_value' when 'filter_field' is provided" (issue #114). The top-level param is already turned into an `eq` filter by `promoteReadFieldsToFilters`, so the incomplete triple is a harmless duplicate (`buildFilterFromParams` silently drops value-less triples), yet the pre-flight validation still errored on it, tripping the LLM into asking the user how to proceed instead of self-correcting. The filter cross-validation now suppresses the "requires filter_value" error for any field already present as a value-bearing filter (covers both filter slots). Resource-agnostic — promotion runs for every generic list op on every resource, so any entity exposing a `<entity>ID`-style read field benefits. The coverage check is a pure `isFilterFieldCovered` helper (`ai-tools/tool-executor-helpers.ts`) with regression tests; value-less filters (`exist`/`notExist`, empty string) never count as coverage, so a genuinely incomplete filter still errors.
+
 ## [2.26.0] - 2026-07-08
 
 ### Changed
