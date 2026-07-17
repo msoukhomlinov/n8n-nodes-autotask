@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.26.2] - 2026-07-17
+
+### Fixed
+- `autotaskAiTools` parent-scoped child `.update` (and `.delete`): updating a child entity whose REST path is nested under a parent (e.g. `contact`, `companyLocation` under `Companies/{companyID}/...`) by supplying only the record `id` — without the parent ID (`companyID`) — failed with `MISSING_REQUIRED_FIELDS` demanding the parent ID, even though the node already resolves it internally by fetching the existing record (issue #115). The standard node resolved it correctly; the AI Tools path did not. Root cause was an asymmetry in `getParameter()` (`operations/base/base-operation.ts`): its three-source parent-ID fallback (node params → mapped fields → **fetch existing record by `id` and read the parent ID off it**) ran only inside a `catch` block. On the standard node an absent parameter makes `getNodeParameter` throw, so the fallback fired; on the AI Tools path the synthetic `getNodeParameter` returns `undefined` instead of throwing, so `getParameterInsensitive` returned `undefined` without throwing, the `catch` never ran, and the fallback (including the record fetch that already had everything needed to resolve the parent ID) was unreachable — `buildOperationUrl` then threw the parent-ID error. `getParameter()` now treats an `undefined`/`null` result identically to a throw, so the fallback chain runs on both paths. Fixing it at this shared chokepoint covers every parent-scoped child (~44 entities with `operations.update === 'parent'`) and the delete and nested-parent-chain paths, not just Contact — so an AI agent can update/delete a parent-scoped child with only its `id`, no wasted parent-ID discovery round-trip. Defined-but-falsy values (`0`, `false`, `""`) are still returned unchanged; non-parent params still surface a validation error when genuinely absent. Regression test added covering both node paths.
+- Package no longer causes npm 7+ to install a broken nested `n8n-workflow` copy under `~/.n8n/nodes/node_modules` (issue reported in PR #113, thanks @Gamedirection). The `n8n-workflow` peer dependency (`"*"`, required by `@n8n/eslint-plugin-community-nodes`) is now marked `optional: true` via `peerDependenciesMeta`, so npm resolves it to n8n core's already-loaded copy rather than auto-installing a separate nested one whose class identity diverges from the host's. No effect under pnpm.
+
 ## [2.26.1] - 2026-07-17
 
 ### Fixed

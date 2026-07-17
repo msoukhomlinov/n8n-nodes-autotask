@@ -49,87 +49,104 @@ export class BaseOperation {
 	 * For ID fields, the preferred format is 'id' for entity IDs and '{parentType}ID' for parent IDs
 	 */
 	protected async getParameter(parameterName: string, itemIndex: number): Promise<unknown> {
+		// getParameterInsensitive throws when the parameter is absent on the standard node,
+		// but on the AI Tools path the synthetic getNodeParameter returns undefined instead of
+		// throwing. Treat both cases identically so the parent-ID fallback chain below runs on
+		// both paths (see issue #115).
+		let value: unknown;
+		let lookupError: Error | undefined;
 		try {
-			return getParameterInsensitive(this.context, parameterName, itemIndex);
+			value = getParameterInsensitive(this.context, parameterName, itemIndex);
 		} catch (error) {
-			// Get entity metadata to check for parent ID field
-			const metadata = getEntityMetadata(this.entityType);
+			lookupError = error as Error;
+		}
 
-			// Case-insensitive check for parent ID field
-			const isParentIdParam = metadata?.parentIdField?.toLowerCase() === parameterName.toLowerCase() ||
-				(metadata?.childOf && `${metadata.childOf}ID`.toLowerCase() === parameterName.toLowerCase());
+		if (value !== undefined && value !== null) {
+			return value;
+		}
 
-			// For parent ID fields, try multiple sources
-			if (isParentIdParam) {
-				console.debug(`[BaseOperation] Checking sources for parent ID field: ${parameterName}`);
+		// Get entity metadata to check for parent ID field
+		const metadata = getEntityMetadata(this.entityType);
 
-				// 1. Try node parameters
-				try {
-					const value = this.context.getNodeParameter(parameterName, itemIndex, null);
-					if (value !== null) {
-						console.debug(`[BaseOperation] Found parent ID in node parameters: ${value}`);
-						return value;
-					}
-				} catch (e) {
-					// Ignore error and continue checking other sources
+		// Case-insensitive check for parent ID field
+		const isParentIdParam = metadata?.parentIdField?.toLowerCase() === parameterName.toLowerCase() ||
+			(metadata?.childOf && `${metadata.childOf}ID`.toLowerCase() === parameterName.toLowerCase());
+
+		// For parent ID fields, try multiple sources
+		if (isParentIdParam) {
+			console.debug(`[BaseOperation] Checking sources for parent ID field: ${parameterName}`);
+
+			// 1. Try node parameters
+			try {
+				const nodeValue = this.context.getNodeParameter(parameterName, itemIndex, null);
+				if (nodeValue !== null) {
+					console.debug(`[BaseOperation] Found parent ID in node parameters: ${nodeValue}`);
+					return nodeValue;
 				}
-
-				// 2. Try validated data
-				try {
-					const fieldsToMap = this.context.getNodeParameter('fieldsToMap', itemIndex, {}) as {
-						value?: IDataObject;
-					};
-					if (fieldsToMap?.value) {
-						// Case-insensitive check for field in validated data
-						const field = Object.keys(fieldsToMap.value).find(
-							key => key.toLowerCase() === parameterName.toLowerCase()
-						);
-						if (field) {
-							console.debug(`[BaseOperation] Found parent ID in validated data: ${fieldsToMap.value[field]}`);
-							return fieldsToMap.value[field];
-						}
-					}
-				} catch (e) {
-					// Ignore error and continue
-				}
-
-				// 3. Try to get from existing record if we have an entity ID
-				try {
-					const entityId = this.context.getNodeParameter('id', itemIndex, null);
-					if (entityId !== null && (typeof entityId === 'string' || typeof entityId === 'number')) {
-						console.debug('[BaseOperation] Fetching existing record for parent ID, entityId:', entityId);
-						const existingRecord = await this.getEntityById(itemIndex, entityId);
-
-						// Case-insensitive check for parent ID field in existing record
-						const recordField = Object.keys(existingRecord).find(
-							key => key.toLowerCase() === parameterName.toLowerCase()
-						);
-
-						if (recordField && existingRecord[recordField] !== undefined &&
-							existingRecord[recordField] !== null &&
-							(typeof existingRecord[recordField] === 'string' ||
-							typeof existingRecord[recordField] === 'number')) {
-							console.debug('[BaseOperation] Found parent ID in existing record:', existingRecord[recordField]);
-							return existingRecord[recordField];
-						}
-						console.debug('[BaseOperation] Parent ID not found or invalid in existing record');
-					}
-				} catch (e) {
-					console.debug('[BaseOperation] Error fetching existing record:', e.message);
-				}
-
-				console.debug(`[BaseOperation] Parent ID field ${parameterName} not found in any source`);
-				return undefined;
+			} catch (e) {
+				// Ignore error and continue checking other sources
 			}
 
+			// 2. Try validated data
+			try {
+				const fieldsToMap = this.context.getNodeParameter('fieldsToMap', itemIndex, {}) as {
+					value?: IDataObject;
+				};
+				if (fieldsToMap?.value) {
+					// Case-insensitive check for field in validated data
+					const field = Object.keys(fieldsToMap.value).find(
+						key => key.toLowerCase() === parameterName.toLowerCase()
+					);
+					if (field) {
+						console.debug(`[BaseOperation] Found parent ID in validated data: ${fieldsToMap.value[field]}`);
+						return fieldsToMap.value[field];
+					}
+				}
+			} catch (e) {
+				// Ignore error and continue
+			}
+
+			// 3. Try to get from existing record if we have an entity ID
+			try {
+				const entityId = this.context.getNodeParameter('id', itemIndex, null);
+				if (entityId !== null && (typeof entityId === 'string' || typeof entityId === 'number')) {
+					console.debug('[BaseOperation] Fetching existing record for parent ID, entityId:', entityId);
+					const existingRecord = await this.getEntityById(itemIndex, entityId);
+
+					// Case-insensitive check for parent ID field in existing record
+					const recordField = Object.keys(existingRecord).find(
+						key => key.toLowerCase() === parameterName.toLowerCase()
+					);
+
+					if (recordField && existingRecord[recordField] !== undefined &&
+						existingRecord[recordField] !== null &&
+						(typeof existingRecord[recordField] === 'string' ||
+						typeof existingRecord[recordField] === 'number')) {
+						console.debug('[BaseOperation] Found parent ID in existing record:', existingRecord[recordField]);
+						return existingRecord[recordField];
+					}
+					console.debug('[BaseOperation] Parent ID not found or invalid in existing record');
+				}
+			} catch (e) {
+				console.debug('[BaseOperation] Error fetching existing record:', e.message);
+			}
+
+			console.debug(`[BaseOperation] Parent ID field ${parameterName} not found in any source`);
+			return undefined;
+		}
+
+		// Non-parent parameter: propagate the original lookup failure as a validation error.
+		// If the lookup did not throw (AI path returned undefined/null), return that value unchanged.
+		if (lookupError) {
 			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(
 				ERROR_TEMPLATES.validation
 					.replace('{type}', 'ValidationError')
 					.replace('{entity}', this.entityType)
-					.replace('{details}', error.message)
+					.replace('{details}', lookupError.message)
 			);
 		}
+		return value;
 	}
 
 	/**

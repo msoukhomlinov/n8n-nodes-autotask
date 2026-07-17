@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-autotask",
-  "version": "2.26.1",
+  "version": "2.26.2",
   "description": "n8n node for Autotask PSA integration",
   "keywords": [
     "n8n-community-node-package",
@@ -81,6 +81,11 @@
   },
   "peerDependencies": {
     "n8n-workflow": "*"
+  },
+  "peerDependenciesMeta": {
+    "n8n-workflow": {
+      "optional": true
+    }
   },
   "pnpm": {
     "overrides": {
