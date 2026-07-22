@@ -315,7 +315,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.rejectReason = rz
 				.string()
 				.nullish()
-				.describe('Reason for rejecting the time off request. Recommended for audit trail.');
+				.describe(
+					"Reason for rejecting the time off request. Required when rejectReasonPolicy='mandatory'.",
+				);
 			shape.rejectReasonPolicy = rz
 				.enum(['optional', 'mandatory'])
 				.nullish()
@@ -328,13 +330,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		if (resource === 'globalNotesSearch') {
 			if (operations.includes('searchNotes')) {
 				shape['keyword'] = rz.string().nullish().describe(
-					'Text to search across note titles and bodies (contains match). Applied to all 7 note entity types.',
+					'Text to search note titles and bodies (contains match) across all 7 note types. At least one of keyword, since, or until is required.',
 				);
 				shape['since'] = rz.string().nullish().describe(
-					'ISO 8601 datetime — return only notes with createDateTime >= this value.',
+					'ISO-8601 datetime — notes with createDateTime >= this. At least one of keyword, since, or until is required.',
 				);
 				shape['until'] = rz.string().nullish().describe(
-					'ISO 8601 datetime — return only notes with createDateTime <= this value.',
+					'ISO-8601 datetime — notes with createDateTime <= this. At least one of keyword, since, or until is required.',
 				);
 				shape['limit'] = rz.number().int().min(1).max(25).nullish().describe(
 					'Max results per note entity type (default 10, max 25). Total records = 7 × limit at most.',
@@ -930,7 +932,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.companyIdAllowlist = rz
 				.string()
 				.nullish()
-				.describe('Optional comma-separated company IDs to scope company transfer.');
+				.describe(
+					'Company IDs to scope the transfer. Applies only when includeCompanies=true.',
+				);
 			shape.includeOpportunities = rz
 				.coerce.boolean()
 				.nullish()
@@ -999,11 +1003,15 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.statusAllowlistByLabel = rz
 				.string()
 				.nullish()
-				.describe('Optional comma-separated status labels to include.');
+				.describe(
+					'Status labels to allow. Ignored when statusAllowlistByValue is set. Supply only one of the two.',
+				);
 			shape.statusAllowlistByValue = rz
 				.string()
 				.nullish()
-				.describe('Optional comma-separated status integer values to include.');
+				.describe(
+					'Status IDs to allow. Takes precedence — when set, statusAllowlistByLabel is ignored. Supply only one of the two.',
+				);
 			shape.addAuditNotes = rz
 				.coerce.boolean()
 				.nullish()
