@@ -28,7 +28,7 @@ export const READ_PARAM_DESC = {
 	since:
 		'Range start (ISO-8601 UTC). Lower bound — records at or after this. Mutually exclusive with recency.',
 	until:
-		'Range end (ISO-8601 UTC). Requires since or recency. Mutually exclusive with recency.',
+		'Range end (ISO-8601 UTC). Upper bound — records at or before this. Requires since. Mutually exclusive with recency.',
 	outputMode:
 		"'idsAndLabels' (default) appends derived label fields — do NOT list these in fields. 'rawIds' returns numeric IDs only.",
 } as const;
