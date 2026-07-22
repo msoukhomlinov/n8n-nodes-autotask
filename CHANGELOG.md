@@ -2,6 +2,15 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.26.3] - 2026-07-22
+
+### Fixed
+- AI Tools: schema descriptions now state cross-field filter constraints, resolving the incomplete-second-filter friction in #116 (the model would emit a partial second filter clause with an empty value, which the node correctly rejected as `INVALID_FILTER_CONSTRAINT`). Each filter field now states its pairing rule explicitly: provide `filter_field`/`filter_field_2` together with its value (operator optional, defaults to `eq`; value not needed for `exist`/`notExist`), or omit the clause. Also corrected the `since` description, which claimed it "overrides recency" while the runtime rejects the combination — now stated as mutually exclusive; and added the missing `filter_logic` rule (valid only when both filter pairs are present, rejected with one).
+- AI Tools: stated previously-undocumented constraints on `globalNotesSearch` (at least one of `keyword`/`since`/`until` required), `transferOwnership` allowlists (`companyIdAllowlist` applies only when `includeCompanies=true`; `statusAllowlistByValue` takes precedence over `statusAllowlistByLabel`), and `rejectReason` (required when `rejectReasonPolicy='mandatory'`).
+
+### Changed
+- AI Tools: concision pass over all tool and field description text — tight-imperative phrasing, filler removed, every semantic token (field names, enum values, defaults, examples, bounds) preserved. Extracted the shared read-param descriptions into a single source imported by both the Zod schema and the `describeOperation` docs, so cross-field constraints are stated once and cannot drift between the two.
+
 ## [2.26.2] - 2026-07-17
 
 ### Fixed
