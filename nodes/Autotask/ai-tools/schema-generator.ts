@@ -6,7 +6,7 @@ import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
 import { RESOURCES_WITH_PRIORITY, RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } from './resource-language';
-import { MAX_RESPONSE_RECORDS } from './operation-handlers/operation-dispatch';
+import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
 
 /** Picklist inlining threshold — at or below this count, inline all values; above, tell LLM to call listPicklistValues. */
 const INLINE_PICKLIST_THRESHOLD = 4;
@@ -141,17 +141,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		'in',
 		'notIn',
 	]);
-	const rFilterValueSchema = rz
-		.string()
-		.describe(
-			"Filter value as string. For reference/picklist fields, pass human-readable name (e.g. 'In Progress', 'Contoso', 'High') — auto-resolves to ID, or pass numeric ID directly. For in/notIn: comma-separate names or IDs (e.g. 'Neil,Andrew' or '123,456'). Each name resolved independently; names with multiple candidates return pendingConfirmations, already-resolved names shown in resolvedElements. Booleans: 'true'/'false'.",
-		);
-	const rRecencySchema = rz
-		.string()
-		.nullish()
-		.describe(
-			'Preset time window: last_15m, last_1h, last_2h, last_3h, last_4h, last_6h, last_8h, last_12h, last_24h, last_1d–last_7d, last_14d, last_30d, last_90d. Or last_Nd (N=1–365). Mutually exclusive with since/until.',
-		);
+	const rFilterValueSchema = rz.string().describe(READ_PARAM_DESC.filter_value);
+	const rRecencySchema = rz.string().nullish().describe(READ_PARAM_DESC.recency);
 
 	function buildUnifiedSchema(
 		resource: string,
@@ -259,7 +250,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.nullish()
 				.describe(
 					'Resource name, email, or numeric ID (auto-resolved). Required for getByResource and getByYear. ' +
-					"For ticket.getByResource: searches primary (assignedResourceID) and/or secondary (TicketSecondaryResources) assignments based on mode.",
+					"For ticket.getByResource: searches primary (assignedResourceID) and/or secondary (TicketSecondaryResources) assignments per 'mode'.",
 				);
 		}
 
@@ -281,7 +272,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.min(1)
 					.max(500)
 					.nullish()
-					.describe('Max records per branch (1-500, default 10). Note: combined merged result may exceed limit when mode=both.');
+					.describe('Max records per branch (1-500, default 10). Combined merged result may exceed limit when mode=both.');
 			}
 			if (!shape.fields) {
 				shape.fields = rz
@@ -291,16 +282,10 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 			if (!shape.recency) shape.recency = rRecencySchema;
 			if (!shape.since) {
-				shape.since = rz
-					.string()
-					.nullish()
-					.describe('Range start (ISO-8601; e.g. 2026-01-01T09:00:00Z). Overrides recency.');
+				shape.since = rz.string().nullish().describe(READ_PARAM_DESC.since);
 			}
 			if (!shape.until) {
-				shape.until = rz
-					.string()
-					.nullish()
-					.describe('Range end (ISO-8601). Requires since or recency.');
+				shape.until = rz.string().nullish().describe(READ_PARAM_DESC.until);
 			}
 			if (!shape.excludeTerminalStatuses) {
 				shape.excludeTerminalStatuses = rz
@@ -322,7 +307,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.number()
 				.int()
 				.nullish()
-				.describe('Calendar year (e.g. 2024). Required for getByYear operation.');
+				.describe('Calendar year (e.g. 2024). Required for getByYear.');
 		}
 
 		// rejectReason — used only by reject
@@ -330,7 +315,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.rejectReason = rz
 				.string()
 				.nullish()
-				.describe('Reason for rejecting the time off request. Recommended for audit trail.');
+				.describe(
+					"Reason for rejecting the time off request. Required when rejectReasonPolicy='mandatory'.",
+				);
 			shape.rejectReasonPolicy = rz
 				.enum(['optional', 'mandatory'])
 				.nullish()
@@ -343,13 +330,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		if (resource === 'globalNotesSearch') {
 			if (operations.includes('searchNotes')) {
 				shape['keyword'] = rz.string().nullish().describe(
-					'Text to search across note titles and bodies (contains match). Applied to all 7 note entity types.',
+					'Text to search note titles and bodies (contains match) across all 7 note types. At least one of keyword, since, or until is required.',
 				);
 				shape['since'] = rz.string().nullish().describe(
-					'ISO 8601 datetime — return only notes with createDateTime >= this value.',
+					'ISO-8601 datetime — notes with createDateTime >= this. At least one of keyword, since, or until is required.',
 				);
 				shape['until'] = rz.string().nullish().describe(
-					'ISO 8601 datetime — return only notes with createDateTime <= this value.',
+					'ISO-8601 datetime — notes with createDateTime <= this. At least one of keyword, since, or until is required.',
 				);
 				shape['limit'] = rz.number().int().min(1).max(25).nullish().describe(
 					'Max results per note entity type (default 10, max 25). Total records = 7 × limit at most.',
@@ -387,61 +374,32 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 
 		// fields — column selection
 		if (hasGetFamily || hasCreate) {
-			shape.fields = rz
-				.string()
-				.nullish()
-				.describe(
-					`Sparse fieldset — comma-separated field names to return. Omit for all fields. The id field is always included automatically. ` +
-					`Reduces payload size significantly for entities with many fields. ` +
-					`With returnAll=true, specifying fields lifts the ${MAX_RESPONSE_RECORDS}-record payload cap — all matching records are returned. ` +
-					`Real API field names only (call describeFields for the full list). Do not request *_label or *_name fields — those are auto-added by outputMode=idsAndLabels.`,
-				);
+			shape.fields = rz.string().nullish().describe(fieldsDesc());
 		}
 
 		// Filter fields for list operations
 		const hasSearchByKeywordForListShared = operations.includes('searchByKeyword');
 		if (hasListFamily || hasSearchByKeywordForListShared) {
 			const fieldNames = readFields.filter((f) => !f.udf && isValidSchemaKey(f.id)).map((f) => f.id);
+			const filterFieldPairClause =
+				"Field to filter on. Provide filter_value with it (not needed when filter_op is 'exist'/'notExist'). For 'older than'/upper-bound date queries use a date field (createDate, lastActivityDate, dueDateTime) with filter_op='lt'.";
 			const filterFieldDesc =
-				"Field to filter on. Use operation 'describeFields' to see valid field names. For 'older than' / upper-bound date queries use filter_field with a date field + filter_op='lt'.";
+				`${filterFieldPairClause} Use operation 'describeFields' to see valid field names.`;
 			shape.filter_field =
 				fieldNames.length > 0
 					? rz
 							.enum(fieldNames as [string, ...string[]])
 							.nullish()
-							.describe("Field to filter on. For 'older than' / upper-bound date queries, use a date field (createDate, lastActivityDate, dueDateTime) with filter_op='lt'.")
+							.describe(filterFieldPairClause)
 					: rz.string().nullish().describe(filterFieldDesc);
-			shape.filter_op = rFilterOpEnum.nullish().describe("Filter operator. Use 'notExist' for unassigned/empty/null fields (no filter_value needed). Use 'exist' for populated fields. Other operators: eq (equals), noteq (not equals), gt/gte/lt/lte (numeric/date comparisons), contains/beginsWith/endsWith (text), in/notIn (array of values).");
+			shape.filter_op = rFilterOpEnum.nullish().describe(READ_PARAM_DESC.filter_op);
 			shape.filter_value = rFilterValueSchema.nullish();
-			shape.filter_field_2 = rz
-				.string()
-				.nullish()
-				.describe(
-					'Second filter field — same valid values as filter_field. Supports date fields with filter_op_2 for bounded date ranges.',
-				);
-			shape.filter_op_2 = rFilterOpEnum.nullish().describe('Second filter operator');
-			shape.filter_value_2 = rFilterValueSchema.nullish().describe('Second filter value');
-			shape.filter_logic = rz
-				.enum(['and', 'or'])
-				.nullish()
-				.describe(
-					"Combiner between the two filter pairs: 'and' (default) or 'or'.",
-				);
-			shape.limit = rz
-				.number()
-				.int()
-				.min(1)
-				.max(500)
-				.nullish()
-				.describe('Max results (1-500, default 10)');
-			shape.offset = rz
-				.number()
-				.int()
-				.min(0)
-				.nullish()
-				.describe(
-					'Skip first N records (0–499). Response includes hasMore/nextOffset. Max 500 total — narrow filters for more.',
-				);
+			shape.filter_field_2 = rz.string().nullish().describe(READ_PARAM_DESC.filter_field_2);
+			shape.filter_op_2 = rFilterOpEnum.nullish().describe(READ_PARAM_DESC.filter_op_2);
+			shape.filter_value_2 = rFilterValueSchema.nullish().describe(READ_PARAM_DESC.filter_value_2);
+			shape.filter_logic = rz.enum(['and', 'or']).nullish().describe(READ_PARAM_DESC.filter_logic);
+			shape.limit = rz.number().int().min(1).max(500).nullish().describe(READ_PARAM_DESC.limit);
+			shape.offset = rz.number().int().min(0).nullish().describe(READ_PARAM_DESC.offset);
 			shape.recency = rRecencySchema;
 			const dateFields = readFields
 				.filter((f) => !f.udf && isValidSchemaKey(f.id) && f.type.toLowerCase().includes('date'))
@@ -454,42 +412,14 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 						`Date/time field for recency/since/until. Available: ${dateFields.join(', ')}. Default: first available.`,
 					);
 			}
-			shape.since = rz
-				.string()
-				.nullish()
-				.describe(
-					'Range start (ISO-8601; e.g. 2026-01-01T09:00:00 or 2026-01-01T09:00:00Z). Overrides recency.',
-				);
-			shape.until = rz
-				.string()
-				.nullish()
-				.describe(
-					'Range end (ISO-8601). Requires since or recency.',
-				);
-			shape.filtersJson = rz.string().nullish().describe(
-					`Advanced filters as JSON array of Autotask IFilterCondition objects. Mutually exclusive with filter_field. No label resolution — use numeric IDs for all values including in/notIn (for name-based in/notIn use the filter_value param path instead). Dates UTC ISO-8601. ` +
-				`Supports: eq/noteq/gt/gte/lt/lte/contains/beginsWith/endsWith/exist/notExist/in/notIn. ` +
-				`in/notIn value must be a JSON array (max 500 values per Autotask API limit). ` +
-				`Nested AND group: [{"op":"and","items":[<cond1>,<cond2>]}]. ` +
-				`Nested OR group: [{"op":"or","items":[<cond1>,<cond2>]}]. ` +
-				`Each condition shape: {"field":"<fieldName>","op":"<op>","value":<value>}. ` +
-				`Call describeFields for valid field names on this resource, and listPicklistValues for valid picklist IDs.`,
-				);
-			shape.returnAll = rz
-				.coerce.boolean()
-				.nullish()
-				.describe(
-					`Fetch ALL matching records via API cursor pagination. Default false = up to limit. ` +
-				`Without fields: payload capped at ${MAX_RESPONSE_RECORDS} records. ` +
-				`With fields param (sparse fieldset): cap lifted — all records returned. ` +
-				`Pair returnAll=true with a narrow fields list for efficient bulk ID/lookup patterns.`,
-				);
+			shape.since = rz.string().nullish().describe(READ_PARAM_DESC.since);
+			shape.until = rz.string().nullish().describe(READ_PARAM_DESC.until);
+			shape.filtersJson = rz.string().nullish().describe(filtersJsonDesc());
+			shape.returnAll = rz.coerce.boolean().nullish().describe(returnAllDesc());
 			shape.outputMode = rz
 				.enum(['idsAndLabels', 'rawIds'])
 				.nullish()
-				.describe(
-					"'idsAndLabels' (default): appends derived label fields to results (e.g. resourceID → resourceFullName + resourceEmail; picklist IDs → *_label). Do NOT include these in the fields param — they are auto-added. 'rawIds': numeric IDs only.",
-				);
+				.describe(READ_PARAM_DESC.outputMode);
 
 			// excludeTerminalStatuses — only for resources that have terminal status semantics
 			if (
@@ -511,15 +441,15 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.companyName = rz
 				.string()
 				.nullish()
-				.describe('Optional company name for contains matching and ranking.');
+				.describe('Company name for contains matching and ranking.');
 			shape.email = rz
 				.string()
 				.nullish()
-				.describe('Optional email used to infer domain for matching.');
+				.describe('Email used to infer domain for matching.');
 			shape.website = rz
 				.string()
 				.nullish()
-				.describe('Optional website/domain used for primary domain matching.');
+				.describe('Website/domain used for primary domain matching.');
 			shape.limit = rz
 				.number()
 				.int()
@@ -564,7 +494,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.ticketFields = rz
 				.string()
 				.nullish()
-				.describe('Optional comma-separated ticket fields to return.');
+				.describe('Comma-separated ticket fields to return.');
 		}
 
 		// summary fields
@@ -579,7 +509,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.number()
 				.nullish()
 				.describe(
-					'Maximum characters for description and resolution fields in the summary. Default 500. Pass 0 for no limit.',
+					'Max characters for summary description/resolution fields (default 500; 0 = no limit).',
 				);
 			shape.includeChildCounts = rz
 				.coerce.boolean()
@@ -633,20 +563,20 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.describe(
 						hasGetByCompanyAndStatus
 							? 'Company name or numeric companyID (auto-resolved). Required for getByCompanyAndStatus; optional for other ops.'
-							: 'Company name or numeric companyID (auto-resolved). Optional — omit for all companies.',
+							: 'Company name or numeric companyID (auto-resolved). Omit for all companies.',
 					);
 			}
 			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority) {
 				shape.priority = rz
 					.string()
 					.nullish()
-					.describe('Priority picklist label or ID (optional).');
+					.describe('Priority picklist label or ID.');
 			}
 			if (hasGetByCompanyAndStatus && !shape.status) {
 				shape.status = rz
 					.string()
 					.nullish()
-					.describe('Status picklist label or ID (optional). Omit for all statuses.');
+					.describe('Status picklist label or ID. Omit for all statuses.');
 			}
 		}
 
@@ -669,7 +599,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.company = rz
 					.string()
 					.nullish()
-					.describe('Company name or numeric companyID (auto-resolved). Optional.');
+					.describe('Company name or numeric companyID (auto-resolved).');
 			}
 		}
 
@@ -686,19 +616,19 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.company = rz
 					.string()
 					.nullish()
-					.describe('Company name or numeric companyID (auto-resolved). Optional.');
+					.describe('Company name or numeric companyID (auto-resolved).');
 			}
 			if (!shape.status) {
 				shape.status = rz
 					.string()
 					.nullish()
-					.describe('Status picklist label or ID (optional).');
+					.describe('Status picklist label or ID.');
 			}
 			if (RESOURCES_WITH_PRIORITY.has(resource) && !shape.priority) {
 				shape.priority = rz
 					.string()
 					.nullish()
-					.describe('Priority picklist label or ID (optional).');
+					.describe('Priority picklist label or ID.');
 			}
 		}
 
@@ -783,7 +713,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.string()
 					.nullish()
 					.describe(
-						'JSON object of UDF field name → value pairs for user-defined fields. ' +
+						'JSON object of UDF field name → value pairs. ' +
 						'Keys must exactly match UDF field names as returned by describeFields (mode=write). ' +
 						'Example: {"Customer Size": "Enterprise", "Region": "APAC"}. ' +
 						'For picklist UDFs use the picklist value ID (label resolution not supported for UDFs).',
@@ -822,30 +752,30 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.int()
 				.min(1)
 				.nullish()
-				.describe('Optional destination company location ID.');
+				.describe('Destination company location ID.');
 			shape.destinationContactId = rz
 				.number()
 				.int()
 				.min(1)
 				.nullish()
-				.describe('Optional destination contact ID.');
+				.describe('Destination contact ID.');
 			shape.copyUdfs = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to copy user-defined fields (default true).');
+				.describe('Copy user-defined fields (default true).');
 			shape.copyAttachments = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to copy CI attachments (default true).');
-			shape.copyNotes = rz.coerce.boolean().nullish().describe('Whether to copy notes (default true).');
+				.describe('Copy CI attachments (default true).');
+			shape.copyNotes = rz.coerce.boolean().nullish().describe('Copy notes (default true).');
 			shape.copyNoteAttachments = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to copy note attachments (default true).');
+				.describe('Copy note attachments (default true).');
 			shape.deactivateSource = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to deactivate the source CI after safety checks (default true).');
+				.describe('Deactivate the source CI after safety checks (default true).');
 			shape.idempotencyKey = rz.string().nullish().describe('Optional run key for traceability.');
 			shape.includeMaskedUdfsPolicy = rz
 				.enum(['omit', 'fail'])
@@ -878,7 +808,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.retryJitter = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to use jitter in retry backoff (default true).');
+				.describe('Use jitter in retry backoff (default true).');
 			shape.throttleMaxBytesPer5Min = rz
 				.number()
 				.int()
@@ -924,33 +854,33 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.int()
 				.min(1)
 				.nullish()
-				.describe('Optional destination company location ID.');
+				.describe('Destination company location ID.');
 			shape.skipIfDuplicateEmailFound = rz
 				.coerce.boolean()
 				.nullish()
 				.describe(
-					'Whether to skip move when duplicate email exists on destination (default true).',
+					'Skip the move when a duplicate email exists on the destination (default true).',
 				);
 			shape.copyContactGroups = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to copy contact group memberships (default true).');
+				.describe('Copy contact group memberships (default true).');
 			shape.copyCompanyNotes = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to copy company notes linked to the contact (default true).');
+				.describe('Copy company notes linked to the contact (default true).');
 			shape.copyNoteAttachments = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to copy attachments for copied notes (default true).');
+				.describe('Copy attachments for copied notes (default true).');
 			shape.sourceAuditNote = rz
 				.string()
 				.nullish()
-				.describe('Optional audit note written to the source company context.');
+				.describe('Audit note written to the source company context.');
 			shape.destinationAuditNote = rz
 				.string()
 				.nullish()
-				.describe('Optional audit note written to the destination company context.');
+				.describe('Audit note written to the destination company context.');
 			if (!shape.impersonationResourceId) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
@@ -982,32 +912,34 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.includeTickets = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to include tickets (default false).');
+				.describe('Include tickets (default false).');
 			shape.includeProjects = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to include projects (default false).');
+				.describe('Include projects (default false).');
 			shape.includeServiceCallAssignments = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to reassign service call task/ticket resources (default false).');
+				.describe('Reassign service call task/ticket resources (default false).');
 			shape.includeAppointments = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to reassign appointments (default false).');
+				.describe('Reassign appointments (default false).');
 			shape.includeCompanies = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to transfer companies owned by the source resource (default false).');
+				.describe('Transfer companies owned by the source resource (default false).');
 			shape.companyIdAllowlist = rz
 				.string()
 				.nullish()
-				.describe('Optional comma-separated company IDs to scope company transfer.');
+				.describe(
+					'Comma-separated company IDs to scope the transfer. Applies only when includeCompanies=true.',
+				);
 			shape.includeOpportunities = rz
 				.coerce.boolean()
 				.nullish()
 				.describe(
-					'Whether to transfer opportunities owned by the source resource (default false).',
+					'Transfer opportunities owned by the source resource (default false).',
 				);
 			shape.dueWindowPreset = rz
 				.enum([
@@ -1023,7 +955,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					'custom',
 				])
 				.nullish()
-				.describe("Optional due window preset. Use 'custom' with dueBeforeCustom.");
+				.describe("Due window preset. Use 'custom' with dueBeforeCustom.");
 			shape.dueBeforeCustom = rz
 				.string()
 				.nullish()
@@ -1038,7 +970,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.coerce.boolean()
 				.nullish()
 				.describe(
-					'Whether items with no due date are included (default true, unless due window is set).',
+					'Include items with no due date (default true, unless a due window is set).',
 				);
 			shape.ticketAssignmentMode = rz
 				.enum(['primaryOnly', 'primaryAndSecondary'])
@@ -1071,15 +1003,19 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.statusAllowlistByLabel = rz
 				.string()
 				.nullish()
-				.describe('Optional comma-separated status labels to include.');
+				.describe(
+					'Comma-separated status labels to allow. Ignored when statusAllowlistByValue is set. Supply only one of the two.',
+				);
 			shape.statusAllowlistByValue = rz
 				.string()
 				.nullish()
-				.describe('Optional comma-separated status integer values to include.');
+				.describe(
+					'Comma-separated status IDs to allow. Takes precedence — when set, statusAllowlistByLabel is ignored. Supply only one of the two.',
+				);
 			shape.addAuditNotes = rz
 				.coerce.boolean()
 				.nullish()
-				.describe('Whether to create per-entity audit notes (default false).');
+				.describe('Create per-entity audit notes (default false).');
 			shape.auditNoteTemplate = rz
 				.string()
 				.nullish()
@@ -1102,7 +1038,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		if (operations.includes('getAvailableRoles')) {
 			if (!shape.resourceID) {
 				shape.resourceID = rz.coerce.string().nullish().describe(
-					'Required for getAvailableRoles. The resource (technician) ID or name to find available roles for.'
+					'Resource (technician) ID or name to find available roles for. Required for getAvailableRoles.'
 				);
 			}
 			if (!shape.ticketID) {
@@ -1149,7 +1085,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 						.string()
 						.nullish()
 						.describe(
-							'JSON object of UDF field name → value pairs for user-defined fields. ' +
+							'JSON object of UDF field name → value pairs. ' +
 							'Keys must exactly match UDF field names as returned by describeFields (mode=write). ' +
 							'Example: {"Customer Size": "Enterprise", "Region": "APAC"}. ' +
 							'For picklist UDFs use the picklist value ID (label resolution not supported for UDFs).',

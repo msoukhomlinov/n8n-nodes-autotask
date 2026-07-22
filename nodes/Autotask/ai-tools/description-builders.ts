@@ -6,6 +6,7 @@ import { getOperationContractRuleText } from './operation-contracts';
 import { isWriteOperation } from './operation-metadata';
 import { RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION, RESOURCE_EXTRA_HINTS } from './resource-language';
 import { MAX_RESPONSE_RECORDS } from './operation-handlers/operation-dispatch';
+import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
 
 export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
 
@@ -135,11 +136,10 @@ function describeFieldsHint(resourceName: string, mode: 'read' | 'write' | '' = 
 
 export function buildGetDescription(resourceLabel: string, resourceName: string): string {
 	return (
-		`Retrieve a single ${resourceLabel} record by numeric ID. ` +
-		`ONLY call this when you already have a numeric ID — never pass a name or text. ` +
+		`Retrieve a single ${resourceLabel} record by numeric ID — never pass a name or text. ` +
 		`If you only have a name or description, call autotask_${resourceName} with operation 'getMany' with a filter first, extract the 'id' from results, then call this. ` +
-		`Optionally use 'fields' to return only selected columns. ` +
-		`If a record should exist but response is empty, verify API user permissions (including line-of-business access). ` +
+		`Use 'fields' to return only selected columns. ` +
+		`If a record should exist but the response is empty, verify API user permissions (including line-of-business access). ` +
 		`Do not guess field names. ${describeFieldsHint(resourceName, 'read')}`
 	);
 }
@@ -231,7 +231,7 @@ export function buildCreateDescription(
 		`Create a new ${resourceLabel} record. ` +
 		`${requiredSummary}${parentHint} ` +
 		`Picklist and reference fields accept human-readable names — auto-resolved to IDs. ` +
-		`Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
+		`Date-time values must be ISO-8601 and UTC-safe (e.g. 2026-02-14T03:15:00Z). ` +
 		`Confirm field values with user before executing when acting autonomously. ` +
 		`If picklist values fail validation, call autotask_${resourceName} with operation 'listPicklistValues'.` +
 		(extraHint ? ` ${extraHint}` : '')
@@ -254,12 +254,11 @@ export function buildUpdateDescription(
 	return (
 		ref +
 		`Update an existing ${resourceLabel} record by numeric ID. ` +
-		`PREREQUISITE: you need the numeric ID. If you only have a name or text, call autotask_${resourceName} with operation 'getMany' with a filter to find the record and get its 'id' first. ` +
-		`Only provide fields to change (PATCH-style behaviour). ` +
-		`Do not assume PUT-style replacement where omitted fields become null. ` +
+		`If you only have a name or text, call autotask_${resourceName} with operation 'getMany' with a filter to find the record's 'id' first. ` +
+		`Provide only fields to change (PATCH semantics — omitted fields keep existing values, not PUT-style nulling). ` +
 		createFieldsNote +
 		`Picklist and reference fields accept human-readable names — auto-resolved to IDs. ` +
-		`Date-time values must be ISO-8601 and UTC-safe (for example 2026-02-14T03:15:00Z). ` +
+		`Date-time values must be ISO-8601 and UTC-safe (e.g. 2026-02-14T03:15:00Z). ` +
 		`Confirm field values with user before executing when acting autonomously. ` +
 		`${describeFieldsHint(resourceName, 'write')} ` +
 		`Use autotask_${resourceName} with operation 'listPicklistValues' for picklist fields.` +
@@ -269,10 +268,9 @@ export function buildUpdateDescription(
 
 export function buildDeleteDescription(resourceLabel: string, resourceName: string): string {
 	return (
-		`Delete a ${resourceLabel} record by numeric ID. ` +
-		`ONLY on explicit user intent. Do not infer delete intent from context. Confirm ID is correct before proceeding. ` +
-		`Operational delete responses may be minimal, so treat non-200 outcomes as failures. ` +
-		`Use autotask_${resourceName} with operation 'getMany' or autotask_${resourceName} with operation 'get' first to confirm the correct ID before deletion.`
+		`Delete a ${resourceLabel} record by numeric ID — ONLY on explicit user intent, never inferred from context. ` +
+		`Confirm the correct ID first via autotask_${resourceName} with operation 'getMany' or operation 'get'. ` +
+		`Delete responses may be minimal; treat non-200 outcomes as failures.`
 	);
 }
 
@@ -280,7 +278,7 @@ export function buildWhoAmIDescription(resourceLabel: string): string {
 	return (
 		`Resolve the current authenticated ${resourceLabel} record from API credentials. ` +
 		`Use this to discover the active Autotask user context before running user-scoped actions. ` +
-		`Optionally use 'fields' to limit returned columns.`
+		`Use 'fields' to limit returned columns.`
 	);
 }
 
@@ -315,23 +313,22 @@ export function buildUnpostedTimeEntriesDescription(
 export function buildCompanySearchByDomainDescription(resourceName: string): string {
 	return (
 		'Search companies by domain using website-style fields. ' +
-		'Identifier priority for company resolution: first extract/use domain from any provided email or website, then use company-name contains matching only as fallback. ' +
-		'Input can be a bare domain or full URL; the tool normalises it to a domain fragment (for example autotask.net). ' +
-		'IMPORTANT: Autotask typically stores company websites as full URLs (for example https://www.autotask.net/), so exact operator matches can fail on bare domain input. ' +
-		'To avoid false negatives, eq/like semantics are handled safely for website matching. ' +
-		'Always searches both company website fields and contact-email domains (no toggle): when no company website field matches, the tool searches Contact.emailAddress by domain and resolves the canonical company from companyID references. Public email-provider domains (gmail.com, outlook.com, etc.) skip the contact-email fallback to avoid over-matching consumer addresses. ' +
-		"Use the 'fields' parameter to limit which company fields are returned per result (comma-separated); omit to receive the full company entity. matchedField and matchedValue are always included to indicate which website field matched and its value. " +
+		'Resolution priority: extract/use domain from any provided email or website first; use company-name contains matching only as fallback. ' +
+		'Accepts a bare domain or full URL — normalised to a domain fragment (e.g. autotask.net). ' +
+		'Autotask stores company websites as full URLs (e.g. https://www.autotask.net/), so exact operator matches can fail on bare domain input; eq/like semantics are handled safely for website matching to avoid false negatives. ' +
+		'Always searches both company website fields and contact-email domains (no toggle): when no company website field matches, searches Contact.emailAddress by domain and resolves the canonical company from companyID references. Public email-provider domains (gmail.com, outlook.com, etc.) skip the contact-email fallback to avoid over-matching consumer addresses. ' +
+		"Use 'fields' (comma-separated) to limit returned company fields per result; omit for the full company entity. matchedField and matchedValue are always included to indicate which website field matched and its value. " +
 		describeFieldsHint(resourceName)
 	);
 }
 
 export function buildCompanySearchByIdentityDescription(resourceName: string): string {
 	return (
-		'Preferred AI company resolution operation. Accepts companyName, email, and website/domain, then ranks candidates by confidence. ' +
-		'Domain is normalised from website first, then email; domain matching is attempted first (company website fields, then contact-email fallback). ' +
-		'If domain signals are weak or absent, companyName contains matching is executed and merged into a confidence-ranked candidate list. ' +
-		'Use this operation as first choice for company lookup when identity hints may be incomplete or noisy. ' +
-		"Use the 'fields' parameter to limit returned company fields; omit for full records. " +
+		'Preferred AI company resolution operation — first choice when identity hints may be incomplete or noisy. ' +
+		'Accepts companyName, email, and website/domain; ranks candidates by confidence. ' +
+		'Domain is normalised from website first, then email; domain matching runs first (company website fields, then contact-email fallback). ' +
+		'If domain signals are weak or absent, companyName contains matching is executed and merged into the confidence-ranked candidate list. ' +
+		"Use 'fields' to limit returned company fields; omit for full records. " +
 		describeFieldsHint(resourceName)
 	);
 }
@@ -385,7 +382,7 @@ export function buildTicketSlaHealthCheckDescription(resourceName: string): stri
 		'Returns first-response, resolution-plan, and resolution milestone timing and status in consistent hours (2 decimal places). ' +
 		"Use 'ticketFields' to limit which ticket fields are returned in the ticket section. " +
 		'Includes wallClockRemainingHours, where negative values indicate overdue milestones. ' +
-		'This operation combines data from Ticket and ServiceLevelAgreementResults entities. ' +
+		'Combines data from Ticket and ServiceLevelAgreementResults entities. ' +
 		"For population-level SLA queries (e.g. 'how many breached this week?'), do NOT call slaHealthCheck without an id. Use operation 'count' or 'getMany' with filter_field='serviceLevelAgreementHasBeenMet', filter_op='eq', filter_value=false instead. " +
 		describeFieldsHint(resourceName)
 	);
@@ -398,7 +395,7 @@ export function buildTicketTimelineDescription(resourceName: string): string {
 		'Chronological merged event stream (notes, time entries, and optionally field-change history) for a single ticket — use for escalation briefs, effort audits, and manager summaries. ' +
 		identifierRule +
 		"Events sorted oldest-first. Each event has a 'type' field: 'note' (communications), 'timeEntry' (work logged), or 'history' (field changes). " +
-		"Parameters: 'since'/'until' (ISO date — strongly recommended for active tickets to scope results); " +
+		"Parameters: 'since'/'until' (ISO date — use on active tickets to scope results); " +
 		"'resourceId' (name or numeric ID — filters note authors, time entry resources, and history actors); " +
 		"'includeHistories' (default false — enable for full field-change audit; can be very large on busy tickets — combine with since/until); " +
 		"'textLimit' (default 500 chars for note/entry text, 0=no limit); " +
@@ -519,12 +516,12 @@ export function buildConfigurationItemMoveConfigurationItemDescription(
 	resourceName: string,
 ): string {
 	return (
-		'Clone a configuration item to a different company because companyID cannot be updated in place. ' +
-		'Copies CI core fields and optional UDFs, optional CI attachments, optional notes, and optional note attachments. ' +
-		'Always writes audit notes and can deactivate the source CI after safety checks. ' +
-		'Optionally provide impersonationResourceId so created records (CI, notes, attachments) are attributed to that resource. ' +
-		'Optionally set proceedWithoutImpersonationIfDenied (default on); this only applies when impersonationResourceId is set and retries without impersonation if write permissions are denied for the impersonated resource. ' +
-		'This operation does not migrate tickets, tasks, projects, contracts, related items, DNS records, or billing-product associations. ' +
+		'Clone a configuration item to a different company (companyID cannot be updated in place). ' +
+		'Copies CI core fields plus optional UDFs, CI attachments, notes, and note attachments. ' +
+		'Always writes audit notes; can deactivate the source CI after safety checks. ' +
+		'impersonationResourceId attributes created records (CI, notes, attachments) to that resource. ' +
+		'proceedWithoutImpersonationIfDenied (default on) applies only when impersonationResourceId is set — retries without impersonation if write permissions are denied for the impersonated resource. ' +
+		'Does not migrate tickets, tasks, projects, contracts, related items, DNS records, or billing-product associations. ' +
 		`If field names or expected behaviour are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
 	);
 }
@@ -532,19 +529,19 @@ export function buildConfigurationItemMoveConfigurationItemDescription(
 export function buildContactMoveToCompanyDescription(resourceName: string): string {
 	return (
 		'Move a contact to another company by cloning the contact record and optional related data. ' +
-		'Supports duplicate email safeguards, optional company note and attachment copy, contact group copy, and configurable source/destination audit notes. ' +
-		'Supports optional impersonation for write attribution with optional fallback when impersonation is denied. ' +
+		'Includes duplicate-email safeguards, optional company note and attachment copy, contact group copy, and configurable source/destination audit notes. ' +
+		'Supports impersonation for write attribution, with fallback when impersonation is denied. ' +
 		`If field names or expected behaviour are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
 	);
 }
 
 export function buildResourceTransferOwnershipDescription(resourceName: string): string {
 	return (
-		'Transfer ownership and assignments from a source resource to a receiving resource. ' +
-		'Supports companies, opportunities, tickets, tasks, projects, task secondary resources, service call assignments, and appointments. ' +
+		'Transfer ownership and assignments from a source resource to a receiving resource: ' +
+		'companies, opportunities, tickets, tasks, projects, task secondary resources, service call assignments, and appointments. ' +
 		'Supports due-window filtering, status filtering, and optional audit notes. ' +
-		"Use dueWindowPreset for convenient date ranges, or dueWindowPreset='custom' with dueBeforeCustom for exact cut-offs. " +
-		'By default, only open/active-style work is targeted by excluding terminal statuses. ' +
+		"Use dueWindowPreset for date ranges, or dueWindowPreset='custom' with dueBeforeCustom for exact cut-offs. " +
+		'By default targets only open/active work by excluding terminal statuses. ' +
 		`If field names or expected behaviour are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
 	);
 }
@@ -732,12 +729,24 @@ const DEDUP_NOTES = [
 	'updateFields: field names to compare against the duplicate — values that differ cause an update. Requires errorOnDuplicate=false.',
 	'Returns outcome: created, skipped, updated, or a resource-specific not_found variant.',
 ];
-const LIST_ADVANCED_NOTES = [
-	'filtersJson: JSON array of Autotask IFilterCondition objects for 3+ conditions or nested OR. Mutually exclusive with flat filter_field triplets. No label resolution — pass numeric IDs.',
-	`returnAll=true: fetches ALL matching records via API-native pagination. Without fields param: capped at ${MAX_RESPONSE_RECORDS} records. With fields param (sparse): no cap — all records returned. Use a narrow fields list for bulk ID/lookup patterns.`,
-	ASCENDING_ID_WARNING,
-	RECENCY_VS_SINCE_UNTIL_RULE.trim(),
-];
+let _listAdvancedNotesCache: string[] | undefined;
+
+/**
+ * Built lazily (first call, memoized) rather than as a module-load-time const:
+ * MAX_RESPONSE_RECORDS comes from operation-dispatch.ts, which sits in the same
+ * circular-import cycle as this module — reading it at module-eval time can yield
+ * undefined ("capped at undefined") depending on which module is required first.
+ */
+function getListAdvancedNotes(): string[] {
+	if (_listAdvancedNotesCache) return _listAdvancedNotesCache;
+	_listAdvancedNotesCache = [
+		'filtersJson: JSON array of Autotask IFilterCondition objects for 3+ conditions or nested OR. Mutually exclusive with flat filter_field triplets. No label resolution — pass numeric IDs.',
+		`returnAll=true: fetches ALL matching records via API-native pagination. Without fields param: capped at ${MAX_RESPONSE_RECORDS} records. With fields param (sparse): no cap — all records returned. Use a narrow fields list for bulk ID/lookup patterns.`,
+		ASCENDING_ID_WARNING,
+		RECENCY_VS_SINCE_UNTIL_RULE.trim(),
+	];
+	return _listAdvancedNotesCache;
+}
 
 const SEARCH_BY_KEYWORD_NOTES: readonly string[] = [
 	"Use 'limit' (default 10) or 'returnAll=true' to control result count from the merged set.",
@@ -745,88 +754,66 @@ const SEARCH_BY_KEYWORD_NOTES: readonly string[] = [
 	"Per-stage cap is 200 records. If a stage hits the cap, set includeNotes/includeTimeEntries=false or narrow the keyword.",
 ];
 
-/** Static parameter map for read and metadata operations */
-const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: OperationParam[] }> = {
+type ReadOpParamsMap = Record<string, { required: OperationParam[]; optional: OperationParam[] }>;
+let _readOpParamsCache: ReadOpParamsMap | undefined;
+
+/**
+ * Static parameter map for read and metadata operations. Built lazily (first call, memoized)
+ * rather than as a module-load-time const: this module sits in a circular-import cycle
+ * (tool-executor.ts -> description-builders.ts -> read-param-descriptions.ts ->
+ * operation-dispatch.ts -> tool-executor.ts), and several entries below call
+ * fieldsDesc()/filtersJsonDesc()/returnAllDesc() from read-param-descriptions.ts — calling
+ * those at module-eval time can race the cycle and throw "X is not a function" depending on
+ * which module is required first. Deferring to first actual use avoids the race entirely.
+ */
+function getReadOpParams(): ReadOpParamsMap {
+	if (_readOpParamsCache) return _readOpParamsCache;
+	_readOpParamsCache = {
 	get: {
 		required: [{ field: 'id', type: 'number', description: 'Numeric entity ID.' }],
 		optional: [
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
 		],
 	},
 	getMany: {
 		required: [],
 		optional: [
 			{ field: 'filter_field', type: 'string', description: 'Field to filter on.' },
-			{
-				field: 'filter_op',
-				type: 'string',
-				description:
-					'Operator: eq, noteq, gt, gte, lt, lte, contains, beginsWith, endsWith, exist, notExist, in, notIn.',
-			},
-			{
-				field: 'filter_value',
-				type: 'string',
-				description:
-					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs ('Neil,Andrew' or '123,456'); each resolved independently — unresolved names with multiple candidates return pendingConfirmations; already-resolved in resolvedElements. Booleans: 'true'/'false'.",
-			},
-			{ field: 'filter_field_2', type: 'string', description: 'Second filter field.' },
-			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
-			{
-				field: 'filter_value_2',
-				type: 'string',
-				description:
-					"Second filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
-			},
-			{ field: 'filter_logic', type: 'string', description: "'and' (default) or 'or'." },
-			{
-				field: 'filtersJson',
-				type: 'string',
-				description:
-					'JSON IFilterCondition array (mutually exclusive with flat filter_field triplets). No label resolution.',
-			},
-			{
-				field: 'returnAll',
-				type: 'boolean',
-				description:
-					`Fetch ALL matching records via API pagination. Without fields: capped at ${MAX_RESPONSE_RECORDS}. With fields (sparse fieldset): cap lifted — all records returned.`,
-			},
-			{ field: 'limit', type: 'number', description: 'Max records (1-500, default 10).' },
-			{ field: 'offset', type: 'number', description: 'Skip first N records (max 499).' },
+			{ field: 'filter_op', type: 'string', description: READ_PARAM_DESC.filter_op },
+			{ field: 'filter_value', type: 'string', description: READ_PARAM_DESC.filter_value },
+			{ field: 'filter_field_2', type: 'string', description: READ_PARAM_DESC.filter_field_2 },
+			{ field: 'filter_op_2', type: 'string', description: READ_PARAM_DESC.filter_op_2 },
+			{ field: 'filter_value_2', type: 'string', description: READ_PARAM_DESC.filter_value_2 },
+			{ field: 'filter_logic', type: 'string', description: READ_PARAM_DESC.filter_logic },
+			{ field: 'filtersJson', type: 'string', description: filtersJsonDesc() },
+			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+			{ field: 'offset', type: 'number', description: READ_PARAM_DESC.offset },
 			{
 				field: 'recency',
 				type: 'string',
 				description: 'Preset window (last_7d, last_30d, etc.) or custom last_Nd.',
 			},
-			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
-			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
-			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default): appends label fields automatically (resourceFullName, *_label etc.) — do NOT request these via fields. 'rawIds': numeric IDs only." },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
+			{ field: 'outputMode', type: 'string', description: READ_PARAM_DESC.outputMode },
 		],
 	},
 	count: {
 		required: [],
 		optional: [
 			{ field: 'filter_field', type: 'string', description: 'Field to filter on.' },
-			{ field: 'filter_op', type: 'string', description: 'Filter operator.' },
-			{
-				field: 'filter_value',
-				type: 'string',
-				description:
-					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs; each resolved independently.",
-			},
-			{ field: 'filter_field_2', type: 'string', description: 'Second filter field.' },
-			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
-			{
-				field: 'filter_value_2',
-				type: 'string',
-				description:
-					"Second filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
-			},
-			{ field: 'filter_logic', type: 'string', description: "'and' (default) or 'or'." },
-			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array.' },
+			{ field: 'filter_op', type: 'string', description: READ_PARAM_DESC.filter_op },
+			{ field: 'filter_value', type: 'string', description: READ_PARAM_DESC.filter_value },
+			{ field: 'filter_field_2', type: 'string', description: READ_PARAM_DESC.filter_field_2 },
+			{ field: 'filter_op_2', type: 'string', description: READ_PARAM_DESC.filter_op_2 },
+			{ field: 'filter_value_2', type: 'string', description: READ_PARAM_DESC.filter_value_2 },
+			{ field: 'filter_logic', type: 'string', description: READ_PARAM_DESC.filter_logic },
+			{ field: 'filtersJson', type: 'string', description: filtersJsonDesc() },
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
-			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
-			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
 		],
 	},
 	delete: {
@@ -836,59 +823,49 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 	whoAmI: {
 		required: [],
 		optional: [
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
 		],
 	},
 	getPosted: {
 		required: [],
 		optional: [
 			{ field: 'filter_field', type: 'string', description: 'Field to filter on.' },
-			{ field: 'filter_op', type: 'string', description: 'Filter operator.' },
-			{
-				field: 'filter_value',
-				type: 'string',
-				description:
-					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs; each resolved independently.",
-			},
-			{ field: 'filter_field_2', type: 'string', description: 'Second field to filter on.' },
-			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
-			{ field: 'filter_value_2', type: 'string', description: 'Second filter value.' },
-			{ field: 'filter_logic', type: 'string', description: "'and' (default) or 'or' — logic between filter pairs." },
-			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array. Mutually exclusive with filter_field.' },
-			{ field: 'returnAll', type: 'boolean', description: 'Fetch ALL matching records.' },
-			{ field: 'limit', type: 'number', description: 'Max records (1-500, default 10).' },
-			{ field: 'offset', type: 'number', description: 'Client-side offset for pagination (0–499).' },
+			{ field: 'filter_op', type: 'string', description: READ_PARAM_DESC.filter_op },
+			{ field: 'filter_value', type: 'string', description: READ_PARAM_DESC.filter_value },
+			{ field: 'filter_field_2', type: 'string', description: READ_PARAM_DESC.filter_field_2 },
+			{ field: 'filter_op_2', type: 'string', description: READ_PARAM_DESC.filter_op_2 },
+			{ field: 'filter_value_2', type: 'string', description: READ_PARAM_DESC.filter_value_2 },
+			{ field: 'filter_logic', type: 'string', description: READ_PARAM_DESC.filter_logic },
+			{ field: 'filtersJson', type: 'string', description: filtersJsonDesc() },
+			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+			{ field: 'offset', type: 'number', description: READ_PARAM_DESC.offset },
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
-			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
-			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
-			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default): appends label fields automatically (resourceFullName, *_label etc.) — do NOT request these via fields. 'rawIds': numeric IDs only." },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
+			{ field: 'outputMode', type: 'string', description: READ_PARAM_DESC.outputMode },
 		],
 	},
 	getUnposted: {
 		required: [],
 		optional: [
 			{ field: 'filter_field', type: 'string', description: 'Field to filter on.' },
-			{ field: 'filter_op', type: 'string', description: 'Filter operator.' },
-			{
-				field: 'filter_value',
-				type: 'string',
-				description:
-					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs; each resolved independently.",
-			},
-			{ field: 'filter_field_2', type: 'string', description: 'Second field to filter on.' },
-			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
-			{ field: 'filter_value_2', type: 'string', description: 'Second filter value.' },
-			{ field: 'filter_logic', type: 'string', description: "'and' (default) or 'or' — logic between filter pairs." },
-			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array. Mutually exclusive with filter_field.' },
-			{ field: 'returnAll', type: 'boolean', description: 'Fetch ALL matching records.' },
-			{ field: 'limit', type: 'number', description: 'Max records (1-500, default 10).' },
-			{ field: 'offset', type: 'number', description: 'Client-side offset for pagination (0–499).' },
+			{ field: 'filter_op', type: 'string', description: READ_PARAM_DESC.filter_op },
+			{ field: 'filter_value', type: 'string', description: READ_PARAM_DESC.filter_value },
+			{ field: 'filter_field_2', type: 'string', description: READ_PARAM_DESC.filter_field_2 },
+			{ field: 'filter_op_2', type: 'string', description: READ_PARAM_DESC.filter_op_2 },
+			{ field: 'filter_value_2', type: 'string', description: READ_PARAM_DESC.filter_value_2 },
+			{ field: 'filter_logic', type: 'string', description: READ_PARAM_DESC.filter_logic },
+			{ field: 'filtersJson', type: 'string', description: filtersJsonDesc() },
+			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+			{ field: 'offset', type: 'number', description: READ_PARAM_DESC.offset },
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
-			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
-			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
-			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default): appends label fields automatically (resourceFullName, *_label etc.) — do NOT request these via fields. 'rawIds': numeric IDs only." },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
+			{ field: 'outputMode', type: 'string', description: READ_PARAM_DESC.outputMode },
 		],
 	},
 	searchByDomain: {
@@ -919,17 +896,17 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{
 				field: 'companyName',
 				type: 'string',
-				description: 'Optional company name signal (contains match).',
+				description: 'Company name signal (contains match).',
 			},
 			{
 				field: 'email',
 				type: 'string',
-				description: 'Optional email signal used to infer domain.',
+				description: 'Email signal used to infer domain.',
 			},
 			{
 				field: 'website',
 				type: 'string',
-				description: 'Optional website/domain signal used for primary match.',
+				description: 'Website/domain signal used for primary match.',
 			},
 			{
 				field: 'limit',
@@ -959,7 +936,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{
 				field: 'ticketFields',
 				type: 'string',
-				description: 'Optional comma-separated ticket fields to return.',
+				description: 'Comma-separated ticket fields to return.',
 			},
 		],
 	},
@@ -1002,7 +979,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{
 				field: 'destinationCompanyLocationId',
 				type: 'number',
-				description: 'Optional destination location ID.',
+				description: 'Destination location ID.',
 			},
 			{ field: 'copyUdfs', type: 'boolean', description: 'Copy UDFs (default true).' },
 			{
@@ -1104,10 +1081,10 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'limit', type: 'number', description: 'Max records per branch (1-500, default 10).' },
 			{ field: 'returnAll', type: 'boolean', description: 'Fetch all per branch.' },
 			{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
-			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
-			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
 			{ field: 'excludeTerminalStatuses', type: 'boolean', description: 'Exclude Complete/Cancelled (ticket only, default true).' },
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
 		],
 	},
 	getByYear: {
@@ -1131,7 +1108,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{
 				field: 'rejectReason',
 				type: 'string',
-				description: 'Reason for rejection (recommended for audit trail).',
+				description: "Reason for rejection. Required when rejectReasonPolicy='mandatory'; otherwise include for the audit trail.",
 			},
 		],
 	},
@@ -1146,7 +1123,7 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'fieldId', type: 'string', description: 'Field ID to list picklist values for.' },
 		],
 		optional: [
-			{ field: 'query', type: 'string', description: 'Optional search term.' },
+			{ field: 'query', type: 'string', description: 'Search term to filter values.' },
 			{ field: 'limit', type: 'number', description: 'Max results (default 50).' },
 			{ field: 'page', type: 'number', description: 'Page number (default 1).' },
 		],
@@ -1157,7 +1134,9 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 		],
 		optional: [],
 	},
-};
+	};
+	return _readOpParamsCache;
+}
 
 function buildWriteParams(
 	writeFields: FieldMeta[],
@@ -1292,7 +1271,7 @@ function getOperationPurpose(
 		case 'approve':
 			return `Approve a pending ${resourceLabel} request by numeric ID.`;
 		case 'reject':
-			return `Reject a pending ${resourceLabel} request by numeric ID. Provide an optional rejectReason string.`;
+			return `Reject a pending ${resourceLabel} request by numeric ID. Provide rejectReason (required when rejectReasonPolicy='mandatory').`;
 		case 'describeFields':
 			return buildDescribeFieldsDescription(resourceLabel);
 		case 'listPicklistValues':
@@ -1344,11 +1323,10 @@ function getOperationNotes(resource: string, operation: string): string[] {
 		case 'getUnassigned':
 		case 'getBySLAStatus':
 		case 'getByResource':
-			return [...contractNotes, ...LIST_ADVANCED_NOTES];
 		case 'getMany':
 		case 'getPosted':
 		case 'getUnposted':
-			return [...contractNotes, ...LIST_ADVANCED_NOTES];
+			return [...contractNotes, ...getListAdvancedNotes()];
 		default:
 			return [...contractNotes];
 	}
@@ -1378,7 +1356,7 @@ export function buildOperationDoc(
 	if (WRITE_OPS_WITH_FIELD_METADATA.has(targetOperation)) {
 		parameters = buildWriteParams(writeFields, targetOperation === 'createIfNotExists');
 	} else {
-		parameters = READ_OP_PARAMS[targetOperation] ?? { required: [], optional: [] };
+		parameters = getReadOpParams()[targetOperation] ?? { required: [], optional: [] };
 	}
 
 	const notes = getOperationNotes(resource, targetOperation);
