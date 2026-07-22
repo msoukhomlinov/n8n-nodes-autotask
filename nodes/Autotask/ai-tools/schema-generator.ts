@@ -6,7 +6,7 @@ import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
 import { RESOURCES_WITH_PRIORITY, RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } from './resource-language';
-import { MAX_RESPONSE_RECORDS } from './operation-handlers/operation-dispatch';
+import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
 
 /** Picklist inlining threshold — at or below this count, inline all values; above, tell LLM to call listPicklistValues. */
 const INLINE_PICKLIST_THRESHOLD = 4;
@@ -141,17 +141,8 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		'in',
 		'notIn',
 	]);
-	const rFilterValueSchema = rz
-		.string()
-		.describe(
-			"Filter value as string. For reference/picklist fields, pass human-readable name (e.g. 'In Progress', 'Contoso', 'High') — auto-resolves to ID, or pass numeric ID directly. For in/notIn: comma-separate names or IDs (e.g. 'Neil,Andrew' or '123,456'). Each name resolved independently; names with multiple candidates return pendingConfirmations, already-resolved names shown in resolvedElements. Booleans: 'true'/'false'.",
-		);
-	const rRecencySchema = rz
-		.string()
-		.nullish()
-		.describe(
-			'Preset time window: last_15m, last_1h, last_2h, last_3h, last_4h, last_6h, last_8h, last_12h, last_24h, last_1d–last_7d, last_14d, last_30d, last_90d. Or last_Nd (N=1–365). Mutually exclusive with since/until.',
-		);
+	const rFilterValueSchema = rz.string().describe(READ_PARAM_DESC.filter_value);
+	const rRecencySchema = rz.string().nullish().describe(READ_PARAM_DESC.recency);
 
 	function buildUnifiedSchema(
 		resource: string,
@@ -291,16 +282,10 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 			if (!shape.recency) shape.recency = rRecencySchema;
 			if (!shape.since) {
-				shape.since = rz
-					.string()
-					.nullish()
-					.describe('Range start (ISO-8601; e.g. 2026-01-01T09:00:00Z). Overrides recency.');
+				shape.since = rz.string().nullish().describe(READ_PARAM_DESC.since);
 			}
 			if (!shape.until) {
-				shape.until = rz
-					.string()
-					.nullish()
-					.describe('Range end (ISO-8601). Requires since or recency.');
+				shape.until = rz.string().nullish().describe(READ_PARAM_DESC.until);
 			}
 			if (!shape.excludeTerminalStatuses) {
 				shape.excludeTerminalStatuses = rz
@@ -387,61 +372,32 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 
 		// fields — column selection
 		if (hasGetFamily || hasCreate) {
-			shape.fields = rz
-				.string()
-				.nullish()
-				.describe(
-					`Sparse fieldset — comma-separated field names to return. Omit for all fields. The id field is always included automatically. ` +
-					`Reduces payload size significantly for entities with many fields. ` +
-					`With returnAll=true, specifying fields lifts the ${MAX_RESPONSE_RECORDS}-record payload cap — all matching records are returned. ` +
-					`Real API field names only (call describeFields for the full list). Do not request *_label or *_name fields — those are auto-added by outputMode=idsAndLabels.`,
-				);
+			shape.fields = rz.string().nullish().describe(fieldsDesc());
 		}
 
 		// Filter fields for list operations
 		const hasSearchByKeywordForListShared = operations.includes('searchByKeyword');
 		if (hasListFamily || hasSearchByKeywordForListShared) {
 			const fieldNames = readFields.filter((f) => !f.udf && isValidSchemaKey(f.id)).map((f) => f.id);
+			const filterFieldPairClause =
+				"Field to filter on. Provide filter_value with it (not needed when filter_op is 'exist'/'notExist'). For 'older than'/upper-bound date queries use a date field (createDate, lastActivityDate, dueDateTime) with filter_op='lt'.";
 			const filterFieldDesc =
-				"Field to filter on. Use operation 'describeFields' to see valid field names. For 'older than' / upper-bound date queries use filter_field with a date field + filter_op='lt'.";
+				`${filterFieldPairClause} Use operation 'describeFields' to see valid field names.`;
 			shape.filter_field =
 				fieldNames.length > 0
 					? rz
 							.enum(fieldNames as [string, ...string[]])
 							.nullish()
-							.describe("Field to filter on. For 'older than' / upper-bound date queries, use a date field (createDate, lastActivityDate, dueDateTime) with filter_op='lt'.")
+							.describe(filterFieldPairClause)
 					: rz.string().nullish().describe(filterFieldDesc);
-			shape.filter_op = rFilterOpEnum.nullish().describe("Filter operator. Use 'notExist' for unassigned/empty/null fields (no filter_value needed). Use 'exist' for populated fields. Other operators: eq (equals), noteq (not equals), gt/gte/lt/lte (numeric/date comparisons), contains/beginsWith/endsWith (text), in/notIn (array of values).");
+			shape.filter_op = rFilterOpEnum.nullish().describe(READ_PARAM_DESC.filter_op);
 			shape.filter_value = rFilterValueSchema.nullish();
-			shape.filter_field_2 = rz
-				.string()
-				.nullish()
-				.describe(
-					'Second filter field — same valid values as filter_field. Supports date fields with filter_op_2 for bounded date ranges.',
-				);
-			shape.filter_op_2 = rFilterOpEnum.nullish().describe('Second filter operator');
-			shape.filter_value_2 = rFilterValueSchema.nullish().describe('Second filter value');
-			shape.filter_logic = rz
-				.enum(['and', 'or'])
-				.nullish()
-				.describe(
-					"Combiner between the two filter pairs: 'and' (default) or 'or'.",
-				);
-			shape.limit = rz
-				.number()
-				.int()
-				.min(1)
-				.max(500)
-				.nullish()
-				.describe('Max results (1-500, default 10)');
-			shape.offset = rz
-				.number()
-				.int()
-				.min(0)
-				.nullish()
-				.describe(
-					'Skip first N records (0–499). Response includes hasMore/nextOffset. Max 500 total — narrow filters for more.',
-				);
+			shape.filter_field_2 = rz.string().nullish().describe(READ_PARAM_DESC.filter_field_2);
+			shape.filter_op_2 = rFilterOpEnum.nullish().describe(READ_PARAM_DESC.filter_op_2);
+			shape.filter_value_2 = rFilterValueSchema.nullish().describe(READ_PARAM_DESC.filter_value_2);
+			shape.filter_logic = rz.enum(['and', 'or']).nullish().describe(READ_PARAM_DESC.filter_logic);
+			shape.limit = rz.number().int().min(1).max(500).nullish().describe(READ_PARAM_DESC.limit);
+			shape.offset = rz.number().int().min(0).nullish().describe(READ_PARAM_DESC.offset);
 			shape.recency = rRecencySchema;
 			const dateFields = readFields
 				.filter((f) => !f.udf && isValidSchemaKey(f.id) && f.type.toLowerCase().includes('date'))
@@ -454,42 +410,14 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 						`Date/time field for recency/since/until. Available: ${dateFields.join(', ')}. Default: first available.`,
 					);
 			}
-			shape.since = rz
-				.string()
-				.nullish()
-				.describe(
-					'Range start (ISO-8601; e.g. 2026-01-01T09:00:00 or 2026-01-01T09:00:00Z). Overrides recency.',
-				);
-			shape.until = rz
-				.string()
-				.nullish()
-				.describe(
-					'Range end (ISO-8601). Requires since or recency.',
-				);
-			shape.filtersJson = rz.string().nullish().describe(
-					`Advanced filters as JSON array of Autotask IFilterCondition objects. Mutually exclusive with filter_field. No label resolution — use numeric IDs for all values including in/notIn (for name-based in/notIn use the filter_value param path instead). Dates UTC ISO-8601. ` +
-				`Supports: eq/noteq/gt/gte/lt/lte/contains/beginsWith/endsWith/exist/notExist/in/notIn. ` +
-				`in/notIn value must be a JSON array (max 500 values per Autotask API limit). ` +
-				`Nested AND group: [{"op":"and","items":[<cond1>,<cond2>]}]. ` +
-				`Nested OR group: [{"op":"or","items":[<cond1>,<cond2>]}]. ` +
-				`Each condition shape: {"field":"<fieldName>","op":"<op>","value":<value>}. ` +
-				`Call describeFields for valid field names on this resource, and listPicklistValues for valid picklist IDs.`,
-				);
-			shape.returnAll = rz
-				.coerce.boolean()
-				.nullish()
-				.describe(
-					`Fetch ALL matching records via API cursor pagination. Default false = up to limit. ` +
-				`Without fields: payload capped at ${MAX_RESPONSE_RECORDS} records. ` +
-				`With fields param (sparse fieldset): cap lifted — all records returned. ` +
-				`Pair returnAll=true with a narrow fields list for efficient bulk ID/lookup patterns.`,
-				);
+			shape.since = rz.string().nullish().describe(READ_PARAM_DESC.since);
+			shape.until = rz.string().nullish().describe(READ_PARAM_DESC.until);
+			shape.filtersJson = rz.string().nullish().describe(filtersJsonDesc());
+			shape.returnAll = rz.coerce.boolean().nullish().describe(returnAllDesc());
 			shape.outputMode = rz
 				.enum(['idsAndLabels', 'rawIds'])
 				.nullish()
-				.describe(
-					"'idsAndLabels' (default): appends derived label fields to results (e.g. resourceID → resourceFullName + resourceEmail; picklist IDs → *_label). Do NOT include these in the fields param — they are auto-added. 'rawIds': numeric IDs only.",
-				);
+				.describe(READ_PARAM_DESC.outputMode);
 
 			// excludeTerminalStatuses — only for resources that have terminal status semantics
 			if (

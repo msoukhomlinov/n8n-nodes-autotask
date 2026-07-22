@@ -6,6 +6,7 @@ import { getOperationContractRuleText } from './operation-contracts';
 import { isWriteOperation } from './operation-metadata';
 import { RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION, RESOURCE_EXTRA_HINTS } from './resource-language';
 import { MAX_RESPONSE_RECORDS } from './operation-handlers/operation-dispatch';
+import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
 
 export const DESCRIPTION_REFERENCE_PLACEHOLDER = '__REFERENCE_UTC__';
 
@@ -745,88 +746,66 @@ const SEARCH_BY_KEYWORD_NOTES: readonly string[] = [
 	"Per-stage cap is 200 records. If a stage hits the cap, set includeNotes/includeTimeEntries=false or narrow the keyword.",
 ];
 
-/** Static parameter map for read and metadata operations */
-const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: OperationParam[] }> = {
+type ReadOpParamsMap = Record<string, { required: OperationParam[]; optional: OperationParam[] }>;
+let _readOpParamsCache: ReadOpParamsMap | undefined;
+
+/**
+ * Static parameter map for read and metadata operations. Built lazily (first call, memoized)
+ * rather than as a module-load-time const: this module sits in a circular-import cycle
+ * (tool-executor.ts -> description-builders.ts -> read-param-descriptions.ts ->
+ * operation-dispatch.ts -> tool-executor.ts), and several entries below call
+ * fieldsDesc()/filtersJsonDesc()/returnAllDesc() from read-param-descriptions.ts — calling
+ * those at module-eval time can race the cycle and throw "X is not a function" depending on
+ * which module is required first. Deferring to first actual use avoids the race entirely.
+ */
+function getReadOpParams(): ReadOpParamsMap {
+	if (_readOpParamsCache) return _readOpParamsCache;
+	_readOpParamsCache = {
 	get: {
 		required: [{ field: 'id', type: 'number', description: 'Numeric entity ID.' }],
 		optional: [
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
 		],
 	},
 	getMany: {
 		required: [],
 		optional: [
 			{ field: 'filter_field', type: 'string', description: 'Field to filter on.' },
-			{
-				field: 'filter_op',
-				type: 'string',
-				description:
-					'Operator: eq, noteq, gt, gte, lt, lte, contains, beginsWith, endsWith, exist, notExist, in, notIn.',
-			},
-			{
-				field: 'filter_value',
-				type: 'string',
-				description:
-					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs ('Neil,Andrew' or '123,456'); each resolved independently — unresolved names with multiple candidates return pendingConfirmations; already-resolved in resolvedElements. Booleans: 'true'/'false'.",
-			},
-			{ field: 'filter_field_2', type: 'string', description: 'Second filter field.' },
-			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
-			{
-				field: 'filter_value_2',
-				type: 'string',
-				description:
-					"Second filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
-			},
-			{ field: 'filter_logic', type: 'string', description: "'and' (default) or 'or'." },
-			{
-				field: 'filtersJson',
-				type: 'string',
-				description:
-					'JSON IFilterCondition array (mutually exclusive with flat filter_field triplets). No label resolution.',
-			},
-			{
-				field: 'returnAll',
-				type: 'boolean',
-				description:
-					`Fetch ALL matching records via API pagination. Without fields: capped at ${MAX_RESPONSE_RECORDS}. With fields (sparse fieldset): cap lifted — all records returned.`,
-			},
-			{ field: 'limit', type: 'number', description: 'Max records (1-500, default 10).' },
-			{ field: 'offset', type: 'number', description: 'Skip first N records (max 499).' },
+			{ field: 'filter_op', type: 'string', description: READ_PARAM_DESC.filter_op },
+			{ field: 'filter_value', type: 'string', description: READ_PARAM_DESC.filter_value },
+			{ field: 'filter_field_2', type: 'string', description: READ_PARAM_DESC.filter_field_2 },
+			{ field: 'filter_op_2', type: 'string', description: READ_PARAM_DESC.filter_op_2 },
+			{ field: 'filter_value_2', type: 'string', description: READ_PARAM_DESC.filter_value_2 },
+			{ field: 'filter_logic', type: 'string', description: READ_PARAM_DESC.filter_logic },
+			{ field: 'filtersJson', type: 'string', description: filtersJsonDesc() },
+			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+			{ field: 'offset', type: 'number', description: READ_PARAM_DESC.offset },
 			{
 				field: 'recency',
 				type: 'string',
 				description: 'Preset window (last_7d, last_30d, etc.) or custom last_Nd.',
 			},
-			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
-			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
-			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default): appends label fields automatically (resourceFullName, *_label etc.) — do NOT request these via fields. 'rawIds': numeric IDs only." },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
+			{ field: 'outputMode', type: 'string', description: READ_PARAM_DESC.outputMode },
 		],
 	},
 	count: {
 		required: [],
 		optional: [
 			{ field: 'filter_field', type: 'string', description: 'Field to filter on.' },
-			{ field: 'filter_op', type: 'string', description: 'Filter operator.' },
-			{
-				field: 'filter_value',
-				type: 'string',
-				description:
-					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs; each resolved independently.",
-			},
-			{ field: 'filter_field_2', type: 'string', description: 'Second filter field.' },
-			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
-			{
-				field: 'filter_value_2',
-				type: 'string',
-				description:
-					"Second filter value as string. For in/notIn, comma-separate values (e.g. '1,2,3').",
-			},
-			{ field: 'filter_logic', type: 'string', description: "'and' (default) or 'or'." },
-			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array.' },
+			{ field: 'filter_op', type: 'string', description: READ_PARAM_DESC.filter_op },
+			{ field: 'filter_value', type: 'string', description: READ_PARAM_DESC.filter_value },
+			{ field: 'filter_field_2', type: 'string', description: READ_PARAM_DESC.filter_field_2 },
+			{ field: 'filter_op_2', type: 'string', description: READ_PARAM_DESC.filter_op_2 },
+			{ field: 'filter_value_2', type: 'string', description: READ_PARAM_DESC.filter_value_2 },
+			{ field: 'filter_logic', type: 'string', description: READ_PARAM_DESC.filter_logic },
+			{ field: 'filtersJson', type: 'string', description: filtersJsonDesc() },
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
-			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
-			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
 		],
 	},
 	delete: {
@@ -836,59 +815,49 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 	whoAmI: {
 		required: [],
 		optional: [
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
 		],
 	},
 	getPosted: {
 		required: [],
 		optional: [
 			{ field: 'filter_field', type: 'string', description: 'Field to filter on.' },
-			{ field: 'filter_op', type: 'string', description: 'Filter operator.' },
-			{
-				field: 'filter_value',
-				type: 'string',
-				description:
-					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs; each resolved independently.",
-			},
-			{ field: 'filter_field_2', type: 'string', description: 'Second field to filter on.' },
-			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
-			{ field: 'filter_value_2', type: 'string', description: 'Second filter value.' },
-			{ field: 'filter_logic', type: 'string', description: "'and' (default) or 'or' — logic between filter pairs." },
-			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array. Mutually exclusive with filter_field.' },
-			{ field: 'returnAll', type: 'boolean', description: 'Fetch ALL matching records.' },
-			{ field: 'limit', type: 'number', description: 'Max records (1-500, default 10).' },
-			{ field: 'offset', type: 'number', description: 'Client-side offset for pagination (0–499).' },
+			{ field: 'filter_op', type: 'string', description: READ_PARAM_DESC.filter_op },
+			{ field: 'filter_value', type: 'string', description: READ_PARAM_DESC.filter_value },
+			{ field: 'filter_field_2', type: 'string', description: READ_PARAM_DESC.filter_field_2 },
+			{ field: 'filter_op_2', type: 'string', description: READ_PARAM_DESC.filter_op_2 },
+			{ field: 'filter_value_2', type: 'string', description: READ_PARAM_DESC.filter_value_2 },
+			{ field: 'filter_logic', type: 'string', description: READ_PARAM_DESC.filter_logic },
+			{ field: 'filtersJson', type: 'string', description: filtersJsonDesc() },
+			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+			{ field: 'offset', type: 'number', description: READ_PARAM_DESC.offset },
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
-			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
-			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
-			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default): appends label fields automatically (resourceFullName, *_label etc.) — do NOT request these via fields. 'rawIds': numeric IDs only." },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
+			{ field: 'outputMode', type: 'string', description: READ_PARAM_DESC.outputMode },
 		],
 	},
 	getUnposted: {
 		required: [],
 		optional: [
 			{ field: 'filter_field', type: 'string', description: 'Field to filter on.' },
-			{ field: 'filter_op', type: 'string', description: 'Filter operator.' },
-			{
-				field: 'filter_value',
-				type: 'string',
-				description:
-					"Filter value as string. For reference/picklist fields, human-readable names auto-resolve to IDs. For in/notIn: comma-separate names or IDs; each resolved independently.",
-			},
-			{ field: 'filter_field_2', type: 'string', description: 'Second field to filter on.' },
-			{ field: 'filter_op_2', type: 'string', description: 'Second filter operator.' },
-			{ field: 'filter_value_2', type: 'string', description: 'Second filter value.' },
-			{ field: 'filter_logic', type: 'string', description: "'and' (default) or 'or' — logic between filter pairs." },
-			{ field: 'filtersJson', type: 'string', description: 'JSON IFilterCondition array. Mutually exclusive with filter_field.' },
-			{ field: 'returnAll', type: 'boolean', description: 'Fetch ALL matching records.' },
-			{ field: 'limit', type: 'number', description: 'Max records (1-500, default 10).' },
-			{ field: 'offset', type: 'number', description: 'Client-side offset for pagination (0–499).' },
+			{ field: 'filter_op', type: 'string', description: READ_PARAM_DESC.filter_op },
+			{ field: 'filter_value', type: 'string', description: READ_PARAM_DESC.filter_value },
+			{ field: 'filter_field_2', type: 'string', description: READ_PARAM_DESC.filter_field_2 },
+			{ field: 'filter_op_2', type: 'string', description: READ_PARAM_DESC.filter_op_2 },
+			{ field: 'filter_value_2', type: 'string', description: READ_PARAM_DESC.filter_value_2 },
+			{ field: 'filter_logic', type: 'string', description: READ_PARAM_DESC.filter_logic },
+			{ field: 'filtersJson', type: 'string', description: filtersJsonDesc() },
+			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+			{ field: 'offset', type: 'number', description: READ_PARAM_DESC.offset },
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
-			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
-			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
-			{ field: 'outputMode', type: 'string', description: "'idsAndLabels' (default): appends label fields automatically (resourceFullName, *_label etc.) — do NOT request these via fields. 'rawIds': numeric IDs only." },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
+			{ field: 'outputMode', type: 'string', description: READ_PARAM_DESC.outputMode },
 		],
 	},
 	searchByDomain: {
@@ -1104,10 +1073,10 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 			{ field: 'limit', type: 'number', description: 'Max records per branch (1-500, default 10).' },
 			{ field: 'returnAll', type: 'boolean', description: 'Fetch all per branch.' },
 			{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
-			{ field: 'since', type: 'string', description: 'Range start ISO-8601 UTC.' },
-			{ field: 'until', type: 'string', description: 'Range end ISO-8601 UTC.' },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
 			{ field: 'excludeTerminalStatuses', type: 'boolean', description: 'Exclude Complete/Cancelled (ticket only, default true).' },
-			{ field: 'fields', type: 'string', description: 'Real API field names only (call describeFields for the list). Do not include *_label or *_name fields — auto-added by outputMode=idsAndLabels.' },
+			{ field: 'fields', type: 'string', description: fieldsDesc() },
 		],
 	},
 	getByYear: {
@@ -1157,7 +1126,9 @@ const READ_OP_PARAMS: Record<string, { required: OperationParam[]; optional: Ope
 		],
 		optional: [],
 	},
-};
+	};
+	return _readOpParamsCache;
+}
 
 function buildWriteParams(
 	writeFields: FieldMeta[],
@@ -1378,7 +1349,7 @@ export function buildOperationDoc(
 	if (WRITE_OPS_WITH_FIELD_METADATA.has(targetOperation)) {
 		parameters = buildWriteParams(writeFields, targetOperation === 'createIfNotExists');
 	} else {
-		parameters = READ_OP_PARAMS[targetOperation] ?? { required: [], optional: [] };
+		parameters = getReadOpParams()[targetOperation] ?? { required: [], optional: [] };
 	}
 
 	const notes = getOperationNotes(resource, targetOperation);
