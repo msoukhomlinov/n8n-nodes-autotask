@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.26.4] - 2026-07-22
+
+### Fixed
+- AI Tools: `create`/`update` no longer reject a valid picklist value when the LLM emits it as a numeric literal (issue #118). `validateParameters()` compared `field.allowedValues[].id` against the supplied value with a strict `.includes()`; allowed-ids are always strings (`String(value.value)` in `mapFieldOptions`), so an unquoted JSON number such as `companyType: 8` failed `["8"].includes(8)` and returned `INVALID_PICKLIST_VALUE` for a value the field's own picklist metadata calls valid. Both sides are now coerced with `String()` before comparison — picklist ids are identifiers, not typed values. Fixed at the shared validation site, so it covers every entity's create/update tool call, not just company.
+
 ## [2.26.3] - 2026-07-22
 
 ### Fixed

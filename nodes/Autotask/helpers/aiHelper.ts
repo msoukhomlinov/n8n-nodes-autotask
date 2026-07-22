@@ -642,8 +642,10 @@ export async function validateParameters(
 
                 // Picklist validation
                 if (field.isPickList && field.allowedValues && value !== null && value !== undefined) {
-                    const allowedIds = field.allowedValues.map(v => v.id);
-                    if (!allowedIds.includes(value as string | number)) {
+                    // Normalise both sides to strings: picklist ids are identifiers, and the
+                    // LLM may emit a numeric literal (8) for a string allowed-id ("8").
+                    const allowedIds = field.allowedValues.map(v => String(v.id));
+                    if (!allowedIds.includes(String(value))) {
                         const message = `Field '${field.id}' has invalid picklist value. Use aiHelper.listPicklistValues to get valid options.`;
                         errors.push({ field: field.id, message, code: 'INVALID_PICKLIST_VALUE' });
                         fieldErrors.push(message);
