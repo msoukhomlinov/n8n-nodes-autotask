@@ -22,7 +22,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 		hasUserDefinedFields: true,
 		supportsWebhookCallouts: true,
 	},
-	{ name: 'CompanyAlert', operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' } },
+	{ name: 'CompanyAlert', childOf: 'Company', subname: 'Alerts', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'parent', [OperationType.COUNT]: 'self' } },
 	{ name: 'CompanyAttachment', aiDescription: 'Attachment records scoped to a Company parent record.', childOf: 'Company', subname: 'Attachment', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },
 	{ name: 'CompanyNote', aiDescription: 'Company Note records scoped to a Company parent record.', childOf: 'Company', subname: 'Notes', parentIdField: 'companyID', operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' } },
 	{ name: 'CompanyNoteAttachment', aiDescription: 'Attachment records scoped to a Company Note parent record.', childOf: 'CompanyNote', subname: 'Attachment', parentChain: ['Company', 'CompanyNote'], isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.DELETE]: 'parent' } },

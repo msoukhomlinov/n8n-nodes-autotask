@@ -2,6 +2,14 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.27.0] - 2026-07-24
+
+### Fixed
+- `CompanyAlert` create/update/delete failed on both the standard node and AI Tools node because its entity metadata declared all operations as flat `'self'` paths (`/CompanyAlerts/`), but the Autotask REST API only accepts create/update/delete for this entity under the parent-scoped path (`/Companies/{companyID}/Alerts`) — the flat path only ever supported query/count (issue #119). `entities.ts` now marks `CompanyAlert` as `childOf: 'Company'` with `parentIdField: 'companyID'` and `CREATE`/`UPDATE`/`DELETE` set to `'parent'` (`QUERY`/`COUNT` stay `'self'`), mirroring the existing `CompanyNote` pattern. Both nodes share the same generic URL-building and dispatch code paths off this metadata, so the one-line fix covers both.
+
+### Changed
+- `companyAlert` is now exposed as an AI Tools resource (`autotask_companyAlert`). No AI-tools-specific code was needed — the tool resource list, schema generation, and parent-scoping are all derived from the same `entities.ts` metadata fixed above.
+
 ## [2.26.4] - 2026-07-22
 
 ### Fixed
