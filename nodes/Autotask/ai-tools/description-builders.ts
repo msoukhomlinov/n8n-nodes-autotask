@@ -163,6 +163,7 @@ export function buildGetManyDescription(
 		`Search ${resourceLabel} with up to two filters (AND default; filter_logic='or' for either-match; use filtersJson for 3+ filters or nested groups). ` +
 		`Example: filter_field='companyName', filter_op='contains', filter_value='Acme'. ` +
 		`Picklist/reference fields accept names (auto-resolved). Use filter_op='notExist'/'exist' for null checks. ` +
+		`Exclude a value in one call: filter_op='noteq' (e.g. companyID noteq 0), or 'notIn' with a comma-separated list — never count-and-subtract. ` +
 		terminalHint +
 		`Filterable: ${fieldList}. ` +
 		`${ASCENDING_ID_WARNING} ` +

@@ -2,6 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.27.1] - 2026-07-24
+
+### Fixed
+- AI Tools: `getMany`/`count` filters no longer reject a JSON numeric `filter_value`/`filter_value_2` (issue #121). The schema declared these as `rz.string()`, so an MCP/Copilot-Studio-style client emitting an unquoted number — e.g. `filter_value: 0` for `companyID noteq 0` — failed Zod validation with "Expected string, received number", forcing the model into a count-all / count-one / subtract workaround instead of one filtered call. Changed to `rz.coerce.string()`, matching the repo convention for any field compared against IDs (the string `"0"` already worked). Covers both the `func()` and `execute()` paths.
+- AI Tools: `hasProvidedValue()` treated the number `0` (and negatives) as "not provided" via a `value > 0` branch. On the Agent-V3 `execute()` path — which passes raw `item.json` without Zod coercion — a numeric `0` filter value or an `id: 0` (the root Company record) was wrongly seen as absent, tripping "filter value required" / xor-group validation. Now any finite number counts as provided.
+
+### Changed
+- AI Tools: `getMany` description now shows the exclude-a-value pattern explicitly (`filter_op='noteq'`, e.g. `companyID noteq 0`, or `'notIn'` with a comma-separated list) and steers away from count-and-subtract — both operators were already fully functional but had no example, the likely reason the model in #121 reached for the workaround.
+- AI Tools: `filtersJson` description now states it must be a JSON-*encoded string* (not a native array/object) with an inline example, so clients stop sending structured objects and getting an opaque type-mismatch.
+
 ## [2.27.0] - 2026-07-24
 
 ### Fixed

@@ -141,7 +141,10 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		'in',
 		'notIn',
 	]);
-	const rFilterValueSchema = rz.string().describe(READ_PARAM_DESC.filter_value);
+	// coerce.string (not plain string) so MCP/Copilot Studio-style clients that emit
+	// JSON numbers (e.g. filter_value 0 for `companyID noteq 0`) aren't rejected —
+	// matches the repo convention for any field compared against IDs.
+	const rFilterValueSchema = rz.coerce.string().describe(READ_PARAM_DESC.filter_value);
 	const rRecencySchema = rz.string().nullish().describe(READ_PARAM_DESC.recency);
 
 	function buildUnifiedSchema(
