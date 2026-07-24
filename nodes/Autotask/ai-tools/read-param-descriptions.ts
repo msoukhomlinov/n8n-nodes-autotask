@@ -43,7 +43,7 @@ export function fieldsDesc(): string {
 
 export function filtersJsonDesc(): string {
 	return (
-		'Advanced filters as a JSON array of condition objects. Mutually exclusive with filter_field/filter_field_2. No label resolution — use numeric IDs. ' +
+		'Advanced filters as a JSON-encoded string (not a native array/object) — e.g. \'[{"field":"companyID","op":"noteq","value":0}]\'. Mutually exclusive with filter_field/filter_field_2. No label resolution — use numeric IDs. ' +
 		'Each condition: {"field":"<name>","op":"<op>","value":<value>}. Nested AND/OR: {"op":"and"|"or","items":[<cond>,...]}. ' +
 		'in/notIn value is a JSON array (max 500). Call describeFields for field names, listPicklistValues for picklist IDs.'
 	);

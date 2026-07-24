@@ -81,7 +81,9 @@ export function hasProvidedValue(value: unknown): boolean {
 	if (value === undefined || value === null) return false;
 	if (typeof value === 'string') return value.trim() !== '';
 	if (Array.isArray(value)) return value.length > 0;
-	if (typeof value === 'number') return Number.isFinite(value) && value > 0;
+	// Any finite number counts as provided — 0 is a valid filter value and a valid id
+	// (the root Company record has id=0). value>0 wrongly dropped both.
+	if (typeof value === 'number') return Number.isFinite(value);
 	return true;
 }
 
