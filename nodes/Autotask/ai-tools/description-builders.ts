@@ -219,6 +219,8 @@ function buildRequiredFieldsSummary(writeFields: FieldMeta[]): string {
 			}
 		} else if (field.isPickList) {
 			info += ` (picklist — use listPicklistValues for options)`;
+		} else if (field.type === 'string' && field.length) {
+			info += ` (${field.type}, max ${field.length} chars)`;
 		} else {
 			info += ` (${field.type})`;
 		}
@@ -1176,6 +1178,8 @@ function buildWriteParams(
 			} else {
 				param.description = `${field.allowedValues.length} values — use listPicklistValues`;
 			}
+		} else if (field.type === 'string' && field.length) {
+			param.description = `max ${field.length} chars`;
 		}
 		if (field.required) {
 			required.push(param);
