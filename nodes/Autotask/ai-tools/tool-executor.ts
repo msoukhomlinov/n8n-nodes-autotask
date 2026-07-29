@@ -633,9 +633,9 @@ export async function executeAiTool(
 			combinedFilters = [...filters, ...recencyResult.filters];
 		}
 	}
-	// Auto-exclude terminal statuses for getMany on ticket/task/project unless explicitly disabled
+	// Auto-exclude terminal statuses for getMany/count on ticket/task/project unless explicitly disabled
 	if (
-		normalisedOperation === 'getMany' &&
+		['getMany', 'count', 'getPosted', 'getUnposted'].includes(normalisedOperation) &&
 		toBool(params.excludeTerminalStatuses, true) &&
 		!params.filtersJson // filtersJson path is unmanaged — user controls filters entirely
 	) {

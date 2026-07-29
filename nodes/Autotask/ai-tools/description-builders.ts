@@ -1327,6 +1327,7 @@ function getOperationNotes(resource: string, operation: string): string[] {
 		case 'getMany':
 		case 'getPosted':
 		case 'getUnposted':
+		case 'count':
 			return [...contractNotes, ...getListAdvancedNotes()];
 		default:
 			return [...contractNotes];

@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.27.2] - 2026-07-29
+
+### Fixed
+- AI Tools: `count` no longer ignores `excludeTerminalStatuses` on `ticket`/`task`/`project` (issue #123). The terminal-status auto-exclusion filter in `tool-executor.ts` gated on `normalisedOperation === 'getMany'` only, so `count` shared the same filter pipeline but never got the `status notIn [terminalStatusIds]` filter appended — silently including Complete/Cancelled records and inflating `matchCount` relative to the equivalent `getMany` call, despite the tool's own description claiming "same filter params as getMany." Widened the gate to `['getMany', 'count', 'getPosted', 'getUnposted'].includes(normalisedOperation)`, matching the operation list already used identically elsewhere in the same file.
+- AI Tools: `describeOperation('count', ...)` now returns the same filter/recency-window guidance as `getMany`/`getPosted`/`getUnposted` (`getOperationNotes()` was missing a `count` case in the list-family group), since `count` shares the same filter surface.
+
 ## [2.27.1] - 2026-07-24
 
 ### Fixed
