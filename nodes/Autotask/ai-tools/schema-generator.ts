@@ -431,7 +431,11 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				!shape.excludeTerminalStatuses
 			) {
 				shape.excludeTerminalStatuses = rz
-					.coerce.boolean()
+					.preprocess(
+						// rz.coerce.boolean() would coerce the string "false" to true (non-empty string).
+						(val) => (typeof val === 'string' ? val.toLowerCase() === 'true' : val),
+						rz.boolean(),
+					)
 					.nullish()
 					.describe(
 						'Exclude terminal statuses from results (default true). Set false only when user explicitly asks for completed, cancelled, or historical records.',
