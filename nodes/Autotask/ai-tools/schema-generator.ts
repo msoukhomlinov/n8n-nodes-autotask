@@ -427,7 +427,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			// excludeTerminalStatuses — only for resources that have terminal status semantics
 			if (
 				RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION.has(resource) &&
-				operations.includes('getMany') &&
+				['getMany', 'count', 'getPosted', 'getUnposted'].some((op) => operations.includes(op)) &&
 				!shape.excludeTerminalStatuses
 			) {
 				shape.excludeTerminalStatuses = rz
