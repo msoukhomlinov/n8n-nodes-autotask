@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.27.3] - 2026-07-29
+
+### Fixed
+- AI Tools: `create`/`update` field descriptions and required-fields summaries no longer drop Autotask's per-field string `length` constraint (issue #125). The raw length is fetched by `mapField()` (`helpers/entity/api.ts`) into `IAutotaskField.length`, but `describeResource()`'s `FieldMeta` conversion (`helpers/aiHelper.ts`) never copied it over, and the `FieldMeta` interface didn't even declare the property — so an LLM calling `autotask_contact` with `title` over 50 chars had no signal until the live Autotask API rejected the write with a length-exceeded error. Added `length?: number` to `FieldMeta`, copied it from `originalField.length` in `describeResource()`'s field-mapping loop (same guarded pattern as the existing `isPickList`/`isReference` copies), and surfaced it in `buildRequiredFieldsSummary()` (`(string, max 50 chars)`) and `buildWriteParams()` (`max 50 chars` param description) in `ai-tools/description-builders.ts`, plus `buildFieldDescription()` in `ai-tools/schema-generator.ts` (`[max 50 chars]`). The schema-generator site is the one that matters most for the reported case: it writes the `.describe()` text on every create/update/createIfNotExists write property, whereas the required-fields summary only covers required fields (`Contact.title` is optional) and `buildWriteParams()` is only reachable if the agent explicitly calls `describeOperation`.
+
 ## [2.27.2] - 2026-07-29
 
 ### Fixed

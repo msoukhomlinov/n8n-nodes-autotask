@@ -95,6 +95,12 @@ function buildFieldDescription(field: FieldMeta, prefix?: string): string {
 			parts.push(`(ref→${field.referencesEntity}: ID or name)`);
 		}
 	}
+	// Autotask string dataType maps to type 'string'; picklists map to 'options', so this
+	// only fires for plain strings. Surfaces the per-field max length (issue #125) on the
+	// schema property itself — the required-fields summary only covers required fields.
+	if (field.type === 'string' && field.length) {
+		parts.push(`[max ${field.length} chars]`);
+	}
 	return parts.join(' ');
 }
 

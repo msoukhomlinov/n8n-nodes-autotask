@@ -161,6 +161,7 @@ export interface FieldMeta {
     udf: boolean;
     isPickList: boolean;
     isReference: boolean;
+    length?: number;  // Max character length for string fields, per Autotask field metadata
     allowedValues?: Array<{ id: string | number; label: string; parentValue?: string }>;
     picklistParentField?: string;  // e.g., "issueType" for subIssueType field
     referencesEntity?: string;  // What entity this field references (e.g., 'company', 'contact')
@@ -296,6 +297,11 @@ export async function describeResource(
             // Add picklistParentField if the field has a parent picklist dependency
             if (originalField?.picklistParentValueField) {
                 fieldMeta.picklistParentField = originalField.picklistParentValueField;
+            }
+
+            // Carry over max string length so AI-tool descriptions can surface it
+            if (typeof originalField?.length === 'number') {
+                fieldMeta.length = originalField.length;
             }
 
             // Add entity reference information for reference fields
