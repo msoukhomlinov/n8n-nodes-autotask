@@ -128,6 +128,10 @@ const RECENCY_VS_SINCE_UNTIL_RULE =
 const ASCENDING_ID_WARNING =
 	'API ordering: records always return in ascending ID order (oldest first). No server-side sort is available.';
 
+/** Shared by list-family builders and count: filtersJson applies to any operation with a filter surface. */
+const FILTERS_JSON_NOTE =
+	'filtersJson: JSON array of Autotask IFilterCondition objects for 3+ conditions or nested OR. Mutually exclusive with flat filter_field triplets. No label resolution — pass numeric IDs.';
+
 /** Template for the "call describeFields if uncertain" hint used across individual builders. */
 function describeFieldsHint(resourceName: string, mode: 'read' | 'write' | '' = ''): string {
 	const modeClause = mode ? ` (mode '${mode}')` : '';
@@ -741,12 +745,17 @@ let _listAdvancedNotesCache: string[] | undefined;
 function getListAdvancedNotes(): string[] {
 	if (_listAdvancedNotesCache) return _listAdvancedNotesCache;
 	_listAdvancedNotesCache = [
-		'filtersJson: JSON array of Autotask IFilterCondition objects for 3+ conditions or nested OR. Mutually exclusive with flat filter_field triplets. No label resolution — pass numeric IDs.',
+		FILTERS_JSON_NOTE,
 		`returnAll=true: fetches ALL matching records via API-native pagination. Without fields param: capped at ${MAX_RESPONSE_RECORDS} records. With fields param (sparse): no cap — all records returned. Use a narrow fields list for bulk ID/lookup patterns.`,
 		ASCENDING_ID_WARNING,
 		RECENCY_VS_SINCE_UNTIL_RULE.trim(),
 	];
 	return _listAdvancedNotesCache;
+}
+
+/** count has no returnAll/fields params and returns no records, so it excludes the record-return and ordering notes from getListAdvancedNotes(). */
+function getCountAdvancedNotes(): string[] {
+	return [FILTERS_JSON_NOTE, RECENCY_VS_SINCE_UNTIL_RULE.trim()];
 }
 
 const SEARCH_BY_KEYWORD_NOTES: readonly string[] = [
@@ -1327,8 +1336,9 @@ function getOperationNotes(resource: string, operation: string): string[] {
 		case 'getMany':
 		case 'getPosted':
 		case 'getUnposted':
-		case 'count':
 			return [...contractNotes, ...getListAdvancedNotes()];
+		case 'count':
+			return [...contractNotes, ...getCountAdvancedNotes()];
 		default:
 			return [...contractNotes];
 	}
