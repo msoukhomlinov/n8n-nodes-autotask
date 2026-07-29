@@ -432,8 +432,13 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			) {
 				shape.excludeTerminalStatuses = rz
 					.preprocess(
-						// rz.coerce.boolean() would coerce the string "false" to true (non-empty string).
-						(val) => (typeof val === 'string' ? val.toLowerCase() === 'true' : val),
+						// rz.coerce.boolean() would coerce the string "false" to true (non-empty string);
+						// mirror toBool()'s string/number semantics instead of raw JS truthiness.
+						(val) => {
+							if (typeof val === 'string') return val.toLowerCase() === 'true';
+							if (typeof val === 'number') return val !== 0;
+							return val;
+						},
 						rz.boolean(),
 					)
 					.nullish()
