@@ -177,12 +177,20 @@ export function buildGetManyDescription(
 	);
 }
 
-export function buildCountDescription(resourceLabel: string, referenceUtc?: string): string {
+export function buildCountDescription(
+	resourceLabel: string,
+	referenceUtc?: string,
+	terminalStatusLabel?: string,
+): string {
 	const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
+	const terminalHint = terminalStatusLabel
+		? `By default excludes terminal statuses (${terminalStatusLabel}) — set excludeTerminalStatuses=false only when user explicitly asks for closed/historical records. `
+		: '';
 	return (
 		ref +
 		`Count ${resourceLabel} records matching optional filters — returns the total only, no records. ` +
 		`Same filter params as getMany. ` +
+		terminalHint +
 		`For efficient polling-style checks, prefer LastModifiedDate or LastActivityDate filters where available.`
 	);
 }
@@ -824,6 +832,7 @@ function getReadOpParams(): ReadOpParamsMap {
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
 			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
 			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'excludeTerminalStatuses', type: 'boolean', description: 'Exclude Complete/Cancelled (ticket/task/project only, default true).' },
 		],
 	},
 	delete: {
@@ -1223,7 +1232,13 @@ function getOperationPurpose(
 					: undefined,
 			);
 		case 'count':
-			return buildCountDescription(resourceLabel);
+			return buildCountDescription(
+				resourceLabel,
+				undefined,
+				RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION.has(resource)
+					? (RESOURCE_LANGUAGE_CONFIG[resource]?.terminalStatusLabel ?? undefined)
+					: undefined,
+			);
 		case 'create':
 			return buildCreateDescription(resourceLabel, resource, writeFields);
 		case 'update':
