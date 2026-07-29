@@ -427,11 +427,20 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			// excludeTerminalStatuses — only for resources that have terminal status semantics
 			if (
 				RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION.has(resource) &&
-				operations.includes('getMany') &&
+				['getMany', 'count', 'getPosted', 'getUnposted'].some((op) => operations.includes(op)) &&
 				!shape.excludeTerminalStatuses
 			) {
 				shape.excludeTerminalStatuses = rz
-					.coerce.boolean()
+					.preprocess(
+						// rz.coerce.boolean() would coerce the string "false" to true (non-empty string);
+						// mirror toBool()'s string/number semantics instead of raw JS truthiness.
+						(val) => {
+							if (typeof val === 'string') return val.toLowerCase() === 'true';
+							if (typeof val === 'number') return val !== 0;
+							return val;
+						},
+						rz.boolean(),
+					)
 					.nullish()
 					.describe(
 						'Exclude terminal statuses from results (default true). Set false only when user explicitly asks for completed, cancelled, or historical records.',

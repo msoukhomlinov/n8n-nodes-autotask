@@ -128,6 +128,10 @@ const RECENCY_VS_SINCE_UNTIL_RULE =
 const ASCENDING_ID_WARNING =
 	'API ordering: records always return in ascending ID order (oldest first). No server-side sort is available.';
 
+/** Shared by list-family builders and count: filtersJson applies to any operation with a filter surface. */
+const FILTERS_JSON_NOTE =
+	'filtersJson: JSON array of Autotask IFilterCondition objects for 3+ conditions or nested OR. Mutually exclusive with flat filter_field triplets. No label resolution — pass numeric IDs.';
+
 /** Template for the "call describeFields if uncertain" hint used across individual builders. */
 function describeFieldsHint(resourceName: string, mode: 'read' | 'write' | '' = ''): string {
 	const modeClause = mode ? ` (mode '${mode}')` : '';
@@ -173,12 +177,20 @@ export function buildGetManyDescription(
 	);
 }
 
-export function buildCountDescription(resourceLabel: string, referenceUtc?: string): string {
+export function buildCountDescription(
+	resourceLabel: string,
+	referenceUtc?: string,
+	terminalStatusLabel?: string,
+): string {
 	const ref = referenceUtc ? dateTimeReferenceSnippet(referenceUtc) : '';
+	const terminalHint = terminalStatusLabel
+		? `By default excludes terminal statuses (${terminalStatusLabel}) — set excludeTerminalStatuses=false only when user explicitly asks for closed/historical records. `
+		: '';
 	return (
 		ref +
 		`Count ${resourceLabel} records matching optional filters — returns the total only, no records. ` +
 		`Same filter params as getMany. ` +
+		terminalHint +
 		`For efficient polling-style checks, prefer LastModifiedDate or LastActivityDate filters where available.`
 	);
 }
@@ -741,12 +753,17 @@ let _listAdvancedNotesCache: string[] | undefined;
 function getListAdvancedNotes(): string[] {
 	if (_listAdvancedNotesCache) return _listAdvancedNotesCache;
 	_listAdvancedNotesCache = [
-		'filtersJson: JSON array of Autotask IFilterCondition objects for 3+ conditions or nested OR. Mutually exclusive with flat filter_field triplets. No label resolution — pass numeric IDs.',
+		FILTERS_JSON_NOTE,
 		`returnAll=true: fetches ALL matching records via API-native pagination. Without fields param: capped at ${MAX_RESPONSE_RECORDS} records. With fields param (sparse): no cap — all records returned. Use a narrow fields list for bulk ID/lookup patterns.`,
 		ASCENDING_ID_WARNING,
 		RECENCY_VS_SINCE_UNTIL_RULE.trim(),
 	];
 	return _listAdvancedNotesCache;
+}
+
+/** count has no returnAll/fields params and returns no records, so it excludes the record-return and ordering notes from getListAdvancedNotes(). */
+function getCountAdvancedNotes(): string[] {
+	return [FILTERS_JSON_NOTE, RECENCY_VS_SINCE_UNTIL_RULE.trim()];
 }
 
 const SEARCH_BY_KEYWORD_NOTES: readonly string[] = [
@@ -815,6 +832,7 @@ function getReadOpParams(): ReadOpParamsMap {
 			{ field: 'recency', type: 'string', description: 'Preset window.' },
 			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
 			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'excludeTerminalStatuses', type: 'boolean', description: 'Exclude Complete/Cancelled (ticket/task/project only, default true).' },
 		],
 	},
 	delete: {
@@ -1214,7 +1232,13 @@ function getOperationPurpose(
 					: undefined,
 			);
 		case 'count':
-			return buildCountDescription(resourceLabel);
+			return buildCountDescription(
+				resourceLabel,
+				undefined,
+				RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION.has(resource)
+					? (RESOURCE_LANGUAGE_CONFIG[resource]?.terminalStatusLabel ?? undefined)
+					: undefined,
+			);
 		case 'create':
 			return buildCreateDescription(resourceLabel, resource, writeFields);
 		case 'update':
@@ -1328,6 +1352,8 @@ function getOperationNotes(resource: string, operation: string): string[] {
 		case 'getPosted':
 		case 'getUnposted':
 			return [...contractNotes, ...getListAdvancedNotes()];
+		case 'count':
+			return [...contractNotes, ...getCountAdvancedNotes()];
 		default:
 			return [...contractNotes];
 	}
