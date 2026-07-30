@@ -17,6 +17,35 @@ export function getFieldDescription(field: IAutotaskField): string {
 	return (field as IEntityField).description || '';
 }
 
+// Same split/strip behaviour as change-case's sentenceCase, reimplemented locally to
+// avoid pulling in ~15 transitive packages for one string-casing call (see issue #127)
+/**
+ * Converts a camelCase/PascalCase/snake_case string to sentence case,
+ * e.g. "accountName" -> "Account name"
+ */
+export function toSentenceCase(input: string): string {
+	// \0 marks token boundaries; it can't collide with real input characters,
+	// which is what makes the later split() safe
+	const normalised = input
+		.replace(/([a-z0-9])([A-Z])/g, '$1\0$2')
+		.replace(/([A-Z])([A-Z][a-z])/g, '$1\0$2')
+		.replace(/[^A-Z0-9]+/gi, '\0');
+
+	let start = 0;
+	let end = normalised.length;
+	while (normalised.charAt(start) === '\0') start++;
+	while (normalised.charAt(end - 1) === '\0') end--;
+
+	return normalised
+		.slice(start, end)
+		.split('\0')
+		.map((token, index) => {
+			const lower = token.toLowerCase();
+			return index === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+		})
+		.join(' ');
+}
+
 /**
  * Sorts picklist values alphabetically by label, with sortOrder as secondary criteria
  * for stable sorting when labels are identical
