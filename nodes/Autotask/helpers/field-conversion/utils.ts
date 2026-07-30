@@ -18,19 +18,18 @@ export function getFieldDescription(field: IAutotaskField): string {
 }
 
 // Same split/strip behaviour as change-case's sentenceCase, reimplemented locally to
-// avoid pulling in ~18 transitive packages for one string-casing call (see issue #127)
-const SENTENCE_CASE_SPLIT_REGEXP = [/([a-z0-9])([A-Z])/g, /([A-Z])([A-Z][a-z])/g];
-const SENTENCE_CASE_STRIP_REGEXP = /[^A-Z0-9]+/gi;
-
+// avoid pulling in ~15 transitive packages for one string-casing call (see issue #127)
 /**
  * Converts a camelCase/PascalCase/snake_case string to sentence case,
  * e.g. "accountName" -> "Account name"
  */
 export function toSentenceCase(input: string): string {
-	const normalised = SENTENCE_CASE_SPLIT_REGEXP.reduce(
-		(value, regexp) => value.replace(regexp, '$1\0$2'),
-		input,
-	).replace(SENTENCE_CASE_STRIP_REGEXP, '\0');
+	// \0 marks token boundaries; it can't collide with real input characters,
+	// which is what makes the later split() safe
+	const normalised = input
+		.replace(/([a-z0-9])([A-Z])/g, '$1\0$2')
+		.replace(/([A-Z])([A-Z][a-z])/g, '$1\0$2')
+		.replace(/[^A-Z0-9]+/gi, '\0');
 
 	let start = 0;
 	let end = normalised.length;
