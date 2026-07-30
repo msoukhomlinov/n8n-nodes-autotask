@@ -15,11 +15,10 @@ import type { ResourceOperation } from '../../types/base/common';
 import { OperationTypeValidator } from './operation-type';
 import { FieldConversionPipeline } from '../../helpers/field-conversion/pipeline';
 import { createDateWrapper } from '../../helpers/date-time/index';
-import { sentenceCase } from 'change-case';
 import { EntityValueHelper } from '../../helpers/entity-values';
 import { REFERENCE_ENABLED_ENTITIES, UI_REFERENCE_ENABLED_ENTITIES, PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../../constants/field.constants';
 import type { ReferenceEnabledEntity, UiReferenceEnabledEntity } from '../../constants/field.constants';
-import { fieldTypeService, mapFieldOptions, getFieldTypeOptions, getFieldDisplayType } from '../../helpers/field-conversion/utils';
+import { fieldTypeService, mapFieldOptions, getFieldTypeOptions, getFieldDisplayType, toSentenceCase } from '../../helpers/field-conversion/utils';
 import type { IFieldMappingContext } from '../../helpers/field-conversion/services/field-type.service';
 import { handleErrors } from '../../helpers/errorHandler';
 import { ERROR_TEMPLATES, WARNING_TEMPLATES } from '../../constants/error.constants';
@@ -740,7 +739,7 @@ export class FieldProcessor {
 		const withoutID = name.endsWith('ID') ? name.slice(0, -2) : name;
 
 		// Convert to sentence case and handle special cases
-		let label = sentenceCase(withoutID);
+		let label = toSentenceCase(withoutID);
 
 		// Add back ID suffix if it was present
 		if (name.endsWith('ID')) {

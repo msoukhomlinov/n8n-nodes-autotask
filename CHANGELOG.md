@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.27.4] - 2026-07-30
+
+### Changed
+- Dropped the `change-case` dependency (issue #127). It had exactly one call site — `sentenceCase()` in `getFieldLabel()` (`operations/base/field-processor.ts`) — but pulled in ~18 transitive sub-packages (`sentence-case`, `no-case`, `upper-case-first`, etc.) for that single string-casing call. Replaced with a local `toSentenceCase()` (`helpers/field-conversion/utils.ts`) that ports the same split/strip regex behaviour `change-case`'s `sentence-case`/`no-case`/`upper-case-first` used internally; verified byte-for-byte identical output against the removed package across 16 field-name cases including all-caps abbreviations (`URLName`, `APIVendorID`) and single-character input, now locked in by `tests/unit/to-sentence-case.test.ts`.
+- Removed the dead direct `moment` dependency. Nothing in `dist` calls `require('moment')` — only `moment-timezone` (a separate package, used for `.tz()`/`.utc()` across 7 files) is actually imported. `moment` remains in the install tree as `moment-timezone`'s own transitive dependency; only the redundant direct pin was removed.
+- Both changes shrink this package's own `dependencies` tree, reducing exposure to the npm partial-install-corruption pattern reported in #127 for shared-`node_modules` / queue-mode n8n deployments (more packages to resolve concurrently across workers = more surface for a race). `keyv` was already pinned to `^5.6.0`, so no change was needed there for this package's own contribution to the reported v4/v5 split.
+
 ## [2.27.3] - 2026-07-29
 
 ### Fixed
