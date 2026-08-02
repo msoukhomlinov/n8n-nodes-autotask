@@ -88,7 +88,7 @@
   "pnpm": {
     "overrides": {
       "axios@<1.16.0": ">=1.16.1",
-      "brace-expansion@^1": ">=1.1.16",
+      "brace-expansion@1": ">=1.1.16",
       "fast-uri": ">=3.1.4",
       "form-data": ">=4.0.6",
       "js-yaml@^4": ">=4.3.0",
