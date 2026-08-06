@@ -370,6 +370,26 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Project Task Secondary Resources, which assign additional resources to project tasks alongside or instead of a primary resource',
 	},
 	{
+		name: 'Purchase Approval',
+		value: 'purchaseApprovals',
+		description: 'Manage Purchase Approvals, which represent whether a purchase order item has been approved',
+	},
+	{
+		name: 'Purchase Order',
+		value: 'purchaseOrders',
+		description: 'Manage Purchase Orders, which represent orders placed with vendors to purchase products or services',
+	},
+	{
+		name: 'Purchase Order Item',
+		value: 'purchaseOrderItems',
+		description: 'Manage Purchase Order Items, which are individual line items on a purchase order representing products or services being purchased',
+	},
+	{
+		name: 'Purchase Order Item Receiving',
+		value: 'purchaseOrderItemReceiving',
+		description: 'Manage Purchase Order Item Receiving records, which track receipt of purchase order items',
+	},
+	{
 		name: 'Quote',
 		value: 'quote',
 		description: 'Manage Quotes, which allow users to specify and track multiple products, services, labor items, etc., to further define an Opportunity',

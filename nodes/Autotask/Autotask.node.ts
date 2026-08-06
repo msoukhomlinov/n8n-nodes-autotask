@@ -38,6 +38,10 @@ import { executeProjectPhaseOperation } from './resources/projectPhases/execute'
 import { executeProjectChargeOperation } from './resources/projectCharges/execute';
 import { executeProductOperation } from './resources/products/execute';
 import { executeProductVendorOperation } from './resources/productVendors/execute';
+import { executePurchaseApprovalsOperation } from './resources/purchaseApprovals/execute';
+import { executePurchaseOrdersOperation } from './resources/purchaseOrders/execute';
+import { executePurchaseOrderItemsOperation } from './resources/purchaseOrderItems/execute';
+import { executePurchaseOrderItemReceivingOperation } from './resources/purchaseOrderItemReceiving/execute';
 import { executeTicketOperation } from './resources/tickets/execute';
 import { executeTicketAdditionalConfigurationItemOperation } from './resources/ticketAdditionalConfigurationItems/execute';
 import { executeTicketAdditionalContactOperation } from './resources/ticketAdditionalContacts/execute';
@@ -125,6 +129,10 @@ import { projectPhaseFields } from './resources/projectPhases/description';
 import { projectChargeFields } from './resources/projectCharges/description';
 import { productFields } from './resources/products/description';
 import { productVendorFields } from './resources/productVendors/description';
+import { purchaseApprovalsFields } from './resources/purchaseApprovals/description';
+import { purchaseOrdersFields } from './resources/purchaseOrders/description';
+import { purchaseOrderItemsFields } from './resources/purchaseOrderItems/description';
+import { purchaseOrderItemReceivingFields } from './resources/purchaseOrderItemReceiving/description';
 import { ticketFields } from './resources/tickets/description';
 import { ticketAdditionalConfigurationItemFields } from './resources/ticketAdditionalConfigurationItems/description';
 import { ticketAdditionalContactFields } from './resources/ticketAdditionalContacts/description';
@@ -398,6 +406,10 @@ const autotaskDescription: INodeTypeDescription = {
 			...addOperationsToResource(projectPhaseFields, { resourceName: 'phase' }),
 			...addOperationsToResource(productFields, { resourceName: 'product' }),
 			...addOperationsToResource(productVendorFields, { resourceName: 'productVendor' }),
+			...addOperationsToResource(purchaseApprovalsFields, { resourceName: 'purchaseApprovals' }),
+			...addOperationsToResource(purchaseOrdersFields, { resourceName: 'purchaseOrders' }),
+			...addOperationsToResource(purchaseOrderItemsFields, { resourceName: 'purchaseOrderItems' }),
+			...addOperationsToResource(purchaseOrderItemReceivingFields, { resourceName: 'purchaseOrderItemReceiving' }),
 			...addOperationsToResource(projectFields, { resourceName: 'project' }),
 			...addOperationsToResource(projectChargeFields, { resourceName: 'projectCharge' }),
 			...addOperationsToResource(projectNoteFields, { resourceName: 'projectNote' }),
@@ -637,6 +649,14 @@ export class Autotask implements INodeType {
 				return executeProductOperation.call(this);
 			case 'productVendor':
 				return executeProductVendorOperation.call(this);
+			case 'purchaseApprovals':
+				return executePurchaseApprovalsOperation.call(this);
+			case 'purchaseOrders':
+				return executePurchaseOrdersOperation.call(this);
+			case 'purchaseOrderItems':
+				return executePurchaseOrderItemsOperation.call(this);
+			case 'purchaseOrderItemReceiving':
+				return executePurchaseOrderItemReceivingOperation.call(this);
 			case 'project':
 				return executeProjectOperation.call(this);
 			case 'projectCharge':

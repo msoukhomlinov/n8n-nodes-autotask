@@ -2,6 +2,16 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.28.0] - 2026-08-06
+
+### Changed
+- Added 4 new Autotask entities to the standard node and the AI-tool/MCP surface (issue #129): `PurchaseApprovals` (update, get, getMany, count), `PurchaseOrders` (create, update, get, getMany, count), `PurchaseOrderItems` (create/update parent-scoped under a `PurchaseOrder`, get/getMany/count), `PurchaseOrderItemReceiving` (create parent-scoped under a `PurchaseOrderItem`, get/getMany/count). Operations reflect exactly what the Autotask REST API supports — no operations the API lacks were invented.
+- Registered all 4 entities in `constants/entities.ts`, `resources/definitions.ts`, and `Autotask.node.ts`'s resource/execute dispatch (standard node), plus `resources/tool/execute.ts`'s `RESOURCE_EXECUTORS` map (AI-tool/MCP dispatch — initially missing in the first pass of this work, since the AI-tool resource dropdown is auto-derived from `constants/entities.ts` while the actual per-resource executor lookup is a separate hand-maintained map; caught and fixed during review before merge).
+
+### Fixed
+- Corrected `childOf` parent-entity references for `PurchaseOrderItems` (was `'PurchaseOrder'`, no such entity exists — corrected to `'PurchaseOrders'`) and `PurchaseOrderItemReceiving` (was `'PurchaseOrderItem'` — corrected to `'PurchaseOrderItems'`), which caused `create`/`update` on these parent-scoped entities to throw `Invalid parent entity type` on every call.
+- Removed a `resourceKey` override on `PurchaseOrderItemReceiving` that didn't match the entity's real name shape, which broke the Fields resourceMapper's endpoint construction; the resource key now derives correctly to `purchaseOrderItemReceiving`, and the resource's directory/exported symbol names were renamed to match (`purchaseOrderItemReceiving/` instead of `purchaseOrderItemsReceiving/`).
+
 ## [2.27.4] - 2026-07-30
 
 ### Changed

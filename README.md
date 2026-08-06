@@ -145,6 +145,10 @@ The node supports the following Autotask resources:
 | Project Phase | Manage phases within projects |
 | Project Task | Manage tasks within projects |
 | Project Task Secondary Resources | Manage secondary resource assignments on project tasks |
+| Purchase Approvals | Manage approvals for purchase orders |
+| Purchase Order Items | Manage line items within purchase orders. Includes parent-scoped create/update under a Purchase Order. |
+| Purchase Order Item Receiving | Manage receiving records for purchase order items. Includes parent-scoped create under a Purchase Order Item. |
+| Purchase Orders | Manage purchase orders |
 | Quote | Manage quotes for opportunities with pricing for products, services, and labour |
 | Quote Item | Manage line items for quotes including products, services, and labour |
 | Quote Location | Manage shipping and billing address information for quotes |
