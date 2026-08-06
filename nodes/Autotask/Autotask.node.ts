@@ -41,7 +41,7 @@ import { executeProductVendorOperation } from './resources/productVendors/execut
 import { executePurchaseApprovalsOperation } from './resources/purchaseApprovals/execute';
 import { executePurchaseOrdersOperation } from './resources/purchaseOrders/execute';
 import { executePurchaseOrderItemsOperation } from './resources/purchaseOrderItems/execute';
-import { executePurchaseOrderItemsReceivingOperation } from './resources/purchaseOrderItemsReceiving/execute';
+import { executePurchaseOrderItemReceivingOperation } from './resources/purchaseOrderItemReceiving/execute';
 import { executeTicketOperation } from './resources/tickets/execute';
 import { executeTicketAdditionalConfigurationItemOperation } from './resources/ticketAdditionalConfigurationItems/execute';
 import { executeTicketAdditionalContactOperation } from './resources/ticketAdditionalContacts/execute';
@@ -132,7 +132,7 @@ import { productVendorFields } from './resources/productVendors/description';
 import { purchaseApprovalsFields } from './resources/purchaseApprovals/description';
 import { purchaseOrdersFields } from './resources/purchaseOrders/description';
 import { purchaseOrderItemsFields } from './resources/purchaseOrderItems/description';
-import { purchaseOrderItemsReceivingFields } from './resources/purchaseOrderItemsReceiving/description';
+import { purchaseOrderItemReceivingFields } from './resources/purchaseOrderItemReceiving/description';
 import { ticketFields } from './resources/tickets/description';
 import { ticketAdditionalConfigurationItemFields } from './resources/ticketAdditionalConfigurationItems/description';
 import { ticketAdditionalContactFields } from './resources/ticketAdditionalContacts/description';
@@ -409,7 +409,7 @@ const autotaskDescription: INodeTypeDescription = {
 			...addOperationsToResource(purchaseApprovalsFields, { resourceName: 'purchaseApprovals' }),
 			...addOperationsToResource(purchaseOrdersFields, { resourceName: 'purchaseOrders' }),
 			...addOperationsToResource(purchaseOrderItemsFields, { resourceName: 'purchaseOrderItems' }),
-			...addOperationsToResource(purchaseOrderItemsReceivingFields, { resourceName: 'purchaseOrderItemsReceiving' }),
+			...addOperationsToResource(purchaseOrderItemReceivingFields, { resourceName: 'purchaseOrderItemReceiving' }),
 			...addOperationsToResource(projectFields, { resourceName: 'project' }),
 			...addOperationsToResource(projectChargeFields, { resourceName: 'projectCharge' }),
 			...addOperationsToResource(projectNoteFields, { resourceName: 'projectNote' }),
@@ -655,8 +655,8 @@ export class Autotask implements INodeType {
 				return executePurchaseOrdersOperation.call(this);
 			case 'purchaseOrderItems':
 				return executePurchaseOrderItemsOperation.call(this);
-			case 'purchaseOrderItemsReceiving':
-				return executePurchaseOrderItemsReceivingOperation.call(this);
+			case 'purchaseOrderItemReceiving':
+				return executePurchaseOrderItemReceivingOperation.call(this);
 			case 'project':
 				return executeProjectOperation.call(this);
 			case 'projectCharge':

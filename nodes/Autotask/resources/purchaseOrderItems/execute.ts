@@ -37,14 +37,14 @@ export async function executePurchaseOrderItemsOperation(
 				}
 
 				case 'get': {
-					const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this, 'purchaseOrder');
+					const getOp = new GetOperation<IAutotaskEntity>(ENTITY_TYPE, this, 'purchaseOrders');
 					const response = await getOp.execute(i);
 					returnData.push({ json: response });
 					break;
 				}
 
 				case 'getMany': {
-					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this, { parentType: 'purchaseOrder' });
+					const getManyOp = new GetManyOperation<IAutotaskEntity>(ENTITY_TYPE, this, { parentType: 'purchaseOrders' });
 					const filters = await getManyOp.buildFiltersFromResourceMapper(i);
 					const response = await getManyOp.execute({ filter: filters }, i);
 					returnData.push(...getManyOp.processReturnData(response));

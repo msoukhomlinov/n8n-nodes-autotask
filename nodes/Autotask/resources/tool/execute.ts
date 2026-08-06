@@ -76,6 +76,10 @@ import { executeOpportunityAttachmentOperation } from '../opportunityAttachments
 import { executeOpportunityCategoryOperation } from '../opportunityCategories/execute';
 import { executeProductOperation } from '../products/execute';
 import { executeProductVendorOperation } from '../productVendors/execute';
+import { executePurchaseApprovalsOperation } from '../purchaseApprovals/execute';
+import { executePurchaseOrdersOperation } from '../purchaseOrders/execute';
+import { executePurchaseOrderItemsOperation } from '../purchaseOrderItems/execute';
+import { executePurchaseOrderItemReceivingOperation } from '../purchaseOrderItemReceiving/execute';
 import { executeProjectOperation } from '../projects/execute';
 import { executeProjectChargeOperation } from '../projectCharges/execute';
 import { executeProjectNoteOperation } from '../projectNotes/execute';
@@ -203,6 +207,10 @@ const RESOURCE_EXECUTORS: Record<
 	opportunityCategory: executeOpportunityCategoryOperation,
 	product: executeProductOperation,
 	productVendor: executeProductVendorOperation,
+	purchaseApprovals: executePurchaseApprovalsOperation,
+	purchaseOrders: executePurchaseOrdersOperation,
+	purchaseOrderItems: executePurchaseOrderItemsOperation,
+	purchaseOrderItemReceiving: executePurchaseOrderItemReceivingOperation,
 	project: executeProjectOperation,
 	projectCharge: executeProjectChargeOperation,
 	projectNote: executeProjectNoteOperation,

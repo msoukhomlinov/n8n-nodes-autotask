@@ -1,6 +1,6 @@
 import type { INodeProperties } from 'n8n-workflow';
 
-export const purchaseOrderItemsReceivingFields: INodeProperties[] = [
+export const purchaseOrderItemReceivingFields: INodeProperties[] = [
 	{
 		displayName: 'Operation',
 		name: 'operation',
@@ -9,7 +9,7 @@ export const purchaseOrderItemsReceivingFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: [
-					'purchaseOrderItemsReceiving',
+					'purchaseOrderItemReceiving',
 				],
 			},
 		},
@@ -49,7 +49,7 @@ export const purchaseOrderItemsReceivingFields: INodeProperties[] = [
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['purchaseOrderItemsReceiving'],
+				resource: ['purchaseOrderItemReceiving'],
 				operation: ['get'],
 			},
 		},
@@ -66,7 +66,7 @@ export const purchaseOrderItemsReceivingFields: INodeProperties[] = [
 		required: true,
 		displayOptions: {
 			show: {
-				resource: ['purchaseOrderItemsReceiving'],
+				resource: ['purchaseOrderItemReceiving'],
 				operation: ['create', 'getMany', 'count'],
 			},
 		},

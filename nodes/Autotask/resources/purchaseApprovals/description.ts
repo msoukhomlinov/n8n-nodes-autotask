@@ -1,33 +1,6 @@
 import type { INodeProperties } from 'n8n-workflow';
 
-const operationOptions = [
-	{
-		name: 'Update',
-		value: 'update',
-		description: 'Update a purchase approval',
-		action: 'Update a purchase approval',
-	},
-	{
-		name: 'Get',
-		value: 'get',
-		description: 'Get a purchase approval by ID',
-		action: 'Get a purchase approval',
-	},
-	{
-		name: 'Get Many',
-		value: 'getMany',
-		description: 'Get multiple purchase approvals',
-		action: 'Get multiple purchase approvals',
-	},
-	{
-		name: 'Count',
-		value: 'count',
-		description: 'Count number of purchase approvals',
-		action: 'Count purchase approvals',
-	},
-];
-
-const baseFields: INodeProperties[] = [
+export const purchaseApprovalsFields: INodeProperties[] = [
 	{
 		displayName: 'Operation',
 		name: 'operation',
@@ -40,7 +13,32 @@ const baseFields: INodeProperties[] = [
 				],
 			},
 		},
-		options: operationOptions,
+		options: [
+			{
+				name: 'Update',
+				value: 'update',
+				description: 'Update a purchase approval',
+				action: 'Update a purchase approval',
+			},
+			{
+				name: 'Get',
+				value: 'get',
+				description: 'Get a purchase approval by ID',
+				action: 'Get a purchase approval',
+			},
+			{
+				name: 'Get Many',
+				value: 'getMany',
+				description: 'Get multiple purchase approvals',
+				action: 'Get multiple purchase approvals',
+			},
+			{
+				name: 'Count',
+				value: 'count',
+				description: 'Count number of purchase approvals',
+				action: 'Count purchase approvals',
+			},
+		],
 		default: 'get',
 	},
 	{
@@ -88,5 +86,3 @@ const baseFields: INodeProperties[] = [
 		},
 	},
 ];
-
-export const purchaseApprovalsFields = baseFields;
