@@ -340,6 +340,26 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		description: 'Manage Product Vendors, which are vendor companies associated with products in your inventory',
 	},
 	{
+		name: 'Purchase Approval',
+		value: 'purchaseApprovals',
+		description: 'Manage Purchase Approvals, which represent whether a purchase order item has been approved',
+	},
+	{
+		name: 'Purchase Order',
+		value: 'purchaseOrders',
+		description: 'Manage Purchase Orders, which represent orders placed with vendors to purchase products or services',
+	},
+	{
+		name: 'Purchase Order Item',
+		value: 'purchaseOrderItems',
+		description: 'Manage Purchase Order Items, which are individual line items on a purchase order representing products or services being purchased',
+	},
+	{
+		name: 'Purchase Order Item Receiving',
+		value: 'purchaseOrderItemsReceiving',
+		description: 'Manage Purchase Order Item Receiving records, which track receipt of purchase order items',
+	},
+	{
 		name: 'Project',
 		value: 'project',
 		description: 'Manage Projects, which organise related tasks, events, and documents for a company into structured work with defined scope and deliverables',
