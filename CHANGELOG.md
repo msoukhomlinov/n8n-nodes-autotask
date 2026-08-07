@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.28.1] - 2026-08-06
+
+### Changed
+- Removed the dead `REQUIRED_UPDATE_ID_FIELDS` map from `constants/field.constants.ts` (issue #133). No imports or consumers referenced it anywhere in the repo — it gave a false impression that extra validation exists for update operations. The actual parent-ID enforcement mechanism (`parentIdField` in `constants/entities.ts`) already handles the same concern.
+
 ## [2.28.0] - 2026-08-06
 
 ### Changed
