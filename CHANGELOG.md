@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.28.2] - 2026-08-16
+
+### Changed
+- Removed the three unreachable "proceed anyway for Deactivated" branches inside the HMAC verification block of `AutotaskTrigger.webhook()`. Every `Deactivated` event is already acknowledged and returned before HMAC verification (the pre-HMAC early return added in v2.20.2 for GHSA-hh59-fgrr-93hf), so the branches could never execute — but they kept the deactivation-bypass pattern alive in the code and risked a future refactor re-introducing the bypass. The HMAC block is now a straight fail-closed path: missing signature → error, invalid signature → error, verification exception → error. Added a comment at the block noting that Deactivated events are handled earlier and warning against re-adding deactivation-specific bypasses. No runtime behaviour change.
+
 ## [2.28.1] - 2026-08-06
 
 ### Changed

@@ -1008,14 +1008,12 @@ export class AutotaskTrigger implements INodeType {
 				}
 			}
 
+			// NOTE: Deactivated events never reach this block — they are acknowledged and
+			// returned before HMAC verification (see above). Do not add deactivation-specific
+			// bypasses here: that pattern was the GHSA-hh59-fgrr-93hf bypass (fixed in v2.20.2).
 			if (!signature) {
-				// For deactivation events, signature might be optional
-				if ((bodyData.eventType as string) === 'Deactivated') {
-					console.log('No signature found but this is a deactivation event - proceeding without verification');
-				} else {
-					console.error('No signature found in webhook request headers');
-					throw new NodeOperationError(this.getNode(), 'Missing webhook signature');
-				}
+				console.error('No signature found in webhook request headers');
+				throw new NodeOperationError(this.getNode(), 'Missing webhook signature');
 			} else {
 				try {
 					// Get the request body as it was received
@@ -1023,27 +1021,16 @@ export class AutotaskTrigger implements INodeType {
 
 					// Try to verify using the raw request body
 					if (!verifyWebhookSignature(rawRequestBody, signature, secretKey)) {
-						// For deactivation events, allow proceeding even with invalid signature
-						if ((bodyData.eventType as string) === 'Deactivated') {
-							console.warn('Invalid signature for deactivation event - proceeding anyway for safety');
-						} else {
-							console.error('Invalid webhook signature detected');
-							throw new NodeOperationError(this.getNode(), 'Invalid webhook signature');
-						}
-					} else {
-						console.log('Webhook signature verified successfully');
+						console.error('Invalid webhook signature detected');
+						throw new NodeOperationError(this.getNode(), 'Invalid webhook signature');
 					}
+					console.log('Webhook signature verified successfully');
 				} catch (error) {
-					// For deactivation events, continue even if signature verification fails
-					if ((bodyData.eventType as string) === 'Deactivated') {
-						console.warn(`Signature verification failed for deactivation event: ${(error as Error).message} - proceeding anyway`);
-					} else {
-						console.error('Error verifying webhook signature:', error);
-						throw new NodeOperationError(
-							this.getNode(),
-							`Webhook signature verification failed: ${(error as Error).message}`,
-						);
-					}
+					console.error('Error verifying webhook signature:', error);
+					throw new NodeOperationError(
+						this.getNode(),
+						`Webhook signature verification failed: ${(error as Error).message}`,
+					);
 				}
 			}
 		} else {
