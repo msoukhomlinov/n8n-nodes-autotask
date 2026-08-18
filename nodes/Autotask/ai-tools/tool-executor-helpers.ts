@@ -85,15 +85,18 @@ export async function executeCountOperation(
 /**
  * Helper-operation control params (describeFields / listPicklistValues /
  * describeOperation) that are injected into every resource's tool schema but
- * are not entity fields. They are dropped from the write payload — unless the
- * resource actually has a write field with the same name, in which case the
- * param is a legitimate field value and must be kept (issue #136).
+ * are not entity fields. They are dropped from the write payload by exact
+ * schema spelling — unless the resource actually has a write field with the
+ * exact same name, in which case the param is a legitimate field value and
+ * must be kept (issue #136).
  *
- * Entries are lowercased so the check in buildFieldValues() can be
- * case-insensitive (it looks them up via key.toLowerCase()); 'fieldid' is the
- * lowercased form of the schema param name 'fieldId'.
+ * The check is exact-case on both sides so a case-variant real field (e.g. a
+ * webhook entity's 'fieldID') is never conflated with the helper spelling
+ * ('fieldId'): a stale helper param is dropped rather than canonicalised onto
+ * the real field. Case-variant spellings of real fields are still resolved by
+ * the case-insensitive writeFieldLookup below.
  */
-const HELPER_OP_CONTROL_PARAMS = new Set(['mode', 'fieldid', 'query', 'page']);
+const HELPER_OP_CONTROL_PARAMS = new Set(['mode', 'fieldId', 'query', 'page']);
 
 /**
  * Build field values for create/update from params.
@@ -106,6 +109,7 @@ export function buildFieldValues(
 ): Record<string, unknown> {
 	const result: Record<string, unknown> = {};
 	const writeFieldLookup = buildFieldLookup(writeFields);
+	const exactWriteFieldIds = new Set(writeFields.map((f) => f.id));
 	const exclude = new Set<string>([
 		...excludeKeys,
 		'resource',
@@ -146,9 +150,11 @@ export function buildFieldValues(
 	for (const [key, value] of Object.entries(params)) {
 		if (value !== undefined && value !== null && value !== '' && !exclude.has(key)) {
 			const canonicalField = writeFieldLookup.get(key.toLowerCase());
-			// Drop helper-op control params (mode/fieldId/query/page) unless the resource
-			// has a real write field with that name (issue #136).
-			if (HELPER_OP_CONTROL_PARAMS.has(key.toLowerCase()) && canonicalField === undefined) {
+			// Drop helper-op control params (mode/fieldId/query/page) by exact spelling
+			// unless the resource has a real write field with the exact same name
+			// (issue #136). Exact-case on both sides: a case-variant real field (e.g.
+			// webhook 'fieldID') is never conflated with the helper spelling 'fieldId'.
+			if (HELPER_OP_CONTROL_PARAMS.has(key) && !exactWriteFieldIds.has(key)) {
 				continue;
 			}
 			result[canonicalField?.id ?? key] = value;
