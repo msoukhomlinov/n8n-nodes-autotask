@@ -83,6 +83,19 @@ export async function executeCountOperation(
 }
 
 /**
+ * Helper-operation control params (describeFields / listPicklistValues /
+ * describeOperation) that are injected into every resource's tool schema but
+ * are not entity fields. They are dropped from the write payload — unless the
+ * resource actually has a write field with the same name, in which case the
+ * param is a legitimate field value and must be kept (issue #136).
+ *
+ * Entries are lowercased so the check in buildFieldValues() can be
+ * case-insensitive (it looks them up via key.toLowerCase()); 'fieldid' is the
+ * lowercased form of the schema param name 'fieldId'.
+ */
+const HELPER_OP_CONTROL_PARAMS = new Set(['mode', 'fieldid', 'query', 'page']);
+
+/**
  * Build field values for create/update from params.
  * Only includes actual entity field values, excluding control params.
  */
@@ -133,6 +146,11 @@ export function buildFieldValues(
 	for (const [key, value] of Object.entries(params)) {
 		if (value !== undefined && value !== null && value !== '' && !exclude.has(key)) {
 			const canonicalField = writeFieldLookup.get(key.toLowerCase());
+			// Drop helper-op control params (mode/fieldId/query/page) unless the resource
+			// has a real write field with that name (issue #136).
+			if (HELPER_OP_CONTROL_PARAMS.has(key.toLowerCase()) && canonicalField === undefined) {
+				continue;
+			}
 			result[canonicalField?.id ?? key] = value;
 		}
 	}
