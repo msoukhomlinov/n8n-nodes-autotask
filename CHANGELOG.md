@@ -2,6 +2,11 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.28.3] - 2026-08-18
+
+### Fixed
+- AI tool `create`/`update` calls no longer fail with `INVALID_WRITE_FIELDS` when the LLM includes the helper-operation control params `mode`, `fieldId`, or `query` (or `page`) in the call — e.g. carried over from an earlier `describeFields`/`listPicklistValues` call in the same turn (issue #136). `buildFieldValues()` now drops these control params by exact schema spelling before write-field validation, unless the resource has a real write field with the exact same name. A case-variant real field (e.g. a webhook `fieldID`) is therefore never conflated with the helper spelling (`fieldId`) — a stale helper param is dropped rather than canonicalised onto the real field.
+
 ## [2.28.2] - 2026-08-16
 
 ### Changed
