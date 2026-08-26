@@ -54,13 +54,25 @@ export interface CompanySearchCoverage extends IDataObject {
  * whole search. The getNodeParameter override neutralises filtersFromTool /
  * fieldsToMap so the tool call's own filters (or UI resource-mapper fields) can
  * never leak into the total count.
+ *
+ * The override is installed on an ISOLATED child context (Object.create) rather
+ * than on the caller's context: this call runs in parallel with the bounded
+ * scans, which install their own overrides on the same shared context. Mutating
+ * the shared context let the two override windows clobber each other (Codex
+ * NEW-0) — if the count finished while a bounded query was awaiting its API
+ * call, the count's finally could clobber the query's override, and the query's
+ * finally could subsequently restore the captured count override permanently,
+ * so later processing (or the next input item) read neutralised filters and
+ * field mappings. Same isolated-context pattern as executeCountOperation
+ * (ai-tools/tool-executor-helpers.ts). The shared context is never mutated.
  */
 async function countCompanyTotal(
 	context: IExecuteFunctions,
 	itemIndex: number,
 ): Promise<number | undefined> {
 	const originalGetNodeParameter = context.getNodeParameter.bind(context);
-	context.getNodeParameter = ((
+	const scopedContext = Object.create(context) as IExecuteFunctions;
+	scopedContext.getNodeParameter = ((
 		name: string,
 		index: number,
 		fallbackValue?: unknown,
@@ -69,15 +81,13 @@ async function countCompanyTotal(
 		if (name === 'filtersFromTool') return undefined;
 		if (name === 'fieldsToMap') return { value: {} };
 		return originalGetNodeParameter(name, index, fallbackValue, options);
-	}) as typeof context.getNodeParameter;
+	}) as IExecuteFunctions['getNodeParameter'];
 	try {
-		const countOp = new CountOperation<IAutotaskEntity>('company', context);
+		const countOp = new CountOperation<IAutotaskEntity>('company', scopedContext);
 		const count = await countOp.execute(itemIndex);
 		return typeof count === 'number' && Number.isFinite(count) ? count : undefined;
 	} catch {
 		return undefined;
-	} finally {
-		context.getNodeParameter = originalGetNodeParameter;
 	}
 }
 
@@ -311,6 +321,20 @@ function buildWebsiteFieldList(companyFieldNames: string[]): string[] {
 	return ordered;
 }
 
+/**
+ * Bounded entity query with per-call parameter overrides (returnAll=false,
+ * MaxRecords=limit, selectColumns). The overrides are installed on an ISOLATED
+ * child context (Object.create) — never on the caller's context — because
+ * multiple bounded queries (and the parallel countCompanyTotal) share one
+ * execution context. Installing on the shared context let interleaved
+ * finally-blocks clobber each other's overrides (Codex NEW-0): a late restore
+ * could leave the wrong override active on the shared context, so in-flight
+ * parameter reads (pagination, output mode, date handling) and later
+ * processing saw the wrong filters, column sets, and field mappings. Each
+ * operation now sees exactly its own overrides; the shared context is never
+ * mutated (same pattern as executeCountOperation in
+ * ai-tools/tool-executor-helpers.ts).
+ */
 async function runBoundedQuery(
 	context: IExecuteFunctions,
 	entityType: string,
@@ -320,7 +344,8 @@ async function runBoundedQuery(
 	selectColumns: string[],
 ): Promise<IAutotaskEntity[]> {
 	const originalGetNodeParameter = context.getNodeParameter.bind(context);
-	context.getNodeParameter = ((
+	const scopedContext = Object.create(context) as IExecuteFunctions;
+	scopedContext.getNodeParameter = ((
 		name: string,
 		index: number,
 		fallbackValue?: unknown,
@@ -331,21 +356,42 @@ async function runBoundedQuery(
 		if (name === 'selectColumns') return selectColumns;
 		if (name === 'selectColumnsJson') return JSON.stringify(selectColumns);
 		return originalGetNodeParameter(name, index, fallbackValue, options);
-	}) as typeof context.getNodeParameter;
+	}) as IExecuteFunctions['getNodeParameter'];
 
-	try {
-		const getManyOp = new GetManyOperation<IAutotaskEntity>(entityType, context);
-		const results = await getManyOp.execute({ filter: filters, MaxRecords: limit }, itemIndex);
-		return results.slice(0, limit);
-	} finally {
-		context.getNodeParameter = originalGetNodeParameter;
-	}
+	const getManyOp = new GetManyOperation<IAutotaskEntity>(entityType, scopedContext);
+	const results = await getManyOp.execute({ filter: filters, MaxRecords: limit }, itemIndex);
+	return results.slice(0, limit);
 }
 
 function isValidCompanyId(value: unknown): value is string | number {
 	if (typeof value === 'number') return Number.isFinite(value);
 	if (typeof value === 'string') return value.trim() !== '';
 	return false;
+}
+
+/**
+ * Completeness for the `id in [...]` company-name resolution stage (Codex
+ * NEW-2). The requested ID set is FINITE, so equality with the query cap is
+ * NOT truncation: when the requested set fits the MAX_CONTACT_FALLBACK_LIMIT
+ * row cap and every requested ID came back from the API, the query has seen
+ * everything it could match. Partial exists only when the requested set
+ * itself exceeded the cap (IDs beyond the cap were never queried) or at
+ * least one requested ID failed to resolve.
+ */
+function isIdResolutionComplete(
+	companyIds: Array<string | number>,
+	resolvedCompanies: IAutotaskEntity[],
+): boolean {
+	if (companyIds.length > MAX_CONTACT_FALLBACK_LIMIT) return false;
+	const resolvedIds = new Set<string>();
+	for (const company of resolvedCompanies) {
+		if (!isValidCompanyId(company.id)) continue;
+		resolvedIds.add(String(company.id));
+	}
+	for (const companyId of companyIds) {
+		if (!resolvedIds.has(String(companyId))) return false;
+	}
+	return true;
 }
 
 function buildRetryKey(domain: string, companyName: string, operator: DomainOperator): string {
@@ -656,7 +702,15 @@ export async function searchCompaniesByDomain(
 				companyNameNormalised,
 				appliedCompanyOperator,
 			),
-			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise, companyResults.length < limit),
+			// Codex NEW-1: the contact scan HITTING its cap means matching contacts
+			// beyond the window (with valid companyIDs) may exist, so this no-match
+			// claim is only complete when BOTH bounded scans came back below their
+			// caps.
+			coverage: await buildSearchCoverage(
+				companyResults.length,
+				totalAvailablePromise,
+				companyResults.length < limit && contactResults.length < contactLimit,
+			),
 		};
 	}
 
@@ -724,13 +778,15 @@ export async function searchCompaniesByDomain(
 				appliedCompanyOperator,
 			),
 			// Codex P2: completeness = every contributing bounded query (website scan,
-			// contact scan, company-name resolution) returned below its cap.
+			// contact scan) returned below its cap, and the id-in[...] resolution
+			// stage resolved every requested company ID within its cap (Codex NEW-2:
+			// equality with the cap is not truncation for a finite requested set).
 			coverage: await buildSearchCoverage(
 				companyResults.length + resolvedCompanies.length,
 				totalAvailablePromise,
 				companyResults.length < limit &&
 					contactResults.length < contactLimit &&
-					resolvedCompanies.length < Math.min(companyIds.length, MAX_CONTACT_FALLBACK_LIMIT),
+					isIdResolutionComplete(companyIds, resolvedCompanies),
 			),
 		};
 	}
@@ -767,13 +823,15 @@ export async function searchCompaniesByDomain(
 		companyFrequencies,
 		...(notes.length > 0 ? { notes } : {}),
 		// Codex P2: completeness = every contributing bounded query (website scan,
-		// contact scan, company-name resolution) returned below its cap.
+		// contact scan) returned below its cap, and the id-in[...] resolution
+		// stage resolved every requested company ID within its cap (Codex NEW-2:
+		// equality with the cap is not truncation for a finite requested set).
 		coverage: await buildSearchCoverage(
 			companyResults.length + resolvedCompanies.length,
 			totalAvailablePromise,
 			companyResults.length < limit &&
 				contactResults.length < contactLimit &&
-				resolvedCompanies.length < Math.min(companyIds.length, MAX_CONTACT_FALLBACK_LIMIT),
+				isIdResolutionComplete(companyIds, resolvedCompanies),
 		),
 	};
 }

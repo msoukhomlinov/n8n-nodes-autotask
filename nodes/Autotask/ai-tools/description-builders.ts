@@ -352,6 +352,7 @@ export function buildCompanySearchByIdentityDescription(resourceName: string): s
 		'Accepts companyName, email, and website/domain; ranks candidates by confidence. ' +
 		'Domain is normalised from website first, then email; domain matching runs first (company website fields, then contact-email fallback). ' +
 		'If domain signals are weak or absent, companyName contains matching is executed and merged into the confidence-ranked candidate list. ' +
+		"At least one of companyName, email, or website is required — a call with no identity signal is rejected before any search. " +
 		"Use 'fields' to limit returned company fields; omit for full records. " +
 		describeFieldsHint(resourceName)
 	);
