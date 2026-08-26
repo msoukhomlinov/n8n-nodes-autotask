@@ -611,14 +611,15 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 		let windowHours = 4;
 		const rawWindow = params.atRiskWindowHours;
 		if (rawWindow != null && rawWindow !== '') {
-			// N5 (v2.28.9 r7) + NIT-3 (r8) + C4 (r9): the unified schema coerces
-			// this field on BOTH paths (rz.coerce.number(), round 9) — by the time
-			// a value reaches this handler it is a number on the schema-gated
-			// paths. This coercion remains as defense-in-depth for direct handler
-			// invocation: an EXPLICIT value that is not a positive finite number
-			// (e.g. 0, or a non-numeric string that bypassed the schema) is not
-			// "unprovided" — warn that the 4h default was applied instead of
-			// substituting it silently.
+			// N5 (v2.28.9 r7) + NIT-3 (r8) + C4 (r9) + C5 (r10): on the
+			// schema-gated paths the unified schema already converted numeric
+			// strings to numbers (round-10 numeric-string-only preprocess) and
+			// rejected everything else (booleans, arrays, non-numeric strings)
+			// with INVALID_INPUT — so by the time a value reaches this handler
+			// it is a number there. This coercion remains as defense-in-depth
+			// for direct handler invocation: an EXPLICIT value that is not a
+			// positive finite number (e.g. 0) is not "unprovided" — warn that
+			// the 4h default was applied instead of substituting it silently.
 			const coercedWindow =
 				typeof rawWindow === 'number' ? rawWindow : Number(rawWindow);
 			if (Number.isFinite(coercedWindow) && coercedWindow > 0) {

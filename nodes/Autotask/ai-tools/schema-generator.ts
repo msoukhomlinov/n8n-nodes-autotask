@@ -642,17 +642,28 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.describe("Required for getBySLAStatus: 'breached' (SLA missed), 'at_risk' (within atRiskWindowHours of deadline), or 'compliant' (SLA met).");
 			}
 			if (!shape.atRiskWindowHours) {
-				// v2.28.9 r9 (C4): coerce so numeric strings ('24') parse on BOTH
-				// execution paths — the execute() path safe-parses item.json through
-				// this same shape (L2 strip variant), which a plain rz.number() would
-				// reject with INVALID_INPUT before the handler's own coercion could
-				// ever run. The published JSON schema is byte-identical
-				// ({"type":["number","null"]}) — coercion is runtime-only, same
-				// Copilot-Studio tolerance pattern as the coerce.string ID params.
-				// Non-numeric strings still fail with a clean Zod error on both paths.
+				// v2.28.9 r9 (C4) + r10 (C5): numeric strings ('24') must parse on
+				// BOTH execution paths (the execute() path safe-parses item.json
+				// through this same shape — L2 strip variant — before any handler
+				// code runs), but ONLY numeric strings: r9's rz.coerce.number()
+				// also coerced other JSON types (true → 1, [24] → 24), silently
+				// bypassing INVALID_INPUT. Preprocess converts numeric strings and
+				// passes everything else through untouched, so the number schema
+				// itself rejects booleans/arrays/objects and non-numeric strings
+				// with a clean per-type error on both paths. nullish sits INSIDE
+				// the preprocess (rz.preprocess(fn, rz.number().nullish())) so the
+				// zts nullable fast-path fires on the plain inner ZodNumber and the
+				// published JSON schema property stays byte-identical
+				// ({"type":["number","null"]} — a .nullish() OUTSIDE the effect
+				// would publish anyOf instead).
 				shape.atRiskWindowHours = rz
-					.coerce.number()
-					.nullish()
+					.preprocess(
+						(v: unknown) =>
+							typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v.trim()))
+								? Number(v.trim())
+								: v,
+						rz.number().nullish(),
+					)
 					.describe('Hours before resolvedDueDateTime to consider a ticket at-risk (default 4, numeric strings accepted). Only applies when slaStatus=at_risk.');
 			}
 			if (!shape.company) {
