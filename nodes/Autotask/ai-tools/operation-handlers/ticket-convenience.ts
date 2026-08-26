@@ -609,13 +609,19 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 	} else {
 		// at_risk: within atRiskWindowHours hours of resolvedDueDateTime, not yet breached
 		let windowHours = 4;
-		if (typeof params.atRiskWindowHours === 'number' && Number.isFinite(params.atRiskWindowHours)) {
-			if (params.atRiskWindowHours > 0) {
-				windowHours = params.atRiskWindowHours;
+		const rawWindow = params.atRiskWindowHours;
+		if (rawWindow != null && rawWindow !== '') {
+			// N5 (v2.28.9 r7) + NIT-3 (r8): an EXPLICIT value — number on the MCP
+			// path, or a numeric STRING on the execute() path (where the Zod number
+			// schema does not gate the param) — that is not a positive finite number
+			// is not "unprovided". Coerce numeric strings instead of silently
+			// substituting the default, and warn when the value had to be dropped.
+			const coercedWindow =
+				typeof rawWindow === 'number' ? rawWindow : Number(rawWindow);
+			if (Number.isFinite(coercedWindow) && coercedWindow > 0) {
+				windowHours = coercedWindow;
 			} else {
-				// N5 (v2.28.9 r7): an EXPLICIT 0/negative value is not "unprovided" —
-				// say the default was applied instead of silently substituting it.
-				slaWindowWarning = `atRiskWindowHours=${params.atRiskWindowHours} is not a positive number — the value was ignored and the 4-hour default window was applied.`;
+				slaWindowWarning = `atRiskWindowHours=${rawWindow} is not a positive number — the value was ignored and the 4-hour default window was applied.`;
 			}
 		}
 		const now = new Date();

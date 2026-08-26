@@ -241,14 +241,36 @@ export function formatApiError(
 		);
 	}
 
-	// v2.28.9 r7 (N4): the "…is not a valid value for field X" phrasing family is a
-	// value/picklist rejection too — match it explicitly instead of letting it fall
-	// through to generic API_ERROR.
+	// v2.28.9 r8 (NIT-2): a FIELD-level "not found" body (e.g. "The picklist field
+	// 'status' was not found on entity Ticket") is a schema/metadata problem, not a
+	// missing record — the truthful recovery is describeFields, not a record search
+	// or a picklist listing. Runs after the required-field classifier (so
+	// "Required field … not found in entity …" keeps MISSING_REQUIRED_FIELDS) and
+	// before the untagged not-found fallback (which would say ENTITY_NOT_FOUND).
+	if (
+		!lowerMessage.includes('required')
+		&& /\bfield\b[^.\n]{0,40}(was |is |has )?not found|\bno such field\b/.test(lowerMessage)
+	) {
+		return wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.INVALID_FIELDS,
+			message,
+			`Call autotask_${resource} with operation 'describeFields' to verify the field name, then retry with a field the entity publishes.`,
+			undefined,
+			['describeFields'],
+		);
+	}
+
+	// v2.28.9 r7 (N4, r8 NIT-1 tightened): the "…is not a valid value for field X"
+	// phrasing family is a value/picklist rejection — match the VALUE phrasing
+	// explicitly instead of a bare 'is not a valid' clause, which over-matched
+	// non-picklist validation bodies ("is not a valid email address", "is not a
+	// valid quantity") and sent them down the listPicklistValues recovery path.
 	if (
 		lowerMessage.includes('picklist')
 		|| lowerMessage.includes('invalid value')
 		|| lowerMessage.includes('not a valid value')
-		|| lowerMessage.includes('is not a valid')
 	) {
 		return wrapError(
 			resource,
