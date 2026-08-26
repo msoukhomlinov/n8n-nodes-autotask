@@ -1211,12 +1211,12 @@ function getReadOpParams(): ReadOpParamsMap {
 				...(RESOURCES_WITH_PRIORITY.has(resource)
 					? [{ field: 'priority', type: 'string', description: 'Priority picklist label or ID.' }]
 					: []),
+				{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+				{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
 				{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
 				{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
 				{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
 				{ field: 'recency_field', type: 'string', description: 'Date/time field for recency/since/until (e.g. createDate). Default: first available date field.' },
-				{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
-				{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
 			],
 		};
 	},
@@ -1601,7 +1601,7 @@ function getOperationNotes(resource: string, operation: string): string[] {
 		case 'searchByIdentity':
 			return [
 				...contractNotes,
-				'COVERAGE: the scan is a bounded window over the company population — the response carries coverage fields (scanned, totalAvailable, windowComplete). When windowComplete=false (summary says PARTIAL coverage; isTruncated=true, truncationReason=bounded-scan), companies outside the scanned window may be missing; a no-match within the window is not proof that no company has that domain or identity.',
+				'COVERAGE: the scan is a bounded window over the company population — the response carries coverage fields (scanned, totalAvailable, windowComplete). When windowComplete=false (summary says PARTIAL coverage; isTruncated=true, truncationReason=bounded-scan or derived-candidate-cap — truncationNote names the truncating stage), matching companies outside the window or beyond the candidate cap may be missing; a no-match within the window is not proof that no company has that domain or identity.',
 			];
 		case 'getByAge':
 		case 'getByCompanyAndStatus':
