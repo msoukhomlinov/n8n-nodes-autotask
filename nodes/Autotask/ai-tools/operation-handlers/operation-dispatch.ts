@@ -610,15 +610,21 @@ export function dispatchOperationResponse(
 				const partialTotal = coverage.totalAvailable !== undefined ? String(coverage.totalAvailable) : 'unknown';
 				// Codex P2: partial = a bounded filtered query hit its cap; scanned is
 				// the rows those queries returned, totalAvailable the tenant-wide count.
+				// Round-4 N1: unwrap the envelope's results like the searchByDomain
+				// sibling — records[0] is the search ENVELOPE, so counting
+				// records.length reported "Found 1 ranked … candidates" (returnedCount
+				// 1) while the actual candidates (N) sat in records[0].results.
+				// records/returnedCount/summary now reflect the real candidate set.
+				const matchedRecords = envelopeResults;
 				const summary = coverage.windowComplete
-					? `Found ${records.length} ranked ${resource} candidates — complete filtered set (filtered queries below their scan cap), no further calls needed.`
-					: `Found ${records.length} ranked ${resource} candidates — PARTIAL coverage: the bounded filtered scan hit its cap after ${coverage.scanned} records (tenant total: ${partialTotal} ${boundedScanPlural(resource)}); additional matching ${boundedScanPlural(resource)} may not be included.`;
+					? `Found ${matchedRecords.length} ranked ${resource} candidates — complete filtered set (filtered queries below their scan cap), no further calls needed.`
+					: `Found ${matchedRecords.length} ranked ${resource} candidates — PARTIAL coverage: the bounded filtered scan hit its cap after ${coverage.scanned} records (tenant total: ${partialTotal} ${boundedScanPlural(resource)}); additional matching ${boundedScanPlural(resource)} may not be included.`;
 				return JSON.stringify({
 					summary,
 					resource,
 					operation: `${resource}.${operation}`,
-					records,
-					returnedCount: records.length,
+					records: matchedRecords,
+					returnedCount: matchedRecords.length,
 					hasMore: false,
 					continuation: null,
 					isTruncated: !coverage.windowComplete,

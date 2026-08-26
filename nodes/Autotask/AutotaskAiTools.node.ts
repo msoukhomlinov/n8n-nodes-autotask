@@ -812,8 +812,32 @@ export class AutotaskAiTools implements INodeType {
 			);
 		}
 
+		// Per-resource capability filter (v2.28.5 P1, mirrored from supplyData
+		// by round-4 N4): operations valid for OTHER resources but not for
+		// THIS one (e.g. 'delete' on Company — the Autotask API has no Company
+		// deletion endpoint) must drop out of the execute() path's allowed
+		// set too. Without this, a workflow that still configures such an op
+		// lets a human-crafted item ({operation:'delete'}) pass the guard
+		// below and deep-throw NodeOperationError from the resource executor
+		// instead of receiving the flat INVALID_OPERATION envelope the AI
+		// surface returns (and never offers). Same non-hard-fail semantics as
+		// supplyData(): the op vanishes from the allowed set, console.warn
+		// always fires.
+		const resourceOperations = getResourceOperations(resource);
+		const excludedOperations = resourceOperations.length > 0
+			? operations.filter((operation) => !resourceOperations.includes(operation))
+			: [];
+		if (excludedOperations.length > 0) {
+			console.warn(
+				`[AutotaskAiTools] Resource '${resource}' does not support operation(s) ${excludedOperations.join(', ')} — they are excluded from the tool surface and hidden from the model. Update the node's operations list.`,
+			);
+		}
+		const permittedOperations = resourceOperations.length > 0
+			? operations.filter((operation) => resourceOperations.includes(operation))
+			: operations;
+
 		// Pick the first permitted operation as the default for test execution
-		const effectiveOps = operations.filter(
+		const effectiveOps = permittedOperations.filter(
 			(op) => !isWriteOperation(op) || allowWriteOperations,
 		);
 		if (effectiveOps.length === 0) {
@@ -877,8 +901,13 @@ export class AutotaskAiTools implements INodeType {
 			});
 		}
 
-		// Retrieve (or cold-build) the Zod schema so execute() can strip unknown keys
-		// from item.json — the same protection supplyData()->func() gets from parseAsync automatically.
+		// Retrieve (or cold-build) the Zod schema for the execute() path. The
+		// shared unified schema is STRICT (F1, v2.28.4) — correct for the
+		// MCP/supplyData surface. But the execute()/Agent V3 item.json
+		// legitimately carries workflow data beyond the tool call (the v2.28.4
+		// F1 promise: "intentionally left as-is"; base v2.28.3 used strip
+		// semantics), so this call site parses with a strip-flavoured variant
+		// derived from the same schema shape (see below) — round-4 L2.
 		const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
 		let zodSchema: ZodSafeParseable;
 		{
@@ -937,6 +966,20 @@ export class AutotaskAiTools implements INodeType {
 			}
 		}
 
+		// Strip-flavoured variant of the strict unified schema for the
+		// execute() parse only (round-4 L2): re-wrap the same field shape with
+		// plain `object()` (strip semantics — the base behaviour of both zod
+		// v3 and v4) so extra user keys in item.json are stripped, exactly as
+		// pre-2.28.4, while type/enum violations still surface precisely.
+		// The MCP/supplyData surface keeps the strict schema untouched.
+		const strictShape = (zodSchema as { shape?: unknown }).shape;
+		const execSchema: ZodSafeParseable =
+			strictShape && typeof strictShape === 'object' && Object.keys(strictShape).length > 0
+				? (runtimeZod.object(
+					strictShape as unknown as Parameters<typeof runtimeZod.object>[0],
+				) as unknown as ZodSafeParseable)
+				: zodSchema;
+
 		const response: INodeExecutionData[] = [];
 
 		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
@@ -989,8 +1032,11 @@ export class AutotaskAiTools implements INodeType {
 				// B1 exception: status/priority keep their null (explicitness-sensitive
 				// F-5 keys) so an explicit null errors identically on both paths.
 				const normalisedJson = stripAndNormaliseItemJson(item.json);
-				// Zod strips any remaining unknown keys (defensive).
-				const parseResult = zodSchema.safeParse(normalisedJson);
+				// execSchema is the strip variant of the strict unified schema
+				// (round-4 L2): keys outside the tool contract (legitimate
+				// workflow data in item.json) are stripped, not rejected —
+				// pre-2.28.4 behaviour restored for this path only.
+				const parseResult = execSchema.safeParse(normalisedJson);
 				if (!parseResult.success) {
 					// Surface operation-contract violations (required/forbidden/xor)
 					// when Zod parse fails. The Zod message alone says things like

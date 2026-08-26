@@ -897,6 +897,25 @@ export async function searchCompaniesByIdentity(
 	const websiteInput = options.website?.trim() ?? '';
 	const notes: string[] = [];
 
+	// No-signal guard (round-4 L1, shared surface): a call with NONE of
+	// companyName / email / website performs ZERO queries, yet the coverage
+	// stages below would still initialise their completeness flags to `true`
+	// and publish coverage {scanned: 0, windowComplete: true} — "a complete
+	// search found nothing" when nothing was searched. The AI-tool surface
+	// already rejects this call earlier (OPERATION_CONTRACTS anyOfGroups →
+	// precise INVALID_FILTER_CONSTRAINT envelope via validateOperationContract);
+	// this guard protects the shared helper itself so the STANDARD node path —
+	// which calls searchCompaniesByIdentity directly with no contract
+	// validation and all-blank default node fields — rejects the same call
+	// before any field fetch, query, or coverage computation. The standard
+	// path renders the thrown error through the node's standard error flow
+	// (error item on continueOnFail, otherwise NodeOperationError).
+	if (companyNameInput === '' && emailInput === '' && websiteInput === '') {
+		throw new Error(
+			"searchByIdentity requires at least one identity signal — 'companyName' or 'email' or 'website' — none were provided (all signals were blank). No search was run; supply at least one signal and retry.",
+		);
+	}
+
 	const domainFromEmail = emailInput ? normaliseDomainInput(emailInput) : '';
 	const domainFromWebsite = websiteInput ? normaliseDomainInput(websiteInput) : '';
 	const domainNormalised = domainFromWebsite || domainFromEmail;
