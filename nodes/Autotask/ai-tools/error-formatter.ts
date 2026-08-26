@@ -211,16 +211,6 @@ export function formatApiError(
 		);
 	}
 
-	if (lowerMessage.includes('not found') || lowerMessage.includes('does not exist')) {
-		return wrapError(
-			resource,
-			operation,
-			ERROR_TYPES.ENTITY_NOT_FOUND,
-			message,
-			`Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID, then retry.`,
-		);
-	}
-
 	if (
 		lowerMessage.includes('lock')
 		|| lowerMessage.includes('concurrent')
@@ -251,7 +241,15 @@ export function formatApiError(
 		);
 	}
 
-	if (lowerMessage.includes('picklist') || lowerMessage.includes('invalid value')) {
+	// v2.28.9 r7 (N4): the "…is not a valid value for field X" phrasing family is a
+	// value/picklist rejection too — match it explicitly instead of letting it fall
+	// through to generic API_ERROR.
+	if (
+		lowerMessage.includes('picklist')
+		|| lowerMessage.includes('invalid value')
+		|| lowerMessage.includes('not a valid value')
+		|| lowerMessage.includes('is not a valid')
+	) {
 		return wrapError(
 			resource,
 			operation,
@@ -270,6 +268,25 @@ export function formatApiError(
 			ERROR_TYPES.MISSING_REQUIRED_FIELDS,
 			message,
 			`Call autotask_${resource} with operation 'describeFields' with mode 'write', then retry with all required fields.`,
+		);
+	}
+
+	// v2.28.9 r7 (C2/N3): the UNtagged "not found" / "does not exist" fallback runs
+	// AFTER the concurrency, permission, picklist and required-field classifiers — those
+	// messages keep their specific actionable types even when they also mention a missing
+	// record (previously this check pre-empted all of them: "Picklist value 'foo' not
+	// found" and "Required field 'name' not found in entity …" both became
+	// ENTITY_NOT_FOUND, and lock/concurrency messages with a not-found phrase lost the
+	// CONCURRENCY_CONFLICT type). The TAGGED [NotFoundError…] check above still wins
+	// outright for Autotask's canonical not-found bodies (E1, including bodies that hedge
+	// with "permission" wording).
+	if (lowerMessage.includes('not found') || lowerMessage.includes('does not exist')) {
+		return wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.ENTITY_NOT_FOUND,
+			message,
+			`Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID, then retry.`,
 		);
 	}
 

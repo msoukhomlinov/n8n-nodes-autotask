@@ -57,13 +57,36 @@ export function buildWriteResolutionBlocker(
     // by the write-path resolver) classify as INVALID_PICKLIST_VALUE with the
     // listPicklistValues retry directive; everything else stays
     // WRITE_RESOLUTION_INCOMPLETE.
-    const picklistMismatchWarnings = unresolvedWarnings.filter((w) => w.startsWith('[PICKLIST_MISMATCH]'));
-    const referenceStyleFailures = unresolvedWarnings.filter((w) => !w.startsWith('[PICKLIST_MISMATCH]'));
-    const unresolvedFields = unresolvedWarnings.map((w) => {
-        const fieldMatch = w.match(/field '([^']+)'/);
-        return fieldMatch ? fieldMatch[1] : '[general-resolution-failure]';
-    });
     const infraErrors = warnings.filter((w) => w.startsWith('[INFRASTRUCTURE]'));
+    // v2.28.9 r7 (C1/N2): a field whose picklist lookup failed with an infrastructure
+    // error was NEVER validated. The resolver suppresses its [PICKLIST_MISMATCH] on
+    // lookup failure; this is the defensive second line — drop any that still arrive
+    // here so the blocker keeps the infrastructure-oriented classification and
+    // invalidPicklistValues never lists an unvalidated value. Dropped mismatches join
+    // neither bucket (they add no listPicklistValues / describeFields directive; the
+    // outage is carried by ctx.infraErrors).
+    const infraFailedFields = new Set(
+        infraErrors
+            .map((w) => w.match(/field '([^']+)'/)?.[1])
+            .filter((f): f is string => typeof f === 'string'),
+    );
+    const infraDroppedMismatch = (w: string): boolean => {
+        if (!w.startsWith('[PICKLIST_MISMATCH]')) return false;
+        const fieldMatch = w.match(/field '([^']+)'/);
+        return fieldMatch !== null && infraFailedFields.has(fieldMatch[1]);
+    };
+    const picklistMismatchWarnings = unresolvedWarnings.filter(
+        (w) => w.startsWith('[PICKLIST_MISMATCH]') && !infraDroppedMismatch(w),
+    );
+    const referenceStyleFailures = unresolvedWarnings.filter(
+        (w) => !w.startsWith('[PICKLIST_MISMATCH]') && !infraDroppedMismatch(w),
+    );
+    const unresolvedFields = unresolvedWarnings
+        .filter((w) => !infraDroppedMismatch(w))
+        .map((w) => {
+            const fieldMatch = w.match(/field '([^']+)'/);
+            return fieldMatch ? fieldMatch[1] : '[general-resolution-failure]';
+        });
 
     const hasBlock =
         pendingConfirmations.length > 0 ||
@@ -143,13 +166,25 @@ export function buildWriteResolutionBlocker(
         );
     }
 
+    // v2.28.9 r7 (C1): when ONLY infrastructure failures block the write, nothing
+    // was ever validated — the honest next step is "retry once the service
+    // recovers", never a directive (listPicklistValues / describeFields) that
+    // retries into the same outage.
+    const pureInfraFailure =
+        infraErrors.length > 0 &&
+        unresolvedFields.length === 0 &&
+        pendingConfirmations.length === 0 &&
+        !impersonationFailed;
+    const incompleteNextAction = pureInfraFailure
+        ? `The Autotask API could not be reached or the field lookup was denied (infrastructure failure). Do not retry listPicklistValues or this write now — retry the same autotask_${resource} '${operation}' call once the service recovers.`
+        : `Call autotask_${resource} with operation 'describeFields' to inspect field metadata, then retry with exact IDs or unambiguous labels.`;
     return JSON.stringify(
         wrapError(
             resource,
             operation,
             ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
             `Write blocked: ${parts.join(' ')} Resolve all field references before retrying.`,
-            `Call autotask_${resource} with operation 'describeFields' to inspect field metadata, then retry with exact IDs or unambiguous labels.`,
+            incompleteNextAction,
             ctx,
         ),
     );

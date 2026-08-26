@@ -129,6 +129,10 @@ export async function resolveLabelsToIds(
             const label = String(provided).trim();
             if (label === '') continue;
             let idMatch: string | number | undefined;
+            // v2.28.9 r7 (C1): set when the picklist lookup itself failed.
+            // The value was then NEVER validated — a [PICKLIST_MISMATCH] for it
+            // would assert "invalid" for a value the API never saw.
+            let picklistLookupFailed = false;
 
             // Try inline allowed values first
             if (field.allowedValues && field.allowedValues.length > 0) {
@@ -174,17 +178,23 @@ export async function resolveLabelsToIds(
                             ? `[INFRASTRUCTURE] Picklist resolution failed for field '${field.id}': ${msg}. Value sent as-is.`
                             : `Picklist resolution error for field '${field.id}': ${msg}`,
                     );
+                    picklistLookupFailed = true;
                 }
             }
 
             if (idMatch !== undefined) {
                 values[key] = idMatch;
                 resolutions.push({ field: field.id, from: label, to: idMatch, method: 'picklist' });
-            } else if (!pendingFieldIds.has(field.id)) {
+            } else if (!pendingFieldIds.has(field.id) && !picklistLookupFailed) {
                 // [PICKLIST_MISMATCH] tag: write-guard.ts partitions on this to
                 // classify invalid picklist values as INVALID_PICKLIST_VALUE with the
                 // listPicklistValues retry directive (v2.28.5). The read-filter branch
                 // keeps its own untagged wording (INVALID_FILTER_CONSTRAINT path).
+                // Suppressed when the lookup itself failed (v2.28.9 r7, C1): the catch
+                // above already recorded the failure and the value was never validated —
+                // emitting the mismatch tag on top made write-guard classify the outage
+                // as INVALID_PICKLIST_VALUE and direct the model to retry
+                // listPicklistValues into the same outage.
                 warnings.push(`[PICKLIST_MISMATCH] Could not resolve picklist value '${label}' for field '${field.id}'`);
             }
 

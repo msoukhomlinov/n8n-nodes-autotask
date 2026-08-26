@@ -170,10 +170,16 @@ const FRAMEWORK_PARAM_KEYS = new Set(['operation', 'resource']);
  *  - countByPeriod / getFullDetail ignore the recency trio, limit, returnAll,
  *    and every filter/paging parameter — those are junk for them.
  */
+/**
+ * C3 (v2.28.9 r7): `params` feeds the mode-aware getBySLAStatus rule —
+ * `atRiskWindowHours` is only CONSUMED when slaStatus === 'at_risk' (the handler
+ * reads it in that branch only); for breached/compliant it is op-irrelevant junk.
+ */
 function consumedParamsForOp(
 	resource: string,
 	operation: string,
 	cfg: ResourceConvenienceConfig,
+	params?: Record<string, unknown>,
 ): Set<string> {
 	const consumed = new Set<string>(['operation']);
 	if (
@@ -201,7 +207,12 @@ function consumedParamsForOp(
 			break;
 		case 'getBySLAStatus':
 			consumed.add('slaStatus');
-			consumed.add('atRiskWindowHours');
+			// C3 (v2.28.9 r7): the handler reads atRiskWindowHours ONLY in the at_risk
+			// branch — consume it for that mode only. Previously it was consumed for ALL
+			// modes, so breached/compliant calls carrying it succeeded with the param
+			// silently dropped (the exact stagnation pattern irrelevantParamError exists
+			// to prevent).
+			if (params?.slaStatus === 'at_risk') consumed.add('atRiskWindowHours');
 			consumed.add('company');
 			break;
 		case 'getFullDetail': {
@@ -244,7 +255,10 @@ function irrelevantParamError(
 	cfg: ResourceConvenienceConfig,
 	correlationId: string,
 ): string | null {
-	const consumed = consumedParamsForOp(resource, operation, cfg);
+	// N1 (v2.28.9 r7): pass params through so the "supported parameters" list in
+	// the rejection text is derived from the MODE-AWARE consumed set (e.g.
+	// getBySLAStatus with slaStatus='breached' must not advertise atRiskWindowHours).
+	const consumed = consumedParamsForOp(resource, operation, cfg, params);
 	const unsupported: string[] = [];
 	for (const [key, value] of Object.entries(params)) {
 		if (FRAMEWORK_PARAM_KEYS.has(key)) continue;
@@ -583,6 +597,9 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 	const slaJunkErr = irrelevantParamError(resource, 'getBySLAStatus', params, cfg, correlationId);
 	if (slaJunkErr) return slaJunkErr;
 
+	// N5 (v2.28.9 r7): set in the at_risk branch when an explicit atRiskWindowHours
+	// of 0/negative falls back to the 4-hour default (warning only, no behaviour change).
+	let slaWindowWarning: string | undefined;
 	// Build SLA filters based on slaStatus
 	let slaFilters: IDataObject[];
 	if (slaStatusParam === 'breached') {
@@ -591,9 +608,16 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 		slaFilters = [{ field: 'serviceLevelAgreementHasBeenMet', op: 'eq', value: true }];
 	} else {
 		// at_risk: within atRiskWindowHours hours of resolvedDueDateTime, not yet breached
-		const windowHours = typeof params.atRiskWindowHours === 'number' && params.atRiskWindowHours > 0
-			? params.atRiskWindowHours
-			: 4;
+		let windowHours = 4;
+		if (typeof params.atRiskWindowHours === 'number' && Number.isFinite(params.atRiskWindowHours)) {
+			if (params.atRiskWindowHours > 0) {
+				windowHours = params.atRiskWindowHours;
+			} else {
+				// N5 (v2.28.9 r7): an EXPLICIT 0/negative value is not "unprovided" —
+				// say the default was applied instead of silently substituting it.
+				slaWindowWarning = `atRiskWindowHours=${params.atRiskWindowHours} is not a positive number — the value was ignored and the 4-hour default window was applied.`;
+			}
+		}
 		const now = new Date();
 		const windowEnd = new Date(now.getTime() + windowHours * 60 * 60 * 1000);
 		slaFilters = [{
@@ -653,7 +677,7 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 	const slaRawItems = Array.isArray(slaResponse.items) ? slaResponse.items as Record<string, unknown>[] : [];
 	const { items: slaItems, hasMore: slaHasMore } = applyProbeTruncation(slaRawItems, queryLimitForSla);
 
-	const allSlaWarnings = [...slaSpecialWarnings, ...labelWarnings];
+	const allSlaWarnings = [...slaSpecialWarnings, ...labelWarnings, ...(slaWindowWarning ? [slaWindowWarning] : [])];
 	const allSlaResolutions = [...slaSpecialResolutions, ...labelResolutions];
 
 	const slaListJson = JSON.stringify(
