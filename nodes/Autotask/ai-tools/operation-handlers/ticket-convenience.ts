@@ -611,11 +611,14 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 		let windowHours = 4;
 		const rawWindow = params.atRiskWindowHours;
 		if (rawWindow != null && rawWindow !== '') {
-			// N5 (v2.28.9 r7) + NIT-3 (r8): an EXPLICIT value — number on the MCP
-			// path, or a numeric STRING on the execute() path (where the Zod number
-			// schema does not gate the param) — that is not a positive finite number
-			// is not "unprovided". Coerce numeric strings instead of silently
-			// substituting the default, and warn when the value had to be dropped.
+			// N5 (v2.28.9 r7) + NIT-3 (r8) + C4 (r9): the unified schema coerces
+			// this field on BOTH paths (rz.coerce.number(), round 9) — by the time
+			// a value reaches this handler it is a number on the schema-gated
+			// paths. This coercion remains as defense-in-depth for direct handler
+			// invocation: an EXPLICIT value that is not a positive finite number
+			// (e.g. 0, or a non-numeric string that bypassed the schema) is not
+			// "unprovided" — warn that the 4h default was applied instead of
+			// substituting it silently.
 			const coercedWindow =
 				typeof rawWindow === 'number' ? rawWindow : Number(rawWindow);
 			if (Number.isFinite(coercedWindow) && coercedWindow > 0) {

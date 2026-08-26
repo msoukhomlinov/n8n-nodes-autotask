@@ -642,10 +642,18 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.describe("Required for getBySLAStatus: 'breached' (SLA missed), 'at_risk' (within atRiskWindowHours of deadline), or 'compliant' (SLA met).");
 			}
 			if (!shape.atRiskWindowHours) {
+				// v2.28.9 r9 (C4): coerce so numeric strings ('24') parse on BOTH
+				// execution paths — the execute() path safe-parses item.json through
+				// this same shape (L2 strip variant), which a plain rz.number() would
+				// reject with INVALID_INPUT before the handler's own coercion could
+				// ever run. The published JSON schema is byte-identical
+				// ({"type":["number","null"]}) — coercion is runtime-only, same
+				// Copilot-Studio tolerance pattern as the coerce.string ID params.
+				// Non-numeric strings still fail with a clean Zod error on both paths.
 				shape.atRiskWindowHours = rz
-					.number()
+					.coerce.number()
 					.nullish()
-					.describe('Hours before resolvedDueDateTime to consider a ticket at-risk (default 4). Only applies when slaStatus=at_risk.');
+					.describe('Hours before resolvedDueDateTime to consider a ticket at-risk (default 4, numeric strings accepted). Only applies when slaStatus=at_risk.');
 			}
 			if (!shape.company) {
 				shape.company = rz
