@@ -1211,6 +1211,10 @@ function getReadOpParams(): ReadOpParamsMap {
 				...(RESOURCES_WITH_PRIORITY.has(resource)
 					? [{ field: 'priority', type: 'string', description: 'Priority picklist label or ID.' }]
 					: []),
+				{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
+				{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+				{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+				{ field: 'recency_field', type: 'string', description: 'Date/time field for recency/since/until (e.g. createDate). Default: first available date field.' },
 				{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
 				{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
 			],
@@ -1229,6 +1233,10 @@ function getReadOpParams(): ReadOpParamsMap {
 				: []),
 			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
 			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'recency_field', type: 'string', description: 'Date/time field for recency/since/until (e.g. createDate). Default: first available date field.' },
 		],
 	}),
 	getBySLAStatus: {
@@ -1249,6 +1257,10 @@ function getReadOpParams(): ReadOpParamsMap {
 			{ field: 'company', type: 'string', description: 'Company name or numeric companyID (auto-resolved).' },
 			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
 			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'recency_field', type: 'string', description: 'Date/time field for recency/since/until (e.g. createDate). Default: first available date field.' },
 		],
 	},
 	getByAge: (resource: string) => ({
@@ -1268,6 +1280,10 @@ function getReadOpParams(): ReadOpParamsMap {
 				: []),
 			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
 			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'recency_field', type: 'string', description: 'Date/time field for recency/since/until (e.g. createDate). Default: first available date field.' },
 		],
 	}),
 	getFullDetail: (resource: string) => {

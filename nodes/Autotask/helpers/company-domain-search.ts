@@ -38,13 +38,25 @@ export interface CompanySearchCoverage extends IDataObject {
 	totalAvailable?: number;
 	/**
 	 * True only when every bounded filtered query that feeds the result set
-	 * returned BELOW its cap — i.e. the filtered search is complete and no
-	 * matching record was truncated away. A selective search with one match
-	 * below its cap is complete even in a 10,000-company tenant (Codex P2:
-	 * completeness comes from the filtered queries' cap semantics, never from
-	 * matches-vs-tenant-population).
+	 * returned BELOW its cap AND the derived candidate set (distinct companies
+	 * / ranked candidates) was NOT sliced at `limit` — i.e. the filtered search
+	 * is complete and no matching record (raw rows or derived candidates) was
+	 * truncated away. A selective search with one match below its cap is
+	 * complete even in a 10,000-company tenant (Codex P2: completeness comes
+	 * from the filtered queries' cap semantics, never from
+	 * matches-vs-tenant-population). B1: the derived candidate slice is part of
+	 * this verdict — a set of >limit candidates sliced down to `limit` is
+	 * truncation, even when every raw query came back below its cap.
 	 */
 	windowComplete: boolean;
+	/**
+	 * Present when the DERIVED candidate set was sliced at `limit` (B1): the
+	 * published result is capped by that slice even though every raw filtered
+	 * query may have been below its cap. Human-readable, truthful description
+	 * of the truncating stage — the dispatch layer renders it in the PARTIAL
+	 * summary instead of the raw-cap wording, and publishes it at the root.
+	 */
+	truncationNote?: string;
 }
 
 /**
@@ -92,21 +104,50 @@ async function countCompanyTotal(
 }
 
 /**
+ * A derived candidate set (distinct companies / ranked candidates collected
+ * across the bounded scans) that is sliced at `limit` before publication
+ * truncates the published result even when every raw filtered query came back
+ * below its cap (B1: the client-side slice was invisible to the completeness
+ * verdict, so both company search ops could publish a false "complete filtered
+ * set … no further calls needed" with hasMore:false while lower-ranked matches
+ * were withheld). Callers report the pre-slice candidate count here, with a
+ * note naming the truncating stage.
+ */
+interface DerivedTruncation {
+	note: string;
+}
+
+/**
  * Build the coverage block. `filterComplete` must reflect the FILTERED queries'
  * cap semantics (every contributing bounded query returned below its cap), not
  * a comparison of match counts with the tenant-wide company total — that
  * comparison made almost every selective search report partial coverage (Codex P2).
+ * B1: `derivedTruncation` folds the derived-candidate slice into the verdict —
+ * ANY truncation source (raw query cap OR derived slice) yields
+ * windowComplete=false, so hasMore/isTruncated and the summary wording (which
+ * names the stage via `truncationNote`) can never be false-complete.
  */
 async function buildSearchCoverage(
 	scanned: number,
 	totalAvailablePromise: Promise<number | undefined> | undefined,
 	filterComplete: boolean,
+	derivedTruncation?: DerivedTruncation,
 ): Promise<CompanySearchCoverage> {
 	const totalAvailable = totalAvailablePromise ? await totalAvailablePromise : undefined;
+	let truncationNote = derivedTruncation?.note;
+	if (derivedTruncation && !filterComplete) {
+		// Both stages truncated. Word it without claiming a RAW cap was hit:
+		// the underlying stages' incompleteness may itself come from a nested
+		// derived slice (the identity op borrows the domain search's windowComplete).
+		const total = totalAvailable !== undefined ? `, tenant total ${totalAvailable}` : '';
+		truncationNote =
+			`${truncationNote}; the underlying scan stages were not fully complete either (scanned ${scanned} records${total})`;
+	}
 	return {
 		scanned,
 		...(totalAvailable !== undefined ? { totalAvailable } : {}),
-		windowComplete: filterComplete,
+		windowComplete: filterComplete && !derivedTruncation,
+		...(truncationNote ? { truncationNote } : {}),
 	};
 }
 
@@ -793,6 +834,16 @@ export async function searchCompaniesByDomain(
 
 	const topCompany = companyFrequencies[0];
 	const topCount = topCompany.count as number;
+	// B1: the published fallback results are this sorted frequency set sliced at
+	// `limit` — a DERIVED truncation that the raw queries' cap semantics do not
+	// see. Report the pre-slice candidate count so the completeness verdict and
+	// summary wording name this stage when it truncates.
+	const derivedTruncation: DerivedTruncation | undefined =
+		companyFrequencies.length > limit
+			? {
+					note: `the derived candidate set (distinct companies from the contact-email fallback) was limited to ${limit} of ${companyFrequencies.length} (limit ${limit}) — raise 'limit' or narrow the search`,
+				}
+			: undefined;
 	const fallbackResults: CompanyDomainResultItem[] = companyFrequencies
 		.slice(0, limit)
 		.map((companyFrequency) => ({
@@ -826,12 +877,15 @@ export async function searchCompaniesByDomain(
 		// contact scan) returned below its cap, and the id-in[...] resolution
 		// stage resolved every requested company ID within its cap (Codex NEW-2:
 		// equality with the cap is not truncation for a finite requested set).
+		// B1: AND the derived candidate set (companyFrequencies) was not sliced at
+		// `limit` — the derived stage is part of the verdict.
 		coverage: await buildSearchCoverage(
 			companyResults.length + resolvedCompanies.length,
 			totalAvailablePromise,
 			companyResults.length < limit &&
 				contactResults.length < contactLimit &&
 				isIdResolutionComplete(companyIds, resolvedCompanies),
+			derivedTruncation,
 		),
 	};
 }
@@ -1009,12 +1063,25 @@ export async function searchCompaniesByIdentity(
 		}
 	}
 
+	// B1: the published candidates are this merged candidate set sliced at
+	// `limit` (rankedResults below) — a DERIVED truncation invisible to the raw
+	// queries' cap semantics. Report the pre-slice candidate count so the
+	// completeness verdict and summary wording name this stage when it truncates.
+	const derivedTruncation: DerivedTruncation | undefined =
+		candidatesById.size > limit
+			? {
+					note: `the derived candidate set was limited to ${limit} of ${candidatesById.size} ranked candidates (limit ${limit}) — raise 'limit' or narrow the search`,
+				}
+			: undefined;
 	const coverage = await buildSearchCoverage(
 		domainScanned + nameScanned,
 		totalAvailable !== undefined ? Promise.resolve(totalAvailable) : countPromise,
 		// Codex P2: complete iff every contributing filtered query returned below
 		// its cap (skipped stages count as complete — they contributed no window).
-		domainFilterComplete && nameFilterComplete,
+		// B1: AND the derived candidate set was not sliced at `limit` — any
+		// truncation source keeps windowComplete false.
+					domainFilterComplete && nameFilterComplete,
+		derivedTruncation,
 	);
 
 	const nameNeedle = companyNameInput.toLowerCase();

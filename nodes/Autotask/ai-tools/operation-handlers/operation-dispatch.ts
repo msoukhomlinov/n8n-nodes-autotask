@@ -19,21 +19,27 @@ import { getOperationMetadata } from '../operation-metadata';
 export const MAX_RESPONSE_RECORDS = 500;
 
 /**
- * Bounded-scan coverage (C1 fix, re-based by Codex P2): searchByDomain/searchByIdentity
- * run bounded FILTERED queries over the company population. `windowComplete` reflects
- * those filtered queries' cap semantics — true = every filtered query returned below
- * its cap, so the filtered search is complete and no matching record was truncated
- * away. `totalAvailable` is the tenant-wide company count (informational context, NOT
- * a denominator for completeness: comparing matches against the tenant population
- * reported almost every selective search as partial). The producer
- * (helpers/company-domain-search.ts) publishes {scanned, totalAvailable?, windowComplete};
- * this normaliser validates the producer's flag instead of re-deriving it from
- * scanned-vs-totalAvailable.
+ * Bounded-scan coverage (C1 fix, re-based by Codex P2, extended by B1):
+ * searchByDomain/searchByIdentity run bounded FILTERED queries over the company
+ * population and then slice a DERIVED candidate set (distinct companies / ranked
+ * candidates) at `limit`. `windowComplete` reflects BOTH truncation sources —
+ * true only when every filtered query returned below its cap AND the derived
+ * candidate set was not sliced, so no matching record (raw rows or derived
+ * candidates) was truncated away. `totalAvailable` is the tenant-wide company
+ * count (informational context, NOT a denominator for completeness: comparing
+ * matches against the tenant population reported almost every selective search
+ * as partial). The producer (helpers/company-domain-search.ts) publishes
+ * {scanned, totalAvailable?, windowComplete, truncationNote?}; this normaliser
+ * validates the producer's flag instead of re-deriving it from
+ * scanned-vs-totalAvailable, and passes the producer's `truncationNote` (which
+ * stage truncated: derived candidate slice, or also-incomplete underlying scan
+ * stages) through so the PARTIAL summary names the stage.
  */
 interface SearchCoverage {
 	scanned: number;
 	totalAvailable?: number;
 	windowComplete: boolean;
+	truncationNote?: string;
 }
 
 function normalizeSearchCoverage(raw: unknown): SearchCoverage {
@@ -44,11 +50,21 @@ function normalizeSearchCoverage(raw: unknown): SearchCoverage {
 			typeof c.totalAvailable === 'number' && Number.isFinite(c.totalAvailable)
 				? c.totalAvailable
 				: undefined;
-		// Codex P2: trust the producer's flag (filtered-cap semantics). Re-deriving
-		// windowComplete as scanned >= totalAvailable re-created the defect: one match
-		// below the cap in a 10,000-company tenant read as partial coverage.
+		// Codex P2: trust the producer's flag (filtered-cap semantics, B1: derived
+		// slice folded in by the producer). Re-deriving windowComplete as
+		// scanned >= totalAvailable re-created the defect: one match below the cap
+		// in a 10,000-company tenant read as partial coverage.
 		const windowComplete = typeof c.windowComplete === 'boolean' ? c.windowComplete : false;
-		return { scanned, ...(totalAvailable !== undefined ? { totalAvailable } : {}), windowComplete };
+		const truncationNote =
+			typeof c.truncationNote === 'string' && c.truncationNote.trim() !== ''
+				? c.truncationNote
+				: undefined;
+		return {
+			scanned,
+			...(totalAvailable !== undefined ? { totalAvailable } : {}),
+			windowComplete,
+			...(truncationNote ? { truncationNote } : {}),
+		};
 	}
 	return { scanned: 0, windowComplete: false };
 }
@@ -58,6 +74,7 @@ function coverageRootFields(coverage: SearchCoverage): Record<string, unknown> {
 		scanned: coverage.scanned,
 		...(coverage.totalAvailable !== undefined ? { totalAvailable: coverage.totalAvailable } : {}),
 		windowComplete: coverage.windowComplete,
+		...(coverage.truncationNote ? { truncationNote: coverage.truncationNote } : {}),
 	};
 }
 
@@ -73,6 +90,15 @@ function boundedScanSummary(resource: string, found: number, coverage: SearchCov
 		return (
 			`Found ${found} ${resource} records — complete filtered set: every ${resource} matching the search ` +
 			`was returned (filtered queries below their scan cap), no further calls needed.`
+		);
+	}
+	// B1: when the producer names a stage, render THAT stage (derived candidate
+	// slice). Only fall back to the raw-cap wording when no derived slice
+	// truncated — then a bounded filtered query hitting its cap is the source.
+	if (coverage.truncationNote) {
+		return (
+			`Found ${found} ${resource} records — PARTIAL coverage: ${coverage.truncationNote}; ` +
+			`additional matching ${boundedScanPlural(resource)} may not be included.`
 		);
 	}
 	// Codex P2: partial = a bounded filtered query hit its cap. `scanned` is the row
@@ -565,10 +591,17 @@ export function dispatchOperationResponse(
 				operation: `${resource}.${operation}`,
 				records: matchedRecords,
 				returnedCount: matchedRecords.length,
-				hasMore: false,
+				// B1: hasMore is TRUE whenever the producer reports truncation — either
+				// raw scan cap or the derived candidate slice — so a withheld lower-ranked
+				// match can never read as "no more results".
+				hasMore: !coverage.windowComplete,
 				continuation: null,
 				isTruncated: !coverage.windowComplete,
-				truncationReason: coverage.windowComplete ? null : 'bounded-scan',
+				truncationReason: coverage.windowComplete
+					? null
+					: coverage.truncationNote
+						? 'derived-candidate-cap'
+						: 'bounded-scan',
 				serverCap: MAX_QUERY_LIMIT,
 				clientCap: MAX_RESPONSE_RECORDS,
 				resolvedLabels,
@@ -616,19 +649,30 @@ export function dispatchOperationResponse(
 				// 1) while the actual candidates (N) sat in records[0].results.
 				// records/returnedCount/summary now reflect the real candidate set.
 				const matchedRecords = envelopeResults;
+				// B1: when the producer names a truncating stage (derived candidate
+				//slice), render THAT stage; otherwise the raw-cap wording applies.
+				const partialReason = coverage.truncationNote
+					? coverage.truncationNote
+					: `the bounded filtered scan hit its cap after ${coverage.scanned} records (tenant total: ${partialTotal} ${boundedScanPlural(resource)})`;
 				const summary = coverage.windowComplete
 					? `Found ${matchedRecords.length} ranked ${resource} candidates — complete filtered set (filtered queries below their scan cap), no further calls needed.`
-					: `Found ${matchedRecords.length} ranked ${resource} candidates — PARTIAL coverage: the bounded filtered scan hit its cap after ${coverage.scanned} records (tenant total: ${partialTotal} ${boundedScanPlural(resource)}); additional matching ${boundedScanPlural(resource)} may not be included.`;
+					: `Found ${matchedRecords.length} ranked ${resource} candidates — PARTIAL coverage: ${partialReason}; additional matching ${boundedScanPlural(resource)} may not be included.`;
 				return JSON.stringify({
 					summary,
 					resource,
 					operation: `${resource}.${operation}`,
 					records: matchedRecords,
 					returnedCount: matchedRecords.length,
-					hasMore: false,
+					// B1: truthful hasMore for ANY truncation source (raw cap or derived
+					// candidate slice) — see the searchByDomain sibling.
+					hasMore: !coverage.windowComplete,
 					continuation: null,
 					isTruncated: !coverage.windowComplete,
-					truncationReason: coverage.windowComplete ? null : 'bounded-scan',
+					truncationReason: coverage.windowComplete
+						? null
+						: coverage.truncationNote
+							? 'derived-candidate-cap'
+							: 'bounded-scan',
 					serverCap: MAX_QUERY_LIMIT,
 					clientCap: MAX_RESPONSE_RECORDS,
 					resolvedLabels,
