@@ -3,6 +3,7 @@ import KeyvFile from 'keyv-file';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { createHash } from 'node:crypto';
+import type { IExecuteFunctions, ISupplyDataFunctions, ICredentialDataDecryptedObject } from 'n8n-workflow';
 
 export interface ICacheConfig {
 	enabled: boolean;
@@ -41,6 +42,34 @@ function stableSortObject(value: unknown): unknown {
 export function hashCachePayload(value: unknown): string {
     const canonical = JSON.stringify(stableSortObject(value));
     return createHash('sha256').update(canonical).digest('hex');
+}
+
+/**
+ * Shared credential-identity derivation — single source of truth for the
+ * `credentialIdentity` used in every per-credential cache key in this package
+ * (metadataCache/artifactCache in AutotaskAiTools.node.ts, picklistIdSetCache
+ * in ai-tools/filter-builder.ts).
+ *
+ * Returns `null` when the credentials cannot be read. Callers must then
+ * bypass caching entirely — never fall back to a shared/unscoped key, which
+ * would recreate the cross-tenant cache leak (B2, v2.28.9).
+ */
+export async function resolveCredentialIdentity(
+    context: ISupplyDataFunctions | IExecuteFunctions,
+): Promise<string | null> {
+    try {
+        const credentials = (await context.getCredentials(
+            'autotaskApi',
+        )) as ICredentialDataDecryptedObject;
+        return hashCachePayload({
+            username: credentials.Username,
+            integrationCode: credentials.APIIntegrationcode,
+            zone: credentials.zone,
+            customZoneUrl: credentials.customZoneUrl,
+        }).slice(0, 16);
+    } catch {
+        return null;
+    }
 }
 
 /**

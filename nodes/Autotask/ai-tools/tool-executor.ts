@@ -263,6 +263,21 @@ export const N8N_METADATA_FIELDS = new Set([
 export const N8N_METADATA_PREFIXES = ['Prompt__'];
 
 /**
+ * B1 (v2.28.9 r3): the picklist params the convenience handlers validate as
+ * "explicit but unusable" (F-5 — status/priority). Single source of truth for
+ * both null-collapsing sites:
+ *  - `stripAndNormaliseItemJson` (AutotaskAiTools.node.ts, execute() path): a
+ *    JSON null here must stay `null` (not `undefined`) so an explicit null is
+ *    distinguishable from "not supplied";
+ *  - `executeAiTool`'s null→absent normalisation below (BOTH paths): explicit
+ *    null must survive to the handlers' `isUnusablePicklistParam` guards so the
+ *    precise INVALID_FILTER_CONSTRAINT fires. The handlers error on null BEFORE
+ *    any value could reach an API body or filter, so no null can leak downstream.
+ * (Other keys keep null→absent: LLMs emit null for "not applicable" fields.)
+ */
+export const EXPLICITNESS_SENSITIVE_KEYS = new Set<string>(['status', 'priority']);
+
+/**
  * Execute an Autotask operation by routing to the existing tool executor
  * with getNodeParameter overridden to map flat AI tool params.
  */
@@ -294,7 +309,13 @@ export async function executeAiTool(
 	}
 	// Normalise null → undefined for all params: null from the LLM (via .nullish() schema fields)
 	// must be treated as "field not provided" — never forwarded to API bodies or filter coercion.
+	// B1 exception: explicit null on the validated picklist params (status/priority,
+	// see EXPLICITNESS_SENSITIVE_KEYS) is preserved so the convenience handlers'
+	// isUnusablePicklistParam guards reject it with the precise F-5 envelope on
+	// BOTH execution paths (previously this delete neutralised F-5's null case
+	// process-wide — status:null returned the unfiltered set with no signal).
 	for (const key of Object.keys(params)) {
+		if (EXPLICITNESS_SENSITIVE_KEYS.has(key)) continue;
 		if ((params as Record<string, unknown>)[key] === null) {
 			delete (params as Record<string, unknown>)[key];
 		}

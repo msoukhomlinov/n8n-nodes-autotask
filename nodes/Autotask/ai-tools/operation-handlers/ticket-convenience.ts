@@ -149,6 +149,17 @@ function blankPicklistError(
 }
 
 /**
+ * B1 (v2.28.9 r3): framework-injected keys, NOT tool params. `operation` is the
+ * unified schema's routing field; `resource` is injected by the Agent V3
+ * execute() path (`params = { ...parseResult.data, resource, operation }`).
+ * Neither is op-irrelevant junk — treating `resource` as junk made the
+ * execute() path reject EVERY convenience-op call (INVALID_FILTER_CONSTRAINT
+ * "Parameter 'resource' is not supported") before the F-5 guards could run,
+ * so the two paths could never agree on the F-5 contract.
+ */
+const FRAMEWORK_PARAM_KEYS = new Set(['operation', 'resource']);
+
+/**
  * F-2: params the operation actually consumes (everything else published by the
  * unified schema is op-irrelevant for it). Derived from the handlers' own
  * reads — keep in sync when a handler gains or loses a param:
@@ -223,7 +234,8 @@ function consumedParamsForOp(
  * model-stagnation driver observed in the replay round. Reject any non-empty
  * param the operation does not consume, naming the offenders and spelling out
  * the supported list. Absent or explicitly-null/blank params stay inert
- * (hasProvidedValue semantics).
+ * (hasProvidedValue semantics). Framework-injected keys (operation, resource —
+ * see FRAMEWORK_PARAM_KEYS) are never rejected.
  */
 function irrelevantParamError(
 	resource: string,
@@ -235,6 +247,7 @@ function irrelevantParamError(
 	const consumed = consumedParamsForOp(resource, operation, cfg);
 	const unsupported: string[] = [];
 	for (const [key, value] of Object.entries(params)) {
+		if (FRAMEWORK_PARAM_KEYS.has(key)) continue;
 		if (consumed.has(key)) continue;
 		if (!hasProvidedValue(value)) continue;
 		unsupported.push(key);

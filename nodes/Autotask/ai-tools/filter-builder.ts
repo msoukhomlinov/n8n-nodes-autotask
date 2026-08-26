@@ -8,6 +8,7 @@ import {
     type PendingLabelConfirmation,
 } from '../helpers/label-resolution';
 import { isLikelyId } from '../helpers/id-utils';
+import { resolveCredentialIdentity } from '../helpers/cache/service';
 import { resolveFilterFieldAlias } from '../constants/filter-field-aliases';
 import { autotaskApiRequest } from '../helpers/http';
 import {
@@ -508,6 +509,11 @@ interface PicklistIdEntry {
     label: string;
 }
 
+/**
+ * B2 (v2.28.9): keys include the credential identity (`<identity>|<resource>.<field>`),
+ * matching the per-credential keying of every other cache in this repo —
+ * picklist ID sets are per-tenant data and must never be shared across credentials.
+ */
 const picklistIdSetCache = new Map<string, { entries: PicklistIdEntry[]; fetchedAt: number }>();
 const PICKLIST_ID_SET_TTL_MS = 5 * 60 * 1000;
 const PICKLIST_ID_SET_CACHE_MAX = 100;
@@ -523,9 +529,21 @@ async function getPicklistIdEntries(
         .filter((v) => v.id !== '');
     if (inline.length > 0) return inline;
 
-    const key = `${resource}.${field.id}`;
-    const cached = picklistIdSetCache.get(key);
-    if (cached && Date.now() - cached.fetchedAt < PICKLIST_ID_SET_TTL_MS) return cached.entries;
+    // B2 (v2.28.9): key the cache per credential identity — the same
+    // derivation (resolveCredentialIdentity) that metadataCache/artifactCache
+    // use. Picklist ID sets are per-tenant data: sharing a `resource.field`
+    // key across credentials let tenant B's numeric value validate against
+    // tenant A's cached set (spurious INVALID_PICKLIST_VALUE, or a silent
+    // zero when A's set happens to contain B's invalid value). A null
+    // identity (credentials unreadable) bypasses the cache entirely — the
+    // listPicklistValues call below would also fail in that state, so
+    // nothing is ever stored.
+    const credentialIdentity = await resolveCredentialIdentity(context);
+    const key = credentialIdentity !== null ? `${credentialIdentity}|${resource}.${field.id}` : null;
+    if (key !== null) {
+        const cached = picklistIdSetCache.get(key);
+        if (cached && Date.now() - cached.fetchedAt < PICKLIST_ID_SET_TTL_MS) return cached.entries;
+    }
 
     try {
         const entries: PicklistIdEntry[] = [];
@@ -541,11 +559,13 @@ async function getPicklistIdEntries(
             page += 1;
         }
         if (entries.length === 0) return null; // payload carried no ids → fallback branch
-        if (picklistIdSetCache.size >= PICKLIST_ID_SET_CACHE_MAX) {
-            const firstKey = picklistIdSetCache.keys().next().value;
-            if (firstKey !== undefined) picklistIdSetCache.delete(firstKey);
+        if (key !== null) {
+            if (picklistIdSetCache.size >= PICKLIST_ID_SET_CACHE_MAX) {
+                const firstKey = picklistIdSetCache.keys().next().value;
+                if (firstKey !== undefined) picklistIdSetCache.delete(firstKey);
+            }
+            picklistIdSetCache.set(key, { entries, fetchedAt: Date.now() });
         }
-        picklistIdSetCache.set(key, { entries, fetchedAt: Date.now() });
         return entries;
     } catch {
         return null; // metadata/infrastructure failure → fallback branch (never block a read on this)

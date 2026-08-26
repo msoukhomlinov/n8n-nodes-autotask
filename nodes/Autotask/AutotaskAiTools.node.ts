@@ -1,7 +1,6 @@
 import { NodeOperationError } from 'n8n-workflow';
 import type {
 	IDataObject,
-	ICredentialDataDecryptedObject,
 	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	INodeType,
@@ -18,6 +17,7 @@ import {
 	type ToolExecutorParams,
 	N8N_METADATA_FIELDS,
 	N8N_METADATA_PREFIXES,
+	EXPLICITNESS_SENSITIVE_KEYS,
 } from './ai-tools/tool-executor';
 import {
 	buildUnifiedDescriptionTemplate,
@@ -37,7 +37,7 @@ import {
 	type OperationContractViolation,
 } from './ai-tools/operation-contracts';
 import { computeMetadataRevision } from './helpers/cache/init';
-import { hashCachePayload } from './helpers/cache/service';
+import { resolveCredentialIdentity } from './helpers/cache/service';
 import {
 	AI_TOOL_DEBUG_VERBOSE,
 	redactForVerbose,
@@ -159,24 +159,6 @@ function getMetadataNeeds(operations: string[]): { needsReadFields: boolean; nee
 	return { needsReadFields, needsWriteFields };
 }
 
-async function resolveCredentialIdentity(
-	context: ISupplyDataFunctions | IExecuteFunctions,
-): Promise<string | null> {
-	try {
-		const credentials = (await context.getCredentials(
-			'autotaskApi',
-		)) as ICredentialDataDecryptedObject;
-		return hashCachePayload({
-			username: credentials.Username,
-			integrationCode: credentials.APIIntegrationcode,
-			zone: credentials.zone,
-			customZoneUrl: credentials.customZoneUrl,
-		}).slice(0, 16);
-	} catch {
-		return null;
-	}
-}
-
 async function resolveMetadataForTool(
 	context: ISupplyDataFunctions | IExecuteFunctions,
 	resource: string,
@@ -276,8 +258,14 @@ function formatResourceName(value: string): string {
  * 1. Strips n8n framework metadata (`sessionId`, `chatInput`, `Prompt__*`, etc.) — except `operation`,
  *    which is preserved because it is a required Zod schema field. This prevents false "unknown key"
  *    noise in error messages and mirrors what `supplyData() → func()` does via Zod `.strip()` semantics.
- * 2. Converts `null` → `undefined` for every remaining field. LLMs (especially weaker ones like Qwen)
- *    frequently emit JSON `null` for "not applicable" fields (e.g. `{ "id": null, "ticketNumber": "T20240615.0674" }`).
+ * 2. Converts `null` → `undefined` for every remaining field — EXCEPT the keys in
+ *    `EXPLICITNESS_SENSITIVE_KEYS` (status/priority — shared with executeAiTool's
+ *    null normalisation): an explicit `null` there is "explicit but unusable" (F-5),
+ *    not "not supplied" — collapsing it made the execute() path silently skip the
+ *    filter on an input that must error, so those keys keep their `null` and the
+ *    handlers' `isUnusablePicklistParam` guards reject it on BOTH paths.
+ *    LLMs (especially weaker ones like Qwen) frequently emit JSON `null` for "not applicable"
+ *    fields (e.g. `{ "id": null, "ticketNumber": "T20240615.0674" }`).
  *    Our schema uses `.nullish()` on all optional fields (v2.10+), which accepts both `null` and `undefined`;
  *    this normalisation is belt-and-braces, ensuring uniform "not provided" handling regardless of how the LLM spells it.
  */
@@ -287,7 +275,8 @@ function stripAndNormaliseItemJson(itemJson: Record<string, unknown>): Record<st
 		// operation is a required schema field — NEVER strip it
 		if (key !== 'operation' && N8N_METADATA_FIELDS.has(key)) continue;
 		if (N8N_METADATA_PREFIXES.some((p) => key.startsWith(p))) continue;
-		out[key] = value === null ? undefined : value;
+		// B1: keep null for explicitness-sensitive keys (see above); collapse it elsewhere.
+		out[key] = EXPLICITNESS_SENSITIVE_KEYS.has(key) ? value : value === null ? undefined : value;
 	}
 	return out;
 }
@@ -997,6 +986,8 @@ export class AutotaskAiTools implements INodeType {
 				// uses .nullish() on optional fields (see schema-generator.ts),
 				// so null is also accepted at the schema level — the undefined
 				// coercion here is belt-and-braces.
+				// B1 exception: status/priority keep their null (explicitness-sensitive
+				// F-5 keys) so an explicit null errors identically on both paths.
 				const normalisedJson = stripAndNormaliseItemJson(item.json);
 				// Zod strips any remaining unknown keys (defensive).
 				const parseResult = zodSchema.safeParse(normalisedJson);
