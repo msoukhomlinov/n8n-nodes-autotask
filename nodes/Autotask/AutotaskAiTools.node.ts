@@ -446,7 +446,30 @@ export class AutotaskAiTools implements INodeType {
 			);
 		}
 
-		const effectiveOps = operations.filter(
+		// Per-resource capability filter (v2.28.5): operations that are valid for
+		// OTHER resources but not for THIS one (e.g. 'delete' on Company — the
+		// Autotask API has no Company deletion endpoint) are excluded from the
+		// tool surface. The global SUPPORTED_TOOL_OPERATIONS check above cannot
+		// catch this: 'delete' is a real operation for many resources.
+		//
+		// Deliberately NOT a hard failure: existing workflows that configured such
+		// an operation keep working — the op simply disappears from the published
+		// enum. The exclusion is never silent: console.warn always fires, and a
+		// short note is appended to the tool description when the 1300-char
+		// budget allows it.
+		const resourceOperations = getResourceOperations(resource);
+		const excludedOperations = resourceOperations.length > 0
+			? operations.filter((operation) => !resourceOperations.includes(operation))
+			: [];
+		if (excludedOperations.length > 0) {
+			console.warn(
+				`[AutotaskAiTools] Resource '${resource}' does not support operation(s) ${excludedOperations.join(', ')} — they are excluded from the tool surface and hidden from the model. Update the node's operations list.`,
+			);
+		}
+		const permittedOperations = resourceOperations.length > 0
+			? operations.filter((operation) => resourceOperations.includes(operation))
+			: operations;
+		const effectiveOps = permittedOperations.filter(
 			(op) => !isWriteOperation(op) || allowWriteOperations,
 		);
 		if (effectiveOps.length === 0) {
@@ -592,6 +615,14 @@ export class AutotaskAiTools implements INodeType {
 
 		const DESCRIPTION_HARD_LIMIT = 1300;
 		let description = withGuidance;
+		if (excludedOperations.length > 0) {
+			const exclusionNote = `NOTE: The configured operation(s) ${excludedOperations.map((op) => `'${op}'`).join(', ')} are not supported by the ${resourceLabel} API and are hidden from this tool. Update the node's operations list.`;
+			// The console.warn above is the always-on observability channel; the
+			// description note is a bonus, appended only when it fits the budget.
+			if (description.length + exclusionNote.length <= DESCRIPTION_HARD_LIMIT) {
+				description = `${description}\n\n${exclusionNote}`;
+			}
+		}
 		if (description.length > DESCRIPTION_HARD_LIMIT) {
 			const originalLength = description.length;
 			const marker = '…[truncated]';

@@ -1,5 +1,5 @@
 import type { IDataObject, IExecuteFunctions, IGetNodeParameterOptions } from 'n8n-workflow';
-import { GetManyOperation } from '../operations/base';
+import { CountOperation, GetManyOperation } from '../operations/base';
 import type { IAutotaskEntity } from '../types';
 import type { IFilterCondition } from '../types/base/entity-types';
 import { getFields } from './entity/api';
@@ -16,6 +16,71 @@ const COMPANY_DOMAIN_FIELD_PRIORITY = [
 	'url',
 	'domain',
 ] as const;
+
+/**
+ * Coverage metadata for bounded company scan operations (searchByDomain,
+ * searchByIdentity). The scan is a bounded window over the company population —
+ * consumers must never read a match (or a no-match) as proof about companies
+ * outside the scanned window (C1 fix).
+ */
+export interface CompanySearchCoverage extends IDataObject {
+	/** Number of company records actually scanned across the bounded queries. */
+	scanned: number;
+	/**
+	 * Total number of companies, from ONE count call on company with no filter.
+	 * Omitted when the count call fails — consumers then cannot verify window
+	 * completeness and must treat the scan as partial.
+	 */
+	totalAvailable?: number;
+	/** True only when the scanned window covers the entire company population. */
+	windowComplete: boolean;
+}
+
+/**
+ * Total company count from one unfiltered /query/count call. Failure-tolerant:
+ * any error (API outage, permission, timeout) yields undefined so the caller can
+ * omit totalAvailable and report windowComplete=false instead of failing the
+ * whole search. The getNodeParameter override neutralises filtersFromTool /
+ * fieldsToMap so the tool call's own filters (or UI resource-mapper fields) can
+ * never leak into the total count.
+ */
+async function countCompanyTotal(
+	context: IExecuteFunctions,
+	itemIndex: number,
+): Promise<number | undefined> {
+	const originalGetNodeParameter = context.getNodeParameter.bind(context);
+	context.getNodeParameter = ((
+		name: string,
+		index: number,
+		fallbackValue?: unknown,
+		options?: IGetNodeParameterOptions,
+	): unknown => {
+		if (name === 'filtersFromTool') return undefined;
+		if (name === 'fieldsToMap') return { value: {} };
+		return originalGetNodeParameter(name, index, fallbackValue, options);
+	}) as typeof context.getNodeParameter;
+	try {
+		const countOp = new CountOperation<IAutotaskEntity>('company', context);
+		const count = await countOp.execute(itemIndex);
+		return typeof count === 'number' && Number.isFinite(count) ? count : undefined;
+	} catch {
+		return undefined;
+	} finally {
+		context.getNodeParameter = originalGetNodeParameter;
+	}
+}
+
+async function buildSearchCoverage(
+	scanned: number,
+	totalAvailablePromise: Promise<number | undefined> | undefined,
+): Promise<CompanySearchCoverage> {
+	const totalAvailable = totalAvailablePromise ? await totalAvailablePromise : undefined;
+	return {
+		scanned,
+		...(totalAvailable !== undefined ? { totalAvailable } : {}),
+		windowComplete: totalAvailable !== undefined && scanned >= totalAvailable,
+	};
+}
 
 /**
  * Public/consumer email-provider domains. The contact-email fallback is skipped for
@@ -102,6 +167,7 @@ export interface CompanyDomainSearchResult extends IDataObject {
 	companyFrequencies?: CompanyFrequency[];
 	notes?: string[];
 	unresolvedSearch?: UnresolvedSearchDirective;
+	coverage: CompanySearchCoverage;
 }
 
 export interface RankedCompanyCandidate extends IDataObject {
@@ -119,6 +185,7 @@ export interface CompanyIdentitySearchResult extends IDataObject {
 	count: number;
 	results: RankedCompanyCandidate[];
 	notes?: string[];
+	coverage: CompanySearchCoverage;
 }
 
 interface RetryTrackerEntry {
@@ -354,6 +421,7 @@ export async function searchCompaniesByDomain(
 	const notes: string[] = [];
 
 	if (!domainNormalised) {
+		// No search possible: nothing was scanned and no total count is attempted.
 		return {
 			source: 'none',
 			domainInput,
@@ -365,8 +433,15 @@ export async function searchCompaniesByDomain(
 			results: [],
 			notes: ['Domain is empty after normalisation.'],
 			unresolvedSearch: buildUnresolvedDirective(domainNormalised, companyNameNormalised, 'contains'),
+			coverage: { scanned: 0, windowComplete: false },
 		};
 	}
+
+	// One unfiltered total count per search call, run in parallel with the bounded
+	// scans (C1 fix: consumers must see whether the scan window covers the whole
+	// company population). Failure-tolerant — a failed count only degrades the
+	// coverage claim, never the search itself.
+	const totalAvailablePromise = countCompanyTotal(context, itemIndex);
 
 	const companyFields = await getFields('company', context, { fieldType: 'standard' });
 	const companyFieldNames = companyFields.map((field) => field.name);
@@ -382,6 +457,7 @@ export async function searchCompaniesByDomain(
 			count: 0,
 			results: [],
 			notes: ['No company website/domain field was detected in entity metadata.'],
+			coverage: await buildSearchCoverage(0, totalAvailablePromise),
 		};
 	}
 
@@ -466,6 +542,7 @@ export async function searchCompaniesByDomain(
 			count: enrichedResults.length,
 			results: enrichedResults,
 			...(notes.length > 0 ? { notes } : {}),
+			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise),
 		};
 	}
 
@@ -494,6 +571,7 @@ export async function searchCompaniesByDomain(
 				companyNameNormalised,
 				appliedCompanyOperator,
 			),
+			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise),
 		};
 	}
 
@@ -555,6 +633,7 @@ export async function searchCompaniesByDomain(
 				companyNameNormalised,
 				appliedCompanyOperator,
 			),
+			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise),
 		};
 	}
 
@@ -621,6 +700,10 @@ export async function searchCompaniesByDomain(
 				companyNameNormalised,
 				appliedCompanyOperator,
 			),
+			coverage: await buildSearchCoverage(
+				companyResults.length + resolvedCompanies.length,
+				totalAvailablePromise,
+			),
 		};
 	}
 
@@ -655,6 +738,10 @@ export async function searchCompaniesByDomain(
 		matchedCompanies: resolvedCompanies.length,
 		companyFrequencies,
 		...(notes.length > 0 ? { notes } : {}),
+		coverage: await buildSearchCoverage(
+			companyResults.length + resolvedCompanies.length,
+			totalAvailablePromise,
+		),
 	};
 }
 
@@ -733,6 +820,15 @@ export async function searchCompaniesByIdentity(
 
 	const candidatesById = new Map<string, IDataObject>();
 
+	// Coverage accounting (C1 fix): scanned company records across the bounded
+	// queries, plus the population total. On the domain path the total is reused
+	// from the nested domain search (one count call per tool call, never two); on
+	// a name-only search this function performs the count itself.
+	let domainScanned = 0;
+	let totalAvailable: number | undefined;
+	let countPromise: Promise<number | undefined> | undefined;
+	let nameScanned = 0;
+
 	if (domainNormalised) {
 		const domainResults = await searchCompaniesByDomain(context, {
 			domain: domainNormalised,
@@ -743,6 +839,8 @@ export async function searchCompaniesByIdentity(
 			itemIndex,
 			selectColumns,
 		});
+		domainScanned = domainResults.coverage.scanned;
+		totalAvailable = domainResults.coverage.totalAvailable;
 
 		if (domainResults.source === 'companyWebsite' && domainResults.results.length > 0) {
 			for (const result of domainResults.results) {
@@ -772,6 +870,11 @@ export async function searchCompaniesByIdentity(
 		} else {
 			notes.push('No confident domain match found; using company name contains search.');
 		}
+		// Name-only searches have no domain scan to borrow the population total
+		// from — start the unfiltered count in parallel with the name query.
+		if (!domainNormalised) {
+			countPromise = countCompanyTotal(context, itemIndex);
+		}
 		const nameResults = await runBoundedQuery(
 			context,
 			'company',
@@ -780,6 +883,7 @@ export async function searchCompaniesByIdentity(
 			[{ field: 'companyName', op: 'contains', value: companyNameInput }],
 			selectColumns,
 		);
+		nameScanned = nameResults.length;
 		for (const result of nameResults) {
 			const id = result.id;
 			if (!isValidCompanyId(id)) continue;
@@ -788,6 +892,11 @@ export async function searchCompaniesByIdentity(
 			candidatesById.set(key, existing ? { ...existing, ...result } : result);
 		}
 	}
+
+	const coverage = await buildSearchCoverage(
+		domainScanned + nameScanned,
+		totalAvailable !== undefined ? Promise.resolve(totalAvailable) : countPromise,
+	);
 
 	const nameNeedle = companyNameInput.toLowerCase();
 	const rankedResults = Array.from(candidatesById.values())
@@ -811,6 +920,7 @@ export async function searchCompaniesByIdentity(
 			count: 0,
 			results: [],
 			notes: ['No candidates found from identity signals.', ...notes],
+			coverage,
 		};
 	}
 
@@ -823,5 +933,6 @@ export async function searchCompaniesByIdentity(
 		count: rankedResults.length,
 		results: rankedResults,
 		...(notes.length > 0 ? { notes } : {}),
+		coverage,
 	};
 }

@@ -62,8 +62,10 @@ import { handleSearchNotes } from './operation-handlers/global-notes-search';
 import type { ExecutorState } from './executor-state';
 import {
 	buildFilterFromParams,
+	EmptyFilterValueError,
 	resolveAndClassifyFilters,
 } from './filter-builder';
+import type { ToolFilter } from './filter-builder';
 export { resolveCompanyToProjectIdFilter } from './filter-builder';
 import type { IAutotaskCredentials } from '../types/base/auth';
 import {
@@ -339,7 +341,28 @@ export async function executeAiTool(
 	const readFields = metadata.readFields ?? [];
 	const writeFields = metadata.writeFields ?? [];
 	const fieldValues = buildFieldValues(params, ['id'], writeFields);
-	const filters = buildFilterFromParams(params, readFields, timezone, resource);
+	let filters: ToolFilter[];
+	try {
+		filters = buildFilterFromParams(params, readFields, timezone, resource);
+	} catch (err) {
+		if (err instanceof EmptyFilterValueError) {
+			// S4: render the typed empty-value error as the standard flat envelope.
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						normalisedOperation,
+						ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+						`filter_value is empty for field '${err.field}' — supply a value, or use op exist/notExist for presence checks.`,
+						`Retry autotask_${resource} with operation '${normalisedOperation}' providing a non-empty filter_value for field '${err.field}', or use filter_op 'exist' or 'notExist' to check field presence.`,
+						{ filterField: err.field, filterOp: err.op },
+					),
+				),
+				correlationId,
+			);
+		}
+		throw err;
+	}
 	// Promote top-level read fields (e.g. parent-scope companyID on a child resource)
 	// into eq filters for generic list ops. Without this they are silently dropped for
 	// reads (the query body is built from combinedFilters, not fieldValues) and the leak

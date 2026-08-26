@@ -28,7 +28,7 @@ export function summariseResolutionState(
                 warnings
                     .filter((w) => isResolutionFailureWarning(w))
                     .map((w) => {
-                        const fieldMatch = w.match(/for (?:field )?'([^']+)'/);
+                        const fieldMatch = w.match(/field '([^']+)'/);
                         return fieldMatch ? fieldMatch[1] : '[unknown]';
                     }),
             ),
@@ -47,17 +47,22 @@ export function buildWriteResolutionBlocker(
     warnings: string[],
     impersonationFailed: boolean,
 ): string | null {
-    const unresolvedFields = warnings
-        .filter(
-            (w) =>
-                isResolutionFailureWarning(w) &&
-                !w.startsWith('[INFRASTRUCTURE]') &&
-                !w.includes('impersonation'),
-        )
-        .map((w) => {
-            const fieldMatch = w.match(/for (?:field )?'([^']+)'/);
-            return fieldMatch ? fieldMatch[1] : '[general-resolution-failure]';
-        });
+    const unresolvedWarnings = warnings.filter(
+        (w) =>
+            isResolutionFailureWarning(w) &&
+            !w.startsWith('[INFRASTRUCTURE]') &&
+            !w.includes('impersonation'),
+    );
+    // Partition (v2.28.5): picklist value mismatches (tagged [PICKLIST_MISMATCH]
+    // by the write-path resolver) classify as INVALID_PICKLIST_VALUE with the
+    // listPicklistValues retry directive; everything else stays
+    // WRITE_RESOLUTION_INCOMPLETE.
+    const picklistMismatchWarnings = unresolvedWarnings.filter((w) => w.startsWith('[PICKLIST_MISMATCH]'));
+    const referenceStyleFailures = unresolvedWarnings.filter((w) => !w.startsWith('[PICKLIST_MISMATCH]'));
+    const unresolvedFields = unresolvedWarnings.map((w) => {
+        const fieldMatch = w.match(/field '([^']+)'/);
+        return fieldMatch ? fieldMatch[1] : '[general-resolution-failure]';
+    });
     const infraErrors = warnings.filter((w) => w.startsWith('[INFRASTRUCTURE]'));
 
     const hasBlock =
@@ -105,6 +110,38 @@ export function buildWriteResolutionBlocker(
     if (unresolvedFields.length > 0) ctx.unresolvedFields = unresolvedFields;
     if (infraErrors.length > 0) ctx.infraErrors = infraErrors;
     if (impersonationFailed) ctx.impersonationFailed = true;
+
+    if (picklistMismatchWarnings.length > 0) {
+        const invalidPicklistValues = picklistMismatchWarnings.map((w) => {
+            const valueMatch = w.match(/picklist value '([^']+)'/);
+            const fieldMatch = w.match(/field '([^']+)'/);
+            return {
+                field: fieldMatch ? fieldMatch[1] : '[unknown]',
+                value: valueMatch ? valueMatch[1] : '[unknown]',
+            };
+        });
+        const distinctFields = Array.from(
+            new Set(invalidPicklistValues.map((v) => v.field).filter((f) => f !== '[unknown]')),
+        );
+        const nextAction =
+            distinctFields.length > 0
+                ? `Call autotask_${resource} with operation 'listPicklistValues' and fieldId='${distinctFields.join("' or '")}' to list valid values, then retry with a valid value.`
+                : `Call autotask_${resource} with operation 'listPicklistValues' to list valid values, then retry with a valid value.`;
+        const mustRetryAfter = ['listPicklistValues'];
+        if (referenceStyleFailures.length > 0) mustRetryAfter.push('describeFields');
+        ctx.invalidPicklistValues = invalidPicklistValues;
+        return JSON.stringify(
+            wrapError(
+                resource,
+                operation,
+                ERROR_TYPES.INVALID_PICKLIST_VALUE,
+                `Write blocked: ${parts.join(' ')} Resolve all field references before retrying.`,
+                nextAction,
+                ctx,
+                mustRetryAfter,
+            ),
+        );
+    }
 
     return JSON.stringify(
         wrapError(

@@ -240,22 +240,46 @@ export function buildListResponse(
 	const formattedTotal = totalKnown ? total.toLocaleString('en-US') : '';
 	const formattedDeficit = deficit.toLocaleString('en-US');
 
-	// Summary template selection — branches matching spec summary templates
+	// Summary template selection — branches matching spec summary templates.
+	// D3: the 'of <totalAvailable>' clause is rendered ONLY when the total is actually
+	// known, and nextOffset is emitted ONLY when it is a number. Special read ops
+	// (searchByKeyword, getByCompanyAndStatus, getByAge, getByResource, getUnassigned…)
+	// publish hasMore without totalAvailable/nextOffset (bounded per-stage or per-call
+	// caps), and interpolating the absent values produced model-facing artifacts like
+	// "Found N of  records — 0 more not shown. Use nextOffset: undefined".
 	let summary: string;
 	if (context.countQueryFailed === true && pagination.hasMore) {
-		// Count query failed — total unknown but pagination still possible
+		// Count query failed — total unknown but pagination may still be possible
+		const continueHint =
+			typeof pagination.nextOffset === 'number'
+				? `Use nextOffset: ${pagination.nextOffset} to continue.`
+				: 'Narrow filters to continue.';
 		summary =
 			`Found ${count} ${opPrefix}${resource} records${windowSuffix} — more available but total unknown (count query failed). ` +
-			`Use nextOffset: ${pagination.nextOffset} to continue.`;
+			continueHint;
 	} else if (!isIncomplete) {
 		// Complete — no truncation, covers all cases (plain, auto-returnAll-complete, since/until-complete)
 		const totalPart = totalKnown ? ` of ${formattedTotal}` : ` of ${count}`;
 		summary = `Found ${count}${totalPart} ${opPrefix}${resource} records${windowSuffix} — complete set, no further calls needed.`;
 	} else if (pagination.hasMore) {
-		// Truncated + count known + can paginate
-		summary =
-			`Found ${count} of ${formattedTotal} ${opPrefix}${resource} records${windowSuffix} — ${formattedDeficit} more not shown. ` +
-			`Use nextOffset: ${pagination.nextOffset} or narrower filters.`;
+		// Truncated + can paginate. When the total IS known and nextOffset IS a number,
+		// keep the exact historical template (byte-identical for ops that carry totals);
+		// otherwise render the honest variant without phantom 'of ' / 'undefined' parts.
+		if (totalKnown && typeof pagination.nextOffset === 'number') {
+			summary =
+				`Found ${count} of ${formattedTotal} ${opPrefix}${resource} records${windowSuffix} — ${formattedDeficit} more not shown. ` +
+				`Use nextOffset: ${pagination.nextOffset} or narrower filters.`;
+		} else {
+			const totalPart = totalKnown ? ` of ${formattedTotal}` : '';
+			const deficitPart = totalKnown
+				? ` — ${formattedDeficit} more not shown`
+				: ' — more available but total unknown';
+			const nextPart =
+				typeof pagination.nextOffset === 'number'
+					? `Use nextOffset: ${pagination.nextOffset} or narrower filters.`
+					: 'Narrow filters to see more.';
+			summary = `Found ${count}${totalPart} ${opPrefix}${resource} records${windowSuffix}${deficitPart}. ${nextPart}`;
+		}
 	} else if (totalKnown && context.wasReturnAll === true && pagination.isTruncated && !pagination.hasMore) {
 		// returnAll (user-set OR auto) hit payload cap — data was fetched but capped at MAX_RESPONSE_RECORDS rows (or uncapped when sparse fields + returnAll active)
 		summary =
@@ -356,10 +380,11 @@ export function buildItemResponse(
 }
 
 /**
- * Flat response for create, update, approve, reject, moveToCompany,
+ * Flat response for create, update, approve, reject, moveToCompany (real moves),
  * moveConfigurationItem, transferOwnership.
  * Pass `record` when the API returns the updated entity; omit for operations
  * that return no entity (e.g. some update variants).
+ * moveToCompany skip / dry-run no-change outcomes use buildNoChangeMutationResponse.
  */
 export function buildMutationResponse(
 	resource: string,
@@ -402,6 +427,52 @@ export function buildMutationResponse(
 		warnings: context.resolutionWarnings ?? [],
 	};
 	if (record) response.record = record;
+	return response;
+}
+
+/**
+ * Flat response for NO-CHANGE mutation outcomes — moveToCompany skip (duplicate
+ * email safeguard) and dry run. Compound-style envelope: top-level `outcome`,
+ * root context fields (sourceContactId, destinationCompanyId, duplicateContactId
+ * when present), warnings when non-empty, and NO top-level `id` — a skip must
+ * not look like a successful move (F-C, v2.28.6).
+ */
+export function buildNoChangeMutationResponse(
+	resource: string,
+	operation: string,
+	outcome: 'skipped' | 'dry-run',
+	details?: Record<string, unknown>,
+	context: ToolResponseContext = {},
+): Record<string, unknown> {
+	const moverWarnings: string[] = Array.isArray(details?.warnings) ? (details.warnings as string[]) : [];
+	const mergedWarnings = [...(context.resolutionWarnings ?? []), ...moverWarnings];
+	const skipReason =
+		moverWarnings.length > 0
+			? String(moverWarnings[0]).replace(/\.$/, '')
+			: 'duplicate email at destination';
+	const response: Record<string, unknown> = {
+		summary:
+			outcome === 'dry-run'
+				? 'No changes were made — dry run.'
+				: `No changes were made — moveToCompany skipped: ${skipReason}.`,
+		resource,
+		operation: `${resource}.${operation}`,
+		outcome,
+		resolvedLabels: toResolvedLabels(context.resolutions),
+		pendingConfirmations: context.pendingConfirmations ?? [],
+	};
+	if (typeof details?.sourceContactId === 'number') {
+		response.sourceContactId = details.sourceContactId;
+	}
+	if (typeof details?.destinationCompanyId === 'number') {
+		response.destinationCompanyId = details.destinationCompanyId;
+	}
+	if (typeof details?.duplicateContactId === 'number' && details.duplicateContactId > 0) {
+		response.duplicateContactId = details.duplicateContactId;
+	}
+	if (mergedWarnings.length > 0) {
+		response.warnings = mergedWarnings;
+	}
 	return response;
 }
 

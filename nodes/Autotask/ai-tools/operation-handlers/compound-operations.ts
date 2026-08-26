@@ -6,7 +6,7 @@ import { wrapError, ERROR_TYPES } from '../error-formatter';
 import { enrichResponseJson } from '../../helpers/enrichment';
 import { convertDatesToUTC } from '../../helpers/date-time/utils';
 import { COMPOUND_REGISTRY } from '../../constants/compound-registry';
-import { ParentNotFoundError } from '../../helpers/compound-errors';
+import { DedupFieldError, ParentNotFoundError } from '../../helpers/compound-errors';
 
 /** Extract the entity numeric ID from a compound creator result (all outcomes use the same field). */
 
@@ -137,6 +137,26 @@ export async function handleCreateIfNotExists(state: ExecutorState): Promise<str
 						ERROR_TYPES.ENTITY_NOT_FOUND,
 						err.message,
 						`Verify the parent entity identifier and retry.`,
+					),
+				),
+				correlationId,
+			);
+		}
+		if (err instanceof DedupFieldError) {
+			// D1: a dedup field that is not a real, queryable field of the entity (or
+			// whose value was dropped from the create payload) is rejected before any
+			// duplicate query runs — surfaced as the standard error envelope instead of
+			// a false-duplicate outcome pointing at an unrelated record.
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						'createIfNotExists',
+						ERROR_TYPES.INVALID_DEDUP_FIELD,
+						err.message,
+						`Call autotask_${resource} with operation 'describeFields' to pick a real dedup field (and supply a value for it), then retry createIfNotExists.`,
+						{ invalidDedupFields: [err.field] },
+						['describeFields'],
 					),
 				),
 				correlationId,

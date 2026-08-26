@@ -3,6 +3,7 @@ import {
 	buildListResponse,
 	buildItemResponse,
 	buildMutationResponse,
+	buildNoChangeMutationResponse,
 	buildDeleteResponse,
 	buildCountResponse,
 	buildSlaHealthCheckResponse,
@@ -16,6 +17,59 @@ import { MAX_QUERY_LIMIT, getEffectiveLimit } from '../tool-executor';
 import { getOperationMetadata } from '../operation-metadata';
 
 export const MAX_RESPONSE_RECORDS = 500;
+
+/**
+ * Bounded-scan coverage (C1 fix): searchByDomain/searchByIdentity scan a bounded
+ * window of the company population, so a match — and a no-match — say nothing
+ * about companies outside that window. The producer (helpers/company-domain-search.ts)
+ * publishes {scanned, totalAvailable?, windowComplete}; this normaliser re-derives
+ * windowComplete defensively instead of trusting the flag alone.
+ */
+interface SearchCoverage {
+	scanned: number;
+	totalAvailable?: number;
+	windowComplete: boolean;
+}
+
+function normalizeSearchCoverage(raw: unknown): SearchCoverage {
+	if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+		const c = raw as Record<string, unknown>;
+		const scanned = typeof c.scanned === 'number' && Number.isFinite(c.scanned) ? c.scanned : 0;
+		const totalAvailable =
+			typeof c.totalAvailable === 'number' && Number.isFinite(c.totalAvailable)
+				? c.totalAvailable
+				: undefined;
+		const windowComplete = totalAvailable !== undefined && scanned >= totalAvailable;
+		return { scanned, ...(totalAvailable !== undefined ? { totalAvailable } : {}), windowComplete };
+	}
+	return { scanned: 0, windowComplete: false };
+}
+
+function coverageRootFields(coverage: SearchCoverage): Record<string, unknown> {
+	return {
+		scanned: coverage.scanned,
+		...(coverage.totalAvailable !== undefined ? { totalAvailable: coverage.totalAvailable } : {}),
+		windowComplete: coverage.windowComplete,
+	};
+}
+
+function boundedScanPlural(resource: string): string {
+	// searchByDomain/searchByIdentity are company-only operations today; keep the
+	// summary wording grammatical for both the singular resource key and any
+	// future resource these dispatch cases might be extended to.
+	return resource === 'company' ? 'companies' : `${resource}s`;
+}
+
+function boundedScanSummary(resource: string, found: number, coverage: SearchCoverage): string {
+	if (coverage.windowComplete) {
+		return `Found ${found} ${resource} records — complete set, no further calls needed.`;
+	}
+	const total = coverage.totalAvailable !== undefined ? String(coverage.totalAvailable) : 'unknown';
+	return (
+		`Found ${found} ${resource} records — PARTIAL coverage: scanned ${coverage.scanned} of ${total} ` +
+		`${boundedScanPlural(resource)} (bounded scan); a ${resource} outside the scanned window may not be included.`
+	);
+}
 
 interface OperationResponseParams {
 	id?: number;
@@ -40,6 +94,10 @@ interface OperationResponseParams {
 interface MutationValidationResult {
 	ok: boolean;
 	id?: number | string;
+	/** No-change mutation outcome (moveToCompany skip / dry run) — rendered as a compound-style envelope with NO top-level id. */
+	outcome?: 'skipped' | 'dry-run';
+	/** Root context fields for no-change outcomes (sourceContactId, destinationCompanyId, duplicateContactId, warnings). */
+	noChangeContext?: Record<string, unknown>;
 	errorType?: string;
 	message?: string;
 	hint?: string;
@@ -125,24 +183,50 @@ export function dispatchOperationResponse(
 			}
 			case 'moveToCompany': {
 				const movedId = record?.newContactId;
-				if (typeof movedId === 'number' && movedId > 0) return { ok: true, id: movedId };
-				const sourceContactId = record?.sourceContactId;
+				const hasMovedId = typeof movedId === 'number' && movedId > 0;
 				const markedSuccess = record?.success === true;
 				const isDryRun = record?.dryRun === true;
 				const isSkipped = record?.skipped === true;
-				if (
-					markedSuccess &&
-					(isDryRun || isSkipped) &&
-					typeof sourceContactId === 'number' &&
-					sourceContactId > 0
-				) {
-					return { ok: true, id: sourceContactId };
+				// No-change outcomes are checked BEFORE newContactId: on a skip the
+				// mover sets newContactId to the pre-existing duplicate contact ID
+				// (or 0), so a movedId-first check would report the duplicate as if
+				// the move had happened (top-level id + '…successfully').
+				if (markedSuccess && isSkipped) {
+					const noChangeContext: Record<string, unknown> = {};
+					if (typeof record?.sourceContactId === 'number') {
+						noChangeContext.sourceContactId = record.sourceContactId;
+					}
+					if (typeof record?.destinationCompanyId === 'number') {
+						noChangeContext.destinationCompanyId = record.destinationCompanyId;
+					}
+					if (hasMovedId) {
+						// duplicate contact that blocked the move — not a created record
+						noChangeContext.duplicateContactId = movedId;
+					}
+					if (Array.isArray(record?.warnings) && (record.warnings as string[]).length > 0) {
+						noChangeContext.warnings = record.warnings;
+					}
+					return { ok: true, outcome: 'skipped', noChangeContext };
 				}
+				if (markedSuccess && isDryRun && !hasMovedId) {
+					const noChangeContext: Record<string, unknown> = {};
+					if (typeof record?.sourceContactId === 'number') {
+						noChangeContext.sourceContactId = record.sourceContactId;
+					}
+					if (typeof record?.destinationCompanyId === 'number') {
+						noChangeContext.destinationCompanyId = record.destinationCompanyId;
+					}
+					if (Array.isArray(record?.warnings) && (record.warnings as string[]).length > 0) {
+						noChangeContext.warnings = record.warnings;
+					}
+					return { ok: true, outcome: 'dry-run', noChangeContext };
+				}
+				if (hasMovedId) return { ok: true, id: movedId };
 				return {
 					ok: false,
 					errorType: ERROR_TYPES.API_ERROR,
 					message: `moveToCompany did not return 'newContactId'.`,
-					hint: `Retry the move, then verify contact-mover output includes 'newContactId' (or sourceContactId for dry run/skip).`,
+					hint: `Retry the move, then verify contact-mover output includes 'newContactId'.`,
 				};
 			}
 			case 'moveConfigurationItem': {
@@ -350,6 +434,15 @@ export function dispatchOperationResponse(
 			);
 		}
 
+		// No-change mutation outcomes (moveToCompany skip / dry run): compound-style
+		// envelope with top-level `outcome` and NO top-level `id` — a skip must not
+		// render as a successful move (F-C).
+		if (validation.outcome === 'skipped' || validation.outcome === 'dry-run') {
+			return JSON.stringify(
+				buildNoChangeMutationResponse(resource, operation, validation.outcome, validation.noChangeContext, context),
+			);
+		}
+
 		// Unwrap the { item: { id: N } } envelope produced by autotaskApiRequest so
 		// response.record contains entity fields directly, not nested under .item.
 		const mutationRecord =
@@ -417,6 +510,8 @@ export function dispatchOperationResponse(
 				? (envelope?.results as Record<string, unknown>[])
 				: [];
 			const isNoMatch = envelope?.source === 'none' || envelopeResults.length === 0;
+			// C1 fix: the scan is a bounded window over the company population.
+			const coverage = normalizeSearchCoverage(envelope?.coverage);
 
 			if (isNoMatch) {
 				const unresolvedSearch =
@@ -430,14 +525,16 @@ export function dispatchOperationResponse(
 				const notes = Array.isArray(envelope?.notes)
 					? (envelope?.notes as unknown[]).filter((note): note is string => typeof note === 'string')
 					: [];
+				// A bounded no-match must not read as "definitely no company has this
+				// domain" — the coverage context makes the scan window explicit.
 				return JSON.stringify(
 					wrapError(
 						resource,
 						operation,
 						ERROR_TYPES.NO_RESULTS_FOUND,
-						`No ${resource} found matching the supplied domain.`,
+						`No ${resource} found matching the supplied domain within the scanned window.`,
 						directive,
-						notes.length > 0 ? { notes } : undefined,
+						{ ...(notes.length > 0 ? { notes } : {}), ...coverageRootFields(coverage) },
 					),
 				);
 			}
@@ -448,24 +545,76 @@ export function dispatchOperationResponse(
 			// searchByDomain uses list shape — no domain-specific qualifier in summary since params.domain is not passed
 			const resolvedLabels = toResolvedLabels(context.resolutions);
 			return JSON.stringify({
-				summary: `Found ${matchedRecords.length} ${resource} records — complete set, no further calls needed.`,
+				summary: boundedScanSummary(resource, matchedRecords.length, coverage),
 				resource,
 				operation: `${resource}.${operation}`,
 				records: matchedRecords,
 				returnedCount: matchedRecords.length,
 				hasMore: false,
 				continuation: null,
-				isTruncated: false,
-				truncationReason: null,
+				isTruncated: !coverage.windowComplete,
+				truncationReason: coverage.windowComplete ? null : 'bounded-scan',
 				serverCap: MAX_QUERY_LIMIT,
 				clientCap: MAX_RESPONSE_RECORDS,
 				resolvedLabels,
 				pendingConfirmations: context.pendingConfirmations ?? [],
 				warnings: context.resolutionWarnings ?? [],
+				...coverageRootFields(coverage),
 			});
 		}
 
 		case 'searchByIdentity': {
+			// The companies handler pushes the identity search ENVELOPE as a single
+			// object (CompanyIdentitySearchResult); records[0] carries `source`,
+			// `results` (the ranked candidates) and the bounded-scan `coverage` (C1 fix).
+			const envelope = (records[0] ?? null) as Record<string, unknown> | null;
+			const isEnvelope =
+				envelope !== null && envelope !== undefined && typeof envelope.source === 'string';
+			if (isEnvelope) {
+				const envelopeResults = Array.isArray(envelope?.results)
+					? (envelope?.results as Record<string, unknown>[])
+					: [];
+				const isNoMatch = envelope?.source === 'none' || envelopeResults.length === 0;
+				const coverage = normalizeSearchCoverage(envelope?.coverage);
+				if (isNoMatch) {
+					// A bounded no-match must not read as "definitely no company
+					// matches these signals" — the coverage context makes the scan
+					// window explicit.
+					return JSON.stringify(
+						wrapError(
+							resource,
+							operation,
+							ERROR_TYPES.NO_RESULTS_FOUND,
+							`No ${resource} found matching the supplied identity signals within the scanned window.`,
+							`Retry with additional hints (companyName, email, website), or use autotask_${resource} with operation 'getMany' with a filter.`,
+							coverageRootFields(coverage),
+						),
+					);
+				}
+				const resolvedLabels = toResolvedLabels(context.resolutions);
+				const summary = coverage.windowComplete
+					? `Found ${records.length} ranked ${resource} candidates — complete set, no further calls needed.`
+					: `Found ${records.length} ranked ${resource} candidates — PARTIAL coverage: scanned ${coverage.scanned} of ${coverage.totalAvailable ?? 'unknown'} ${boundedScanPlural(resource)} (bounded scan); a ${resource} outside the scanned window may not be included.`;
+				return JSON.stringify({
+					summary,
+					resource,
+					operation: `${resource}.${operation}`,
+					records,
+					returnedCount: records.length,
+					hasMore: false,
+					continuation: null,
+					isTruncated: !coverage.windowComplete,
+					truncationReason: coverage.windowComplete ? null : 'bounded-scan',
+					serverCap: MAX_QUERY_LIMIT,
+					clientCap: MAX_RESPONSE_RECORDS,
+					resolvedLabels,
+					pendingConfirmations: context.pendingConfirmations ?? [],
+					warnings: context.resolutionWarnings ?? [],
+					...coverageRootFields(coverage),
+				});
+			}
+			// Defensive fallback: non-envelope records. No current producer takes
+			// this path — the companies handler always pushes the search envelope.
 			if (records.length === 0) {
 				return JSON.stringify(
 					wrapError(

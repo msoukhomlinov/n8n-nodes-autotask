@@ -171,8 +171,8 @@ export async function resolveLabelsToIds(
                     const isInfra = /timeout|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|401|403|unauthorized|forbidden|socket/i.test(msg);
                     warnings.push(
                         isInfra
-                            ? `[INFRASTRUCTURE] Picklist resolution failed for '${field.id}': ${msg}. Value sent as-is.`
-                            : `Picklist resolution error for '${field.id}': ${msg}`,
+                            ? `[INFRASTRUCTURE] Picklist resolution failed for field '${field.id}': ${msg}. Value sent as-is.`
+                            : `Picklist resolution error for field '${field.id}': ${msg}`,
                     );
                 }
             }
@@ -181,7 +181,11 @@ export async function resolveLabelsToIds(
                 values[key] = idMatch;
                 resolutions.push({ field: field.id, from: label, to: idMatch, method: 'picklist' });
             } else if (!pendingFieldIds.has(field.id)) {
-                warnings.push(`Could not resolve picklist label '${label}' for field '${field.id}'`);
+                // [PICKLIST_MISMATCH] tag: write-guard.ts partitions on this to
+                // classify invalid picklist values as INVALID_PICKLIST_VALUE with the
+                // listPicklistValues retry directive (v2.28.5). The read-filter branch
+                // keeps its own untagged wording (INVALID_FILTER_CONSTRAINT path).
+                warnings.push(`[PICKLIST_MISMATCH] Could not resolve picklist value '${label}' for field '${field.id}'`);
             }
 
             continue;
@@ -307,14 +311,17 @@ export async function resolveLabelsToIds(
                 const isInfra = /timeout|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|401|403|unauthorized|forbidden|socket/i.test(msg);
                 warnings.push(
                     isInfra
-                        ? `[INFRASTRUCTURE] Resolution failed for '${field.id}' (${field.referencesEntity}): ${msg}. Value sent as-is.`
-                        : `Resolution error for '${field.id}': ${msg}`,
+                        ? `[INFRASTRUCTURE] Resolution failed for field '${field.id}' (${field.referencesEntity}): ${msg}. Value sent as-is.`
+                        : `Resolution error for field '${field.id}': ${msg}`,
                 );
             }
         // Unknown entity type for reference field
         } else if (field.isReference && !field.referencesEntity) {
+            // Uniform "Could not resolve ... for field 'X'" wording (v2.28.5) so the
+            // write-guard's field-name regex extracts the field instead of reporting
+            // '[general-resolution-failure]'.
             warnings.push(
-                `Reference field '${field.id}' has no known entity type — provide a numeric ID directly, ` +
+                `Could not resolve reference label for field '${field.id}' (no known entity type) — provide a numeric ID directly, ` +
                 `or use autotask_${resource} with operation 'describeFields' to inspect.`,
             );
         }
@@ -646,8 +653,10 @@ export async function resolveFilterLabelsToIds(
             );
         }
     } else if (field?.isReference && !field.referencesEntity) {
+        // Uniform "Could not resolve ... for field 'X'" wording (v2.28.5) so field
+        // names are extractable in resolution-state summaries (read path).
         warnings.push(
-            `Reference filter field '${filterField}' has no known entity type — provide a numeric ID directly, ` +
+            `Could not resolve reference filter label for field '${filterField}' (no known entity type) — provide a numeric ID directly, ` +
             `or use autotask_${resource} with operation 'describeFields' to inspect.`,
         );
     }

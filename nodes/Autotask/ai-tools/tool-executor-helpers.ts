@@ -1,5 +1,6 @@
 import type { IExecuteFunctions } from 'n8n-workflow';
 import { CountOperation } from '../operations/base/count-operation';
+import { entityNameForResource } from '../constants/entities';
 import type { IAutotaskEntity } from '../types';
 import type { FieldMeta } from '../helpers/aiHelper';
 import { buildFieldLookup, coerceFilterValueByFieldType } from './filter-builder';
@@ -73,7 +74,12 @@ export async function executeCountOperation(
 			if (name === 'id') return null;
 			return context.getNodeParameter(name, 0, fallback);
 		}) as IExecuteFunctions['getNodeParameter'];
-		const countOp = new CountOperation<IAutotaskEntity>(resource, scopedContext);
+		// CountOperation keys its metadata lookups by ENTITY NAME; the AI path hands it
+		// the resource key, which differs for resourceKey-override entities
+		// (configurationItems/configurationItemTypes/opportunityCategories) and made
+		// every count-injection call fail with 'Invalid entity type' (F4).
+		const entityName = entityNameForResource(resource);
+		const countOp = new CountOperation<IAutotaskEntity>(entityName, scopedContext);
 		return await countOp.execute(0);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

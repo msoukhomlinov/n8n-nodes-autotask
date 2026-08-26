@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
 import { compareDedupField, extractItems, getEntityFieldValue } from './dedup-utils';
+import { DedupFieldError } from './compound-errors';
 import { getFields } from './entity/api';
 import type { IAutotaskField } from '../types/base/entities';
 import type { IUdfFieldDefinition } from '../types/base/udf-types';
@@ -87,11 +88,15 @@ export async function findDuplicate(
 
 	// P2: fetch UDF metadata for any UDF dedup fields to get type-aware comparison.
 	// Only meaningful when metadata is available — without it, we cannot distinguish UDF from standard.
+	// The UDF name set doubles as the phantom-field check below: a dedup field that is
+	// neither a standard field nor a UDF field is not a field of the entity at all.
 	const udfDedupFields = metadataAvailable ? dedupFields.filter(f => !standardFieldNames.has(f)) : [];
 	const udfTypeOverrides: Record<string, string> = {};
+	let udfFieldNames: Set<string> | undefined;
 	if (udfDedupFields.length > 0) {
 		try {
 			const udfDefs = await getFields(entityType, ctx, { fieldType: 'udf' }) as IUdfFieldDefinition[];
+			udfFieldNames = new Set(udfDefs.map(f => f.name));
 			const lowerNames = udfDedupFields.map(f => f.toLowerCase());
 			for (const udf of udfDefs) {
 				if (lowerNames.includes(udf.name.toLowerCase())) {
@@ -99,7 +104,34 @@ export async function findDuplicate(
 				}
 			}
 		} catch {
-			// UDF metadata unavailable — fall back to 'string' comparison for those fields
+			// UDF metadata unavailable — fall back to 'string' comparison for those fields;
+			// phantom-field validation for non-standard fields is skipped below.
+		}
+	}
+
+	// D1: validate dedup fields up front when metadata is available. A dedup field that is
+	// not a real field of the entity (phantom), or a real field whose value was dropped
+	// from the create payload (no value supplied), can never legitimately match a stored
+	// record — and with the both-null non-match rule in compareDedupField it would
+	// silently match NOTHING, defeating dedup and creating true duplicates. Fail fast
+	// with a precise, actionable error instead. All createIfNotExists creators route
+	// through findDuplicate, so this single throw point covers every compound resource.
+	// When standard-field metadata is unavailable, keep the previous graceful degradation
+	// (scope filters + client-side matching only) — do not hard-fail on metadata errors.
+	if (metadataAvailable) {
+		for (const field of dedupFields) {
+			if (standardFieldNames.has(field)) {
+				const supplied = createFields[field];
+				if (
+					supplied === undefined ||
+					supplied === null ||
+					(typeof supplied === 'string' && supplied.trim() === '')
+				) {
+					throw new DedupFieldError(entityType, field, 'no-value');
+				}
+			} else if (udfFieldNames && !udfFieldNames.has(field)) {
+				throw new DedupFieldError(entityType, field, 'not-a-field');
+			}
 		}
 	}
 

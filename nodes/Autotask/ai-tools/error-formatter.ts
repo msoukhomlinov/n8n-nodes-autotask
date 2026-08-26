@@ -1,4 +1,4 @@
-import { getEntityMetadata } from '../constants/entities';
+import { getEntityMetadata, entityNameForResource } from '../constants/entities';
 
 // ---------------------------------------------------------------------------
 // Error type constants
@@ -19,6 +19,7 @@ export const ERROR_TYPES = {
 	INVALID_FIELDS: 'INVALID_FIELDS',
 	INVALID_WRITE_FIELDS: 'INVALID_WRITE_FIELDS',
 	INVALID_FILTER_CONSTRAINT: 'INVALID_FILTER_CONSTRAINT',
+	INVALID_DEDUP_FIELD: 'INVALID_DEDUP_FIELD',
 	MISSING_REQUIRED_FIELDS: 'MISSING_REQUIRED_FIELDS',
 	WRITE_RESOLUTION_INCOMPLETE: 'WRITE_RESOLUTION_INCOMPLETE',
 	INVALID_INPUT: 'INVALID_INPUT',
@@ -58,6 +59,7 @@ const ACTIONABLE_PREFIX_TYPES = new Set<string>([
 	ERROR_TYPES.MISSING_REQUIRED_FIELDS,
 	ERROR_TYPES.ENTITY_NOT_FOUND,
 	ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+	ERROR_TYPES.INVALID_DEDUP_FIELD,
 ]);
 
 export function wrapError(
@@ -192,6 +194,33 @@ export function formatApiError(
 		return formatRateLimitError(resource, operation, retryAfterSeconds);
 	}
 
+	// E1 fix — not-found must win over permission. Autotask tags error bodies with
+	// [NotFoundError] / [NotFound] / [NotExists*] and the same message can hedge
+	// with a "permission" phrase (e.g. the sandbox's
+	// "[NotFoundError] The contacts with ID 999999999 was not found. Please verify
+	// the ID is correct and that you have permission to access this record."),
+	// which the permission branch used to classify as PERMISSION_DENIED with a
+	// misleading recovery path. The deterministic tag is checked first.
+	if (/\[(NotFoundError|NotFound|NotExists\w*)\]/i.test(message)) {
+		return wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.ENTITY_NOT_FOUND,
+			message,
+			`Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID, then retry.`,
+		);
+	}
+
+	if (lowerMessage.includes('not found') || lowerMessage.includes('does not exist')) {
+		return wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.ENTITY_NOT_FOUND,
+			message,
+			`Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID, then retry.`,
+		);
+	}
+
 	if (
 		lowerMessage.includes('lock')
 		|| lowerMessage.includes('concurrent')
@@ -211,6 +240,7 @@ export function formatApiError(
 		|| lowerMessage.includes('unauthor')
 		|| lowerMessage.includes('permission')
 		|| lowerMessage.includes('access denied')
+		|| lowerMessage.includes('access is denied')
 	) {
 		return wrapError(
 			resource,
@@ -243,19 +273,11 @@ export function formatApiError(
 		);
 	}
 
-	if (lowerMessage.includes('not found') || lowerMessage.includes('does not exist')) {
-		return wrapError(
-			resource,
-			operation,
-			ERROR_TYPES.ENTITY_NOT_FOUND,
-			message,
-			`Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID, then retry.`,
-		);
-	}
-
 	const parentMatch = message.match(/Invalid parent ID type for (\w+)/i);
 	if (parentMatch) {
-		const parentField = getEntityMetadata(resource)?.parentIdField;
+		// resource is a resource key; metadata is keyed by entity name (resourceKey
+		// overrides like 'configurationItems' would otherwise miss).
+		const parentField = getEntityMetadata(entityNameForResource(resource))?.parentIdField;
 		if (parentField) {
 			return wrapError(
 				resource,

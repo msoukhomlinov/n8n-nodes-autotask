@@ -11,7 +11,13 @@ export function compareDedupField(
 	apiValue: unknown,
 	inputValue: unknown,
 ): boolean {
-	if (apiValue == null && inputValue == null) return true;
+	// Absence on BOTH sides is never a match. The old both-null → true rule let a
+	// phantom or dropped dedup field (value absent from the create payload AND from
+	// every stored record) "match" every record in scope, so findDuplicate returned
+	// the first unrelated record as the duplicate and createIfNotExists skipped the
+	// create pointing at the wrong ID (D1 write-safety defect). null/undefined on
+	// either side is now a definite non-match.
+	if (apiValue == null && inputValue == null) return false;
 	if (apiValue == null || inputValue == null) return false;
 
 	switch (fieldType) {
