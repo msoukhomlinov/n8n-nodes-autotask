@@ -19,11 +19,16 @@ import { getOperationMetadata } from '../operation-metadata';
 export const MAX_RESPONSE_RECORDS = 500;
 
 /**
- * Bounded-scan coverage (C1 fix): searchByDomain/searchByIdentity scan a bounded
- * window of the company population, so a match — and a no-match — say nothing
- * about companies outside that window. The producer (helpers/company-domain-search.ts)
- * publishes {scanned, totalAvailable?, windowComplete}; this normaliser re-derives
- * windowComplete defensively instead of trusting the flag alone.
+ * Bounded-scan coverage (C1 fix, re-based by Codex P2): searchByDomain/searchByIdentity
+ * run bounded FILTERED queries over the company population. `windowComplete` reflects
+ * those filtered queries' cap semantics — true = every filtered query returned below
+ * its cap, so the filtered search is complete and no matching record was truncated
+ * away. `totalAvailable` is the tenant-wide company count (informational context, NOT
+ * a denominator for completeness: comparing matches against the tenant population
+ * reported almost every selective search as partial). The producer
+ * (helpers/company-domain-search.ts) publishes {scanned, totalAvailable?, windowComplete};
+ * this normaliser validates the producer's flag instead of re-deriving it from
+ * scanned-vs-totalAvailable.
  */
 interface SearchCoverage {
 	scanned: number;
@@ -39,7 +44,10 @@ function normalizeSearchCoverage(raw: unknown): SearchCoverage {
 			typeof c.totalAvailable === 'number' && Number.isFinite(c.totalAvailable)
 				? c.totalAvailable
 				: undefined;
-		const windowComplete = totalAvailable !== undefined && scanned >= totalAvailable;
+		// Codex P2: trust the producer's flag (filtered-cap semantics). Re-deriving
+		// windowComplete as scanned >= totalAvailable re-created the defect: one match
+		// below the cap in a 10,000-company tenant read as partial coverage.
+		const windowComplete = typeof c.windowComplete === 'boolean' ? c.windowComplete : false;
 		return { scanned, ...(totalAvailable !== undefined ? { totalAvailable } : {}), windowComplete };
 	}
 	return { scanned: 0, windowComplete: false };
@@ -62,12 +70,19 @@ function boundedScanPlural(resource: string): string {
 
 function boundedScanSummary(resource: string, found: number, coverage: SearchCoverage): string {
 	if (coverage.windowComplete) {
-		return `Found ${found} ${resource} records — complete set, no further calls needed.`;
+		return (
+			`Found ${found} ${resource} records — complete filtered set: every ${resource} matching the search ` +
+			`was returned (filtered queries below their scan cap), no further calls needed.`
+		);
 	}
+	// Codex P2: partial = a bounded filtered query hit its cap. `scanned` is the row
+	// count those queries returned, and `totalAvailable` is the tenant-wide company
+	// count — never phrase the two as one population.
 	const total = coverage.totalAvailable !== undefined ? String(coverage.totalAvailable) : 'unknown';
 	return (
-		`Found ${found} ${resource} records — PARTIAL coverage: scanned ${coverage.scanned} of ${total} ` +
-		`${boundedScanPlural(resource)} (bounded scan); a ${resource} outside the scanned window may not be included.`
+		`Found ${found} ${resource} records — PARTIAL coverage: the bounded filtered scan hit its cap after ` +
+		`${coverage.scanned} records (tenant total: ${total} ${boundedScanPlural(resource)}); ` +
+		`additional matching ${boundedScanPlural(resource)} may not be included.`
 	);
 }
 
@@ -592,9 +607,12 @@ export function dispatchOperationResponse(
 					);
 				}
 				const resolvedLabels = toResolvedLabels(context.resolutions);
+				const partialTotal = coverage.totalAvailable !== undefined ? String(coverage.totalAvailable) : 'unknown';
+				// Codex P2: partial = a bounded filtered query hit its cap; scanned is
+				// the rows those queries returned, totalAvailable the tenant-wide count.
 				const summary = coverage.windowComplete
-					? `Found ${records.length} ranked ${resource} candidates — complete set, no further calls needed.`
-					: `Found ${records.length} ranked ${resource} candidates — PARTIAL coverage: scanned ${coverage.scanned} of ${coverage.totalAvailable ?? 'unknown'} ${boundedScanPlural(resource)} (bounded scan); a ${resource} outside the scanned window may not be included.`;
+					? `Found ${records.length} ranked ${resource} candidates — complete filtered set (filtered queries below their scan cap), no further calls needed.`
+					: `Found ${records.length} ranked ${resource} candidates — PARTIAL coverage: the bounded filtered scan hit its cap after ${coverage.scanned} records (tenant total: ${partialTotal} ${boundedScanPlural(resource)}); additional matching ${boundedScanPlural(resource)} may not be included.`;
 				return JSON.stringify({
 					summary,
 					resource,

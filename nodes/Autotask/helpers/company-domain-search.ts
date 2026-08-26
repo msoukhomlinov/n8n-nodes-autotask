@@ -24,15 +24,26 @@ const COMPANY_DOMAIN_FIELD_PRIORITY = [
  * outside the scanned window (C1 fix).
  */
 export interface CompanySearchCoverage extends IDataObject {
-	/** Number of company records actually scanned across the bounded queries. */
+	/**
+	 * Number of records returned by the bounded filtered queries that feed the
+	 * result set (the rows actually evaluated client-side). NOT the tenant-wide
+	 * company population.
+	 */
 	scanned: number;
 	/**
 	 * Total number of companies, from ONE count call on company with no filter.
-	 * Omitted when the count call fails — consumers then cannot verify window
-	 * completeness and must treat the scan as partial.
+	 * Informational context only — the tenant-wide population, not a denominator
+	 * for scan completeness (Codex P2). Omitted when the count call fails.
 	 */
 	totalAvailable?: number;
-	/** True only when the scanned window covers the entire company population. */
+	/**
+	 * True only when every bounded filtered query that feeds the result set
+	 * returned BELOW its cap — i.e. the filtered search is complete and no
+	 * matching record was truncated away. A selective search with one match
+	 * below its cap is complete even in a 10,000-company tenant (Codex P2:
+	 * completeness comes from the filtered queries' cap semantics, never from
+	 * matches-vs-tenant-population).
+	 */
 	windowComplete: boolean;
 }
 
@@ -70,15 +81,22 @@ async function countCompanyTotal(
 	}
 }
 
+/**
+ * Build the coverage block. `filterComplete` must reflect the FILTERED queries'
+ * cap semantics (every contributing bounded query returned below its cap), not
+ * a comparison of match counts with the tenant-wide company total — that
+ * comparison made almost every selective search report partial coverage (Codex P2).
+ */
 async function buildSearchCoverage(
 	scanned: number,
 	totalAvailablePromise: Promise<number | undefined> | undefined,
+	filterComplete: boolean,
 ): Promise<CompanySearchCoverage> {
 	const totalAvailable = totalAvailablePromise ? await totalAvailablePromise : undefined;
 	return {
 		scanned,
 		...(totalAvailable !== undefined ? { totalAvailable } : {}),
-		windowComplete: totalAvailable !== undefined && scanned >= totalAvailable,
+		windowComplete: filterComplete,
 	};
 }
 
@@ -457,7 +475,8 @@ export async function searchCompaniesByDomain(
 			count: 0,
 			results: [],
 			notes: ['No company website/domain field was detected in entity metadata.'],
-			coverage: await buildSearchCoverage(0, totalAvailablePromise),
+			// No search was executed — completeness cannot be claimed (Codex P2).
+			coverage: await buildSearchCoverage(0, totalAvailablePromise, false),
 		};
 	}
 
@@ -542,7 +561,9 @@ export async function searchCompaniesByDomain(
 			count: enrichedResults.length,
 			results: enrichedResults,
 			...(notes.length > 0 ? { notes } : {}),
-			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise),
+			// Codex P2: the filtered website search is complete iff it returned below
+			// its cap — never from matches-vs-tenant-population.
+			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise, companyResults.length < limit),
 		};
 	}
 
@@ -571,7 +592,9 @@ export async function searchCompaniesByDomain(
 				companyNameNormalised,
 				appliedCompanyOperator,
 			),
-			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise),
+			// Codex P2: no-match with the filtered website search below its cap is a
+			// complete (tenant-wide) no-match, not a partial-window no-match.
+			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise, companyResults.length < limit),
 		};
 	}
 
@@ -633,7 +656,7 @@ export async function searchCompaniesByDomain(
 				companyNameNormalised,
 				appliedCompanyOperator,
 			),
-			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise),
+			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise, companyResults.length < limit),
 		};
 	}
 
@@ -700,9 +723,14 @@ export async function searchCompaniesByDomain(
 				companyNameNormalised,
 				appliedCompanyOperator,
 			),
+			// Codex P2: completeness = every contributing bounded query (website scan,
+			// contact scan, company-name resolution) returned below its cap.
 			coverage: await buildSearchCoverage(
 				companyResults.length + resolvedCompanies.length,
 				totalAvailablePromise,
+				companyResults.length < limit &&
+					contactResults.length < contactLimit &&
+					resolvedCompanies.length < Math.min(companyIds.length, MAX_CONTACT_FALLBACK_LIMIT),
 			),
 		};
 	}
@@ -738,9 +766,14 @@ export async function searchCompaniesByDomain(
 		matchedCompanies: resolvedCompanies.length,
 		companyFrequencies,
 		...(notes.length > 0 ? { notes } : {}),
+		// Codex P2: completeness = every contributing bounded query (website scan,
+		// contact scan, company-name resolution) returned below its cap.
 		coverage: await buildSearchCoverage(
 			companyResults.length + resolvedCompanies.length,
 			totalAvailablePromise,
+			companyResults.length < limit &&
+				contactResults.length < contactLimit &&
+				resolvedCompanies.length < Math.min(companyIds.length, MAX_CONTACT_FALLBACK_LIMIT),
 		),
 	};
 }
@@ -828,6 +861,9 @@ export async function searchCompaniesByIdentity(
 	let totalAvailable: number | undefined;
 	let countPromise: Promise<number | undefined> | undefined;
 	let nameScanned = 0;
+	// Codex P2: filtered-query completeness flags for the two scan stages.
+	let domainFilterComplete = true;
+	let nameFilterComplete = true;
 
 	if (domainNormalised) {
 		const domainResults = await searchCompaniesByDomain(context, {
@@ -841,6 +877,7 @@ export async function searchCompaniesByIdentity(
 		});
 		domainScanned = domainResults.coverage.scanned;
 		totalAvailable = domainResults.coverage.totalAvailable;
+		domainFilterComplete = domainResults.coverage.windowComplete;
 
 		if (domainResults.source === 'companyWebsite' && domainResults.results.length > 0) {
 			for (const result of domainResults.results) {
@@ -875,15 +912,17 @@ export async function searchCompaniesByIdentity(
 		if (!domainNormalised) {
 			countPromise = countCompanyTotal(context, itemIndex);
 		}
+		const nameCap = Math.min(Math.max(limit * 2, 25), MAX_CONTACT_FALLBACK_LIMIT);
 		const nameResults = await runBoundedQuery(
 			context,
 			'company',
 			itemIndex,
-			Math.min(Math.max(limit * 2, 25), MAX_CONTACT_FALLBACK_LIMIT),
+			nameCap,
 			[{ field: 'companyName', op: 'contains', value: companyNameInput }],
 			selectColumns,
 		);
 		nameScanned = nameResults.length;
+		nameFilterComplete = nameResults.length < nameCap;
 		for (const result of nameResults) {
 			const id = result.id;
 			if (!isValidCompanyId(id)) continue;
@@ -896,6 +935,9 @@ export async function searchCompaniesByIdentity(
 	const coverage = await buildSearchCoverage(
 		domainScanned + nameScanned,
 		totalAvailable !== undefined ? Promise.resolve(totalAvailable) : countPromise,
+		// Codex P2: complete iff every contributing filtered query returned below
+		// its cap (skipped stages count as complete — they contributed no window).
+		domainFilterComplete && nameFilterComplete,
 	);
 
 	const nameNeedle = companyNameInput.toLowerCase();
