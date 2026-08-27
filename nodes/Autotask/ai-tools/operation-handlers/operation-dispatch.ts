@@ -282,10 +282,15 @@ export function dispatchOperationResponse(
 						!Array.isArray(record.auditNotes)
 					) {
 						const an = record.auditNotes as Record<string, unknown>;
-						mutationContext.auditNotes = {
-							sourceCompanyNoteId: typeof an.sourceCompanyNoteId === 'number' ? an.sourceCompanyNoteId : 0,
-							destinationCompanyNoteId: typeof an.destinationCompanyNoteId === 'number' ? an.destinationCompanyNoteId : 0,
-						};
+						const srcNote = typeof an.sourceCompanyNoteId === 'number' ? an.sourceCompanyNoteId : 0;
+						const dstNote = typeof an.destinationCompanyNoteId === 'number' ? an.destinationCompanyNoteId : 0;
+						// Omit when no note was actually created (both 0): the envelope
+						// convention only includes non-empty context fields. A REQUESTED
+						// note that failed to create surfaces via resolutionWarnings
+						// (the mover pushes the API error there), so nothing is lost.
+						if (srcNote > 0 || dstNote > 0) {
+							mutationContext.auditNotes = { sourceCompanyNoteId: srcNote, destinationCompanyNoteId: dstNote };
+						}
 					}
 					return { ok: true, id: movedId, ...(Object.keys(mutationContext).length > 0 ? { mutationContext } : {}) };
 				}

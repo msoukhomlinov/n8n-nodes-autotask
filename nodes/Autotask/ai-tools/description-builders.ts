@@ -52,7 +52,8 @@ export function buildToolContractBlock(): string {
 	return [
 		'CAPABILITIES: filter/count/paging only. No groupBy/aggregation/server-side sort. Cross-entity lookups need two steps (child first → parent with filter_op=in), except documented convenience ops.',
 		"EFFICIENCY: use operation='count' for totals-only questions. For grouped/top-N analysis pair operation='getMany' with sparse fields (e.g. fields='id,city') + returnAll=true — sparse fields lifts the 500-record payload cap. Aggregation is client-side.",
-		'ERRORS: when "error":true, the "nextAction" field is a directive — execute it before retrying. Never retry an unchanged failed call. If a call is rejected by the input schema, the rejection text names the offending parameter — correct that parameter (type or value) and retry; do not retry the same payload.',
+		'ERRORS: when "error":true, the "nextAction" field is a directive — execute it before retrying. Never retry an unchanged failed call. If the input schema rejects a call, the text names the offending parameter — correct it; do not retry the same payload.',
+		"DOCS: op-specific docs via operation='describeOperation' (param: targetOperation); field metadata via 'describeFields' (param: mode); picklist values via 'listPicklistValues' (param: fieldId).",
 	].join('\n');
 }
 
@@ -592,7 +593,7 @@ export function buildListPicklistValuesDescription(resourceLabel: string): strin
 }
 
 const TRUNCATION_SUFFIX =
-	"...[description truncated — call with operation='describeOperation' and targetOperation='<op>' for operation-specific detail, or operation='describeFields' for field metadata]";
+	"...[description truncated — call operation='describeOperation' (param: targetOperation) for op-specific detail, 'describeFields' for field metadata, or 'listPicklistValues' for picklist values]";
 
 /**
  * Truncate a description to fit within the character budget.
@@ -677,6 +678,15 @@ export function buildUnifiedDescriptionTemplate(
 		);
 	}
 
+	// Round-2 ordering (L-3): impersonation pointer sits in the guaranteed-visible
+	// prefix (right after WRITE SAFETY, before the long aiDescription) so the
+	// 1300-char truncation can never amputate it. Only advertised when the unified
+	// schema actually contains the field (F3b: read-only configs must not
+	// advertise a param the strict schema would reject).
+	if (supportsImpersonation && schemaHasImpersonationField(operations)) {
+		sections.push("Impersonation supported: pass 'impersonationResourceId' for write attribution.");
+	}
+
 	const aiDescription = getEntityMetadata(resource)?.aiDescription;
 	if (aiDescription) {
 		sections.push(aiDescription);
@@ -693,22 +703,14 @@ export function buildUnifiedDescriptionTemplate(
 
 	// Operations list — single canonical source of which ops this tool exposes.
 	sections.push(`Operations: ${allOps.join(', ')}. Set 'operation' to one.`);
+
+	// Helper-ops pointer now lives in the static contract block (DOCS line,
+	// round-2 L-3: contract block is always first and guaranteed to survive
+	// truncation; the standalone line was removed to reclaim ~80 chars of the
+	// 1300-char budget on every tool).
+	// Verbose per-call UTC reference — least valuable line, deliberately last
+	// (recency semantics are re-documentable via describeOperation).
 	sections.push(dateTimeReferenceSnippet(DESCRIPTION_REFERENCE_PLACEHOLDER));
-
-	// Helper ops compressed into one line — full per-op detail lives in describeOperation.
-	sections.push(
-		"For op-specific docs (required fields, params, semantics) call 'describeOperation' (param: targetOperation). " +
-		"For field metadata call 'describeFields' (param: mode='read'|'write'). " +
-		"For picklist values call 'listPicklistValues' (param: fieldId).",
-	);
-
-	// F3b fix: only advertise the parameter when the unified schema actually
-	// contains it. The schema inserts impersonationResourceId solely for write
-	// operation sets, so a read-only config (no write ops) must not advertise a
-	// field the model cannot pass (strict schemas reject it).
-	if (supportsImpersonation && schemaHasImpersonationField(operations)) {
-		sections.push("Impersonation supported: pass 'impersonationResourceId' for write attribution.");
-	}
 
 	const combined = sections.join(' ');
 	const output = truncateDescription(combined);
@@ -1056,7 +1058,7 @@ function getReadOpParams(): ReadOpParamsMap {
 	moveToCompany: {
 		required: [
 			{ field: 'sourceContactId', type: 'number', description: 'Source contact ID to move.' },
-			{ field: 'destinationCompanyId', type: 'number', description: 'Destination company ID.' },
+			{ field: 'destinationCompanyId', type: 'string', description: 'Destination company: numeric company ID or the company name (auto-resolved to an ID before the move; the root account record is never selected; unresolvable names fail closed).' },
 		],
 		optional: [
 			{

@@ -491,6 +491,30 @@ function resolveTemplate(
 	return result;
 }
 
+/**
+ * CompanyNote.assignedResourceID is required by the API. The impersonation resource
+ * (when the move runs impersonated) has data access to both companies by construction.
+ * Without impersonation, fall back to the company's OWN owner resource — the owner
+ * has data access to that company by definition. If neither yields a usable ID, the
+ * caller skips the note and the failure surfaces as a warning (fail-closed).
+ */
+async function resolveNoteAssignedResource(
+	ctx: IExecuteFunctions,
+	companyId: number,
+	impersonationResourceId: number | undefined,
+): Promise<number | undefined> {
+	if (impersonationResourceId !== undefined) return impersonationResourceId;
+	try {
+		const rec = (await autotaskApiRequest.call(ctx, 'GET', `Company/${companyId}`)) as { item?: IDataObject };
+		const owner = rec.item?.ownerResourceID;
+		const num =
+			typeof owner === 'number' ? owner : typeof owner === 'string' && /^\d+$/.test(owner) ? parseInt(owner, 10) : NaN;
+		return Number.isFinite(num) && num > 0 ? num : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 async function createAuditNotes(
 	ctx: IExecuteFunctions,
 	options: IMoveToCompanyOptions,
@@ -523,8 +547,8 @@ async function createAuditNotes(
 			const endpoint = buildChildEntityUrl('Company', 'CompanyNote', sourceCompanyId);
 			// CompanyNote API fields are name/note (title/description are not API fields);
 			// actionType 3 = 'Note: General'; the API requires an assigned resource with
-			// data access to the company (use the impersonation resource when present) and
-			// start/end dates.
+			// data access to the company — the impersonation resource when present, else
+			// the company's owner resource (ownerResourceID) — plus start/end dates.
 			const notePayload: IDataObject = {
 				companyID: sourceCompanyId,
 				contactID: options.sourceContactId,
@@ -532,8 +556,9 @@ async function createAuditNotes(
 				note: noteText,
 				actionType: 3,
 			};
-			if (options.impersonationResourceId !== undefined) {
-				notePayload.assignedResourceID = options.impersonationResourceId;
+			const sourceAssigned = await resolveNoteAssignedResource(ctx, sourceCompanyId, options.impersonationResourceId);
+			if (sourceAssigned !== undefined) {
+				notePayload.assignedResourceID = sourceAssigned;
 			}
 			const auditNow = new Date().toISOString();
 			notePayload.startDateTime = auditNow;
@@ -569,8 +594,9 @@ async function createAuditNotes(
 				note: noteText,
 				actionType: 3,
 			};
-			if (options.impersonationResourceId !== undefined) {
-				notePayload.assignedResourceID = options.impersonationResourceId;
+			const destAssigned = await resolveNoteAssignedResource(ctx, options.destinationCompanyId, options.impersonationResourceId);
+			if (destAssigned !== undefined) {
+				notePayload.assignedResourceID = destAssigned;
 			}
 			const auditNow = new Date().toISOString();
 			notePayload.startDateTime = auditNow;

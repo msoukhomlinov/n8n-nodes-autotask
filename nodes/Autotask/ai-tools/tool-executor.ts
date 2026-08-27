@@ -341,13 +341,15 @@ export async function executeAiTool(
 		}
 	}
 	const normalisedOperation = normaliseOperation(operation);
-	// F3 fix: 'query' is consumed ONLY by listPicklistValues (it filters picklist values).
-	// It previously passed through every other operation silently ignored, so the model
-	// believed a full-text search had run. Reject loudly instead of returning unfiltered data.
+	// F3 fix (round 2: type-agnostic): 'query' is consumed ONLY by listPicklistValues (it
+	// filters picklist values). It previously passed through every other operation silently
+	// ignored, so the model believed a full-text search had run. Reject loudly instead of
+	// returning unfiltered data. The guard is type-agnostic because the execute() path
+	// passes raw item.json past the Zod gate (numeric/boolean query values included).
 	if (
 		normalisedOperation !== 'listPicklistValues' &&
-		typeof params.query === 'string' &&
-		params.query.trim() !== ''
+		params.query != null &&
+		String(params.query).trim() !== ''
 	) {
 		return attachCorrelation(
 			JSON.stringify(
@@ -1335,6 +1337,10 @@ export async function executeAiTool(
 						// id 0 = root account record: not a valid move destination (fails the
 						// positive-integer gate downstream and would move contacts to the account root).
 						if (entityId <= 0) continue;
+						// Intentionally active-only (no inactive fallback pass, unlike the
+						// two-pass reference resolution in label-resolution.ts): moving a
+						// contact to an INACTIVE company is almost always a mistake, so an
+						// inactive destination fails closed via the no-match envelope.
 						const display = helper.getEntityDisplayName(entityObj);
 						if (display && display.toLowerCase() === label) {
 							matchedId = entityId;
