@@ -341,6 +341,27 @@ export async function executeAiTool(
 		}
 	}
 	const normalisedOperation = normaliseOperation(operation);
+	// F3 fix: 'query' is consumed ONLY by listPicklistValues (it filters picklist values).
+	// It previously passed through every other operation silently ignored, so the model
+	// believed a full-text search had run. Reject loudly instead of returning unfiltered data.
+	if (
+		normalisedOperation !== 'listPicklistValues' &&
+		typeof params.query === 'string' &&
+		params.query.trim() !== ''
+	) {
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					normalisedOperation,
+					ERROR_TYPES.INVALID_OPERATION,
+					`'query' has no effect on operation '${normalisedOperation}' — it only filters picklist values for operation 'listPicklistValues'. It is NOT a full-text search on records.`,
+					`Call autotask_${resource} with operation 'getMany' using filter_field/filter_value (or filtersJson) to narrow records by field values.`,
+				),
+			),
+			correlationId,
+		);
+	}
 	traceToolCall({
 		phase: 'execute-start',
 		resource,
@@ -633,8 +654,30 @@ export async function executeAiTool(
 		let parsedFiltersJson: any[] = [];
 		try {
 			const parsed: unknown = JSON.parse(params.filtersJson as string);
-			if (!Array.isArray(parsed)) throw new Error('filtersJson must be a JSON array.');
-			parsedFiltersJson = parsed;
+			if (Array.isArray(parsed)) {
+				parsedFiltersJson = parsed as any[];
+			} else if (
+				typeof parsed === 'object' &&
+				parsed !== null &&
+				'op' in (parsed as Record<string, unknown>) &&
+				Array.isArray((parsed as Record<string, unknown>).items)
+			) {
+				// Documented nested form: a single top-level {op:'and'|'or', items:[...]} group —
+				// the same group shape the flat filter path emits for filter_logic='or', which the
+				// API accepts. Enables 3+-condition OR/AND beyond the two named filter slots.
+				const group = parsed as Record<string, unknown>;
+				if (group.op !== 'and' && group.op !== 'or') {
+					throw new Error(`filtersJson group 'op' must be 'and' or 'or' (got '${String(group.op)}').`);
+				}
+				for (const item of group.items as unknown[]) {
+					if (typeof item !== 'object' || item === null || !('op' in (item as object))) {
+						throw new Error('filtersJson group: every item must have at minimum an "op" property.');
+					}
+				}
+				parsedFiltersJson = [group as any];
+			} else {
+				throw new Error('filtersJson must be a JSON array of conditions, or a single {"op":"and"|"or","items":[...]} group.');
+			}
 		} catch (e) {
 			return attachCorrelation(
 				JSON.stringify(
@@ -1259,6 +1302,89 @@ export async function executeAiTool(
 				labelWarnings.push(
 					`[INFRASTRUCTURE] Impersonation resource resolution failed: ${msg}. Provide a numeric ID instead.`,
 				);
+			}
+		}
+	}
+	// F6 fix: moveToCompany destinationCompanyId accepts a company NAME label (schema is
+	// coerce.string, matching the node's reference-field convention). Numeric values pass
+	// through unchanged; name labels resolve to a numeric company ID before the resource
+	// executor's parseRequiredPositiveInt gate. Unmatched/failed resolution fails closed.
+	if (effectiveOperation === 'moveToCompany') {
+		const rawDestCompany = params.destinationCompanyId;
+		if (typeof rawDestCompany === 'number') {
+			(params as Record<string, unknown>).destinationCompanyId = String(rawDestCompany);
+		} else if (typeof rawDestCompany === 'string' && rawDestCompany.trim() !== '') {
+			const destTrimmed = rawDestCompany.trim();
+			const destIsNumericId =
+				/^\d+$/.test(destTrimmed) && String(parseInt(destTrimmed, 10)) === destTrimmed;
+			if (destIsNumericId) {
+				(params as Record<string, unknown>).destinationCompanyId = destTrimmed;
+			} else {
+				try {
+					const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
+					const helper = new EntityValueHelper(
+						context as unknown as import('n8n-workflow').ILoadOptionsFunctions,
+						'Company',
+					);
+					const candidates = await helper.getValues(true);
+					const label = destTrimmed.toLowerCase();
+					let matchedId: number | undefined;
+					for (const entity of candidates) {
+						const entityObj = entity as unknown as IDataObject;
+						const entityId = entityObj.id as number;
+						// id 0 = root account record: not a valid move destination (fails the
+						// positive-integer gate downstream and would move contacts to the account root).
+						if (entityId <= 0) continue;
+						const display = helper.getEntityDisplayName(entityObj);
+						if (display && display.toLowerCase() === label) {
+							matchedId = entityId;
+							break;
+						}
+					}
+					if (matchedId !== undefined) {
+						// Mirror into BOTH consumption paths: params (override-A default case) and
+						// fieldValues (override-A 'requestData'/'fieldsToMap' cases, which override-B in
+						// resources/tool/execute.ts prefers for unmapped keys). Without the fieldValues
+						// mirror the resource executor reads the pre-resolution label from requestData.
+						(params as Record<string, unknown>).destinationCompanyId = String(matchedId);
+						if (Object.prototype.hasOwnProperty.call(fieldValues, 'destinationCompanyId')) {
+							(fieldValues as Record<string, unknown>).destinationCompanyId = String(matchedId);
+						}
+						labelResolutions.push({
+							field: 'destinationCompanyId',
+							from: destTrimmed,
+							to: matchedId,
+							method: 'reference',
+						});
+					} else {
+						return attachCorrelation(
+							JSON.stringify(
+								wrapError(
+									resource,
+									effectiveOperation,
+									ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
+									`Write blocked: No match found for field(s): 'destinationCompanyId' (company name '${destTrimmed}').`,
+									`Resolve the destination company name to a numeric company ID (e.g. autotask_company with operation 'getMany'), then retry autotask_${resource} with operation 'moveToCompany'.`,
+								),
+							),
+							correlationId,
+						);
+					}
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					return attachCorrelation(
+						JSON.stringify(
+							wrapError(
+								resource,
+								effectiveOperation,
+								ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
+								`Write blocked: destination company resolution failed for '${destTrimmed}': ${msg}`,
+								`Provide the destination company as a numeric company ID and retry autotask_${resource} with operation 'moveToCompany'.`,
+							),
+						),
+						correlationId,
+					);
+				}
 			}
 		}
 	}

@@ -2,6 +2,22 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.28.10] - 2026-08-27
+
+### Fixed
+
+- **`query` param no longer silently ignored on record searches** — `query` only filters picklist values (operation `listPicklistValues`). Passing it on `getMany`/`count`/other operations now returns a clean `INVALID_OPERATION` envelope explaining its real scope instead of returning the unfiltered population as if a full-text search had run. The schema description now states the picklist-only scope.
+- **`filtersJson` now accepts the documented nested AND/OR form** — a single top-level `{"op":"and"|"or","items":[...]}` group is accepted (previously rejected with "must be a JSON array" even though the description advertised the nested form). This makes 3+-condition OR/AND searches possible beyond the two named filter slots.
+- **`moveToCompany` `destinationCompanyId` now accepts a company name** — the field is typed `string` (matching the node's reference-field convention) and name labels are resolved to the numeric company ID before the move (reported in `resolvedLabels`). The root account record (ID 0) is never selected as a destination; unresolvable names fail closed with `WRITE_RESOLUTION_INCOMPLETE`. Previously a name label failed with a raw schema rejection and no label path existed.
+- **`moveToCompany` audit notes are actually created and visible** — the mover posted non-API fields (`title`/`description`/`publish` instead of `name`/`note`), so the Autotask API rejected every audit-note write and the failure was swallowed on the success path. The mover now uses the real CompanyNote fields (`name`/`note`, `actionType` = "Note: General", required dates, the impersonation resource when the move runs impersonated), and the success envelope surfaces `auditNotes` (created note IDs) and any mover `warnings` at the root.
+- **`NO_RESULTS_FOUND` / `PERMISSION_DENIED` recovery text now references the unified tool** — both `nextAction` strings now name `autotask_<resource>` with the operation, matching the house convention the other error classes already follow.
+- **`autotask_configurationItemWebhook` no longer advertises `count`** — the upstream API rejects count for Configuration Item Webhooks ("Operation count is not supported"), so the operation is excluded from the tool surface (same pattern as the inert company `delete`).
+- **Contract block guidance for schema rejections** — tool descriptions now state that schema rejection text names the offending parameter and that the model should correct that parameter rather than retry the same payload.
+
+### Changed
+
+- `destinationCompanyId` schema type on `autotask_contact` changed from integer to coerced string (accepts both numeric IDs and company names) — part of the `moveToCompany` label-resolution fix above.
+
 ## [2.28.9] - 2026-08-26
 
 ### Fixed

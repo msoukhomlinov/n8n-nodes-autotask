@@ -237,7 +237,7 @@ export function formatApiError(
 			operation,
 			ERROR_TYPES.PERMISSION_DENIED,
 			message,
-			'Verify API user security level and line-of-business permissions. Data can exist but still be inaccessible.',
+			`Verify API user security level and line-of-business permissions before retrying autotask_${resource} with operation '${operation}'. Data can exist but still be inaccessible.`,
 		);
 	}
 

@@ -52,7 +52,7 @@ export function buildToolContractBlock(): string {
 	return [
 		'CAPABILITIES: filter/count/paging only. No groupBy/aggregation/server-side sort. Cross-entity lookups need two steps (child first → parent with filter_op=in), except documented convenience ops.',
 		"EFFICIENCY: use operation='count' for totals-only questions. For grouped/top-N analysis pair operation='getMany' with sparse fields (e.g. fields='id,city') + returnAll=true — sparse fields lifts the 500-record payload cap. Aggregation is client-side.",
-		'ERRORS: when "error":true, the "nextAction" field is a directive — execute it before retrying. Never retry an unchanged failed call.',
+		'ERRORS: when "error":true, the "nextAction" field is a directive — execute it before retrying. Never retry an unchanged failed call. If a call is rejected by the input schema, the rejection text names the offending parameter — correct that parameter (type or value) and retry; do not retry the same payload.',
 	].join('\n');
 }
 

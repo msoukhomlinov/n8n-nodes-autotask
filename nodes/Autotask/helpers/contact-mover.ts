@@ -521,14 +521,23 @@ async function createAuditNotes(
 		try {
 			const noteText = resolveTemplate(options.sourceAuditNote, templateVars);
 			const endpoint = buildChildEntityUrl('Company', 'CompanyNote', sourceCompanyId);
+			// CompanyNote API fields are name/note (title/description are not API fields);
+			// actionType 3 = 'Note: General'; the API requires an assigned resource with
+			// data access to the company (use the impersonation resource when present) and
+			// start/end dates.
 			const notePayload: IDataObject = {
 				companyID: sourceCompanyId,
 				contactID: options.sourceContactId,
-				title: 'Contact Transferred',
-				description: noteText,
-				actionType: 1,
-				publish: 1,
+				name: 'Contact Transferred',
+				note: noteText,
+				actionType: 3,
 			};
+			if (options.impersonationResourceId !== undefined) {
+				notePayload.assignedResourceID = options.impersonationResourceId;
+			}
+			const auditNow = new Date().toISOString();
+			notePayload.startDateTime = auditNow;
+			notePayload.endDateTime = auditNow;
 			await applyRequiredFieldDefaults('CompanyNote', ctx, notePayload, warnings);
 			const response = await withInactiveRefRetry(ctx, warnings, async () =>
 				autotaskApiRequest.call(
@@ -556,11 +565,16 @@ async function createAuditNotes(
 			const notePayload: IDataObject = {
 				companyID: options.destinationCompanyId,
 				contactID: newContactId,
-				title: 'Contact Transferred',
-				description: noteText,
-				actionType: 1,
-				publish: 1,
+				name: 'Contact Transferred',
+				note: noteText,
+				actionType: 3,
 			};
+			if (options.impersonationResourceId !== undefined) {
+				notePayload.assignedResourceID = options.impersonationResourceId;
+			}
+			const auditNow = new Date().toISOString();
+			notePayload.startDateTime = auditNow;
+			notePayload.endDateTime = auditNow;
 			await applyRequiredFieldDefaults('CompanyNote', ctx, notePayload, warnings);
 			const response = await withInactiveRefRetry(ctx, warnings, async () =>
 				autotaskApiRequest.call(

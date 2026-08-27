@@ -139,6 +139,15 @@ interface MutationValidationResult {
 	outcome?: 'skipped' | 'dry-run';
 	/** Root context fields for no-change outcomes (sourceContactId, destinationCompanyId, duplicateContactId, warnings). */
 	noChangeContext?: Record<string, unknown>;
+	/**
+	 * F7b: root context fields for CHANGE outcomes (moveToCompany success) — mover
+	 * warnings + auditNotes — so a successful move no longer swallows audit-note
+	 * creation failures. Merged into the ToolResponseContext at envelope build time.
+	 */
+	mutationContext?: {
+		resolutionWarnings?: string[];
+		auditNotes?: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
+	};
 	errorType?: string;
 	message?: string;
 	hint?: string;
@@ -262,7 +271,24 @@ export function dispatchOperationResponse(
 					}
 					return { ok: true, outcome: 'dry-run', noChangeContext };
 				}
-				if (hasMovedId) return { ok: true, id: movedId };
+				if (hasMovedId) {
+					const mutationContext: NonNullable<MutationValidationResult['mutationContext']> = {};
+					if (Array.isArray(record?.warnings) && (record.warnings as string[]).length > 0) {
+						mutationContext.resolutionWarnings = record.warnings as string[];
+					}
+					if (
+						record?.auditNotes &&
+						typeof record.auditNotes === 'object' &&
+						!Array.isArray(record.auditNotes)
+					) {
+						const an = record.auditNotes as Record<string, unknown>;
+						mutationContext.auditNotes = {
+							sourceCompanyNoteId: typeof an.sourceCompanyNoteId === 'number' ? an.sourceCompanyNoteId : 0,
+							destinationCompanyNoteId: typeof an.destinationCompanyNoteId === 'number' ? an.destinationCompanyNoteId : 0,
+						};
+					}
+					return { ok: true, id: movedId, ...(Object.keys(mutationContext).length > 0 ? { mutationContext } : {}) };
+				}
 				return {
 					ok: false,
 					errorType: ERROR_TYPES.API_ERROR,
@@ -391,7 +417,7 @@ export function dispatchOperationResponse(
 					operation,
 					ERROR_TYPES.NO_RESULTS_FOUND,
 					`No ${resource} records matched the supplied filters.`,
-					`Definitive negative — do not retry with the same filters. Broaden or change filter_field/filter_value and retry.`,
+					`Definitive negative — do not retry with the same filters. Broaden or change filter_field/filter_value and retry autotask_${resource} with operation 'getMany' (or a different operation).`,
 					contextFields,
 				),
 			);
@@ -496,8 +522,19 @@ export function dispatchOperationResponse(
 				? (firstRecord.item as Record<string, unknown>)
 				: firstRecord ?? undefined;
 
+		// F7b: hoist mover warnings/auditNotes (mutationContext) into the envelope context so
+		// a successful move surfaces audit-note failures instead of swallowing them.
+		const mergedContext: ToolResponseContext = validation.mutationContext
+			? {
+					...context,
+					auditNotes: validation.mutationContext.auditNotes,
+					resolutionWarnings: validation.mutationContext.resolutionWarnings
+						? [...(context.resolutionWarnings ?? []), ...validation.mutationContext.resolutionWarnings]
+						: context.resolutionWarnings,
+				}
+			: context;
 		return JSON.stringify(
-			buildMutationResponse(resource, operation, validation.id ?? 'unknown', mutationRecord, context),
+			buildMutationResponse(resource, operation, validation.id ?? 'unknown', mutationRecord, mergedContext),
 		);
 	}
 
