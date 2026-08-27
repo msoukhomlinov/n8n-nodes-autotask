@@ -1,10 +1,16 @@
 import type { FieldMeta } from '../helpers/aiHelper';
-import { getEntityMetadata } from '../constants/entities';
+import { getEntityMetadata, entityNameForResource } from '../constants/entities';
 import { getAiIdentityHint } from '../constants/ai-identity';
 import { AI_TOOL_DEBUG_VERBOSE, redactForVerbose, traceDescriptionBuild } from './debug-trace';
 import { getOperationContractRuleText } from './operation-contracts';
 import { isWriteOperation } from './operation-metadata';
-import { RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION, RESOURCE_EXTRA_HINTS } from './resource-language';
+import { schemaHasImpersonationField } from './schema-generator';
+import {
+	RESOURCES_WITH_PRIORITY,
+	RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION,
+	RESOURCE_EXTRA_HINTS,
+} from './resource-language';
+import { getIdentifierPairConfig } from '../constants/resource-operations';
 import { MAX_RESPONSE_RECORDS } from './operation-handlers/operation-dispatch';
 import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
 
@@ -73,7 +79,10 @@ function listDateTimeFieldHint(readFields: FieldMeta[]): string {
 }
 
 function getParentRequirement(resourceName: string): string | null {
-	const metadata = getEntityMetadata(resourceName);
+	// resourceName is a resource key; metadata is keyed by entity name. Resolve first so
+	// resourceKey-override entities (e.g. 'configurationItems') get the same parent
+	// hints as name-derived keys.
+	const metadata = getEntityMetadata(entityNameForResource(resourceName));
 	return metadata?.parentIdField ?? null;
 }
 
@@ -343,6 +352,7 @@ export function buildCompanySearchByIdentityDescription(resourceName: string): s
 		'Accepts companyName, email, and website/domain; ranks candidates by confidence. ' +
 		'Domain is normalised from website first, then email; domain matching runs first (company website fields, then contact-email fallback). ' +
 		'If domain signals are weak or absent, companyName contains matching is executed and merged into the confidence-ranked candidate list. ' +
+		"At least one of companyName, email, or website is required — a call with no identity signal is rejected before any search. " +
 		"Use 'fields' to limit returned company fields; omit for full records. " +
 		describeFieldsHint(resourceName)
 	);
@@ -428,12 +438,14 @@ export function buildTicketGetByCompanyAndStatusDescription(resource: string): s
 export function buildGetByCompanyAndStatusDescription(resource: string): string {
 	const lang = RESOURCE_LANGUAGE_CONFIG[resource];
 	const recordsLabel = lang?.label ?? `${resource} records`;
+	const terminalLabel = lang?.terminalStatusLabel ?? 'Complete or Cancelled';
 	const optionalParts = ['status'];
 	if (lang?.hasPriority) optionalParts.push('priority');
 	return (
 		`Filter ${recordsLabel} by company and optionally by ${optionalParts.join(' or ')}. ` +
 		"Required: 'company' (name or numeric ID, auto-resolved). " +
 		`Optional: ${optionalParts.map((p) => `'${p}'`).join(', ')} (labels or numeric IDs, auto-resolved). ` +
+		`By default terminal statuses (${terminalLabel}) are excluded — pass an explicit status to include them. ` +
 		"Use 'recency', 'since', or 'until' to narrow by date. " +
 		"Use 'returnAll' for full result sets."
 	);
@@ -546,6 +558,9 @@ export function buildContactMoveToCompanyDescription(resourceName: string): stri
 		'Move a contact to another company by cloning the contact record and optional related data. ' +
 		'Includes duplicate-email safeguards, optional company note and attachment copy, contact group copy, and configurable source/destination audit notes. ' +
 		'Supports impersonation for write attribution, with fallback when impersonation is denied. ' +
+		'RESULTS: a successful move reports the new clone contact ID as the top-level id. ' +
+		'When the duplicate-email safeguard skips the move (skipIfDuplicateEmailFound=true), NO changes are made — the response reports outcome=\'skipped\' with no top-level id ' +
+		'(the pre-existing duplicate contact, if any, is reported as duplicateContactId); a dry run reports outcome=\'dry-run\' the same way. ' +
 		`If field names or expected behaviour are uncertain, call autotask_${resourceName} with operation 'describeFields' first.`
 	);
 }
@@ -687,7 +702,11 @@ export function buildUnifiedDescriptionTemplate(
 		"For picklist values call 'listPicklistValues' (param: fieldId).",
 	);
 
-	if (supportsImpersonation) {
+	// F3b fix: only advertise the parameter when the unified schema actually
+	// contains it. The schema inserts impersonationResourceId solely for write
+	// operation sets, so a read-only config (no write ops) must not advertise a
+	// field the model cannot pass (strict schemas reject it).
+	if (supportsImpersonation && schemaHasImpersonationField(operations)) {
 		sections.push("Impersonation supported: pass 'impersonationResourceId' for write attribution.");
 	}
 
@@ -703,7 +722,7 @@ export function buildUnifiedDescriptionTemplate(
 			identifierPairNoteIncluded: operations.some(
 				(op) => op === 'slaHealthCheck' || op === 'summary' || op === 'getFullDetail',
 			),
-			impersonationNoteIncluded: supportsImpersonation,
+			impersonationNoteIncluded: supportsImpersonation && schemaHasImpersonationField(operations),
 			truncationApplied: combined.length !== output.length,
 			finalLength: output.length,
 			...(AI_TOOL_DEBUG_VERBOSE ? { descriptionPreview: redactForVerbose(output) } : {}),
@@ -774,8 +793,21 @@ const SEARCH_BY_KEYWORD_NOTES: readonly string[] = [
 	"Per-stage cap is 200 records. If a stage hits the cap, set includeNotes/includeTimeEntries=false or narrow the keyword.",
 ];
 
-type ReadOpParamsMap = Record<string, { required: OperationParam[]; optional: OperationParam[] }>;
+type ReadOpParams = { required: OperationParam[]; optional: OperationParam[] };
+type ReadOpParamsMap = Record<string, ReadOpParams | ((resource: string) => ReadOpParams)>;
 let _readOpParamsCache: ReadOpParamsMap | undefined;
+
+/**
+ * Resolve the parameter block for a read/metadata operation. Entries that depend on
+ * the resource (e.g. 'priority' is only published on ticket; ticket's identifier-pair
+ * ops accept id OR ticketNumber) are functions of the resource key; all others are
+ * static. Fallback for unknown operations is an empty block (unchanged behaviour).
+ */
+function resolveReadOpParams(resource: string, operation: string): ReadOpParams {
+	const entry = getReadOpParams()[operation];
+	if (entry === undefined) return { required: [], optional: [] };
+	return typeof entry === 'function' ? entry(resource) : entry;
+}
 
 /**
  * Static parameter map for read and metadata operations. Built lazily (first call, memoized)
@@ -1030,7 +1062,8 @@ function getReadOpParams(): ReadOpParamsMap {
 			{
 				field: 'skipIfDuplicateEmailFound',
 				type: 'boolean',
-				description: 'Skip move on duplicate email (default true).',
+				description:
+					"Skip move on duplicate email (default true). If skipped, the move makes no changes: the result is outcome='skipped' with no top-level id.",
 			},
 			{
 				field: 'copyContactGroups',
@@ -1107,6 +1140,223 @@ function getReadOpParams(): ReadOpParamsMap {
 			{ field: 'excludeTerminalStatuses', type: 'boolean', description: 'Exclude Complete/Cancelled (ticket only, default true).' },
 			{ field: 'fields', type: 'string', description: fieldsDesc() },
 		],
+	},
+	// F3: the special read ops previously published EMPTY parameters blocks (their
+	// requirements lived only in purpose prose), so describeOperation could not tell a
+	// model which fields each op actually takes. Blocks below mirror the fields the
+	// schema generator publishes for each op (same resource gates: RESOURCES_WITH_PRIORITY
+	// for 'priority', IDENTIFIER_PAIR_OPERATIONS for ticket's id/ticketNumber pair).
+	countByPeriod: (resource: string) => ({
+		required: [
+			{
+				field: 'period',
+				type: 'string',
+				description:
+					'Named period preset for createDate range: today, this_week, last_7d, this_month, last_month, this_quarter, last_quarter, last_30d, last_90d.',
+			},
+		],
+		optional: [
+			{ field: 'company', type: 'string', description: 'Company name or numeric companyID (auto-resolved).' },
+			{ field: 'status', type: 'string', description: 'Status picklist label or ID.' },
+			...(RESOURCES_WITH_PRIORITY.has(resource)
+				? [{ field: 'priority', type: 'string', description: 'Priority picklist label or ID.' }]
+				: []),
+		],
+	}),
+	searchByKeyword: {
+		required: [
+			{
+				field: 'keyword',
+				type: 'string',
+				description:
+					"Keyword to search — matches title and description (always); TicketNotes.description if includeNotes=true; TimeEntries.summaryNotes if includeTimeEntries=true. Case-insensitive 'contains' match.",
+			},
+		],
+		optional: [
+			{
+				field: 'includeNotes',
+				type: 'boolean',
+				description: 'When true, also search TicketNotes.description (default false). Capped at 200 matched notes.',
+			},
+			{
+				field: 'includeTimeEntries',
+				type: 'boolean',
+				description: 'When true, also search TimeEntries.summaryNotes (default false). Capped at 200 matched time entries.',
+			},
+			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{
+				field: 'recency',
+				type: 'string',
+				description: 'Preset window — applied to the merged set post-merge, not per-stage.',
+			},
+		],
+	},
+	getByCompanyAndStatus: (resource: string) => {
+		const terminalLabel = RESOURCE_LANGUAGE_CONFIG[resource]?.terminalStatusLabel ?? 'Complete or Cancelled';
+		return {
+			required: [
+				{
+					field: 'company',
+					type: 'string',
+					description: 'Company name or numeric companyID (auto-resolved). Required for getByCompanyAndStatus.',
+				},
+			],
+			optional: [
+				{
+					field: 'status',
+					type: 'string',
+					description: `Status picklist label or ID. Omit: terminal statuses (${terminalLabel}) are excluded by default — pass an explicit status (e.g. Complete) to include them.`,
+				},
+				...(RESOURCES_WITH_PRIORITY.has(resource)
+					? [{ field: 'priority', type: 'string', description: 'Priority picklist label or ID.' }]
+					: []),
+				{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+				{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+				{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
+				{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+				{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+				{ field: 'recency_field', type: 'string', description: 'Date/time field for recency/since/until (e.g. createDate). Default: first available date field.' },
+			],
+		};
+	},
+	getUnassigned: (resource: string) => ({
+		required: [],
+		optional: [
+			{
+				field: 'company',
+				type: 'string',
+				description: 'Company name or numeric companyID (auto-resolved). Omit for all companies.',
+			},
+			...(RESOURCES_WITH_PRIORITY.has(resource)
+				? [{ field: 'priority', type: 'string', description: 'Priority picklist label or ID.' }]
+				: []),
+			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'recency_field', type: 'string', description: 'Date/time field for recency/since/until (e.g. createDate). Default: first available date field.' },
+		],
+	}),
+	getBySLAStatus: {
+		required: [
+			{
+				field: 'slaStatus',
+				type: 'string',
+				description:
+					"'breached' (SLA missed), 'at_risk' (within atRiskWindowHours of deadline), or 'compliant' (SLA met).",
+			},
+		],
+		optional: [
+			{
+				field: 'atRiskWindowHours',
+				type: 'number',
+				description: 'Hours before resolvedDueDateTime to consider a ticket at-risk (default 4). Only applies when slaStatus=at_risk.',
+			},
+			{ field: 'company', type: 'string', description: 'Company name or numeric companyID (auto-resolved).' },
+			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'recency_field', type: 'string', description: 'Date/time field for recency/since/until (e.g. createDate). Default: first available date field.' },
+		],
+	},
+	getByAge: (resource: string) => ({
+		required: [
+			{
+				field: 'olderThanDays',
+				type: 'number',
+				description:
+					'Return records older than N days (e.g. 30 for records created more than 30 days ago). Positive integer.',
+			},
+		],
+		optional: [
+			{ field: 'company', type: 'string', description: 'Company name or companyID (auto-resolved).' },
+			{ field: 'status', type: 'string', description: 'Status picklist label or ID (optional).' },
+			...(RESOURCES_WITH_PRIORITY.has(resource)
+				? [{ field: 'priority', type: 'string', description: 'Priority picklist label or ID (optional).' }]
+				: []),
+			{ field: 'limit', type: 'number', description: READ_PARAM_DESC.limit },
+			{ field: 'returnAll', type: 'boolean', description: returnAllDesc() },
+			{ field: 'recency', type: 'string', description: 'Preset window (e.g. last_7d).' },
+			{ field: 'since', type: 'string', description: READ_PARAM_DESC.since },
+			{ field: 'until', type: 'string', description: READ_PARAM_DESC.until },
+			{ field: 'recency_field', type: 'string', description: 'Date/time field for recency/since/until (e.g. createDate). Default: first available date field.' },
+		],
+	}),
+	getFullDetail: (resource: string) => {
+		const idPair = getIdentifierPairConfig(resource, 'getFullDetail');
+		const childCountsNote =
+			'childCounts (notes, charges, tasks, phases) and a summary are always included — no parameter needed.';
+		if (idPair) {
+			return {
+				required: [],
+				optional: [
+					{
+						field: 'id',
+						type: 'number',
+						description: `Numeric ${resource} ID (required if ${idPair.altIdField} not provided). ${childCountsNote}`,
+					},
+					{
+						field: idPair.altIdField,
+						type: 'string',
+						description: `Ticket number ${idPair.altIdFormat} (required if id not provided). ${childCountsNote}`,
+					},
+				],
+			};
+		}
+		return {
+			required: [{ field: 'id', type: 'number', description: `Numeric ${resource} ID. ${childCountsNote}` }],
+			optional: [],
+		};
+	},
+	timeline: (resource: string) => {
+		const idPair = getIdentifierPairConfig(resource, 'timeline');
+		if (idPair) {
+			return {
+				required: [],
+				optional: [
+					{
+						field: 'id',
+						type: 'number',
+						description: `Numeric Ticket ID (required if ${idPair.altIdField} not provided).`,
+					},
+					{
+						field: idPair.altIdField,
+						type: 'string',
+						description: `Ticket number T{date}.{seq} (required if id not provided).`,
+					},
+					{ field: 'since', type: 'string', description: 'ISO 8601 date — filter events on or after this date.' },
+					{ field: 'until', type: 'string', description: 'ISO 8601 date — filter events on or before this date.' },
+					{
+						field: 'resourceId',
+						type: 'string',
+						description: 'Filter by resource name or numeric ID — applies to note author, time entry resource, history actor.',
+					},
+					{
+						field: 'includeHistories',
+						type: 'boolean',
+						description: 'Include field-change audit history events (default false — can be high volume on active tickets).',
+					},
+					{
+						field: 'textLimit',
+						type: 'number',
+						description: 'Max characters for note/entry text fields (default 500; 0 = no limit).',
+					},
+					{
+						field: 'limit',
+						type: 'number',
+						description: 'Max events per entity type — notes, time entries, histories each capped independently (default 50).',
+					},
+				],
+			};
+		}
+		return {
+			required: [{ field: 'id', type: 'number', description: 'Numeric entity ID.' }],
+			optional: [],
+		};
 	},
 	getByYear: {
 		required: [
@@ -1347,6 +1597,12 @@ function getOperationNotes(resource: string, operation: string): string[] {
 			return [...contractNotes];
 		case 'searchByKeyword':
 			return [...contractNotes, ...SEARCH_BY_KEYWORD_NOTES];
+		case 'searchByDomain':
+		case 'searchByIdentity':
+			return [
+				...contractNotes,
+				'COVERAGE: the scan is a bounded window over the company population — the response carries coverage fields (scanned, totalAvailable, windowComplete). When windowComplete=false (summary says PARTIAL coverage; isTruncated=true, truncationReason=bounded-scan or derived-candidate-cap — truncationNote names the truncating stage), matching companies outside the window or beyond the candidate cap may be missing; a no-match within the window is not proof that no company has that domain or identity.',
+			];
 		case 'getByAge':
 		case 'getByCompanyAndStatus':
 		case 'getUnassigned':
@@ -1383,11 +1639,11 @@ export function buildOperationDoc(
 		writeFields,
 	);
 
-	let parameters: { required: OperationParam[]; optional: OperationParam[] };
+	let parameters: ReadOpParams;
 	if (WRITE_OPS_WITH_FIELD_METADATA.has(targetOperation)) {
 		parameters = buildWriteParams(writeFields, targetOperation === 'createIfNotExists');
 	} else {
-		parameters = getReadOpParams()[targetOperation] ?? { required: [], optional: [] };
+		parameters = resolveReadOpParams(resource, targetOperation);
 	}
 
 	const notes = getOperationNotes(resource, targetOperation);

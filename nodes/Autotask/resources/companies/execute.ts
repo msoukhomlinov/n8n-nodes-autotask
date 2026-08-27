@@ -105,6 +105,16 @@ export async function executeCompanyOperation(
 				}
 
 				default:
+					if (operation === 'delete') {
+						// The Autotask API has no Company deletion endpoint — delete is
+						// deliberately not published for this resource (v2.28.5). Name
+						// the real cause instead of the generic "not supported" throw so
+						// a model (or workflow) that still sends delete gets an
+						// actionable answer instead of an opaque API_ERROR.
+						throw new Error(
+							'Operation delete is not supported for Company — the Autotask API has no Company deletion endpoint. Remove delete from the node operations.',
+						);
+					}
 					throw new Error(`Operation ${operation} is not supported`);
 			}
 		} catch (error) {

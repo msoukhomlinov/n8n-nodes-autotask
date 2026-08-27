@@ -1,4 +1,4 @@
-import { getEntityMetadata } from '../constants/entities';
+import { getEntityMetadata, entityNameForResource } from '../constants/entities';
 
 // ---------------------------------------------------------------------------
 // Error type constants
@@ -19,6 +19,7 @@ export const ERROR_TYPES = {
 	INVALID_FIELDS: 'INVALID_FIELDS',
 	INVALID_WRITE_FIELDS: 'INVALID_WRITE_FIELDS',
 	INVALID_FILTER_CONSTRAINT: 'INVALID_FILTER_CONSTRAINT',
+	INVALID_DEDUP_FIELD: 'INVALID_DEDUP_FIELD',
 	MISSING_REQUIRED_FIELDS: 'MISSING_REQUIRED_FIELDS',
 	WRITE_RESOLUTION_INCOMPLETE: 'WRITE_RESOLUTION_INCOMPLETE',
 	INVALID_INPUT: 'INVALID_INPUT',
@@ -58,6 +59,7 @@ const ACTIONABLE_PREFIX_TYPES = new Set<string>([
 	ERROR_TYPES.MISSING_REQUIRED_FIELDS,
 	ERROR_TYPES.ENTITY_NOT_FOUND,
 	ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+	ERROR_TYPES.INVALID_DEDUP_FIELD,
 ]);
 
 export function wrapError(
@@ -192,6 +194,23 @@ export function formatApiError(
 		return formatRateLimitError(resource, operation, retryAfterSeconds);
 	}
 
+	// E1 fix — not-found must win over permission. Autotask tags error bodies with
+	// [NotFoundError] / [NotFound] / [NotExists*] and the same message can hedge
+	// with a "permission" phrase (e.g. the sandbox's
+	// "[NotFoundError] The contacts with ID 999999999 was not found. Please verify
+	// the ID is correct and that you have permission to access this record."),
+	// which the permission branch used to classify as PERMISSION_DENIED with a
+	// misleading recovery path. The deterministic tag is checked first.
+	if (/\[(NotFoundError|NotFound|NotExists\w*)\]/i.test(message)) {
+		return wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.ENTITY_NOT_FOUND,
+			message,
+			`Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID, then retry.`,
+		);
+	}
+
 	if (
 		lowerMessage.includes('lock')
 		|| lowerMessage.includes('concurrent')
@@ -211,6 +230,7 @@ export function formatApiError(
 		|| lowerMessage.includes('unauthor')
 		|| lowerMessage.includes('permission')
 		|| lowerMessage.includes('access denied')
+		|| lowerMessage.includes('access is denied')
 	) {
 		return wrapError(
 			resource,
@@ -221,7 +241,37 @@ export function formatApiError(
 		);
 	}
 
-	if (lowerMessage.includes('picklist') || lowerMessage.includes('invalid value')) {
+	// v2.28.9 r8 (NIT-2): a FIELD-level "not found" body (e.g. "The picklist field
+	// 'status' was not found on entity Ticket") is a schema/metadata problem, not a
+	// missing record — the truthful recovery is describeFields, not a record search
+	// or a picklist listing. Runs after the required-field classifier (so
+	// "Required field … not found in entity …" keeps MISSING_REQUIRED_FIELDS) and
+	// before the untagged not-found fallback (which would say ENTITY_NOT_FOUND).
+	if (
+		!lowerMessage.includes('required')
+		&& /\bfield\b[^.\n]{0,40}(was |is |has )?not found|\bno such field\b/.test(lowerMessage)
+	) {
+		return wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.INVALID_FIELDS,
+			message,
+			`Call autotask_${resource} with operation 'describeFields' to verify the field name, then retry with a field the entity publishes.`,
+			undefined,
+			['describeFields'],
+		);
+	}
+
+	// v2.28.9 r7 (N4, r8 NIT-1 tightened): the "…is not a valid value for field X"
+	// phrasing family is a value/picklist rejection — match the VALUE phrasing
+	// explicitly instead of a bare 'is not a valid' clause, which over-matched
+	// non-picklist validation bodies ("is not a valid email address", "is not a
+	// valid quantity") and sent them down the listPicklistValues recovery path.
+	if (
+		lowerMessage.includes('picklist')
+		|| lowerMessage.includes('invalid value')
+		|| lowerMessage.includes('not a valid value')
+	) {
 		return wrapError(
 			resource,
 			operation,
@@ -243,6 +293,15 @@ export function formatApiError(
 		);
 	}
 
+	// v2.28.9 r7 (C2/N3): the UNtagged "not found" / "does not exist" fallback runs
+	// AFTER the concurrency, permission, picklist and required-field classifiers — those
+	// messages keep their specific actionable types even when they also mention a missing
+	// record (previously this check pre-empted all of them: "Picklist value 'foo' not
+	// found" and "Required field 'name' not found in entity …" both became
+	// ENTITY_NOT_FOUND, and lock/concurrency messages with a not-found phrase lost the
+	// CONCURRENCY_CONFLICT type). The TAGGED [NotFoundError…] check above still wins
+	// outright for Autotask's canonical not-found bodies (E1, including bodies that hedge
+	// with "permission" wording).
 	if (lowerMessage.includes('not found') || lowerMessage.includes('does not exist')) {
 		return wrapError(
 			resource,
@@ -255,7 +314,9 @@ export function formatApiError(
 
 	const parentMatch = message.match(/Invalid parent ID type for (\w+)/i);
 	if (parentMatch) {
-		const parentField = getEntityMetadata(resource)?.parentIdField;
+		// resource is a resource key; metadata is keyed by entity name (resourceKey
+		// overrides like 'configurationItems' would otherwise miss).
+		const parentField = getEntityMetadata(entityNameForResource(resource))?.parentIdField;
 		if (parentField) {
 			return wrapError(
 				resource,

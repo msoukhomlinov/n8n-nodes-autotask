@@ -1,7 +1,6 @@
 import { NodeOperationError } from 'n8n-workflow';
 import type {
 	IDataObject,
-	ICredentialDataDecryptedObject,
 	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	INodeType,
@@ -18,6 +17,7 @@ import {
 	type ToolExecutorParams,
 	N8N_METADATA_FIELDS,
 	N8N_METADATA_PREFIXES,
+	EXPLICITNESS_SENSITIVE_KEYS,
 } from './ai-tools/tool-executor';
 import {
 	buildUnifiedDescriptionTemplate,
@@ -37,7 +37,7 @@ import {
 	type OperationContractViolation,
 } from './ai-tools/operation-contracts';
 import { computeMetadataRevision } from './helpers/cache/init';
-import { hashCachePayload } from './helpers/cache/service';
+import { resolveCredentialIdentity } from './helpers/cache/service';
 import {
 	AI_TOOL_DEBUG_VERBOSE,
 	redactForVerbose,
@@ -159,24 +159,6 @@ function getMetadataNeeds(operations: string[]): { needsReadFields: boolean; nee
 	return { needsReadFields, needsWriteFields };
 }
 
-async function resolveCredentialIdentity(
-	context: ISupplyDataFunctions | IExecuteFunctions,
-): Promise<string | null> {
-	try {
-		const credentials = (await context.getCredentials(
-			'autotaskApi',
-		)) as ICredentialDataDecryptedObject;
-		return hashCachePayload({
-			username: credentials.Username,
-			integrationCode: credentials.APIIntegrationcode,
-			zone: credentials.zone,
-			customZoneUrl: credentials.customZoneUrl,
-		}).slice(0, 16);
-	} catch {
-		return null;
-	}
-}
-
 async function resolveMetadataForTool(
 	context: ISupplyDataFunctions | IExecuteFunctions,
 	resource: string,
@@ -276,8 +258,14 @@ function formatResourceName(value: string): string {
  * 1. Strips n8n framework metadata (`sessionId`, `chatInput`, `Prompt__*`, etc.) — except `operation`,
  *    which is preserved because it is a required Zod schema field. This prevents false "unknown key"
  *    noise in error messages and mirrors what `supplyData() → func()` does via Zod `.strip()` semantics.
- * 2. Converts `null` → `undefined` for every remaining field. LLMs (especially weaker ones like Qwen)
- *    frequently emit JSON `null` for "not applicable" fields (e.g. `{ "id": null, "ticketNumber": "T20240615.0674" }`).
+ * 2. Converts `null` → `undefined` for every remaining field — EXCEPT the keys in
+ *    `EXPLICITNESS_SENSITIVE_KEYS` (status/priority — shared with executeAiTool's
+ *    null normalisation): an explicit `null` there is "explicit but unusable" (F-5),
+ *    not "not supplied" — collapsing it made the execute() path silently skip the
+ *    filter on an input that must error, so those keys keep their `null` and the
+ *    handlers' `isUnusablePicklistParam` guards reject it on BOTH paths.
+ *    LLMs (especially weaker ones like Qwen) frequently emit JSON `null` for "not applicable"
+ *    fields (e.g. `{ "id": null, "ticketNumber": "T20240615.0674" }`).
  *    Our schema uses `.nullish()` on all optional fields (v2.10+), which accepts both `null` and `undefined`;
  *    this normalisation is belt-and-braces, ensuring uniform "not provided" handling regardless of how the LLM spells it.
  */
@@ -287,7 +275,8 @@ function stripAndNormaliseItemJson(itemJson: Record<string, unknown>): Record<st
 		// operation is a required schema field — NEVER strip it
 		if (key !== 'operation' && N8N_METADATA_FIELDS.has(key)) continue;
 		if (N8N_METADATA_PREFIXES.some((p) => key.startsWith(p))) continue;
-		out[key] = value === null ? undefined : value;
+		// B1: keep null for explicitness-sensitive keys (see above); collapse it elsewhere.
+		out[key] = EXPLICITNESS_SENSITIVE_KEYS.has(key) ? value : value === null ? undefined : value;
 	}
 	return out;
 }
@@ -446,7 +435,30 @@ export class AutotaskAiTools implements INodeType {
 			);
 		}
 
-		const effectiveOps = operations.filter(
+		// Per-resource capability filter (v2.28.5): operations that are valid for
+		// OTHER resources but not for THIS one (e.g. 'delete' on Company — the
+		// Autotask API has no Company deletion endpoint) are excluded from the
+		// tool surface. The global SUPPORTED_TOOL_OPERATIONS check above cannot
+		// catch this: 'delete' is a real operation for many resources.
+		//
+		// Deliberately NOT a hard failure: existing workflows that configured such
+		// an operation keep working — the op simply disappears from the published
+		// enum. The exclusion is never silent: console.warn always fires, and a
+		// short note is appended to the tool description when the 1300-char
+		// budget allows it.
+		const resourceOperations = getResourceOperations(resource);
+		const excludedOperations = resourceOperations.length > 0
+			? operations.filter((operation) => !resourceOperations.includes(operation))
+			: [];
+		if (excludedOperations.length > 0) {
+			console.warn(
+				`[AutotaskAiTools] Resource '${resource}' does not support operation(s) ${excludedOperations.join(', ')} — they are excluded from the tool surface and hidden from the model. Update the node's operations list.`,
+			);
+		}
+		const permittedOperations = resourceOperations.length > 0
+			? operations.filter((operation) => resourceOperations.includes(operation))
+			: operations;
+		const effectiveOps = permittedOperations.filter(
 			(op) => !isWriteOperation(op) || allowWriteOperations,
 		);
 		if (effectiveOps.length === 0) {
@@ -592,6 +604,14 @@ export class AutotaskAiTools implements INodeType {
 
 		const DESCRIPTION_HARD_LIMIT = 1300;
 		let description = withGuidance;
+		if (excludedOperations.length > 0) {
+			const exclusionNote = `NOTE: The configured operation(s) ${excludedOperations.map((op) => `'${op}'`).join(', ')} are not supported by the ${resourceLabel} API and are hidden from this tool. Update the node's operations list.`;
+			// The console.warn above is the always-on observability channel; the
+			// description note is a bonus, appended only when it fits the budget.
+			if (description.length + exclusionNote.length <= DESCRIPTION_HARD_LIMIT) {
+				description = `${description}\n\n${exclusionNote}`;
+			}
+		}
 		if (description.length > DESCRIPTION_HARD_LIMIT) {
 			const originalLength = description.length;
 			const marker = '…[truncated]';
@@ -792,8 +812,32 @@ export class AutotaskAiTools implements INodeType {
 			);
 		}
 
+		// Per-resource capability filter (v2.28.5 P1, mirrored from supplyData
+		// by round-4 N4): operations valid for OTHER resources but not for
+		// THIS one (e.g. 'delete' on Company — the Autotask API has no Company
+		// deletion endpoint) must drop out of the execute() path's allowed
+		// set too. Without this, a workflow that still configures such an op
+		// lets a human-crafted item ({operation:'delete'}) pass the guard
+		// below and deep-throw NodeOperationError from the resource executor
+		// instead of receiving the flat INVALID_OPERATION envelope the AI
+		// surface returns (and never offers). Same non-hard-fail semantics as
+		// supplyData(): the op vanishes from the allowed set, console.warn
+		// always fires.
+		const resourceOperations = getResourceOperations(resource);
+		const excludedOperations = resourceOperations.length > 0
+			? operations.filter((operation) => !resourceOperations.includes(operation))
+			: [];
+		if (excludedOperations.length > 0) {
+			console.warn(
+				`[AutotaskAiTools] Resource '${resource}' does not support operation(s) ${excludedOperations.join(', ')} — they are excluded from the tool surface and hidden from the model. Update the node's operations list.`,
+			);
+		}
+		const permittedOperations = resourceOperations.length > 0
+			? operations.filter((operation) => resourceOperations.includes(operation))
+			: operations;
+
 		// Pick the first permitted operation as the default for test execution
-		const effectiveOps = operations.filter(
+		const effectiveOps = permittedOperations.filter(
 			(op) => !isWriteOperation(op) || allowWriteOperations,
 		);
 		if (effectiveOps.length === 0) {
@@ -857,8 +901,13 @@ export class AutotaskAiTools implements INodeType {
 			});
 		}
 
-		// Retrieve (or cold-build) the Zod schema so execute() can strip unknown keys
-		// from item.json — the same protection supplyData()->func() gets from parseAsync automatically.
+		// Retrieve (or cold-build) the Zod schema for the execute() path. The
+		// shared unified schema is STRICT (F1, v2.28.4) — correct for the
+		// MCP/supplyData surface. But the execute()/Agent V3 item.json
+		// legitimately carries workflow data beyond the tool call (the v2.28.4
+		// F1 promise: "intentionally left as-is"; base v2.28.3 used strip
+		// semantics), so this call site parses with a strip-flavoured variant
+		// derived from the same schema shape (see below) — round-4 L2.
 		const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
 		let zodSchema: ZodSafeParseable;
 		{
@@ -917,6 +966,20 @@ export class AutotaskAiTools implements INodeType {
 			}
 		}
 
+		// Strip-flavoured variant of the strict unified schema for the
+		// execute() parse only (round-4 L2): re-wrap the same field shape with
+		// plain `object()` (strip semantics — the base behaviour of both zod
+		// v3 and v4) so extra user keys in item.json are stripped, exactly as
+		// pre-2.28.4, while type/enum violations still surface precisely.
+		// The MCP/supplyData surface keeps the strict schema untouched.
+		const strictShape = (zodSchema as { shape?: unknown }).shape;
+		const execSchema: ZodSafeParseable =
+			strictShape && typeof strictShape === 'object' && Object.keys(strictShape).length > 0
+				? (runtimeZod.object(
+					strictShape as unknown as Parameters<typeof runtimeZod.object>[0],
+				) as unknown as ZodSafeParseable)
+				: zodSchema;
+
 		const response: INodeExecutionData[] = [];
 
 		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
@@ -966,9 +1029,14 @@ export class AutotaskAiTools implements INodeType {
 				// uses .nullish() on optional fields (see schema-generator.ts),
 				// so null is also accepted at the schema level — the undefined
 				// coercion here is belt-and-braces.
+				// B1 exception: status/priority keep their null (explicitness-sensitive
+				// F-5 keys) so an explicit null errors identically on both paths.
 				const normalisedJson = stripAndNormaliseItemJson(item.json);
-				// Zod strips any remaining unknown keys (defensive).
-				const parseResult = zodSchema.safeParse(normalisedJson);
+				// execSchema is the strip variant of the strict unified schema
+				// (round-4 L2): keys outside the tool contract (legitimate
+				// workflow data in item.json) are stripped, not rejected —
+				// pre-2.28.4 behaviour restored for this path only.
+				const parseResult = execSchema.safeParse(normalisedJson);
 				if (!parseResult.success) {
 					// Surface operation-contract violations (required/forbidden/xor)
 					// when Zod parse fails. The Zod message alone says things like

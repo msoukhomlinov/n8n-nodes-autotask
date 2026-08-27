@@ -8,6 +8,9 @@ import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
 import { RESOURCES_WITH_PRIORITY, RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } from './resource-language';
 import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
 
+/** Helper operations always present in the operation enum — not "real" data operations. */
+const HELPER_TOOL_OPERATIONS = new Set(['describeFields', 'listPicklistValues', 'describeOperation']);
+
 /** Picklist inlining threshold — at or below this count, inline all values; above, tell LLM to call listPicklistValues. */
 const INLINE_PICKLIST_THRESHOLD = 4;
 
@@ -19,6 +22,27 @@ function isValidSchemaKey(key: string): boolean {
 
 const READ_ONLY_SCHEMA_CACHE_MAX = 200;
 const readOnlySchemaCache = new Map<string, unknown>();
+
+/**
+ * Write operations whose schema blocks insert the impersonationResourceId field
+ * (create/update, moveConfigurationItem, moveToCompany, transferOwnership,
+ * createIfNotExists). Single source of truth shared with description-builders:
+ * the tool description may advertise the parameter ONLY when the unified schema
+ * actually contains it (F3b fix — a read-only ops set never gets the field, so a
+ * resource-level hint alone used to advertise a parameter the model cannot pass).
+ */
+export const IMPERSONATION_FIELD_WRITE_OPERATIONS = [
+	'create',
+	'update',
+	'moveConfigurationItem',
+	'moveToCompany',
+	'transferOwnership',
+	'createIfNotExists',
+] as const;
+
+export function schemaHasImpersonationField(operations: readonly string[]): boolean {
+	return IMPERSONATION_FIELD_WRITE_OPERATIONS.some((op) => operations.includes(op));
+}
 
 /** Shared impersonationResourceId field description — used at all 5 schema insertion sites. */
 const IMPERSONATION_RESOURCE_ID_DESCRIBE =
@@ -372,13 +396,23 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.number()
 				.nullish()
 				.describe('Page for listPicklistValues (default 1).');
+			// F3a fix: example is the first NON-helper op of the configured set —
+			// a stale literal (e.g. 'create' on a read-only surface) baited models
+			// into operations the tool cannot run.
+			const exampleOp =
+				operations.find((op) => !HELPER_TOOL_OPERATIONS.has(op)) ??
+				operations[0] ??
+				allOps[0];
 			shape.targetOperation = rz
 				.string()
 				.nullish()
 				.describe(
-					"For describeOperation: the operation name to document (e.g. 'searchNotes').",
+					`For describeOperation: the operation name to document (e.g. '${exampleOp}').`,
 				);
-			return rz.object(shape).strip();
+			// strictObject (F1 fix): unknown keys must REJECT, not silently strip —
+			// a wrong filter key stripped by a non-strict schema makes the call
+			// "succeed" with unfiltered data reported as if filtered.
+			return rz.strictObject(shape);
 		}
 
 		// fields — column selection
@@ -608,10 +642,29 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.describe("Required for getBySLAStatus: 'breached' (SLA missed), 'at_risk' (within atRiskWindowHours of deadline), or 'compliant' (SLA met).");
 			}
 			if (!shape.atRiskWindowHours) {
+				// v2.28.9 r9 (C4) + r10 (C5): numeric strings ('24') must parse on
+				// BOTH execution paths (the execute() path safe-parses item.json
+				// through this same shape — L2 strip variant — before any handler
+				// code runs), but ONLY numeric strings: r9's rz.coerce.number()
+				// also coerced other JSON types (true → 1, [24] → 24), silently
+				// bypassing INVALID_INPUT. Preprocess converts numeric strings and
+				// passes everything else through untouched, so the number schema
+				// itself rejects booleans/arrays/objects and non-numeric strings
+				// with a clean per-type error on both paths. nullish sits INSIDE
+				// the preprocess (rz.preprocess(fn, rz.number().nullish())) so the
+				// zts nullable fast-path fires on the plain inner ZodNumber and the
+				// published JSON schema property stays byte-identical
+				// ({"type":["number","null"]} — a .nullish() OUTSIDE the effect
+				// would publish anyOf instead).
 				shape.atRiskWindowHours = rz
-					.number()
-					.nullish()
-					.describe('Hours before resolvedDueDateTime to consider a ticket at-risk (default 4). Only applies when slaStatus=at_risk.');
+					.preprocess(
+						(v: unknown) =>
+							typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v.trim()))
+								? Number(v.trim())
+								: v,
+						rz.number().nullish(),
+					)
+					.describe('Hours before resolvedDueDateTime to consider a ticket at-risk (default 4, numeric strings accepted). Only applies when slaStatus=at_risk.');
 			}
 			if (!shape.company) {
 				shape.company = rz
@@ -737,7 +790,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 						'For picklist UDFs use the picklist value ID (label resolution not supported for UDFs).',
 					);
 			}
-			if (!shape.impersonationResourceId) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -839,7 +892,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.min(1)
 				.nullish()
 				.describe('Maximum attachment size per file in bytes (default 6291456).');
-			if (!shape.impersonationResourceId) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -899,7 +952,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe('Audit note written to the destination company context.');
-			if (!shape.impersonationResourceId) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -1040,7 +1093,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe(
 					'Audit note template with placeholders: {sourceResourceName}, {sourceResourceId}, {destinationResourceName}, {destinationResourceId}, {date}, {entityType}, {entityId}.',
 				);
-			if (!shape.impersonationResourceId) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -1132,7 +1185,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.describe(
 						"If true, error on duplicate instead of returning outcome: skipped. Default false.",
 					);
-			if (!shape.impersonationResourceId) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -1173,11 +1226,18 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			.number()
 			.nullish()
 			.describe('Page for listPicklistValues (default 1).');
+		// F3a fix: example is the first NON-helper op of the configured set — a
+		// stale literal (e.g. 'create') is never valid on a read-only surface and
+		// baited models into operations the tool cannot run.
+		const exampleOp =
+			operations.find((op) => !HELPER_TOOL_OPERATIONS.has(op)) ??
+			operations[0] ??
+			allOps[0];
 		shape.targetOperation = rz
 			.string()
 			.nullish()
 			.describe(
-				"For describeOperation: the operation name to document (e.g. 'create').",
+				`For describeOperation: the operation name to document (e.g. '${exampleOp}').`,
 			);
 
 		// Typed-reference companion fields (ticketLookupField, projectLookupField, …).
@@ -1221,7 +1281,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				exposesImpersonationResourceId: Boolean(shape.impersonationResourceId),
 			},
 		});
-		const schema = rz.object(shape);
+		// strictObject (F1 fix): publish additionalProperties:false and reject junk
+		// args with a precise zod issue instead of silently stripping them.
+		const schema = rz.strictObject(shape);
 		if (isReadOnlyOpsSet) {
 			const cacheKey = getReadOnlySchemaCacheKey(resource, operations, readFields);
 			setReadOnlySchemaCache(cacheKey, schema);

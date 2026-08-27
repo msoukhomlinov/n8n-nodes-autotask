@@ -1,5 +1,5 @@
 import type { IDataObject, IExecuteFunctions, IGetNodeParameterOptions } from 'n8n-workflow';
-import { GetManyOperation } from '../operations/base';
+import { CountOperation, GetManyOperation } from '../operations/base';
 import type { IAutotaskEntity } from '../types';
 import type { IFilterCondition } from '../types/base/entity-types';
 import { getFields } from './entity/api';
@@ -16,6 +16,140 @@ const COMPANY_DOMAIN_FIELD_PRIORITY = [
 	'url',
 	'domain',
 ] as const;
+
+/**
+ * Coverage metadata for bounded company scan operations (searchByDomain,
+ * searchByIdentity). The scan is a bounded window over the company population —
+ * consumers must never read a match (or a no-match) as proof about companies
+ * outside the scanned window (C1 fix).
+ */
+export interface CompanySearchCoverage extends IDataObject {
+	/**
+	 * Number of records returned by the bounded filtered queries that feed the
+	 * result set (the rows actually evaluated client-side). NOT the tenant-wide
+	 * company population.
+	 */
+	scanned: number;
+	/**
+	 * Total number of companies, from ONE count call on company with no filter.
+	 * Informational context only — the tenant-wide population, not a denominator
+	 * for scan completeness (Codex P2). Omitted when the count call fails.
+	 */
+	totalAvailable?: number;
+	/**
+	 * True only when every bounded filtered query that feeds the result set
+	 * returned BELOW its cap AND the derived candidate set (distinct companies
+	 * / ranked candidates) was NOT sliced at `limit` — i.e. the filtered search
+	 * is complete and no matching record (raw rows or derived candidates) was
+	 * truncated away. A selective search with one match below its cap is
+	 * complete even in a 10,000-company tenant (Codex P2: completeness comes
+	 * from the filtered queries' cap semantics, never from
+	 * matches-vs-tenant-population). B1: the derived candidate slice is part of
+	 * this verdict — a set of >limit candidates sliced down to `limit` is
+	 * truncation, even when every raw query came back below its cap.
+	 */
+	windowComplete: boolean;
+	/**
+	 * Present when the DERIVED candidate set was sliced at `limit` (B1): the
+	 * published result is capped by that slice even though every raw filtered
+	 * query may have been below its cap. Human-readable, truthful description
+	 * of the truncating stage — the dispatch layer renders it in the PARTIAL
+	 * summary instead of the raw-cap wording, and publishes it at the root.
+	 */
+	truncationNote?: string;
+}
+
+/**
+ * Total company count from one unfiltered /query/count call. Failure-tolerant:
+ * any error (API outage, permission, timeout) yields undefined so the caller can
+ * omit totalAvailable and report windowComplete=false instead of failing the
+ * whole search. The getNodeParameter override neutralises filtersFromTool /
+ * fieldsToMap so the tool call's own filters (or UI resource-mapper fields) can
+ * never leak into the total count.
+ *
+ * The override is installed on an ISOLATED child context (Object.create) rather
+ * than on the caller's context: this call runs in parallel with the bounded
+ * scans, which install their own overrides on the same shared context. Mutating
+ * the shared context let the two override windows clobber each other (Codex
+ * NEW-0) — if the count finished while a bounded query was awaiting its API
+ * call, the count's finally could clobber the query's override, and the query's
+ * finally could subsequently restore the captured count override permanently,
+ * so later processing (or the next input item) read neutralised filters and
+ * field mappings. Same isolated-context pattern as executeCountOperation
+ * (ai-tools/tool-executor-helpers.ts). The shared context is never mutated.
+ */
+async function countCompanyTotal(
+	context: IExecuteFunctions,
+	itemIndex: number,
+): Promise<number | undefined> {
+	const originalGetNodeParameter = context.getNodeParameter.bind(context);
+	const scopedContext = Object.create(context) as IExecuteFunctions;
+	scopedContext.getNodeParameter = ((
+		name: string,
+		index: number,
+		fallbackValue?: unknown,
+		options?: IGetNodeParameterOptions,
+	): unknown => {
+		if (name === 'filtersFromTool') return undefined;
+		if (name === 'fieldsToMap') return { value: {} };
+		return originalGetNodeParameter(name, index, fallbackValue, options);
+	}) as IExecuteFunctions['getNodeParameter'];
+	try {
+		const countOp = new CountOperation<IAutotaskEntity>('company', scopedContext);
+		const count = await countOp.execute(itemIndex);
+		return typeof count === 'number' && Number.isFinite(count) ? count : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * A derived candidate set (distinct companies / ranked candidates collected
+ * across the bounded scans) that is sliced at `limit` before publication
+ * truncates the published result even when every raw filtered query came back
+ * below its cap (B1: the client-side slice was invisible to the completeness
+ * verdict, so both company search ops could publish a false "complete filtered
+ * set … no further calls needed" with hasMore:false while lower-ranked matches
+ * were withheld). Callers report the pre-slice candidate count here, with a
+ * note naming the truncating stage.
+ */
+interface DerivedTruncation {
+	note: string;
+}
+
+/**
+ * Build the coverage block. `filterComplete` must reflect the FILTERED queries'
+ * cap semantics (every contributing bounded query returned below its cap), not
+ * a comparison of match counts with the tenant-wide company total — that
+ * comparison made almost every selective search report partial coverage (Codex P2).
+ * B1: `derivedTruncation` folds the derived-candidate slice into the verdict —
+ * ANY truncation source (raw query cap OR derived slice) yields
+ * windowComplete=false, so hasMore/isTruncated and the summary wording (which
+ * names the stage via `truncationNote`) can never be false-complete.
+ */
+async function buildSearchCoverage(
+	scanned: number,
+	totalAvailablePromise: Promise<number | undefined> | undefined,
+	filterComplete: boolean,
+	derivedTruncation?: DerivedTruncation,
+): Promise<CompanySearchCoverage> {
+	const totalAvailable = totalAvailablePromise ? await totalAvailablePromise : undefined;
+	let truncationNote = derivedTruncation?.note;
+	if (derivedTruncation && !filterComplete) {
+		// Both stages truncated. Word it without claiming a RAW cap was hit:
+		// the underlying stages' incompleteness may itself come from a nested
+		// derived slice (the identity op borrows the domain search's windowComplete).
+		const total = totalAvailable !== undefined ? `, tenant total ${totalAvailable}` : '';
+		truncationNote =
+			`${truncationNote}; the underlying scan stages were not fully complete either (scanned ${scanned} records${total})`;
+	}
+	return {
+		scanned,
+		...(totalAvailable !== undefined ? { totalAvailable } : {}),
+		windowComplete: filterComplete && !derivedTruncation,
+		...(truncationNote ? { truncationNote } : {}),
+	};
+}
 
 /**
  * Public/consumer email-provider domains. The contact-email fallback is skipped for
@@ -102,6 +236,7 @@ export interface CompanyDomainSearchResult extends IDataObject {
 	companyFrequencies?: CompanyFrequency[];
 	notes?: string[];
 	unresolvedSearch?: UnresolvedSearchDirective;
+	coverage: CompanySearchCoverage;
 }
 
 export interface RankedCompanyCandidate extends IDataObject {
@@ -119,6 +254,7 @@ export interface CompanyIdentitySearchResult extends IDataObject {
 	count: number;
 	results: RankedCompanyCandidate[];
 	notes?: string[];
+	coverage: CompanySearchCoverage;
 }
 
 interface RetryTrackerEntry {
@@ -226,6 +362,20 @@ function buildWebsiteFieldList(companyFieldNames: string[]): string[] {
 	return ordered;
 }
 
+/**
+ * Bounded entity query with per-call parameter overrides (returnAll=false,
+ * MaxRecords=limit, selectColumns). The overrides are installed on an ISOLATED
+ * child context (Object.create) — never on the caller's context — because
+ * multiple bounded queries (and the parallel countCompanyTotal) share one
+ * execution context. Installing on the shared context let interleaved
+ * finally-blocks clobber each other's overrides (Codex NEW-0): a late restore
+ * could leave the wrong override active on the shared context, so in-flight
+ * parameter reads (pagination, output mode, date handling) and later
+ * processing saw the wrong filters, column sets, and field mappings. Each
+ * operation now sees exactly its own overrides; the shared context is never
+ * mutated (same pattern as executeCountOperation in
+ * ai-tools/tool-executor-helpers.ts).
+ */
 async function runBoundedQuery(
 	context: IExecuteFunctions,
 	entityType: string,
@@ -235,7 +385,8 @@ async function runBoundedQuery(
 	selectColumns: string[],
 ): Promise<IAutotaskEntity[]> {
 	const originalGetNodeParameter = context.getNodeParameter.bind(context);
-	context.getNodeParameter = ((
+	const scopedContext = Object.create(context) as IExecuteFunctions;
+	scopedContext.getNodeParameter = ((
 		name: string,
 		index: number,
 		fallbackValue?: unknown,
@@ -246,21 +397,42 @@ async function runBoundedQuery(
 		if (name === 'selectColumns') return selectColumns;
 		if (name === 'selectColumnsJson') return JSON.stringify(selectColumns);
 		return originalGetNodeParameter(name, index, fallbackValue, options);
-	}) as typeof context.getNodeParameter;
+	}) as IExecuteFunctions['getNodeParameter'];
 
-	try {
-		const getManyOp = new GetManyOperation<IAutotaskEntity>(entityType, context);
-		const results = await getManyOp.execute({ filter: filters, MaxRecords: limit }, itemIndex);
-		return results.slice(0, limit);
-	} finally {
-		context.getNodeParameter = originalGetNodeParameter;
-	}
+	const getManyOp = new GetManyOperation<IAutotaskEntity>(entityType, scopedContext);
+	const results = await getManyOp.execute({ filter: filters, MaxRecords: limit }, itemIndex);
+	return results.slice(0, limit);
 }
 
 function isValidCompanyId(value: unknown): value is string | number {
 	if (typeof value === 'number') return Number.isFinite(value);
 	if (typeof value === 'string') return value.trim() !== '';
 	return false;
+}
+
+/**
+ * Completeness for the `id in [...]` company-name resolution stage (Codex
+ * NEW-2). The requested ID set is FINITE, so equality with the query cap is
+ * NOT truncation: when the requested set fits the MAX_CONTACT_FALLBACK_LIMIT
+ * row cap and every requested ID came back from the API, the query has seen
+ * everything it could match. Partial exists only when the requested set
+ * itself exceeded the cap (IDs beyond the cap were never queried) or at
+ * least one requested ID failed to resolve.
+ */
+function isIdResolutionComplete(
+	companyIds: Array<string | number>,
+	resolvedCompanies: IAutotaskEntity[],
+): boolean {
+	if (companyIds.length > MAX_CONTACT_FALLBACK_LIMIT) return false;
+	const resolvedIds = new Set<string>();
+	for (const company of resolvedCompanies) {
+		if (!isValidCompanyId(company.id)) continue;
+		resolvedIds.add(String(company.id));
+	}
+	for (const companyId of companyIds) {
+		if (!resolvedIds.has(String(companyId))) return false;
+	}
+	return true;
 }
 
 function buildRetryKey(domain: string, companyName: string, operator: DomainOperator): string {
@@ -354,6 +526,7 @@ export async function searchCompaniesByDomain(
 	const notes: string[] = [];
 
 	if (!domainNormalised) {
+		// No search possible: nothing was scanned and no total count is attempted.
 		return {
 			source: 'none',
 			domainInput,
@@ -365,8 +538,15 @@ export async function searchCompaniesByDomain(
 			results: [],
 			notes: ['Domain is empty after normalisation.'],
 			unresolvedSearch: buildUnresolvedDirective(domainNormalised, companyNameNormalised, 'contains'),
+			coverage: { scanned: 0, windowComplete: false },
 		};
 	}
+
+	// One unfiltered total count per search call, run in parallel with the bounded
+	// scans (C1 fix: consumers must see whether the scan window covers the whole
+	// company population). Failure-tolerant — a failed count only degrades the
+	// coverage claim, never the search itself.
+	const totalAvailablePromise = countCompanyTotal(context, itemIndex);
 
 	const companyFields = await getFields('company', context, { fieldType: 'standard' });
 	const companyFieldNames = companyFields.map((field) => field.name);
@@ -382,6 +562,8 @@ export async function searchCompaniesByDomain(
 			count: 0,
 			results: [],
 			notes: ['No company website/domain field was detected in entity metadata.'],
+			// No search was executed — completeness cannot be claimed (Codex P2).
+			coverage: await buildSearchCoverage(0, totalAvailablePromise, false),
 		};
 	}
 
@@ -466,6 +648,9 @@ export async function searchCompaniesByDomain(
 			count: enrichedResults.length,
 			results: enrichedResults,
 			...(notes.length > 0 ? { notes } : {}),
+			// Codex P2: the filtered website search is complete iff it returned below
+			// its cap — never from matches-vs-tenant-population.
+			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise, companyResults.length < limit),
 		};
 	}
 
@@ -494,6 +679,9 @@ export async function searchCompaniesByDomain(
 				companyNameNormalised,
 				appliedCompanyOperator,
 			),
+			// Codex P2: no-match with the filtered website search below its cap is a
+			// complete (tenant-wide) no-match, not a partial-window no-match.
+			coverage: await buildSearchCoverage(companyResults.length, totalAvailablePromise, companyResults.length < limit),
 		};
 	}
 
@@ -554,6 +742,15 @@ export async function searchCompaniesByDomain(
 				domainNormalised,
 				companyNameNormalised,
 				appliedCompanyOperator,
+			),
+			// Codex NEW-1: the contact scan HITTING its cap means matching contacts
+			// beyond the window (with valid companyIDs) may exist, so this no-match
+			// claim is only complete when BOTH bounded scans came back below their
+			// caps.
+			coverage: await buildSearchCoverage(
+				companyResults.length,
+				totalAvailablePromise,
+				companyResults.length < limit && contactResults.length < contactLimit,
 			),
 		};
 	}
@@ -621,11 +818,32 @@ export async function searchCompaniesByDomain(
 				companyNameNormalised,
 				appliedCompanyOperator,
 			),
+			// Codex P2: completeness = every contributing bounded query (website scan,
+			// contact scan) returned below its cap, and the id-in[...] resolution
+			// stage resolved every requested company ID within its cap (Codex NEW-2:
+			// equality with the cap is not truncation for a finite requested set).
+			coverage: await buildSearchCoverage(
+				companyResults.length + resolvedCompanies.length,
+				totalAvailablePromise,
+				companyResults.length < limit &&
+					contactResults.length < contactLimit &&
+					isIdResolutionComplete(companyIds, resolvedCompanies),
+			),
 		};
 	}
 
 	const topCompany = companyFrequencies[0];
 	const topCount = topCompany.count as number;
+	// B1: the published fallback results are this sorted frequency set sliced at
+	// `limit` — a DERIVED truncation that the raw queries' cap semantics do not
+	// see. Report the pre-slice candidate count so the completeness verdict and
+	// summary wording name this stage when it truncates.
+	const derivedTruncation: DerivedTruncation | undefined =
+		companyFrequencies.length > limit
+			? {
+					note: `the derived candidate set (distinct companies from the contact-email fallback) was limited to ${limit} of ${companyFrequencies.length} (limit ${limit}) — raise 'limit' or narrow the search`,
+				}
+			: undefined;
 	const fallbackResults: CompanyDomainResultItem[] = companyFrequencies
 		.slice(0, limit)
 		.map((companyFrequency) => ({
@@ -655,6 +873,20 @@ export async function searchCompaniesByDomain(
 		matchedCompanies: resolvedCompanies.length,
 		companyFrequencies,
 		...(notes.length > 0 ? { notes } : {}),
+		// Codex P2: completeness = every contributing bounded query (website scan,
+		// contact scan) returned below its cap, and the id-in[...] resolution
+		// stage resolved every requested company ID within its cap (Codex NEW-2:
+		// equality with the cap is not truncation for a finite requested set).
+		// B1: AND the derived candidate set (companyFrequencies) was not sliced at
+		// `limit` — the derived stage is part of the verdict.
+		coverage: await buildSearchCoverage(
+			companyResults.length + resolvedCompanies.length,
+			totalAvailablePromise,
+			companyResults.length < limit &&
+				contactResults.length < contactLimit &&
+				isIdResolutionComplete(companyIds, resolvedCompanies),
+			derivedTruncation,
+		),
 	};
 }
 
@@ -719,6 +951,25 @@ export async function searchCompaniesByIdentity(
 	const websiteInput = options.website?.trim() ?? '';
 	const notes: string[] = [];
 
+	// No-signal guard (round-4 L1, shared surface): a call with NONE of
+	// companyName / email / website performs ZERO queries, yet the coverage
+	// stages below would still initialise their completeness flags to `true`
+	// and publish coverage {scanned: 0, windowComplete: true} — "a complete
+	// search found nothing" when nothing was searched. The AI-tool surface
+	// already rejects this call earlier (OPERATION_CONTRACTS anyOfGroups →
+	// precise INVALID_FILTER_CONSTRAINT envelope via validateOperationContract);
+	// this guard protects the shared helper itself so the STANDARD node path —
+	// which calls searchCompaniesByIdentity directly with no contract
+	// validation and all-blank default node fields — rejects the same call
+	// before any field fetch, query, or coverage computation. The standard
+	// path renders the thrown error through the node's standard error flow
+	// (error item on continueOnFail, otherwise NodeOperationError).
+	if (companyNameInput === '' && emailInput === '' && websiteInput === '') {
+		throw new Error(
+			"searchByIdentity requires at least one identity signal — 'companyName' or 'email' or 'website' — none were provided (all signals were blank). No search was run; supply at least one signal and retry.",
+		);
+	}
+
 	const domainFromEmail = emailInput ? normaliseDomainInput(emailInput) : '';
 	const domainFromWebsite = websiteInput ? normaliseDomainInput(websiteInput) : '';
 	const domainNormalised = domainFromWebsite || domainFromEmail;
@@ -733,6 +984,18 @@ export async function searchCompaniesByIdentity(
 
 	const candidatesById = new Map<string, IDataObject>();
 
+	// Coverage accounting (C1 fix): scanned company records across the bounded
+	// queries, plus the population total. On the domain path the total is reused
+	// from the nested domain search (one count call per tool call, never two); on
+	// a name-only search this function performs the count itself.
+	let domainScanned = 0;
+	let totalAvailable: number | undefined;
+	let countPromise: Promise<number | undefined> | undefined;
+	let nameScanned = 0;
+	// Codex P2: filtered-query completeness flags for the two scan stages.
+	let domainFilterComplete = true;
+	let nameFilterComplete = true;
+
 	if (domainNormalised) {
 		const domainResults = await searchCompaniesByDomain(context, {
 			domain: domainNormalised,
@@ -743,6 +1006,9 @@ export async function searchCompaniesByIdentity(
 			itemIndex,
 			selectColumns,
 		});
+		domainScanned = domainResults.coverage.scanned;
+		totalAvailable = domainResults.coverage.totalAvailable;
+		domainFilterComplete = domainResults.coverage.windowComplete;
 
 		if (domainResults.source === 'companyWebsite' && domainResults.results.length > 0) {
 			for (const result of domainResults.results) {
@@ -772,14 +1038,22 @@ export async function searchCompaniesByIdentity(
 		} else {
 			notes.push('No confident domain match found; using company name contains search.');
 		}
+		// Name-only searches have no domain scan to borrow the population total
+		// from — start the unfiltered count in parallel with the name query.
+		if (!domainNormalised) {
+			countPromise = countCompanyTotal(context, itemIndex);
+		}
+		const nameCap = Math.min(Math.max(limit * 2, 25), MAX_CONTACT_FALLBACK_LIMIT);
 		const nameResults = await runBoundedQuery(
 			context,
 			'company',
 			itemIndex,
-			Math.min(Math.max(limit * 2, 25), MAX_CONTACT_FALLBACK_LIMIT),
+			nameCap,
 			[{ field: 'companyName', op: 'contains', value: companyNameInput }],
 			selectColumns,
 		);
+		nameScanned = nameResults.length;
+		nameFilterComplete = nameResults.length < nameCap;
 		for (const result of nameResults) {
 			const id = result.id;
 			if (!isValidCompanyId(id)) continue;
@@ -788,6 +1062,27 @@ export async function searchCompaniesByIdentity(
 			candidatesById.set(key, existing ? { ...existing, ...result } : result);
 		}
 	}
+
+	// B1: the published candidates are this merged candidate set sliced at
+	// `limit` (rankedResults below) — a DERIVED truncation invisible to the raw
+	// queries' cap semantics. Report the pre-slice candidate count so the
+	// completeness verdict and summary wording name this stage when it truncates.
+	const derivedTruncation: DerivedTruncation | undefined =
+		candidatesById.size > limit
+			? {
+					note: `the derived candidate set was limited to ${limit} of ${candidatesById.size} ranked candidates (limit ${limit}) — raise 'limit' or narrow the search`,
+				}
+			: undefined;
+	const coverage = await buildSearchCoverage(
+		domainScanned + nameScanned,
+		totalAvailable !== undefined ? Promise.resolve(totalAvailable) : countPromise,
+		// Codex P2: complete iff every contributing filtered query returned below
+		// its cap (skipped stages count as complete — they contributed no window).
+		// B1: AND the derived candidate set was not sliced at `limit` — any
+		// truncation source keeps windowComplete false.
+					domainFilterComplete && nameFilterComplete,
+		derivedTruncation,
+	);
 
 	const nameNeedle = companyNameInput.toLowerCase();
 	const rankedResults = Array.from(candidatesById.values())
@@ -811,6 +1106,7 @@ export async function searchCompaniesByIdentity(
 			count: 0,
 			results: [],
 			notes: ['No candidates found from identity signals.', ...notes],
+			coverage,
 		};
 	}
 
@@ -823,5 +1119,6 @@ export async function searchCompaniesByIdentity(
 		count: rankedResults.length,
 		results: rankedResults,
 		...(notes.length > 0 ? { notes } : {}),
+		coverage,
 	};
 }

@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { autotaskApiRequest } from './http';
 import { compareDedupField, extractItems, getEntityFieldValue } from './dedup-utils';
+import { DedupFieldError } from './compound-errors';
 import { getFields } from './entity/api';
 import type { IAutotaskField } from '../types/base/entities';
 import type { IUdfFieldDefinition } from '../types/base/udf-types';
@@ -40,6 +41,34 @@ function normaliseDedupType(dataType: unknown): string {
 	}
 }
 
+/**
+ * Resolve the INPUT value for a dedup field from the create payload.
+ * Standard fields live at createFields[field]; UDF values live in
+ * createFields.userDefinedFields[] as { name, value } entries (the same
+ * {name, value} shape the API returns on records — see getEntityFieldValue).
+ * The UDF name match is case-insensitive, mirroring the API-side reader; root
+ * keys are checked first (Autotask forbids UDF/standard name collisions, so
+ * root-first is safe). Returns undefined when no value was supplied.
+ */
+function resolveDedupInputValue(createFields: Record<string, unknown>, field: string): unknown {
+	if (field in createFields) return createFields[field];
+	const udfs = createFields.userDefinedFields as Array<{ name: string; value: unknown }> | undefined;
+	if (!Array.isArray(udfs)) return undefined;
+	const lower = field.toLowerCase();
+	return udfs.find(
+		(udf) =>
+			udf &&
+			typeof udf === 'object' &&
+			typeof udf.name === 'string' &&
+			udf.name.toLowerCase() === lower,
+	)?.value;
+}
+
+/** A dedup field whose value is missing/blank can never match a stored record. */
+function isDedupValueMissing(value: unknown): boolean {
+	return value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
+}
+
 // ─── Core dedup logic ────────────────────────────────────────────────────────
 
 /**
@@ -51,8 +80,11 @@ function normaliseDedupType(dataType: unknown): string {
  * Non-queryable standard fields are skipped for server-side filtering to avoid hard API errors.
  * Remaining dedupFields are evaluated client-side only.
  *
- * Client-side: all dedupFields are compared using getEntityFieldValue(), which reads
- * standard fields from the record root and UDF fields from userDefinedFields[].
+ * Client-side: all dedupFields are compared using getEntityFieldValue() (API side —
+ * standard fields from the record root, UDF fields from userDefinedFields[]) against
+ * resolveDedupInputValue() (input side — standard fields at createFields[field], UDF
+ * values from createFields.userDefinedFields[]). UDF dedup fields therefore use their
+ * real supplied values for validation, server-side filtering and comparison (Codex P1).
  * UDF fields whose types are not in fieldTypeMap are looked up via getFields() so that
  * date/number/boolean UDFs receive type-aware normalisation instead of plain string compare.
  */
@@ -87,11 +119,15 @@ export async function findDuplicate(
 
 	// P2: fetch UDF metadata for any UDF dedup fields to get type-aware comparison.
 	// Only meaningful when metadata is available — without it, we cannot distinguish UDF from standard.
+	// The UDF name set doubles as the phantom-field check below: a dedup field that is
+	// neither a standard field nor a UDF field is not a field of the entity at all.
 	const udfDedupFields = metadataAvailable ? dedupFields.filter(f => !standardFieldNames.has(f)) : [];
 	const udfTypeOverrides: Record<string, string> = {};
+	let udfFieldNames: Set<string> | undefined;
 	if (udfDedupFields.length > 0) {
 		try {
 			const udfDefs = await getFields(entityType, ctx, { fieldType: 'udf' }) as IUdfFieldDefinition[];
+			udfFieldNames = new Set(udfDefs.map(f => f.name));
 			const lowerNames = udfDedupFields.map(f => f.toLowerCase());
 			for (const udf of udfDefs) {
 				if (lowerNames.includes(udf.name.toLowerCase())) {
@@ -99,7 +135,33 @@ export async function findDuplicate(
 				}
 			}
 		} catch {
-			// UDF metadata unavailable — fall back to 'string' comparison for those fields
+			// UDF metadata unavailable — fall back to 'string' comparison for those fields;
+			// phantom-field validation for non-standard fields is skipped below.
+		}
+	}
+
+	// D1: validate dedup fields up front when metadata is available. A dedup field that is
+	// not a real field of the entity (phantom), or a real field whose value was dropped
+	// from the create payload (no value supplied), can never legitimately match a stored
+	// record — and with the both-null non-match rule in compareDedupField it would
+	// silently match NOTHING, defeating dedup and creating true duplicates. Fail fast
+	// with a precise, actionable error instead. All createIfNotExists creators route
+	// through findDuplicate, so this single throw point covers every compound resource.
+	// When standard-field metadata is unavailable, keep the previous graceful degradation
+	// (scope filters + client-side matching only) — do not hard-fail on metadata errors.
+	// The no-value check applies to UDF fields too (Codex P1): UDF input values live in
+	// createFields.userDefinedFields[], not at createFields[field] — previously a valid
+	// UDF dedup field was never value-checked and was compared as undefined on every
+	// record, silently defeating dedup and letting createIfNotExists create duplicates.
+	if (metadataAvailable) {
+		for (const field of dedupFields) {
+			if (!standardFieldNames.has(field) && udfFieldNames && !udfFieldNames.has(field)) {
+				throw new DedupFieldError(entityType, field, 'not-a-field');
+			}
+			const supplied = resolveDedupInputValue(createFields, field);
+			if (isDedupValueMissing(supplied)) {
+				throw new DedupFieldError(entityType, field, 'no-value');
+			}
 		}
 	}
 
@@ -110,17 +172,20 @@ export async function findDuplicate(
 	// Non-queryable standard fields are intentionally skipped to avoid API errors.
 	// Fall back to the first UDF if no queryable standard dedup field has a value.
 	// Autotask supports { field, udf: true } for UDF filters — one per query maximum.
+	// Values are resolved via resolveDedupInputValue so the udf:true filter carries the
+	// real UDF value from createFields.userDefinedFields[], not undefined (Codex P1).
 	const apiFilter: Array<Record<string, unknown>> = [...scopeFilters];
 	const preferredField = metadataAvailable
-		? (dedupFields.find(f => queryableStandardFieldNames.has(f) && createFields[f] !== undefined) ??
-		   dedupFields.find(f => !standardFieldNames.has(f) && createFields[f] !== undefined))
+		? (dedupFields.find(f => queryableStandardFieldNames.has(f) && resolveDedupInputValue(createFields, f) !== undefined) ??
+		   dedupFields.find(f => !standardFieldNames.has(f) && resolveDedupInputValue(createFields, f) !== undefined))
 		: undefined;
 
 	if (preferredField) {
+		const value = resolveDedupInputValue(createFields, preferredField);
 		if (queryableStandardFieldNames.has(preferredField)) {
-			apiFilter.push({ field: preferredField, op: 'eq', value: createFields[preferredField] });
+			apiFilter.push({ field: preferredField, op: 'eq', value });
 		} else {
-			apiFilter.push({ field: preferredField, udf: true, op: 'eq', value: createFields[preferredField] });
+			apiFilter.push({ field: preferredField, udf: true, op: 'eq', value });
 		}
 	}
 
@@ -134,7 +199,9 @@ export async function findDuplicate(
 
 		for (const field of dedupFields) {
 			const fieldType = fieldTypeMap[field] ?? udfTypeOverrides[field.toLowerCase()] ?? 'string';
-			const inputValue = createFields[field];
+			// Codex P1: resolve the input value from its real location — standard fields
+			// at createFields[field], UDF fields from createFields.userDefinedFields[].
+			const inputValue = resolveDedupInputValue(createFields, field);
 			const apiValue = getEntityFieldValue(entity, field);
 
 			if (compareDedupField(fieldType, apiValue, inputValue)) {

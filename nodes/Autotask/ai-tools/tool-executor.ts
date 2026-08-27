@@ -62,8 +62,10 @@ import { handleSearchNotes } from './operation-handlers/global-notes-search';
 import type { ExecutorState } from './executor-state';
 import {
 	buildFilterFromParams,
+	EmptyFilterValueError,
 	resolveAndClassifyFilters,
 } from './filter-builder';
+import type { ToolFilter } from './filter-builder';
 export { resolveCompanyToProjectIdFilter } from './filter-builder';
 import type { IAutotaskCredentials } from '../types/base/auth';
 import {
@@ -261,6 +263,21 @@ export const N8N_METADATA_FIELDS = new Set([
 export const N8N_METADATA_PREFIXES = ['Prompt__'];
 
 /**
+ * B1 (v2.28.9 r3): the picklist params the convenience handlers validate as
+ * "explicit but unusable" (F-5 — status/priority). Single source of truth for
+ * both null-collapsing sites:
+ *  - `stripAndNormaliseItemJson` (AutotaskAiTools.node.ts, execute() path): a
+ *    JSON null here must stay `null` (not `undefined`) so an explicit null is
+ *    distinguishable from "not supplied";
+ *  - `executeAiTool`'s null→absent normalisation below (BOTH paths): explicit
+ *    null must survive to the handlers' `isUnusablePicklistParam` guards so the
+ *    precise INVALID_FILTER_CONSTRAINT fires. The handlers error on null BEFORE
+ *    any value could reach an API body or filter, so no null can leak downstream.
+ * (Other keys keep null→absent: LLMs emit null for "not applicable" fields.)
+ */
+export const EXPLICITNESS_SENSITIVE_KEYS = new Set<string>(['status', 'priority']);
+
+/**
  * Execute an Autotask operation by routing to the existing tool executor
  * with getNodeParameter overridden to map flat AI tool params.
  */
@@ -292,7 +309,13 @@ export async function executeAiTool(
 	}
 	// Normalise null → undefined for all params: null from the LLM (via .nullish() schema fields)
 	// must be treated as "field not provided" — never forwarded to API bodies or filter coercion.
+	// B1 exception: explicit null on the validated picklist params (status/priority,
+	// see EXPLICITNESS_SENSITIVE_KEYS) is preserved so the convenience handlers'
+	// isUnusablePicklistParam guards reject it with the precise F-5 envelope on
+	// BOTH execution paths (previously this delete neutralised F-5's null case
+	// process-wide — status:null returned the unfiltered set with no signal).
 	for (const key of Object.keys(params)) {
+		if (EXPLICITNESS_SENSITIVE_KEYS.has(key)) continue;
 		if ((params as Record<string, unknown>)[key] === null) {
 			delete (params as Record<string, unknown>)[key];
 		}
@@ -339,7 +362,28 @@ export async function executeAiTool(
 	const readFields = metadata.readFields ?? [];
 	const writeFields = metadata.writeFields ?? [];
 	const fieldValues = buildFieldValues(params, ['id'], writeFields);
-	const filters = buildFilterFromParams(params, readFields, timezone, resource);
+	let filters: ToolFilter[];
+	try {
+		filters = buildFilterFromParams(params, readFields, timezone, resource);
+	} catch (err) {
+		if (err instanceof EmptyFilterValueError) {
+			// S4: render the typed empty-value error as the standard flat envelope.
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						normalisedOperation,
+						ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+						`filter_value is empty for field '${err.field}' — supply a value, or use op exist/notExist for presence checks.`,
+						`Retry autotask_${resource} with operation '${normalisedOperation}' providing a non-empty filter_value for field '${err.field}', or use filter_op 'exist' or 'notExist' to check field presence.`,
+						{ filterField: err.field, filterOp: err.op },
+					),
+				),
+				correlationId,
+			);
+		}
+		throw err;
+	}
 	// Promote top-level read fields (e.g. parent-scope companyID on a child resource)
 	// into eq filters for generic list ops. Without this they are silently dropped for
 	// reads (the query body is built from combinedFilters, not fieldValues) and the leak

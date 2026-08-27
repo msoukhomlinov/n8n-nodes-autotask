@@ -18,7 +18,10 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 		name: 'Company',
 		aiDescription:
 			'Organisation records of any type (customer, prospect, vendor, partner, etc.). Use for account-level details, ownership, and organisation-scoped relationships.',
-		operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.DELETE]: 'self', [OperationType.COUNT]: 'self' },
+		// Note: no DELETE — the Autotask API has no Company deletion endpoint.
+		// Publishing delete (previously derived from entity metadata) advertised an
+		// operation that can never execute (404/405 on /company/{id}).
+		operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' },
 		hasUserDefinedFields: true,
 		supportsWebhookCallouts: true,
 	},
@@ -203,4 +206,41 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
  */
 export function getEntityMetadata(name: string): IEntityMetadata | undefined {
 	return AUTOTASK_ENTITIES.find(e => e.name.toLowerCase() === name.toLowerCase());
+}
+
+function lowerCamelCaseEntityName(value: string): string {
+	if (!value) return value;
+	return value.charAt(0).toLowerCase() + value.slice(1);
+}
+
+/**
+ * Resolve an AI-tool resource key to the canonical entity name.
+ *
+ * Most resources use the lowerCamel form of the entity name as their resource key, but a
+ * handful declare a `resourceKey` override that differs from it (e.g. resource key
+ * 'configurationItems' → entity 'ConfigurationItem'). Lookups keyed by entity name
+ * (getEntityMetadata) miss those overridden keys, so any caller holding a resource key
+ * must resolve it first — the count-injection path (executeCountOperation) did not,
+ * which broke getMany count enrichment for configurationItems, configurationItemTypes,
+ * and opportunityCategories while their standalone count calls (routed through the
+ * standard executors, which use entity names) kept working.
+ *
+ * Resolution order: explicit `resourceKey` override first, then lowerCamel(entity name).
+ * Returns the input unchanged when no entity matches, preserving previous behaviour for
+ * keys that already equal the entity name case-insensitively.
+ */
+export function entityNameForResource(resource: string): string {
+	if (!resource) return resource;
+	const key = resource.toLowerCase();
+	for (const entity of AUTOTASK_ENTITIES) {
+		if (entity.resourceKey && entity.resourceKey.toLowerCase() === key) {
+			return entity.name;
+		}
+	}
+	for (const entity of AUTOTASK_ENTITIES) {
+		if (lowerCamelCaseEntityName(entity.name).toLowerCase() === key) {
+			return entity.name;
+		}
+	}
+	return resource;
 }

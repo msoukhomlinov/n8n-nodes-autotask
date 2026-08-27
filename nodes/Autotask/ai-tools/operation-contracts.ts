@@ -4,6 +4,15 @@ export interface OperationContract {
 	requiredFields?: string[];
 	forbiddenFields?: string[];
 	xorGroups?: string[][];
+	/**
+	 * "At least one of" groups: the call is valid when AT LEAST ONE field in the
+	 * group carries a value. Violation when NONE do (unlike xorGroups, providing
+	 * several is fine). Used for signals where any single one makes the operation
+	 * meaningful (e.g. company.searchByIdentity: companyName / email / website) —
+	 * a call with no signal at all would otherwise run zero queries and still
+	 * publish a coverage block (Codex NEW-3).
+	 */
+	anyOfGroups?: string[][];
 }
 
 type ResourceOperationContracts = Record<string, Record<string, OperationContract>>;
@@ -59,6 +68,15 @@ export const OPERATION_CONTRACTS: ResourceOperationContracts = {
 			requiredFields: ['targetOperation'],
 		},
 	},
+	company: {
+		searchByIdentity: {
+			// All three identity signals are optional in the published schema (the
+			// model may know any subset), but a call with NONE of them performs no
+			// search and must be rejected before any query or coverage computation
+			// (Codex NEW-3) — INVALID_FILTER_CONSTRAINT via validateOperationContract.
+			anyOfGroups: [['companyName', 'email', 'website']],
+		},
+	},
 	ticket: {
 		slaHealthCheck: {
 			xorGroups: [['id', 'ticketNumber']],
@@ -89,6 +107,11 @@ export function hasProvidedValue(value: unknown): boolean {
 
 function quoteFields(fields: string[]): string {
 	return fields.map((field) => `'${field}'`).join(' or ');
+}
+
+function getAnyOfMessage(resource: string, operation: string, fields: string[]): string {
+	void resource;
+	return `Operation '${operation}' requires at least one of ${quoteFields(fields)} — none were provided. Supply at least one signal and retry.`;
 }
 
 function getXorMessage(resource: string, operation: string, fields: string[]): string {
@@ -124,6 +147,7 @@ export function getOperationContract(resource: string, operation: string): Opera
 			]),
 		],
 		xorGroups: [...(globalContract?.xorGroups ?? []), ...(resourceContract?.xorGroups ?? [])],
+		anyOfGroups: [...(globalContract?.anyOfGroups ?? []), ...(resourceContract?.anyOfGroups ?? [])],
 	};
 }
 
@@ -161,6 +185,15 @@ export function validateOperationContract(
 			});
 		}
 	}
+	for (const anyOfGroup of contract.anyOfGroups ?? []) {
+		const provided = anyOfGroup.filter((field) => hasProvidedValue(params[field]));
+		if (provided.length === 0) {
+			violations.push({
+				message: getAnyOfMessage(resource, operation, anyOfGroup),
+				path: [...anyOfGroup],
+			});
+		}
+	}
 
 	return violations;
 }
@@ -178,6 +211,9 @@ export function getOperationContractRuleText(resource: string, operation: string
 	}
 	for (const xorGroup of contract.xorGroups ?? []) {
 		lines.push(getXorMessage(resource, operation, xorGroup));
+	}
+	for (const anyOfGroup of contract.anyOfGroups ?? []) {
+		lines.push(getAnyOfMessage(resource, operation, anyOfGroup));
 	}
 
 	return lines;
@@ -199,6 +235,13 @@ function assertContractRegistryConsistency(): void {
 				if (group.length < 2) {
 					throw new Error(
 						`operation-contracts: '${resourceKey}.${opKey}' has an xorGroup with fewer than 2 members — XOR requires at least two fields.`,
+					);
+				}
+			}
+			for (const group of contract.anyOfGroups ?? []) {
+				if (group.length === 0) {
+					throw new Error(
+						`operation-contracts: '${resourceKey}.${opKey}' has an empty anyOfGroup — a group with no members can never be satisfied.`,
 					);
 				}
 			}

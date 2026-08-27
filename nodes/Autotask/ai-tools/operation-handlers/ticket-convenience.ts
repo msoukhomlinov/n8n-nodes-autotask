@@ -2,7 +2,15 @@ import type { IDataObject } from 'n8n-workflow';
 import type { ExecutorState } from '../executor-state';
 import type { FieldMeta } from '../../helpers/aiHelper';
 import type { ToolFilter } from '../filter-builder';
-import { resolveAndClassifyFilters, resolveCompanyToProjectIdFilter } from '../filter-builder';
+import {
+    buildPicklistFilterBlocker,
+    resolveAndClassifyFilters,
+    resolveCompanyToProjectIdFilter,
+    validateSpecialOpPicklistIds,
+    type SpecialOpPicklistIdCheck,
+} from '../filter-builder';
+import { hasProvidedValue } from '../operation-contracts';
+import type { FilterResolutionResult } from '../filter-builder';
 import type { LabelResolution, PendingLabelConfirmation } from '../../helpers/label-resolution';
 import type { IAutotaskEntity } from '../../types';
 import { autotaskApiRequest } from '../../helpers/http';
@@ -92,6 +100,189 @@ function getConvenienceConfig(resource: string): ResourceConvenienceConfig | und
 	return RESOURCE_CONVENIENCE_CONFIG[resource];
 }
 
+/**
+ * S4/F-5: undefined, null, a blank string, or the literal string 'null' are
+ * all "unusable" status/priority values on a special op. (F-5: `status: null`
+ * was silently skipped by the `!== null` guard — a model asking "status null"
+ * got the unfiltered set with no signal; the literal 'null' string sailed
+ * through to the API as varchar.) A usable value is a number or a non-blank,
+ * non-'null' string.
+ */
+function isUnusablePicklistParam(value: unknown): boolean {
+	if (value === undefined || value === null) return true;
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		return trimmed === '' || trimmed.toLowerCase() === 'null';
+	}
+	return false;
+}
+
+/**
+ * S4/F-5: a blank, null, or literal-'null' status or priority on a special op
+ * used to dispatch a match-nothing eq filter (or be skipped silently) —
+ * zero-of-zero with no signal. Reject it up front with the same precise error
+ * class as the general path's empty filter_value error. Returns the rendered
+ * envelope, or null when the value is usable.
+ */
+function blankPicklistError(
+	resource: string,
+	operation: string,
+	field: string,
+	value: unknown,
+	correlationId: string,
+): string | null {
+	if (!isUnusablePicklistParam(value)) return null;
+	return attachCorrelation(
+		JSON.stringify(
+			wrapError(
+				resource,
+				operation,
+				ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+				`filter_value is empty for field '${field}' (value was null, blank, or the literal 'null') — supply a picklist label or numeric ID, or omit '${field}' to run without the ${field} filter.`,
+				`Retry autotask_${resource} with operation '${operation}' and '${field}' set to a valid picklist label or numeric ID (see listPicklistValues, fieldId='${field}'), or omit '${field}'.`,
+				{ filterField: field },
+				['listPicklistValues'],
+			),
+		),
+		correlationId,
+	);
+}
+
+/**
+ * B1 (v2.28.9 r3): framework-injected keys, NOT tool params. `operation` is the
+ * unified schema's routing field; `resource` is injected by the Agent V3
+ * execute() path (`params = { ...parseResult.data, resource, operation }`).
+ * Neither is op-irrelevant junk — treating `resource` as junk made the
+ * execute() path reject EVERY convenience-op call (INVALID_FILTER_CONSTRAINT
+ * "Parameter 'resource' is not supported") before the F-5 guards could run,
+ * so the two paths could never agree on the F-5 contract.
+ */
+const FRAMEWORK_PARAM_KEYS = new Set(['operation', 'resource']);
+
+/**
+ * F-2: params the operation actually consumes (everything else published by the
+ * unified schema is op-irrelevant for it). Derived from the handlers' own
+ * reads — keep in sync when a handler gains or loses a param:
+ *
+ *  - getByCompanyAndStatus / getUnassigned / getBySLAStatus / getByAge
+ *    append recencyResult.filters and honour limit/returnAll → they consume
+ *    limit, returnAll, recency, since, until, recency_field.
+ *  - countByPeriod / getFullDetail ignore the recency trio, limit, returnAll,
+ *    and every filter/paging parameter — those are junk for them.
+ */
+/**
+ * C3 (v2.28.9 r7): `params` feeds the mode-aware getBySLAStatus rule —
+ * `atRiskWindowHours` is only CONSUMED when slaStatus === 'at_risk' (the handler
+ * reads it in that branch only); for breached/compliant it is op-irrelevant junk.
+ */
+function consumedParamsForOp(
+	resource: string,
+	operation: string,
+	cfg: ResourceConvenienceConfig,
+	params?: Record<string, unknown>,
+): Set<string> {
+	const consumed = new Set<string>(['operation']);
+	if (
+		operation === 'getByCompanyAndStatus' ||
+		operation === 'getUnassigned' ||
+		operation === 'getBySLAStatus' ||
+		operation === 'getByAge'
+	) {
+		consumed.add('limit');
+		consumed.add('returnAll');
+		consumed.add('recency');
+		consumed.add('since');
+		consumed.add('until');
+		consumed.add('recency_field');
+	}
+	switch (operation) {
+		case 'getByCompanyAndStatus':
+			consumed.add('company');
+			consumed.add('status');
+			if (cfg.hasPriority) consumed.add('priority');
+			break;
+		case 'getUnassigned':
+			consumed.add('company');
+			if (cfg.hasPriority) consumed.add('priority');
+			break;
+		case 'getBySLAStatus':
+			consumed.add('slaStatus');
+			// C3 (v2.28.9 r7): the handler reads atRiskWindowHours ONLY in the at_risk
+			// branch — consume it for that mode only. Previously it was consumed for ALL
+			// modes, so breached/compliant calls carrying it succeeded with the param
+			// silently dropped (the exact stagnation pattern irrelevantParamError exists
+			// to prevent).
+			if (params?.slaStatus === 'at_risk') consumed.add('atRiskWindowHours');
+			consumed.add('company');
+			break;
+		case 'getFullDetail': {
+			consumed.add('id');
+			const idPair = getIdentifierPairConfig(resource, 'getFullDetail');
+			if (idPair) consumed.add(idPair.altIdField);
+			break;
+		}
+		case 'countByPeriod':
+			consumed.add('period');
+			consumed.add('company');
+			consumed.add('status');
+			if (cfg.hasPriority) consumed.add('priority');
+			break;
+		case 'getByAge':
+			consumed.add('olderThanDays');
+			consumed.add('company');
+			consumed.add('status');
+			if (cfg.hasPriority) consumed.add('priority');
+			break;
+	}
+	return consumed;
+}
+
+/**
+ * F-2: the unified schema publishes params shared across operations, so
+ * op-irrelevant params (page, offset, filtersJson, filter_* pairs,
+ * includeNotes, excludeTerminalStatuses, …) pass Zod validation and used to
+ * be silently ignored — byte-identical results on every retry, the strongest
+ * model-stagnation driver observed in the replay round. Reject any non-empty
+ * param the operation does not consume, naming the offenders and spelling out
+ * the supported list. Absent or explicitly-null/blank params stay inert
+ * (hasProvidedValue semantics). Framework-injected keys (operation, resource —
+ * see FRAMEWORK_PARAM_KEYS) are never rejected.
+ */
+function irrelevantParamError(
+	resource: string,
+	operation: string,
+	params: Record<string, unknown>,
+	cfg: ResourceConvenienceConfig,
+	correlationId: string,
+): string | null {
+	// N1 (v2.28.9 r7): pass params through so the "supported parameters" list in
+	// the rejection text is derived from the MODE-AWARE consumed set (e.g.
+	// getBySLAStatus with slaStatus='breached' must not advertise atRiskWindowHours).
+	const consumed = consumedParamsForOp(resource, operation, cfg, params);
+	const unsupported: string[] = [];
+	for (const [key, value] of Object.entries(params)) {
+		if (FRAMEWORK_PARAM_KEYS.has(key)) continue;
+		if (consumed.has(key)) continue;
+		if (!hasProvidedValue(value)) continue;
+		unsupported.push(key);
+	}
+	if (unsupported.length === 0) return null;
+	const supported = [...consumed].filter((key) => key !== 'operation').sort();
+	return attachCorrelation(
+		JSON.stringify(
+			wrapError(
+				resource,
+				operation,
+				ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+				`Parameter(s) ${unsupported.map((key) => `'${key}'`).join(', ')} are not supported by operation '${operation}' — supported: ${supported.join(', ')}. Remove the unsupported parameter(s) and retry.`,
+				`Retry autotask_${resource} with operation '${operation}' using only its supported parameters${supported.length > 0 ? `: ${supported.join(', ')}` : ''}. For general filtering (filter_field/filter_value pairs, filtersJson, offset, recency) use operation 'getMany' instead.`,
+				{ unsupportedParameters: unsupported },
+			),
+		),
+		correlationId,
+	);
+}
+
 export async function handleGetByCompanyAndStatus(state: ExecutorState): Promise<string> {
 	const { context, params, resource, correlationId, recencyResult,
 		readFields, labelResolutions, labelWarnings,
@@ -114,17 +305,47 @@ export async function handleGetByCompanyAndStatus(state: ExecutorState): Promise
 		);
 	}
 
+	// F-2: reject op-irrelevant params (page/offset/filtersJson/filter_*/…) up
+	// front — they used to be silently ignored (identical results → stagnation).
+	const gbcasJunkErr = irrelevantParamError(resource, 'getByCompanyAndStatus', params, cfg, correlationId);
+	if (gbcasJunkErr) return gbcasJunkErr;
+
 	// Build synthetic filters: company is required; status and priority are optional.
 	// resolveAndClassifyFilters resolves string values to numeric IDs in-place.
 	const syntheticFilters: ToolFilter[] = [];
 	if (cfg.companyFilterStrategy === 'direct') {
 		syntheticFilters.push({ field: 'companyID', op: 'eq', value: companyRaw as string | number });
 	}
-	if (params.status !== undefined && params.status !== null) {
+	if (params.status !== undefined) {
+		const blankErr = blankPicklistError(resource, 'getByCompanyAndStatus', 'status', params.status, correlationId);
+		if (blankErr) return blankErr;
 		syntheticFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
 	}
-	if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
+	if (cfg.hasPriority && params.priority !== undefined) {
+		const blankErr = blankPicklistError(resource, 'getByCompanyAndStatus', 'priority', params.priority, correlationId);
+		if (blankErr) return blankErr;
 		syntheticFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+	}
+	// S2: no caller-supplied status → exclude terminal statuses (Complete/
+	// Cancelled for ticket; Complete for task/project — per-resource config),
+	// mirroring the sibling convenience ops (getUnassigned's hardcoded base
+	// filters, getBySLAStatus's at_risk branch) and getMany's
+	// excludeTerminalStatuses. An explicit status wins: a model asking for
+	// status='Complete' wants complete tickets, so no exclusion applies.
+	// Hardcoded config IDs — kept OUT of picklist validation and label
+	// resolution, exactly like getUnassigned's base filters (those only apply
+	// to model-supplied values in syntheticFilters).
+	const gbcasBaseFilters: ToolFilter[] =
+		params.status === undefined && cfg.terminalStatusIds.length > 0
+			? [{ field: 'status', op: 'notIn', value: cfg.terminalStatusIds }]
+			: [];
+
+	// F-4: numeric status/priority values must exist in the picklist ID set.
+	const gbcasIdCheck: SpecialOpPicklistIdCheck = await validateSpecialOpPicklistIds(
+		context, resource, 'getByCompanyAndStatus', syntheticFilters, readFields as FieldMeta[],
+	);
+	if (gbcasIdCheck.blocker) {
+		return attachCorrelation(JSON.stringify(gbcasIdCheck.blocker), correlationId);
 	}
 
 	const {
@@ -132,8 +353,9 @@ export async function handleGetByCompanyAndStatus(state: ExecutorState): Promise
 		warnings: specialWarningsRaw,
 		pendingConfirmations: specialPending,
 		unresolvedIdLikeFilters: specialUnresolved,
+		unresolvedPicklistFilterDetails: specialPicklistDetails,
 	} = await resolveAndClassifyFilters(context, resource, syntheticFilters, readFields as FieldMeta[], params as IDataObject);
-	const specialWarnings: string[] = [...specialWarningsRaw];
+	const specialWarnings: string[] = [...specialWarningsRaw, ...gbcasIdCheck.warnings];
 
 	if (specialUnresolved.length > 0) {
 		return attachCorrelation(
@@ -149,6 +371,14 @@ export async function handleGetByCompanyAndStatus(state: ExecutorState): Promise
 			),
 			correlationId,
 		);
+	}
+
+	// S1: block unresolved picklist filters (status/priority values that resolved
+	// to neither an ID nor pending candidates) before they can hit the API as
+	// raw varchar values — mirrors the general getMany path's picklist blocker.
+	const gbcasPicklistBlocker = buildPicklistFilterBlocker(resource, 'getByCompanyAndStatus', specialPicklistDetails, specialPending);
+	if (gbcasPicklistBlocker) {
+		return attachCorrelation(JSON.stringify(gbcasPicklistBlocker), correlationId);
 	}
 
 	// viaProject company filter resolution (e.g. task → projects → projectID-IN)
@@ -173,7 +403,9 @@ export async function handleGetByCompanyAndStatus(state: ExecutorState): Promise
 
 	// After resolveAndClassifyFilters, syntheticFilters values are resolved in-place.
 	// Append recency filters (already built above) to apply date-range constraints.
-	const apiFilters: ToolFilter[] = [...syntheticFilters, ...(recencyResult.filters as ToolFilter[])];
+	// S2: gbcasBaseFilters (terminal-status notIn) prepended like getUnassigned's
+	// base filters — never resolved, always first.
+	const apiFilters: ToolFilter[] = [...gbcasBaseFilters, ...syntheticFilters, ...(recencyResult.filters as ToolFilter[])];
 
 	const queryLimitForOp = effectiveReturnAll ? undefined : (params.limit !== undefined ? getEffectiveLimit(params.limit as number) : DEFAULT_QUERY_LIMIT);
 	const requestBody: IDataObject = { filter: apiFilters as unknown as IDataObject[] };
@@ -187,6 +419,11 @@ export async function handleGetByCompanyAndStatus(state: ExecutorState): Promise
 	const { items: gbcasItems, hasMore: gbcasHasMore } = applyProbeTruncation(gbcasRawItems, queryLimitForOp);
 
 	const allGbcasWarnings = [...specialWarnings, ...labelWarnings];
+	if (gbcasItems.length === 0) {
+		for (const u of gbcasIdCheck.unvalidatedNumericFilters) {
+			allGbcasWarnings.push(`numeric ${u.field} value ${u.value} returned 0 records — verify with listPicklistValues`);
+		}
+	}
 	const allGbcasResolutions = [...specialResolutions, ...labelResolutions];
 
 	const gbcasListJson = JSON.stringify(
@@ -210,6 +447,11 @@ export async function handleGetUnassigned(state: ExecutorState): Promise<string>
 		effectiveReturnAll } = state;
 
 	const cfg = getConvenienceConfig(resource)!;
+	// F-2: reject op-irrelevant params (page/offset/filtersJson/filter_*/status/…)
+	// up front — they used to be silently ignored (identical results → stagnation).
+	const unassignedJunkErr = irrelevantParamError(resource, 'getUnassigned', params, cfg, correlationId);
+	if (unassignedJunkErr) return unassignedJunkErr;
+
 	// Hardcoded base filters: unassigned + not complete/cancelled
 	const unassignedFilters: ToolFilter[] = [
 		{ field: cfg.assignedField, op: 'notExist' },
@@ -221,14 +463,25 @@ export async function handleGetUnassigned(state: ExecutorState): Promise<string>
 	if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) {
 		optionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
 	}
-	if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
+	if (cfg.hasPriority && params.priority !== undefined) {
+		const blankErr = blankPicklistError(resource, 'getUnassigned', 'priority', params.priority, correlationId);
+		if (blankErr) return blankErr;
 		optionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+	}
+
+	// F-4: numeric priority values must exist in the picklist ID set.
+	const unassignedIdCheck: SpecialOpPicklistIdCheck = await validateSpecialOpPicklistIds(
+		context, resource, 'getUnassigned', optionalFilters, readFields as FieldMeta[],
+	);
+	if (unassignedIdCheck.blocker) {
+		return attachCorrelation(JSON.stringify(unassignedIdCheck.blocker), correlationId);
 	}
 
 	let specialUnresolved: ToolFilter[] = [];
 	let specialResolutions: LabelResolution[] = [];
 	let specialWarnings: string[] = [];
 	let specialPending: PendingLabelConfirmation[] = [];
+	let specialPicklistDetails: FilterResolutionResult['unresolvedPicklistFilterDetails'] = [];
 
 	if (optionalFilters.length > 0) {
 		const resolved = await resolveAndClassifyFilters(context, resource, optionalFilters, readFields as FieldMeta[], params as IDataObject);
@@ -236,7 +489,9 @@ export async function handleGetUnassigned(state: ExecutorState): Promise<string>
 		specialResolutions = resolved.resolutions;
 		specialWarnings = resolved.warnings;
 		specialPending = resolved.pendingConfirmations;
+		specialPicklistDetails = resolved.unresolvedPicklistFilterDetails;
 	}
+	specialWarnings.push(...unassignedIdCheck.warnings);
 
 	if (specialUnresolved.length > 0) {
 		return attachCorrelation(
@@ -252,6 +507,13 @@ export async function handleGetUnassigned(state: ExecutorState): Promise<string>
 			),
 			correlationId,
 		);
+	}
+
+	// S1: block unresolved picklist filters before API dispatch (mirrors the
+	// general getMany path's picklist blocker).
+	const unassignedPicklistBlocker = buildPicklistFilterBlocker(resource, 'getUnassigned', specialPicklistDetails, specialPending);
+	if (unassignedPicklistBlocker) {
+		return attachCorrelation(JSON.stringify(unassignedPicklistBlocker), correlationId);
 	}
 
 	// viaProject company filter resolution (e.g. task → projects → projectID-IN)
@@ -287,6 +549,11 @@ export async function handleGetUnassigned(state: ExecutorState): Promise<string>
 	const { items: unassignedItems, hasMore: unassignedHasMore } = applyProbeTruncation(unassignedRawItems, queryLimitForOp);
 
 	const allUnassignedWarnings = [...specialWarnings, ...labelWarnings];
+	if (unassignedItems.length === 0) {
+		for (const u of unassignedIdCheck.unvalidatedNumericFilters) {
+			allUnassignedWarnings.push(`numeric ${u.field} value ${u.value} returned 0 records — verify with listPicklistValues`);
+		}
+	}
 	const allUnassignedResolutions = [...specialResolutions, ...labelResolutions];
 
 	const unassignedListJson = JSON.stringify(
@@ -325,6 +592,14 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 		);
 	}
 
+	// F-2: reject op-irrelevant params (status/priority/limit-paging/filter_*/…)
+	// up front — they used to be silently ignored (identical results → stagnation).
+	const slaJunkErr = irrelevantParamError(resource, 'getBySLAStatus', params, cfg, correlationId);
+	if (slaJunkErr) return slaJunkErr;
+
+	// N5 (v2.28.9 r7): set in the at_risk branch when an explicit atRiskWindowHours
+	// of 0/negative falls back to the 4-hour default (warning only, no behaviour change).
+	let slaWindowWarning: string | undefined;
 	// Build SLA filters based on slaStatus
 	let slaFilters: IDataObject[];
 	if (slaStatusParam === 'breached') {
@@ -333,9 +608,26 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 		slaFilters = [{ field: 'serviceLevelAgreementHasBeenMet', op: 'eq', value: true }];
 	} else {
 		// at_risk: within atRiskWindowHours hours of resolvedDueDateTime, not yet breached
-		const windowHours = typeof params.atRiskWindowHours === 'number' && params.atRiskWindowHours > 0
-			? params.atRiskWindowHours
-			: 4;
+		let windowHours = 4;
+		const rawWindow = params.atRiskWindowHours;
+		if (rawWindow != null && rawWindow !== '') {
+			// N5 (v2.28.9 r7) + NIT-3 (r8) + C4 (r9) + C5 (r10): on the
+			// schema-gated paths the unified schema already converted numeric
+			// strings to numbers (round-10 numeric-string-only preprocess) and
+			// rejected everything else (booleans, arrays, non-numeric strings)
+			// with INVALID_INPUT — so by the time a value reaches this handler
+			// it is a number there. This coercion remains as defense-in-depth
+			// for direct handler invocation: an EXPLICIT value that is not a
+			// positive finite number (e.g. 0) is not "unprovided" — warn that
+			// the 4h default was applied instead of substituting it silently.
+			const coercedWindow =
+				typeof rawWindow === 'number' ? rawWindow : Number(rawWindow);
+			if (Number.isFinite(coercedWindow) && coercedWindow > 0) {
+				windowHours = coercedWindow;
+			} else {
+				slaWindowWarning = `atRiskWindowHours=${rawWindow} is not a positive number — the value was ignored and the 4-hour default window was applied.`;
+			}
+		}
 		const now = new Date();
 		const windowEnd = new Date(now.getTime() + windowHours * 60 * 60 * 1000);
 		slaFilters = [{
@@ -395,7 +687,7 @@ export async function handleGetBySLAStatus(state: ExecutorState): Promise<string
 	const slaRawItems = Array.isArray(slaResponse.items) ? slaResponse.items as Record<string, unknown>[] : [];
 	const { items: slaItems, hasMore: slaHasMore } = applyProbeTruncation(slaRawItems, queryLimitForSla);
 
-	const allSlaWarnings = [...slaSpecialWarnings, ...labelWarnings];
+	const allSlaWarnings = [...slaSpecialWarnings, ...labelWarnings, ...(slaWindowWarning ? [slaWindowWarning] : [])];
 	const allSlaResolutions = [...slaSpecialResolutions, ...labelResolutions];
 
 	const slaListJson = JSON.stringify(
@@ -466,6 +758,11 @@ export async function handleGetFullDetail(state: ExecutorState): Promise<string>
 	}
 
 	const resolvedDetailId = fullDetailTicketId;
+	// F-2: reject op-irrelevant params (status/limit/offset/filter_*/…) up front —
+	// they used to be silently ignored (identical results → stagnation).
+	const fullDetailJunkErr = irrelevantParamError(resource, 'getFullDetail', params, cfg, correlationId);
+	if (fullDetailJunkErr) return fullDetailJunkErr;
+
 	const fullDetailResponse = await autotaskApiRequest.call(context, 'GET', cfg.getEndpoint(resolvedDetailId)) as { item?: IAutotaskEntity };
 	const rawFullDetailTicket = fullDetailResponse.item;
 	if (!rawFullDetailTicket || typeof rawFullDetailTicket !== 'object') {
@@ -676,22 +973,40 @@ export async function handleCountByPeriod(state: ExecutorState): Promise<string>
 	const cbpNow = new Date();
 	const { from: cbpFrom, to: cbpTo } = resolvePeriodBounds(periodParam, cbpNow);
 
+	// F-2: reject op-irrelevant params (limit/offset/recency/filtersJson/…) up
+	// front — countByPeriod ignores them (it counts a fixed period window).
+	const cbpJunkErr = irrelevantParamError(resource, 'countByPeriod', params, cfg, correlationId);
+	if (cbpJunkErr) return cbpJunkErr;
+
 	// Optional filters: company, status, priority
 	const cbpOptional: ToolFilter[] = [];
 	if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) {
 		cbpOptional.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
 	}
-	if (params.status !== undefined && params.status !== null) {
+	if (params.status !== undefined) {
+		const blankErr = blankPicklistError(resource, 'countByPeriod', 'status', params.status, correlationId);
+		if (blankErr) return blankErr;
 		cbpOptional.push({ field: 'status', op: 'eq', value: params.status as string | number });
 	}
-	if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) {
+	if (cfg.hasPriority && params.priority !== undefined) {
+		const blankErr = blankPicklistError(resource, 'countByPeriod', 'priority', params.priority, correlationId);
+		if (blankErr) return blankErr;
 		cbpOptional.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+	}
+
+	// F-4: numeric status/priority values must exist in the picklist ID set.
+	const cbpIdCheck: SpecialOpPicklistIdCheck = await validateSpecialOpPicklistIds(
+		context, resource, 'countByPeriod', cbpOptional, readFields as FieldMeta[],
+	);
+	if (cbpIdCheck.blocker) {
+		return attachCorrelation(JSON.stringify(cbpIdCheck.blocker), correlationId);
 	}
 
 	let cbpResolutions: LabelResolution[] = [];
 	let cbpWarnings: string[] = [];
 	let cbpPending: PendingLabelConfirmation[] = [];
 	let cbpUnresolved: ToolFilter[] = [];
+	let cbpPicklistDetails: FilterResolutionResult['unresolvedPicklistFilterDetails'] = [];
 
 	if (cbpOptional.length > 0) {
 		const cbpResolved = await resolveAndClassifyFilters(context, resource, cbpOptional, readFields as FieldMeta[], params as IDataObject);
@@ -699,7 +1014,9 @@ export async function handleCountByPeriod(state: ExecutorState): Promise<string>
 		cbpWarnings = cbpResolved.warnings;
 		cbpPending = cbpResolved.pendingConfirmations;
 		cbpUnresolved = cbpResolved.unresolvedIdLikeFilters;
+		cbpPicklistDetails = cbpResolved.unresolvedPicklistFilterDetails;
 	}
+	cbpWarnings.push(...cbpIdCheck.warnings);
 
 	if (cbpUnresolved.length > 0) {
 		return attachCorrelation(
@@ -715,6 +1032,13 @@ export async function handleCountByPeriod(state: ExecutorState): Promise<string>
 			),
 			correlationId,
 		);
+	}
+
+	// S1: block unresolved picklist filters before API dispatch (mirrors the
+	// general getMany path's picklist blocker).
+	const cbpPicklistBlocker = buildPicklistFilterBlocker(resource, 'countByPeriod', cbpPicklistDetails, cbpPending);
+	if (cbpPicklistBlocker) {
+		return attachCorrelation(JSON.stringify(cbpPicklistBlocker), correlationId);
 	}
 
 	// viaProject company filter resolution (e.g. task → projects → projectID-IN)
@@ -744,6 +1068,11 @@ export async function handleCountByPeriod(state: ExecutorState): Promise<string>
 	const cbpCount = await executeCountOperation(resource, cbpAllFilters, context);
 
 	const cbpAllWarnings = [...cbpWarnings, ...labelWarnings];
+	if ((cbpCount ?? 0) === 0) {
+		for (const u of cbpIdCheck.unvalidatedNumericFilters) {
+			cbpAllWarnings.push(`numeric ${u.field} value ${u.value} returned 0 records — verify with listPicklistValues`);
+		}
+	}
 	const cbpAllResolutions = [...cbpResolutions, ...labelResolutions];
 
 	const cbpBaseResponse = buildCountResponse(resource, 'countByPeriod', cbpCount ?? 0);
@@ -784,15 +1113,37 @@ export async function handleGetByAge(state: ExecutorState): Promise<string> {
 		{ field: cfg.createDateField, op: 'lt', value: cutoffDate.toISOString() },
 	];
 
+	// F-2: reject op-irrelevant params (fields/offset/filtersJson/…) up front —
+	// they used to be silently ignored (identical results → stagnation).
+	const ageJunkErr = irrelevantParamError(resource, 'getByAge', params, cfg, correlationId);
+	if (ageJunkErr) return ageJunkErr;
+
 	const ageOptionalFilters: ToolFilter[] = [];
 	if (cfg.companyFilterStrategy === 'direct' && params.company !== undefined && params.company !== null) ageOptionalFilters.push({ field: 'companyID', op: 'eq', value: params.company as string | number });
-	if (params.status !== undefined && params.status !== null) ageOptionalFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
-	if (cfg.hasPriority && params.priority !== undefined && params.priority !== null) ageOptionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+	if (params.status !== undefined) {
+		const blankErr = blankPicklistError(resource, 'getByAge', 'status', params.status, correlationId);
+		if (blankErr) return blankErr;
+		ageOptionalFilters.push({ field: 'status', op: 'eq', value: params.status as string | number });
+	}
+	if (cfg.hasPriority && params.priority !== undefined) {
+		const blankErr = blankPicklistError(resource, 'getByAge', 'priority', params.priority, correlationId);
+		if (blankErr) return blankErr;
+		ageOptionalFilters.push({ field: 'priority', op: 'eq', value: params.priority as string | number });
+	}
+
+	// F-4: numeric status/priority values must exist in the picklist ID set.
+	const ageIdCheck: SpecialOpPicklistIdCheck = await validateSpecialOpPicklistIds(
+		context, resource, 'getByAge', ageOptionalFilters, readFields as FieldMeta[],
+	);
+	if (ageIdCheck.blocker) {
+		return attachCorrelation(JSON.stringify(ageIdCheck.blocker), correlationId);
+	}
 
 	let ageResolutions: LabelResolution[] = [];
 	let ageWarnings: string[] = [];
 	let agePending: PendingLabelConfirmation[] = [];
 	let ageUnresolved: ToolFilter[] = [];
+	let agePicklistDetails: FilterResolutionResult['unresolvedPicklistFilterDetails'] = [];
 
 	if (ageOptionalFilters.length > 0) {
 		const ageResolved = await resolveAndClassifyFilters(context, resource, ageOptionalFilters, readFields as FieldMeta[], params as IDataObject);
@@ -800,7 +1151,9 @@ export async function handleGetByAge(state: ExecutorState): Promise<string> {
 		ageWarnings = ageResolved.warnings;
 		agePending = ageResolved.pendingConfirmations;
 		ageUnresolved = ageResolved.unresolvedIdLikeFilters;
+		agePicklistDetails = ageResolved.unresolvedPicklistFilterDetails;
 	}
+	ageWarnings.push(...ageIdCheck.warnings);
 
 	if (ageUnresolved.length > 0) {
 		return attachCorrelation(
@@ -812,6 +1165,13 @@ export async function handleGetByAge(state: ExecutorState): Promise<string> {
 			),
 			correlationId,
 		);
+	}
+
+	// S1: block unresolved picklist filters before API dispatch (mirrors the
+	// general getMany path's picklist blocker).
+	const agePicklistBlocker = buildPicklistFilterBlocker(resource, 'getByAge', agePicklistDetails, agePending);
+	if (agePicklistBlocker) {
+		return attachCorrelation(JSON.stringify(agePicklistBlocker), correlationId);
 	}
 
 	// viaProject company filter resolution (e.g. task → projects → projectID-IN)
@@ -845,6 +1205,11 @@ export async function handleGetByAge(state: ExecutorState): Promise<string> {
 	const { items: ageItems, hasMore: ageHasMore } = applyProbeTruncation(ageRawItems, ageQueryLimit);
 
 	const ageAllWarnings = [...ageWarnings, ...labelWarnings];
+	if (ageItems.length === 0) {
+		for (const u of ageIdCheck.unvalidatedNumericFilters) {
+			ageAllWarnings.push(`numeric ${u.field} value ${u.value} returned 0 records — verify with listPicklistValues`);
+		}
+	}
 	const ageAllResolutions = [...ageResolutions, ...labelResolutions];
 
 	const ageListJson = JSON.stringify(
