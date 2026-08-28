@@ -11,6 +11,8 @@ export interface ToolResponseContext {
 	resolutionWarnings?: string[];
 	/** F7b: moveToCompany audit-note creation outcomes (survive on the success envelope). */
 	auditNotes?: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
+	/** v2.29.0 (X4): for moveConfigurationItem — the SOURCE record id (the move clones to a new id and deactivates the source). */
+	originalRecordId?: number | string;
 	pendingConfirmations?: PendingLabelConfirmation[];
 	effectiveOffset?: number;
 	readFields?: FieldMeta[];
@@ -416,9 +418,14 @@ export function buildMutationResponse(
 											? operation.charAt(0).toUpperCase() + operation.slice(1) + 'd'
 											: operation.charAt(0).toUpperCase() + operation.slice(1) + 'ed';
 	const identity = record ? buildIdentityString(resource, record) : '';
-	const summary = identity
-		? `${opVerb} ${resource} ${identity} successfully.`
-		: `${opVerb} ${resource} (ID: ${id}) successfully.`;
+	const summary =
+		operation === 'moveConfigurationItem'
+			? context.originalRecordId !== undefined
+				? `Cloned configuration item ${context.originalRecordId} to a new record (ID: ${id}); the original ${context.originalRecordId} was DEACTIVATED (Autotask 'move' = clone + deactivate — no in-place move exists).`
+				: `Cloned configuration item to a new record (ID: ${id}); the original record was DEACTIVATED (Autotask 'move' = clone + deactivate — no in-place move exists).`
+			: identity
+				? `${opVerb} ${resource} ${identity} successfully.`
+				: `${opVerb} ${resource} (ID: ${id}) successfully.`;
 	const response: Record<string, unknown> = {
 		summary,
 		resource,
@@ -501,14 +508,20 @@ export function buildCountResponse(
 	resource: string,
 	operation: string,
 	matchCount: number,
+	context: ToolResponseContext = {},
 ): Record<string, unknown> {
-	return {
+	const response: Record<string, unknown> = {
 		summary: `${matchCount} ${resource} records match the filter.`,
 		resource,
 		operation: `${resource}.${operation}`,
 		matchCount,
 		warnings: [],
 	};
+	// v2.29.0 (X14): report label->ID resolutions on count responses too (a label
+	// filter that resolved silently was invisible to the model).
+	const resolvedLabels = toResolvedLabels(context.resolutions);
+	if (resolvedLabels.length > 0) response.resolvedLabels = resolvedLabels;
+	return response;
 }
 
 export function buildCompoundResponse(

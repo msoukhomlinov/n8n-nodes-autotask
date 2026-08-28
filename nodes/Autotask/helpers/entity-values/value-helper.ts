@@ -13,6 +13,15 @@ import { QUERY_LIMITS } from '../../constants/operations';
 /** Memoises per-entity isActive field support. Keyed by lowercased entity type. */
 const entitySupportsIsActiveCache = new Map<string, boolean>();
 
+// v2.29.0 (X10): name-field capability cache — see entityHasUsableNameField().
+const entityHasNameFieldCache = new Map<string, boolean>();
+
+/** Field names (lowercase) that can serve as a human label for reference resolution. */
+const NAME_FIELD_HINTS = new Set([
+	'name', 'referenceTitle', 'title', 'displayName', 'firstName', 'lastName',
+	'label', 'companyName', 'contractName', 'projectName', 'userName', 'email',
+]);
+
 interface IFallbackConfig {
 	enabled: boolean;
 	defaultValue?: string | number;
@@ -79,6 +88,33 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			// Do NOT write to entitySupportsIsActiveCache here — a transient failure
 			// must not permanently suppress isActive filtering for this entity type.
 			return false;
+		}
+	}
+
+	private async entityHasUsableNameField(): Promise<boolean> {
+		const key = this.entityType.toLowerCase();
+		const cached = entityHasNameFieldCache.get(key);
+		if (cached !== undefined) return cached;
+		// A mapping entry means the entity has known-good display fields.
+		if (this.getEntityFieldMapping()) {
+			entityHasNameFieldCache.set(key, true);
+			return true;
+		}
+		try {
+			const fields = (await getFields(this.entityType, this.context, {
+				fieldType: 'standard',
+			})) as IAutotaskField[];
+			const has = fields.some((f) => NAME_FIELD_HINTS.has(String(f.name).toLowerCase()));
+			entityHasNameFieldCache.set(key, has);
+			return has;
+		} catch (err) {
+			console.warn(
+				`[EntityValueHelper] Could not check name-field support for ${this.entityType}: ${
+					err instanceof Error ? err.message : 'unknown error'
+				}. Falling back to the fetch attempt.`,
+			);
+			// Transient failure — do NOT cache; fall back to the previous behaviour.
+			return true;
 		}
 	}
 
@@ -181,6 +217,18 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	 *                   so labels can still be generated for IDs that point to inactive (historical) records.
 	 */
 	public async getValues(activeOnly = false): Promise<T[]> {
+		// v2.29.0 (X10): fail fast when the entity has no usable name field — the
+		// DEFAULT_PICKLIST_FIELDS fallback would make the API reject the fetch
+		// ('Unable to find name in the X Entity') or burn minutes scanning an
+		// unmatchable field, hanging the tool call past the protocol timeout
+		// (observed: filtering a ConfigurationItem reference by its referenceTitle
+		// label scanned all active CIs).
+		if (!(await this.entityHasUsableNameField())) {
+			console.warn(
+				`[EntityValueHelper] ${this.entityType} has no name-like field — no reference labels can match; skipping value fetch.`,
+			);
+			return [];
+		}
 		try {
 			// Apply any configured filters from PICKLIST_REFERENCE_FIELD_MAPPINGS
 			const mapping = this.getEntityFieldMapping();

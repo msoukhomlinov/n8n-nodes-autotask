@@ -10,6 +10,7 @@ import {
 	RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION,
 	RESOURCE_EXTRA_HINTS,
 } from './resource-language';
+import { isNodeOperationImpersonationSupported, isNodeResourceImpersonationSupported } from '../helpers/impersonation';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
 import { MAX_RESPONSE_RECORDS } from './operation-handlers/operation-dispatch';
 import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
@@ -1418,6 +1419,7 @@ function getReadOpParams(): ReadOpParamsMap {
 function buildWriteParams(
 	writeFields: FieldMeta[],
 	includeDedup = false,
+	resource?: string,
 ): { required: OperationParam[]; optional: OperationParam[] } {
 	const required: OperationParam[] = [];
 	const optional: OperationParam[] = [];
@@ -1462,13 +1464,17 @@ function buildWriteParams(
 			},
 		);
 	}
-	optional.push(
-		{
-			field: 'impersonationResourceId',
-			type: 'number | string',
-			description: 'Resource ID or name for write attribution (auto-resolved).',
-		},
-	);
+	// v2.29.0 (X9): only document impersonationResourceId for resources Autotask
+	// actually supports impersonation on (parity with the schema gate + description line).
+	if (resource === undefined || isNodeResourceImpersonationSupported(resource)) {
+		optional.push(
+			{
+				field: 'impersonationResourceId',
+				type: 'number | string',
+				description: 'Resource ID or name for write attribution (auto-resolved).',
+			},
+		);
+	}
 	return { required, optional };
 }
 
@@ -1647,7 +1653,7 @@ export function buildOperationDoc(
 
 	let parameters: ReadOpParams;
 	if (WRITE_OPS_WITH_FIELD_METADATA.has(targetOperation)) {
-		parameters = buildWriteParams(writeFields, targetOperation === 'createIfNotExists');
+		parameters = buildWriteParams(writeFields, targetOperation === 'createIfNotExists', resource);
 	} else {
 		parameters = resolveReadOpParams(resource, targetOperation);
 	}

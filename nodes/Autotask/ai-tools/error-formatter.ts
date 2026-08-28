@@ -20,6 +20,7 @@ export const ERROR_TYPES = {
 	INVALID_WRITE_FIELDS: 'INVALID_WRITE_FIELDS',
 	INVALID_FILTER_CONSTRAINT: 'INVALID_FILTER_CONSTRAINT',
 	INVALID_DEDUP_FIELD: 'INVALID_DEDUP_FIELD',
+	DUPLICATE_RECORD: 'DUPLICATE_RECORD',
 	MISSING_REQUIRED_FIELDS: 'MISSING_REQUIRED_FIELDS',
 	WRITE_RESOLUTION_INCOMPLETE: 'WRITE_RESOLUTION_INCOMPLETE',
 	INVALID_INPUT: 'INVALID_INPUT',
@@ -60,6 +61,7 @@ const ACTIONABLE_PREFIX_TYPES = new Set<string>([
 	ERROR_TYPES.ENTITY_NOT_FOUND,
 	ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
 	ERROR_TYPES.INVALID_DEDUP_FIELD,
+	ERROR_TYPES.DUPLICATE_RECORD,
 ]);
 
 export function wrapError(
@@ -211,6 +213,41 @@ export function formatApiError(
 		);
 	}
 
+	// v2.29.0 (X3b): the API rejects duplicate creates with "Duplicate <Entity> found
+	// (ID: X) ..." when the pre-dispatch dedup scan misses the record (concurrency or
+	// dedup-field mismatch). Classify as DUPLICATE_RECORD with a concrete recovery
+	// instead of the generic API_ERROR retry loop.
+	const duplicateMatch = message.match(/duplicate\s+(\w+)\s+found(\s+\(ID: ([\d]+)\))?/i);
+	if (duplicateMatch) {
+		const entityId = duplicateMatch[3] ?? undefined;
+		return wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.DUPLICATE_RECORD,
+			`Duplicate ${duplicateMatch[1]} found${entityId ? ` (ID: ${entityId})` : ''} — a record with the same identifying values already exists.`,
+			`Create with errorOnDuplicate=false (it will reuse or update the existing record)${entityId ? `, or update record ${entityId} directly` : ''}.`,
+			entityId ? { duplicateId: Number(entityId) } : undefined,
+		);
+	}
+
+	// v2.29.0 (X1): phantom filter field — advertised by describeFields (it exists in the
+	// entity's field metadata) but rejected by the Autotask QUERY engine ("Unable to find
+	// X in the <Entity> Entity."). E.g. ConfigurationItem 'Manufacturer' / UDF filter
+	// values. The generic API_ERROR recovery ('call describeFields first and retry') loops
+	// forever because describeFields re-advertises the phantom field — classify with a
+	// non-looping nextAction that tells the model to drop the field.
+	const phantomFieldMatch = message.match(/unable to find\s+('([^']+)'|([\w]+))\s+in the/i);
+	if (phantomFieldMatch) {
+		const phantomField = phantomFieldMatch[2] ?? phantomFieldMatch[3];
+		return wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+			`Filter field '${phantomField}' is advertised by describeFields but the Autotask query engine does not support it (phantom field). It cannot be used in filters.`,
+			`Remove '${phantomField}' from filter_field/filter_op/filter_value and filtersJson, and use a field the API query engine supports (for configuration items: 'referenceTitle' with filter_op 'contains' is the viable brand/manufacturer search). Do NOT retry '${phantomField}' — describeFields will keep advertising it.`,
+		);
+	}
+
 	if (
 		lowerMessage.includes('lock')
 		|| lowerMessage.includes('concurrent')
@@ -237,7 +274,7 @@ export function formatApiError(
 			operation,
 			ERROR_TYPES.PERMISSION_DENIED,
 			message,
-			`Verify API user security level and line-of-business permissions before retrying autotask_${resource} with operation '${operation}'. Data can exist but still be inaccessible.`,
+			`This call is blocked by the account/permission configuration (security level / line-of-business). Do not retry the same call — use a different operation or credential, or ask the user to adjust the API user's permissions. (Data may exist but be inaccessible.)`,
 		);
 	}
 
@@ -302,7 +339,11 @@ export function formatApiError(
 	// CONCURRENCY_CONFLICT type). The TAGGED [NotFoundError…] check above still wins
 	// outright for Autotask's canonical not-found bodies (E1, including bodies that hedge
 	// with "permission" wording).
-	if (lowerMessage.includes('not found') || lowerMessage.includes('does not exist')) {
+	if (
+		lowerMessage.includes('not found')
+		|| lowerMessage.includes('does not exist')
+		|| lowerMessage.includes('no matching records')
+	) {
 		return wrapError(
 			resource,
 			operation,
@@ -328,6 +369,20 @@ export function formatApiError(
 				['describeFields'],
 			);
 		}
+	}
+
+	// v2.29.0 (X7): API method not supported for this resource (HTTP 405). Retrying can
+	// never help — tell the model to stop and check the operation list.
+	if (/does not support http method/i.test(message)) {
+		return wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.INVALID_OPERATION,
+			`The Autotask API does not support this HTTP method for ${resource} — the operation cannot succeed.`,
+			`Do not retry this operation. Call autotask_${resource} with operation 'describeOperation' to see what the API supports for this resource, or use a supported operation.`,
+			undefined,
+			['describeOperation'],
+		);
 	}
 
 	return wrapError(

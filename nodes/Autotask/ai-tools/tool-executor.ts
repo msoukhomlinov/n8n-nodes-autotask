@@ -281,6 +281,10 @@ export const EXPLICITNESS_SENSITIVE_KEYS = new Set<string>(['status', 'priority'
  * Execute an Autotask operation by routing to the existing tool executor
  * with getNodeParameter overridden to map flat AI tool params.
  */
+function supportsListProjection(operation: string): boolean {
+	return ['getMany', 'getPosted', 'getUnposted'].includes(operation);
+}
+
 export async function executeAiTool(
 	context: IExecuteFunctions,
 	resource: string,
@@ -1807,6 +1811,100 @@ export async function executeAiTool(
 		const needsParallelCount =
 			effectiveOperation === 'getMany' &&  // excludes getPosted/getUnposted (cross-entity join; wrong total)
 			recencyResult.isActive && !isShortWindow && !effectiveReturnAll;
+		// v2.29.0 (X11): companyNote.create parity defaults — mirror the contact
+		// moveToCompany audit-note semantics (v2.28.10): the API requires actionType,
+		// startDateTime, endDateTime and an API-required assignedResourceID. Default
+		// them so an explicit create succeeds with minimal input; every default is
+		// reported in warnings, and when no usable assigned resource can be derived
+		// the model is told to supply one (never a silent skip — this is an explicit
+		// create, not an audit note).
+		if (resource === 'companyNote' && effectiveOperation === 'create') {
+			const nowIso = new Date().toISOString();
+			const defaults: string[] = [];
+			if (fieldValues.actionType === undefined) {
+				fieldValues.actionType = 3; // 'Note: General'
+				defaults.push("companyNote.create: actionType defaulted to 3 ('Note: General')");
+			}
+			if (fieldValues.startDateTime === undefined) {
+				fieldValues.startDateTime = nowIso;
+				defaults.push(`companyNote.create: startDateTime defaulted to ${nowIso}`);
+			}
+			if (fieldValues.endDateTime === undefined) {
+				fieldValues.endDateTime = nowIso;
+				defaults.push(`companyNote.create: endDateTime defaulted to ${nowIso}`);
+			}
+			if (fieldValues.assignedResourceID === undefined) {
+				if (params.impersonationResourceId !== undefined) {
+					// Impersonation pass-through — same window-based safety as v2.28.10:
+					// the write executes inside the mover's temporary-activation window.
+					fieldValues.assignedResourceID = params.impersonationResourceId;
+					defaults.push(
+						`companyNote.create: assignedResourceID defaulted to the impersonation resource ${params.impersonationResourceId}`,
+					);
+				} else if (fieldValues.companyID !== undefined) {
+					// Company's owner resource, active-only (same rule as contact-mover).
+					try {
+						const compProbe = {
+							...context,
+							getNodeParameter: ((
+								name: string,
+								...args: unknown[]
+							): unknown => {
+								if (name === 'targetOperation') return 'company.get';
+								if (name === 'entityId') return fieldValues.companyID;
+								if (name === 'requestData') return '{}';
+								return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+							}) as typeof context.getNodeParameter,
+						} as typeof context;
+						const compResult = await executeToolOperation.call(compProbe);
+						const company = (compResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
+						const ownerResourceID = company?.ownerResourceID;
+						if (ownerResourceID !== undefined && ownerResourceID !== null && ownerResourceID !== 0) {
+							const resProbe = {
+								...context,
+								getNodeParameter: ((
+									name: string,
+									...args: unknown[]
+								): unknown => {
+									if (name === 'targetOperation') return 'resource.get';
+									if (name === 'entityId') return ownerResourceID;
+									if (name === 'requestData') return '{}';
+									return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+								}) as typeof context.getNodeParameter,
+							} as typeof context;
+							const resResult = await executeToolOperation.call(resProbe);
+							const resRec = (resResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
+							const resActive =
+								resRec !== null
+								&& (resRec.isActive === true || resRec.isActive === 1 || resRec.isActive === '1' || resRec.isActive === 'true');
+							if (resActive) {
+								fieldValues.assignedResourceID = ownerResourceID;
+								defaults.push(
+									`companyNote.create: assignedResourceID defaulted to the company's owner resource ${ownerResourceID} (active-only)`,
+								);
+							} else {
+								labelWarnings.push(
+									`companyNote.create: no assignedResourceID supplied and company ${fieldValues.companyID} has no usable (active) owner resource — the API requires assignedResourceID; supply it explicitly.`,
+								);
+							}
+						} else {
+							labelWarnings.push(
+								`companyNote.create: company ${fieldValues.companyID} has no owner resource and no assignedResourceID was supplied — the API requires assignedResourceID; supply it explicitly.`,
+							);
+						}
+					} catch {
+						labelWarnings.push(
+							'companyNote.create: could not derive a default assignedResourceID (company/owner lookup failed) — supply assignedResourceID explicitly.',
+						);
+					}
+				} else {
+					labelWarnings.push(
+						'companyNote.create: no assignedResourceID supplied and no companyID to derive an owner from — the API requires assignedResourceID; supply it explicitly.',
+					);
+				}
+			}
+			if (defaults.length > 0) labelWarnings.push(...defaults);
+		}
 		const [result, parallelCountResult] = await Promise.all([
 			executeToolOperation.call(context),
 			needsParallelCount
@@ -1861,6 +1959,25 @@ export async function executeAiTool(
 			);
 		}
 		let records = fetchedRecords;
+		// v2.29.0 (X15): enforce the sparse-fields contract client-side. The API's paged
+		// next-URL does not reliably preserve IncludeFields (later pages can come back
+		// with every field), so project every record to the requested columns — keeping
+		// id (so downstream enrichment/labels keep working), any *_label variants, and
+		// userDefinedFields.
+		if (selectedColumns.length > 0 && supportsListProjection(effectiveOperation)) {
+			const keep = new Set<string>(selectedColumns);
+			for (const col of selectedColumns) keep.add(`${col}_label`);
+			records = records.map((rec) => {
+				const r = rec as Record<string, unknown>;
+				const out: Record<string, unknown> = {};
+				for (const key of Object.keys(r)) {
+					if (keep.has(key) || key === 'id' || key === 'userDefinedFields') {
+						out[key] = r[key];
+					}
+				}
+				return out;
+			});
+		}
 		const supportsListResponse = ['getMany', 'getPosted', 'getUnposted'].includes(
 			effectiveOperation,
 		);
@@ -1918,8 +2035,26 @@ export async function executeAiTool(
 				}
 			}
 		}
-		const mergedWarnings = [...allWarnings, ...countInjectionWarnings, ...rawDatePairWarnings];
+		const extraWarnings: string[] = [];
+		// v2.29.0 (X6): the Autotask by-ID GET route for ConfigurationItemRelatedItem
+		// does not resolve the ID returned by create (API-side inconsistency; getMany
+		// DOES find the record). Warn on mutations so the model doesn't loop on get.
+		if (
+			resource === 'configurationItemRelatedItem'
+			&& (effectiveOperation === 'create' || effectiveOperation === 'update')
+		) {
+			extraWarnings.push(
+				"configurationItemRelatedItem: the ID returned by this API may not resolve with operation 'get' (Autotask by-ID route inconsistency) — verify with getMany filtered by configurationItemID instead.",
+			);
+		}
+		const mergedWarnings = [...allWarnings, ...countInjectionWarnings, ...rawDatePairWarnings, ...extraWarnings];
 		const responseContext: ToolResponseContext = {
+			originalRecordId:
+				effectiveOperation === 'moveConfigurationItem'
+					? params.id !== undefined
+						? params.id
+						: undefined
+					: undefined,
 			recencyActive: recencyResult.isActive,
 			recencyNote: recencyResult.note ?? recencyOffsetNote,
 			recencyWindowLimited:
@@ -2015,20 +2150,55 @@ export async function executeAiTool(
 					: {}),
 			},
 		});
-		return attachCorrelation(
-			JSON.stringify(
-				isInternal
-					? wrapError(
+		let errorEnvelope = isInternal
+			? wrapError(
+				resource,
+				effectiveOperation,
+				ERROR_TYPES.INTERNAL_ERROR,
+				internalSummary,
+				'This appears to be a bug in the tool. Do not retry with the same parameters.',
+			)
+			: formatApiError(message, resource, effectiveOperation);
+		// v2.29.0 (X2): Autotask reports a MISSING record on update/delete as a
+		// permission-flavoured 403 ("…may not have the required permissions" /
+		// "No matching records found"), which formatApiError classifies as
+		// PERMISSION_DENIED and sends the model down a security-debugging path.
+		// Confirm with a read before reporting: if the record does not exist, the
+		// truthful error is ENTITY_NOT_FOUND. One extra GET, only on this rare path.
+		if (
+			!isInternal
+			&& errorEnvelope.errorType === ERROR_TYPES.PERMISSION_DENIED
+			&& (effectiveOperation === 'update' || effectiveOperation === 'delete')
+			&& params.id !== undefined
+		) {
+			try {
+				const probeContext = {
+					...context,
+					getNodeParameter: ((
+						name: string,
+						...args: unknown[]
+					): unknown => {
+						if (name === 'targetOperation') return `${resource}.get`;
+						if (name === 'requestData') return '{}';
+						return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+					}) as typeof context.getNodeParameter,
+				} as typeof context;
+				const probeResult = await executeToolOperation.call(probeContext);
+				const probeItems = probeResult[0] ?? [];
+				if (probeItems.length === 0) {
+					errorEnvelope = wrapError(
 						resource,
 						effectiveOperation,
-						ERROR_TYPES.INTERNAL_ERROR,
-						internalSummary,
-						'This appears to be a bug in the tool. Do not retry with the same parameters.',
-					)
-					: formatApiError(message, resource, effectiveOperation),
-			),
-			correlationId,
-		);
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`No ${resource} found with id ${params.id} — the API reports missing records on update/delete as permission errors.`,
+						`If the user supplied this ID explicitly, report that no record exists with that ID. Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID.`,
+					);
+				}
+			} catch {
+				// Probe failed (e.g. transport) — keep the classified permission error.
+			}
+		}
+		return attachCorrelation(JSON.stringify(errorEnvelope), correlationId);
 	} finally {
 		context.getNodeParameter = originalGetNodeParameter;
 	}

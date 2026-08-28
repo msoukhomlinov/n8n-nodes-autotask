@@ -794,7 +794,7 @@ export function dispatchOperationResponse(
 
 		case 'count': {
 			const countValue = records[0]?.count ?? records.length;
-			return JSON.stringify(buildCountResponse(resource, operation, countValue as number));
+			return JSON.stringify(buildCountResponse(resource, operation, countValue as number, context));
 		}
 
 		case 'getByResource':

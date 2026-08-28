@@ -6,6 +6,7 @@ import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
 import { RESOURCES_WITH_PRIORITY, RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } from './resource-language';
+import { isNodeResourceImpersonationSupported } from '../helpers/impersonation';
 import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
 
 /** Helper operations always present in the operation enum — not "real" data operations. */
@@ -40,8 +41,18 @@ export const IMPERSONATION_FIELD_WRITE_OPERATIONS = [
 	'createIfNotExists',
 ] as const;
 
-export function schemaHasImpersonationField(operations: readonly string[]): boolean {
-	return IMPERSONATION_FIELD_WRITE_OPERATIONS.some((op) => operations.includes(op));
+export function schemaHasImpersonationField(
+	operations: readonly string[],
+	resource?: string,
+): boolean {
+	if (!IMPERSONATION_FIELD_WRITE_OPERATIONS.some((op) => operations.includes(op))) {
+		return false;
+	}
+	// v2.29.0 (X9): the schema must not advertise impersonationResourceId for a
+	// resource Autotask does not support impersonation on — the description side is
+	// resource-gated (impersonation.ts), and a schema param the executor rejects is a
+	// model trap (configurationItemTypes used to advertise it via the ops-only gate).
+	return resource === undefined || isNodeResourceImpersonationSupported(resource);
 }
 
 /** Shared impersonationResourceId field description — used at all 5 schema insertion sites. */
@@ -792,7 +803,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 						'For picklist UDFs use the picklist value ID (label resolution not supported for UDFs).',
 					);
 			}
-			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations, resource)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -894,7 +905,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.min(1)
 				.nullish()
 				.describe('Maximum attachment size per file in bytes (default 6291456).');
-			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations, resource)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -952,7 +963,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe('Audit note written to the destination company context.');
-			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations, resource)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -1093,7 +1104,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe(
 					'Audit note template with placeholders: {sourceResourceName}, {sourceResourceId}, {destinationResourceName}, {destinationResourceId}, {date}, {entityType}, {entityId}.',
 				);
-			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations, resource)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -1185,7 +1196,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.describe(
 						"If true, error on duplicate instead of returning outcome: skipped. Default false.",
 					);
-			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations, resource)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
