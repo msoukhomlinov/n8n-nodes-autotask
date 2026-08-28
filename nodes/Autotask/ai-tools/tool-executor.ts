@@ -2274,10 +2274,14 @@ export async function executeAiTool(
 					filter: [{ field: 'id', op: 'eq', value: String(params.id) }],
 					MaxRecords: 1,
 				};
+				// isQuery: true is REQUIRED — without it the same POST body is
+				// interpreted by the API as a create (server-side field validation:
+				// 'Missing Required Field: isActive'), which both breaks the probe
+				// and risks writes. (Found via debug logging, 2026-08-29.)
 				const probeResp = (await autotaskApiRequest.call(
 					context,
 					'POST',
-					buildEntityUrl(probeEntity),
+					buildEntityUrl(probeEntity, { isQuery: true }),
 					probeBody,
 				)) as { items?: Array<Record<string, unknown>> } | Array<Record<string, unknown>> | null;
 				const probeItems = Array.isArray(probeResp) ? probeResp : (probeResp?.items ?? []);
