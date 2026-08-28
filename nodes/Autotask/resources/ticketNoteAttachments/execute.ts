@@ -70,7 +70,7 @@ export async function executeTicketNoteAttachmentOperation(
 								proceedWithoutImpersonationIfDenied = this.getNodeParameter(
 									'proceedWithoutImpersonationIfDenied',
 									i,
-									false,
+									true,
 								) as boolean;
 							}
 						} catch (error) {

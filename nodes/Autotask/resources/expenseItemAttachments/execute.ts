@@ -65,7 +65,7 @@ export async function executeExpenseItemAttachmentOperation(
 								proceedWithoutImpersonationIfDenied = this.getNodeParameter(
 									'proceedWithoutImpersonationIfDenied',
 									i,
-									false,
+									true,
 								) as boolean;
 							}
 						} catch (error) {

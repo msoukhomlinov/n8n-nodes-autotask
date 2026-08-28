@@ -71,7 +71,7 @@ export async function executeTimeEntryAttachmentOperation(
 								proceedWithoutImpersonationIfDenied = this.getNodeParameter(
 									'proceedWithoutImpersonationIfDenied',
 									i,
-									false,
+									true,
 								) as boolean;
 							}
 						} catch (error) {
