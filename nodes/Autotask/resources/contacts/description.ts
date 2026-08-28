@@ -45,6 +45,12 @@ export const contactFields: INodeProperties[] = [
 				action: 'Count contacts',
 			},
 			{
+				name: 'Delete',
+				value: 'delete',
+				description: 'Delete a contact',
+				action: 'Delete a contact',
+			},
+			{
 				name: 'Move to Company',
 				value: 'moveToCompany',
 				description: 'Copy a contact to a different company, optionally copy notes and group memberships, then deactivate the source',
@@ -62,7 +68,7 @@ export const contactFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['contact'],
-				operation: ['update', 'get'],
+				operation: ['update', 'get', 'delete'],
 			},
 		},
 		description: 'The ID of the contact to operate on',
@@ -134,10 +140,10 @@ export const contactFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['contact'],
-				operation: ['moveToCompany'],
+				operation: ['moveToCompany', 'delete'],
 			},
 		},
-		description: 'Whether to return a migration plan without executing any writes. Useful for previewing what would happen.',
+		description: 'Whether to return a request preview instead of executing the operation (no changes are made to Autotask). For Move to Company, returns a migration plan; for Delete, returns the request that would be sent.',
 	},
 	{
 		displayName: 'Destination Location ID',

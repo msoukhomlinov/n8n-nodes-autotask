@@ -6,6 +6,7 @@ import {
 	CountOperation,
 } from '../../operations/base';
 import { autotaskApiRequest } from '../../helpers/http';
+import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 import { ATTACHMENT_TYPE, validateAttachmentSize, type IAttachmentPayload } from '../../helpers/attachment';
 
 const ENTITY_TYPE = 'opportunityAttachment';
@@ -137,6 +138,19 @@ export async function executeOpportunityAttachmentOperation(
 
 					// Build endpoint: /Opportunities/{opportunityId}/Attachments/{attachmentId}
 					const endpoint = `Opportunities/${opportunityId}/Attachments/${attachmentId}/`;
+
+					if (isDryRunEnabled(this, i)) {
+						returnData.push({
+							json: (await createDryRunResponse(
+								this,
+								ENTITY_TYPE,
+								'delete',
+								{ method: 'DELETE', url: endpoint },
+								i,
+							)) as unknown as IDataObject,
+						});
+						break;
+					}
 
 					await autotaskApiRequest.call(this, 'DELETE', endpoint);
 					returnData.push({

@@ -1,7 +1,7 @@
 import type { IExecuteFunctions } from 'n8n-workflow';
 import type { IAutotaskEntity } from '../../types';
 import { OperationType } from '../../types/base/entity-types';
-import { autotaskApiRequest } from '../../helpers/http';
+import { autotaskApiRequest, buildEntityUrl, buildChildEntityUrl } from '../../helpers/http';
 import { handleErrors } from '../../helpers/errorHandler';
 import { getEntityMetadata } from '../../constants/entities';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
@@ -40,18 +40,28 @@ export class DeleteOperation<T extends IAutotaskEntity> extends BaseOperation {
 
 				// Get entity metadata to check for optional parent ID
 				const metadata = getEntityMetadata(this.entityType);
-				let endpoint = `/${this.entityType}/${entityId}`;
+				// buildEntityUrl/buildChildEntityUrl gate the id segment on truthiness, so a
+				// numeric 0 (a legitimate ID) would silently produce a collection URL. Stringify
+				// so "0" stays a real path segment.
+				const idSegment = String(entityId);
+				let endpoint = buildEntityUrl(this.entityType, { entityId: idSegment });
 
 				// For delete operations, parent ID is optional
 				if (metadata?.childOf) {
 					try {
 						const parentIdField = metadata.parentIdField || `${metadata.childOf}ID`;
-						const parentId = await this.getParameter(parentIdField, itemIndex);
+						const rawParentId = await this.getParameter(parentIdField, itemIndex);
+						const parentId = typeof rawParentId === 'string' ? rawParentId.trim() : rawParentId;
 
-						if (parentId && (typeof parentId === 'string' || typeof parentId === 'number')) {
-							// Use parent entity name and child entity subname (if provided)
-							const childEntityPath = metadata.subname || this.entityType;
-							endpoint = `/${metadata.childOf}/${parentId}/${childEntityPath}/${entityId}`;
+						if (
+							parentId !== undefined &&
+							parentId !== null &&
+							parentId !== '' &&
+							(typeof parentId === 'string' || typeof parentId === 'number')
+						) {
+							// Same normalized (pluralized) URL construction used by the live DELETE call,
+							// so the dry-run preview matches the request that would actually be sent.
+							endpoint = buildChildEntityUrl(metadata.childOf, this.entityType, parentId, { entityId: idSegment });
 						}
 					} catch {
 						// Parent ID is optional for delete operations

@@ -2,6 +2,18 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.29.0] - 2026-08-28
+
+### Changed
+
+- **Contact resource now supports `delete`** — the Autotask REST API supports `DELETE` on the Contacts entity only via the Company-scoped path (`DELETE Companies/{companyID}/Contacts/{id}`, resolved automatically); the standard node (`Autotask` → Contact → Delete, with a Dry Run toggle) and the AI tool (`autotask_contact` operation `delete`) both expose it. Resolves #146.
+
+### Fixed
+
+- **`DeleteOperation` no longer drops the parent-scoped path for a companyID of `0`** — the parent-ID check used JS truthiness, so a contact belonging to the root company (a legitimate `companyID` of `0`) fell through to a flat `/Contacts/{id}` endpoint that Autotask doesn't expose for delete. Affects every parent-scoped entity with a delete operation, not just Contact.
+- **`DeleteOperation` dry-run preview now shows the actual normalized request URL** — previously it showed the raw, unpluralized endpoint (e.g. `/Company/123/Contact/456`) rather than the URL `autotaskApiRequest` actually sends (`Companies/123/Contacts/456/`). Endpoint construction now goes through the same `buildEntityUrl`/`buildChildEntityUrl` helpers used elsewhere, with an explicit fix so a numeric entity ID of `0` isn't dropped by their truthiness-gated ID segment.
+- **`Autotask → Tool` resource's generic delete dry-run now previews the correct parent-scoped URL** — it had its own hand-rolled dry-run-delete shortcut that always built a flat, unscoped URL (e.g. `Contacts/{id}/`) regardless of whether the target entity is parent-scoped (e.g. Contact under Company), misrepresenting the request for any such entity. Removed the shortcut entirely — delete dry-run now flows through the same executor dispatch as every other operation. The five attachment resources (Ticket/TicketNote/TimeEntry/ExpenseItem/OpportunityAttachments) that hand-roll delete without going through `DeleteOperation` gained their own explicit dry-run guard, since they relied entirely on the removed shortcut for preview safety.
+
 ## [2.28.10] - 2026-08-27
 
 ### Fixed

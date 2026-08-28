@@ -55,7 +55,7 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 		childOf: 'Company',
 		subname: 'Contact',
 		parentIdField: 'companyID',
-		operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' },
+		operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.DELETE]: 'parent' },
 		hasUserDefinedFields: true,
 		supportsWebhookCallouts: true,
 	},
