@@ -2260,7 +2260,16 @@ export async function executeAiTool(
 				} as typeof context;
 				const probeResult = await executeToolOperation.call(probeContext);
 				const probeItems = probeResult[0] ?? [];
-				if (probeItems.length === 0) {
+				// A missing by-ID get does NOT return an empty item array: the inner
+				// executor converts the null entity into an ENTITY_NOT_FOUND envelope
+				// item. Inspect the probe item's envelope (Codex P2 on PR #148).
+				const probeJson = (probeItems[0]?.json ?? null) as Record<string, unknown> | null;
+				const probeSaysNotFound =
+					probeItems.length === 0
+					|| probeJson === null
+					|| probeJson.errorType === ERROR_TYPES.ENTITY_NOT_FOUND
+					|| (probeJson.error === true && /not found|no matching/i.test(String(probeJson.summary ?? '')));
+				if (probeSaysNotFound) {
 					errorEnvelope = wrapError(
 						resource,
 						effectiveOperation,

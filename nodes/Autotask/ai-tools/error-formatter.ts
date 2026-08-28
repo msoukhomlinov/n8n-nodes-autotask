@@ -220,12 +220,20 @@ export function formatApiError(
 	const duplicateMatch = message.match(/duplicate\s+(\w+)\s+found(\s+\(ID: ([\d]+)\))?/i);
 	if (duplicateMatch) {
 		const entityId = duplicateMatch[3] ?? undefined;
+		const idHint = entityId ? `, or update record ${entityId} directly` : '';
+		// errorOnDuplicate is only consumed by the createIfNotExists compound operation —
+		// a plain 'create' ignores/strips it, so directing the model there just makes it
+		// repeat the identical failing request. Make the recovery operation-aware
+		// (Codex P2 on PR #148).
+		const nextAction = operation === 'create'
+			? `Do not repeat the same create. Switch to operation 'createIfNotExists' on autotask_${resource} with dedupFields covering the identifying field(s) and errorOnDuplicate=false${idHint}.`
+			: `Do not repeat the same call. Retry autotask_${resource} with operation 'createIfNotExists' and errorOnDuplicate=false (it will reuse or update the existing record)${idHint}.`;
 		return wrapError(
 			resource,
 			operation,
 			ERROR_TYPES.DUPLICATE_RECORD,
 			`Duplicate ${duplicateMatch[1]} found${entityId ? ` (ID: ${entityId})` : ''} — a record with the same identifying values already exists.`,
-			`Create with errorOnDuplicate=false (it will reuse or update the existing record)${entityId ? `, or update record ${entityId} directly` : ''}.`,
+			nextAction,
 			entityId ? { duplicateId: Number(entityId) } : undefined,
 		);
 	}
