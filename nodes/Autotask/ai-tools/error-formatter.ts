@@ -336,10 +336,16 @@ export function formatApiError(
 	// explicitly instead of a bare 'is not a valid' clause, which over-matched
 	// non-picklist validation bodies ("is not a valid email address", "is not a
 	// valid quantity") and sent them down the listPicklistValues recovery path.
+	// v2.29.x (V4, wire-found): Autotask's validation bodies append a generic
+	// "Use ...listPicklistValues(...)" help line, which used to drag a pure
+	// required-field failure into the picklist branch (it runs first). A
+	// 'required field' phrase is the dominant signal — yield to the
+	// required-field classifier below.
 	if (
-		lowerMessage.includes('picklist')
-		|| lowerMessage.includes('invalid value')
-		|| lowerMessage.includes('not a valid value')
+		!lowerMessage.includes('required field')
+		&& (lowerMessage.includes('picklist')
+			|| lowerMessage.includes('invalid value')
+			|| lowerMessage.includes('not a valid value'))
 	) {
 		return wrapError(
 			resource,

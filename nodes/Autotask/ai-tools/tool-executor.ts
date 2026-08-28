@@ -1244,9 +1244,39 @@ export async function executeAiTool(
 		}
 	}
 
+	// v2.29.x (X11 ordering fix): companyNote.create parity defaults must exist
+	// BEFORE the required-field validation below, or a minimal create
+	// (note + companyID) is rejected here before the defaults run. The three
+	// unconditional defaults are set now (notes kept for the warnings block);
+	// assignedResourceID is derived AFTER this point (impersonation / company-
+	// owner probes), so it is sentinel-exempted from the required check — if no
+	// usable resource can be derived, the X11 block warns and the API's own
+	// missing-field error surfaces.
+	let x11PreDefaults: string[] = [];
+	if (resource === 'companyNote' && effectiveOperation === 'create') {
+		const x11NowIso = new Date().toISOString();
+		if (fieldValues.actionType === undefined) {
+			fieldValues.actionType = 3; // 'Note: General'
+			x11PreDefaults.push("companyNote.create: actionType defaulted to 3 ('Note: General')");
+		}
+		if (fieldValues.startDateTime === undefined) {
+			fieldValues.startDateTime = x11NowIso;
+			x11PreDefaults.push(`companyNote.create: startDateTime defaulted to ${x11NowIso}`);
+		}
+		if (fieldValues.endDateTime === undefined) {
+			fieldValues.endDateTime = x11NowIso;
+			x11PreDefaults.push(`companyNote.create: endDateTime defaulted to ${x11NowIso}`);
+		}
+	}
 	if (['create', 'update', 'createIfNotExists'].includes(effectiveOperation)) {
+		const writeValidationInput =
+			resource === 'companyNote'
+			&& effectiveOperation === 'create'
+			&& fieldValues.assignedResourceID === undefined
+				? { ...fieldValues, assignedResourceID: 0 }
+				: fieldValues;
 		const writeValidation = validateWriteFields(
-			fieldValues,
+			writeValidationInput,
 			writeFields,
 			resource,
 			effectiveOperation,
@@ -1942,20 +1972,7 @@ export async function executeAiTool(
 		// the model is told to supply one (never a silent skip — this is an explicit
 		// create, not an audit note).
 		if (resource === 'companyNote' && effectiveOperation === 'create') {
-			const nowIso = new Date().toISOString();
-			const defaults: string[] = [];
-			if (fieldValues.actionType === undefined) {
-				fieldValues.actionType = 3; // 'Note: General'
-				defaults.push("companyNote.create: actionType defaulted to 3 ('Note: General')");
-			}
-			if (fieldValues.startDateTime === undefined) {
-				fieldValues.startDateTime = nowIso;
-				defaults.push(`companyNote.create: startDateTime defaulted to ${nowIso}`);
-			}
-			if (fieldValues.endDateTime === undefined) {
-				fieldValues.endDateTime = nowIso;
-				defaults.push(`companyNote.create: endDateTime defaulted to ${nowIso}`);
-			}
+			const defaults: string[] = [...x11PreDefaults];
 			if (fieldValues.assignedResourceID === undefined) {
 				// A generic companyNote.create has NO temporary-activation window (unlike
 				// contact moveToCompany audit notes, which run inside the mover's
@@ -1964,18 +1981,16 @@ export async function executeAiTool(
 				// injected here would otherwise be auto-activated by the write-retry
 				// machinery with only best-effort restore.
 				if (hasProvidedValue(params.impersonationResourceId)) {
-					if (resolvedImpersonationId !== undefined) {
-						// Covers both numeric input and name/email input: the earlier
-						// impersonation resolution turns both into a numeric ID (labels
-						// resolve against ACTIVE resources only).
-						fieldValues.assignedResourceID = resolvedImpersonationId;
-						defaults.push(
-							`companyNote.create: assignedResourceID defaulted to the impersonation resource ${resolvedImpersonationId}`,
-						);
-					} else if (isLikelyId(params.impersonationResourceId)) {
-						// Numeric-looking ID left unresolved by the earlier pass — gate it
-						// on active state before injecting (defensive: the normal numeric
-						// path resolves without an API call and lands in the branch above).
+					const impIsNumeric = isLikelyId(params.impersonationResourceId);
+					if (impIsNumeric) {
+						// Numeric input: the earlier impersonation resolution is a
+						// passthrough for numeric IDs (no active-state check), so the
+						// active gate MUST run here — an inactive ID injected here
+						// would be auto-activated by the write-retry machinery with
+						// only best-effort restore. (Verifier V1: the previous shape
+						// left this gate unreachable because every numeric input had
+						// already set resolvedImpersonationId.)
+						const impId = resolvedImpersonationId ?? Number(params.impersonationResourceId);
 						let impIdActive: boolean | undefined;
 						try {
 							const impProbe = Object.create(context) as typeof context;
@@ -1984,7 +1999,7 @@ export async function executeAiTool(
 								...args: unknown[]
 							): unknown => {
 								if (name === 'targetOperation') return 'resource.get';
-								if (name === 'entityId') return params.impersonationResourceId;
+								if (name === 'entityId') return impId;
 								if (name === 'requestData') return '{}';
 								return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
 							}) as typeof context.getNodeParameter;
@@ -1998,15 +2013,22 @@ export async function executeAiTool(
 							impIdActive = undefined;
 						}
 						if (impIdActive === true) {
-							fieldValues.assignedResourceID = Number(params.impersonationResourceId);
+							fieldValues.assignedResourceID = impId;
 							defaults.push(
-								`companyNote.create: assignedResourceID defaulted to the impersonation resource ${params.impersonationResourceId} (active-verified)`,
+								`companyNote.create: assignedResourceID defaulted to the impersonation resource ${impId} (active-verified)`,
 							);
 						} else {
 							labelWarnings.push(
-								`companyNote.create: impersonation resource ${params.impersonationResourceId} is inactive (or its active state could not be verified) — the API requires an active assignedResourceID; supply a numeric active resource ID or set assignedResourceID explicitly.`,
+								`companyNote.create: impersonation resource ${impId} is inactive (or its active state could not be verified) — the API requires an active assignedResourceID; supply a numeric active resource ID or set assignedResourceID explicitly.`,
 							);
 						}
+					} else if (resolvedImpersonationId !== undefined) {
+						// Label input: impersonation resolution searches ACTIVE
+						// resources only, so a resolved ID is active by construction.
+						fieldValues.assignedResourceID = resolvedImpersonationId;
+						defaults.push(
+							`companyNote.create: assignedResourceID defaulted to the impersonation resource ${resolvedImpersonationId} (resolved from '${String(params.impersonationResourceId)}')`,
+						);
 					} else {
 						// Unresolvable label — fail closed: never inject the raw label.
 						// (The pre-execution write guard also blocks on
@@ -2166,6 +2188,13 @@ export async function executeAiTool(
 		if (selectedColumns.length > 0 && supportsListProjection(effectiveOperation)) {
 			const keep = new Set<string>(selectedColumns);
 			for (const col of selectedColumns) keep.add(`${col}_label`);
+			// v2.29.x (m4): enrichment trigger fields are kept even when not
+			// selected — otherwise projection strips ticketID/taskID and
+			// enrichResponseJson silently stops firing. Contract: the display
+			// fields enrichment ADDS are an accepted exception to the sparse
+			// selection contract (documented here and in the opdoc).
+			keep.add('ticketID');
+			keep.add('taskID');
 			const projected = records.map((rec) => {
 				const r = rec as Record<string, unknown>;
 				const out: Record<string, unknown> = {};
@@ -2398,28 +2427,36 @@ export async function executeAiTool(
 					resolvedImpersonationId,
 				)) as { items?: Array<Record<string, unknown>> } | Array<Record<string, unknown>> | null;
 				const probeItems = Array.isArray(probeResp) ? probeResp : (probeResp?.items ?? []);
-				if (probeItems.length === 0) {
+				// v2.29.x: the by-ID query route for configurationItemRelatedItem is
+				// inconsistent (X6/F3: create-response IDs may not resolve with
+				// by-ID queries), so an empty probe there proves NOTHING about
+				// existence — keep the original permission envelope instead of
+				// asserting ENTITY_NOT_FOUND for a record that may be visible via
+				// getMany.
+				if (probeItems.length === 0 && resource !== 'configurationItemRelatedItem') {
 					errorEnvelope = wrapError(
 						resource,
 						effectiveOperation,
 						ERROR_TYPES.ENTITY_NOT_FOUND,
 						`No ${probeEntity} visible to this API user with id ${params.id} — it may not exist, or may be outside the API user's line of business.`,
-						`If the user supplied this ID explicitly, report that no record exists with that ID. Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID.`,
+						`If the user supplied this ID explicitly, report that no record was found with that ID (it may not exist, or may be outside the API user's permissions). Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID.`,
 					);
 				}
 			} catch (probeErr) {
 				// Classify the probe exception: not-found/404-shaped errors confirm
 				// the record is gone; a 403/permission or transport failure keeps
 				// the original PERMISSION_DENIED classification (the account may
-				// genuinely lack access).
+				// genuinely lack access). For configurationItemRelatedItem the
+				// by-ID query route is unreliable (X6/F3), so a probe exception
+				// there also proves nothing — keep the permission envelope.
 				const pMsg = probeErr instanceof Error ? probeErr.message : String(probeErr);
-				if (/not found|no matching|notfound|\b404\b/i.test(pMsg)) {
+				if (resource !== 'configurationItemRelatedItem' && /not found|no matching|notfound|\b404\b/i.test(pMsg)) {
 					errorEnvelope = wrapError(
 						resource,
 						effectiveOperation,
 						ERROR_TYPES.ENTITY_NOT_FOUND,
-						`No ${resource} found with id ${params.id} — the API reports missing records on update/delete as permission errors.`,
-						`If the user supplied this ID explicitly, report that no record exists with that ID. Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID.`,
+						`No ${resource} visible to this API user with id ${params.id} — it may not exist, or may be outside the API user's line of business.`,
+						`If the user supplied this ID explicitly, report that no record was found with that ID (it may not exist, or may be outside the API user's permissions). Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID.`,
 					);
 				}
 			}
