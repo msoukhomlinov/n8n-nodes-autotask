@@ -46,9 +46,15 @@ export class DeleteOperation<T extends IAutotaskEntity> extends BaseOperation {
 				if (metadata?.childOf) {
 					try {
 						const parentIdField = metadata.parentIdField || `${metadata.childOf}ID`;
-						const parentId = await this.getParameter(parentIdField, itemIndex);
+						const rawParentId = await this.getParameter(parentIdField, itemIndex);
+						const parentId = typeof rawParentId === 'string' ? rawParentId.trim() : rawParentId;
 
-						if (parentId && (typeof parentId === 'string' || typeof parentId === 'number')) {
+						if (
+							parentId !== undefined &&
+							parentId !== null &&
+							parentId !== '' &&
+							(typeof parentId === 'string' || typeof parentId === 'number')
+						) {
 							// Use parent entity name and child entity subname (if provided)
 							const childEntityPath = metadata.subname || this.entityType;
 							endpoint = `/${metadata.childOf}/${parentId}/${childEntityPath}/${entityId}`;

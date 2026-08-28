@@ -6,7 +6,11 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 ### Changed
 
-- **Contact resource now supports `delete`** — the Autotask REST API supports `DELETE` on the Contacts entity via the Company-scoped path; the standard node (`Autotask` → Contact → Delete) and the AI tool (`autotask_contact` operation `delete`) both expose it. Resolves #146.
+- **Contact resource now supports `delete`** — the Autotask REST API supports `DELETE` on the Contacts entity only via the Company-scoped path (`DELETE Companies/{companyID}/Contacts/{id}`, resolved automatically); the standard node (`Autotask` → Contact → Delete, with a Dry Run toggle) and the AI tool (`autotask_contact` operation `delete`) both expose it. Resolves #146.
+
+### Fixed
+
+- **`DeleteOperation` no longer drops the parent-scoped path for a companyID of `0`** — the parent-ID check used JS truthiness, so a contact belonging to the root company (a legitimate `companyID` of `0`) fell through to a flat `/Contacts/{id}` endpoint that Autotask doesn't expose for delete. Affects every parent-scoped entity with a delete operation, not just Contact.
 
 ## [2.28.10] - 2026-08-27
 

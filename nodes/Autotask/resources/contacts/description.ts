@@ -140,10 +140,10 @@ export const contactFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['contact'],
-				operation: ['moveToCompany'],
+				operation: ['moveToCompany', 'delete'],
 			},
 		},
-		description: 'Whether to return a migration plan without executing any writes. Useful for previewing what would happen.',
+		description: 'Whether to return a request preview instead of executing the operation (no changes are made to Autotask). For Move to Company, returns a migration plan; for Delete, returns the request that would be sent.',
 	},
 	{
 		displayName: 'Destination Location ID',
