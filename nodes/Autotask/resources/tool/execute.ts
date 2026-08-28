@@ -1,8 +1,6 @@
-﻿import type { IExecuteFunctions, INodeExecutionData, IGetNodeParameterOptions, IDataObject } from 'n8n-workflow';
+﻿import type { IExecuteFunctions, INodeExecutionData, IGetNodeParameterOptions } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import { validateParameters } from '../../helpers/aiHelper';
-import { createDryRunResponse } from '../../helpers/dry-run';
-import { buildEntityUrl } from '../../helpers/http/request';
 import { AUTOTASK_ENTITIES } from '../../constants/entities';
 import { getIdentifierPairConfig } from '../../constants/resource-operations';
 import { isCommonOperation, getCommonOpContext } from '../../helpers/common-operations-context';
@@ -386,25 +384,10 @@ export async function executeToolOperation(
 	// Apply safety gates with improved error messages
 	await applySafetyGates.call(this, targetResource, resourceOperation);
 
-	// If this is a delete dry-run, return a preview without invoking resource executors
-	const isDryRun = this.getNodeParameter('dryRun', 0, false) as boolean;
-	if (resourceOperation === 'delete' && isDryRun) {
-		if (entityId === undefined || entityId === null || entityId === '') {
-			throw new NodeOperationError(
-				this.getNode(),
-				'Entity ID is required for delete operations (even in dry-run).',
-			);
-		}
-
-		const endpoint = buildEntityUrl(canonicalResource, { entityId });
-		const preview = await createDryRunResponse(
-			this,
-			canonicalResource,
-			'delete',
-			{ method: 'DELETE', url: endpoint },
-		);
-		return [[{ json: preview as unknown as IDataObject }]];
-	}
+	// Delete dry-run is handled by DeleteOperation itself (via the executor dispatch below),
+	// same as create/update dry-run — it already resolves parent-scoped URLs correctly.
+	// A hand-rolled preview here previously bypassed that and always built a flat, unscoped
+	// URL, misrepresenting the request for any parent-scoped (childOf) entity.
 
 	// Validate request data for write operations
 	if (['create', 'update'].includes(resourceOperation)) {
