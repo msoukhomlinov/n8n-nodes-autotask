@@ -293,8 +293,19 @@ export function buildUpdateDescription(
 }
 
 export function buildDeleteDescription(resourceLabel: string, resourceName: string): string {
+	// v2.29.0 (PR #148): parent-scoped delete routes — the API only exposes contact
+	// deletion via the company-scoped path and CIRI deletion via the parent-scoped
+	// path, so the runtime additionally requires the parent identifier for these two
+	// resources (name or ID, auto-resolved). All other resources stay ID-only.
+	const parentScopeNote =
+		resourceName === 'contact'
+			? `Also supply companyID (numeric company ID or company name; auto-resolved) — the API only exposes contact deletion via the company-scoped path. `
+			: resourceName === 'configurationItemRelatedItem'
+				? `Also supply configurationItemID (numeric configuration item ID or CI name; auto-resolved) — deletion is only exposed via the parent-scoped path. `
+				: '';
 	return (
 		`Delete a ${resourceLabel} record by numeric ID — ONLY on explicit user intent, never inferred from context. ` +
+		`${parentScopeNote}` +
 		`Confirm the correct ID first via autotask_${resourceName} with operation 'getMany' or operation 'get'. ` +
 		`Delete responses may be minimal; treat non-200 outcomes as failures.`
 	);
@@ -876,10 +887,37 @@ function getReadOpParams(): ReadOpParamsMap {
 			{ field: 'excludeTerminalStatuses', type: 'boolean', description: 'Exclude Complete/Cancelled (ticket/task/project only, default true).' },
 		],
 	},
-	delete: {
-		required: [{ field: 'id', type: 'number', description: 'Numeric entity ID to delete.' }],
+	// v2.29.0 (PR #148): parent-scoped delete routes — contact and
+	// configurationItemRelatedItem deletions are only exposed through parent-scoped
+	// API routes, so the runtime additionally requires the parent identifier
+	// (name or ID, auto-resolved) for those two resources. All other resources
+	// keep the plain ID-only contract.
+	delete: (resource: string) => ({
+		required: [
+			{ field: 'id', type: 'number', description: 'Numeric entity ID to delete.' },
+			...(resource === 'contact'
+				? [
+						{
+							field: 'companyID',
+							type: 'number | string',
+							description:
+								'Numeric company ID or company name; auto-resolved — the API only exposes contact deletion via the company-scoped path (Companies/{companyID}/Contacts/{id}).',
+						},
+					]
+				: []),
+			...(resource === 'configurationItemRelatedItem'
+				? [
+						{
+							field: 'configurationItemID',
+							type: 'number | string',
+							description:
+								'Numeric configuration item ID or CI name; auto-resolved — deletion is only exposed via the parent-scoped path (ConfigurationItems/{configurationItemID}/RelatedItems/{id}).',
+						},
+					]
+				: []),
+		],
 		optional: [],
-	},
+	}),
 	whoAmI: {
 		required: [],
 		optional: [
