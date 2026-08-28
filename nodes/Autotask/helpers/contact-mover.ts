@@ -493,7 +493,10 @@ function resolveTemplate(
 
 /**
  * CompanyNote.assignedResourceID is required by the API. The impersonation resource
- * (when the move runs impersonated) has data access to both companies by construction.
+ * (when the move runs impersonated) has data access to both companies by construction —
+ * an impersonation resource is usable for the note only while it is ACTIVE (an inactive
+ * one would be temporarily reactivated by the write-retry machinery, the same side
+ * effect the owner fallback gates against).
  * Without impersonation, fall back to the company's OWN owner resource — the owner
  * has data access to that company by definition. If neither yields a usable ID, the
  * caller skips the note and the failure surfaces as a warning (fail-closed).
@@ -504,7 +507,25 @@ async function resolveNoteAssignedResource(
 	impersonationResourceId: number | undefined,
 	warnings: string[],
 ): Promise<number | undefined> {
-	if (impersonationResourceId !== undefined) return impersonationResourceId;
+	if (impersonationResourceId !== undefined) {
+		// Round-4 (F-LEAD-3): gate the impersonation producer with the same active check as the
+		// owner producer. Name-based impersonation is active-only by construction (resolved via
+		// getValues(true)), but a numeric ID of an INACTIVE resource passes through unchecked;
+		// assignedResourceID is a RESOURCE_REF_FIELD, so withInactiveRefRetry would temporarily
+		// ACTIVATE the impersonation resource as a side effect of the note write.
+		try {
+			const res = (await autotaskApiRequest.call(ctx, 'GET', `Resources/${impersonationResourceId}`)) as { item?: IDataObject };
+			const active = res.item?.isActive;
+			if (active !== true && active !== 1) {
+				warnings.push(`Audit note skipped: the impersonation resource (ID ${impersonationResourceId}) is not active.`);
+				return undefined;
+			}
+		} catch {
+			warnings.push(`Audit note skipped: could not verify the impersonation resource (ID ${impersonationResourceId}).`);
+			return undefined;
+		}
+		return impersonationResourceId;
+	}
 	try {
 		const rec = (await autotaskApiRequest.call(ctx, 'GET', `Company/${companyId}`)) as { item?: IDataObject };
 		const owner = rec.item?.ownerResourceID;
@@ -532,7 +553,8 @@ async function resolveNoteAssignedResource(
 			return undefined;
 		}
 		return num;
-	} catch {
+	} catch (err) {
+		warnings.push(`Audit note skipped: could not resolve a usable assigned resource for company ID ${companyId} (${err instanceof Error ? err.message : String(err)}).`);
 		return undefined;
 	}
 }

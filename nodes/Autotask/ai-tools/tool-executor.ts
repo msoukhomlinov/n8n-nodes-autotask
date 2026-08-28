@@ -1344,55 +1344,85 @@ export async function executeAiTool(
 						context as unknown as import('n8n-workflow').ILoadOptionsFunctions,
 						'Company',
 					);
-					const candidates = await helper.getValues(true);
+										const candidates = await helper.getValues(true);
 					const label = destTrimmed.toLowerCase();
-					let matchedId: number | undefined;
+					// Codex C4: never trust the helper's active-only filter blindly — if the Company
+					// field-metadata request fails, getValues(true) skips the isActive filter and the
+					// payload carries no isActive field at all. In that case name-based destination
+					// resolution fails closed: a company is never selected as a move destination while
+					// its active state is unestablished.
+					const activeFilterEstablished = candidates.every((c) => {
+						const o = c as unknown as IDataObject;
+						return o.isActive !== undefined;
+					});
+					const matches: Array<{ id: number; name: string }> = [];
 					for (const entity of candidates) {
 						const entityObj = entity as unknown as IDataObject;
 						const entityId = entityObj.id as number;
 						// id 0 = root account record: not a valid move destination (fails the
 						// positive-integer gate downstream and would move contacts to the account root).
 						if (entityId <= 0) continue;
-						// Intentionally active-only (no inactive fallback pass, unlike the
-						// two-pass reference resolution in label-resolution.ts): moving a
-						// contact to an INACTIVE company is almost always a mistake, so an
-						// inactive destination fails closed via the no-match envelope.
+						// Explicit per-candidate active check (Codex C4): redundant with the helper's
+						// active filter on the normal path, but guards the metadata-failure path where the
+						// filter is skipped. On the NAME-resolution path an inactive destination fails
+						// closed: moving a contact there is almost always a mistake. Explicit numeric
+						// destinations are passed through to the API untouched (the API's own semantics
+						// apply to caller-chosen IDs).
+						const rawActive = entityObj.isActive;
+						if (rawActive !== true && rawActive !== 1) continue;
 						const display = helper.getEntityDisplayName(entityObj);
+						// Codex C2: collect EVERY exact-name match — a destructive contact move must
+						// never silently pick the first of several same-named companies.
 						if (display && display.toLowerCase() === label) {
-							matchedId = entityId;
-							break;
+							matches.push({ id: entityId, name: display });
 						}
 					}
-					if (matchedId !== undefined) {
-						// Mirror into BOTH consumption paths: params (override-A default case) and
-						// fieldValues (override-A 'requestData'/'fieldsToMap' cases, which override-B in
-						// resources/tool/execute.ts prefers for unmapped keys). Without the fieldValues
-						// mirror the resource executor reads the pre-resolution label from requestData.
-						(params as Record<string, unknown>).destinationCompanyId = String(matchedId);
-						if (Object.prototype.hasOwnProperty.call(fieldValues, 'destinationCompanyId')) {
-							(fieldValues as Record<string, unknown>).destinationCompanyId = String(matchedId);
-						}
-						labelResolutions.push({
-							field: 'destinationCompanyId',
-							from: destTrimmed,
-							to: matchedId,
-							method: 'reference',
-						});
-					} else {
+					if (matches.length === 0) {
 						return attachCorrelation(
 							JSON.stringify(
 								wrapError(
 									resource,
 									effectiveOperation,
 									ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
-									`Write blocked: No match found for field(s): 'destinationCompanyId' (company name '${destTrimmed}').`,
-									`Resolve the destination company name to a numeric company ID (e.g. autotask_company with operation 'getMany'), then retry autotask_${resource} with operation 'moveToCompany'.`,
+									activeFilterEstablished
+										? `Write blocked: No match found for field(s): 'destinationCompanyId' (company name ''${destTrimmed}'').`
+										: `Write blocked: No verifiable active company matches ''${destTrimmed}'' — the companies' active state could not be established for this request, so name-based destinations are disabled.`,
+									`Resolve the destination company to a numeric company ID (e.g. autotask_company with operation 'getMany'), then retry autotask_${resource} with operation 'moveToCompany'.`,
 								),
 							),
-							correlationId,
-						);
+						correlationId,
+					);
 					}
-				} catch (err) {
+					if (matches.length > 1) {
+						return attachCorrelation(
+							JSON.stringify(
+								wrapError(
+									resource,
+									effectiveOperation,
+									ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
+									`Write blocked: company name ''${destTrimmed}'' is ambiguous — it matches ${matches.length} active companies (IDs: ${matches.map((m) => m.id).join(', ')}). A contact move must not pick a destination at random.`,
+									`Retry autotask_${resource} with operation 'moveToCompany' using the numeric destinationCompanyId of the intended company (e.g. autotask_company with operation 'getMany' to look it up).`,
+									{ ambiguousCandidates: matches },
+								),
+							),
+						correlationId,
+					);
+					}
+					const matchedId = matches[0].id;
+					// Mirror into BOTH consumption paths: params (override-A default case) and
+					// fieldValues (override-A 'requestData'/'fieldsToMap' cases, which override-B in
+					// resources/tool/execute.ts prefers for unmapped keys). Without the fieldValues
+					// mirror the resource executor reads the pre-resolution label from requestData.
+					(params as Record<string, unknown>).destinationCompanyId = String(matchedId);
+					if (Object.prototype.hasOwnProperty.call(fieldValues, 'destinationCompanyId')) {
+						(fieldValues as Record<string, unknown>).destinationCompanyId = String(matchedId);
+					}
+					labelResolutions.push({
+						field: 'destinationCompanyId',
+						from: destTrimmed,
+						to: matchedId,
+						method: 'reference',
+					});				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
 					return attachCorrelation(
 						JSON.stringify(
