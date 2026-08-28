@@ -85,7 +85,7 @@ import { buildWriteResolutionBlocker, summariseResolutionState } from './write-g
 import { validateOperationContract, hasProvidedValue } from './operation-contracts';
 import { enrichResponseJson } from '../helpers/enrichment';
 import { autotaskApiRequest, buildEntityUrl } from '../helpers/http';
-import { entityNameForResource } from '../constants/entities';
+import { AUTOTASK_ENTITIES, entityNameForResource, getEntityMetadata } from '../constants/entities';
 
 /**
  * Coerce an unknown value to boolean, handling Copilot Studio's integer coercion
@@ -2255,7 +2255,21 @@ export async function executeAiTool(
 				// probe cannot distinguish 'no permission' from 'no record'). A
 				// getMany-style POST filtered by id reports absence cleanly (empty
 				// item list) and is unaffected by the 403 masking (Codex P2, PR #148).
-				const probeEntity = entityNameForResource(resource);
+				let probeEntity = entityNameForResource(resource);
+				if (!getEntityMetadata(probeEntity)) {
+					// Plural resource keys without a resourceKey override (e.g.
+					// 'configurationItemTypes' -> 'ConfigurationItemType') are not
+					// resolved by entityNameForResource — fall back to a tolerant
+					// name/resourceKey match for the probe.
+					const key = resource.toLowerCase();
+					const cand = AUTOTASK_ENTITIES.find(
+						(e) =>
+							(e.resourceKey && e.resourceKey.toLowerCase() === key)
+							|| e.name.toLowerCase() === key
+							|| `${e.name.toLowerCase()}s` === key,
+					);
+					if (cand) probeEntity = cand.name;
+				}
 				const probeBody = {
 					filter: [{ field: 'id', op: 'eq', value: String(params.id) }],
 					MaxRecords: 1,
