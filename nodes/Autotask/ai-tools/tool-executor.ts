@@ -714,6 +714,47 @@ export async function executeAiTool(
 				correlationId,
 			);
 		}
+		// v2.29.0 (Codex F2 on PR #148): a leaf whose 'field' key holds a
+		// non-string or empty value (e.g. {"field":null,"op":"eq","value":"Open"})
+		// passes the op-only checks above and would crash
+		// resolveAndClassifyFilters' .toLowerCase() call sites (outside its
+		// per-resolution try/catch) as a raw thrown tool failure. Reject such
+		// leaves at this validation step with the standard filter-constraint
+		// envelope, naming the malformed leaf.
+		let malformedJsonLeaf: string | null = null;
+		const checkJsonLeafFields = (node: unknown): void => {
+			if (malformedJsonLeaf !== null) return;
+			if (typeof node !== 'object' || node === null) return;
+			const obj = node as Record<string, unknown>;
+			if ('field' in obj) {
+				const field = obj.field;
+				if (typeof field !== 'string' || field.trim() === '') {
+					malformedJsonLeaf = JSON.stringify(obj).slice(0, 200);
+					return;
+				}
+			}
+			if (Array.isArray(obj.items)) {
+				for (const it of obj.items) {
+					checkJsonLeafFields(it);
+				}
+			}
+		};
+		for (const el of parsedFiltersJson) {
+			checkJsonLeafFields(el);
+		}
+		if (malformedJsonLeaf !== null) {
+			return attachCorrelation(
+				JSON.stringify(
+					formatFilterConstraintError(
+						resource,
+						normalisedOperation,
+						`filtersJson validation error: every leaf condition needs a non-empty string 'field' (malformed leaf: ${malformedJsonLeaf}).`,
+						'Fix the malformed filtersJson leaf: "field" must be a non-empty string field name (e.g. {"field":"status","op":"eq","value":5}).',
+					),
+				),
+				correlationId,
+			);
+		}
 		// v2.29.0 (X16): filtersJson conditions bypassed the flat path's label
 		// resolution (resolveAndClassifyFilters only sees filters built from the
 		// filter_field slots), so picklist/reference labels in filtersJson were sent
@@ -733,7 +774,10 @@ export async function executeAiTool(
 			const collectJsonLeaves = (node: unknown): void => {
 				if (typeof node !== 'object' || node === null) return;
 				const obj = node as Record<string, unknown>;
-				if ('field' in obj) {
+				// Only leaves with a usable field name reach resolution — a
+				// non-string/empty 'field' was already rejected at the validation
+				// step above (Codex F2 on PR #148).
+				if ('field' in obj && typeof obj.field === 'string' && (obj.field as string).trim() !== '') {
 					jsonLeaves.push(obj as unknown as ToolFilter);
 				}
 				if (Array.isArray(obj.items)) {

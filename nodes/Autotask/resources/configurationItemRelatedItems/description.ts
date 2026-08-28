@@ -66,11 +66,14 @@ export const configurationItemRelatedItemFields: INodeProperties[] = [
 		// only via the parent-scoped path
 		// (DELETE ConfigurationItems/{configurationItemID}/RelatedItems/{id});
 		// DeleteOperation needs configurationItemID to build that URL.
+		// v2.29.0 (Codex F1 on PR #148): numeric ID only on the standard node —
+		// this path performs no name resolution (the AI tool path resolves a CI
+		// name to a numeric ID), mirroring the contact-delete companyID field.
 		displayName: 'Configuration Item ID',
 		name: 'configurationItemID',
-		type: 'string',
+		type: 'number',
 		required: true,
-		default: '',
+		default: 0,
 		displayOptions:
 		{
 			show: {
@@ -79,7 +82,7 @@ export const configurationItemRelatedItemFields: INodeProperties[] = [
 			},
 		},
 		description:
-			'Required (parent configuration item numeric ID or name) — the Autotask API only exposes related-item deletion via the parent-scoped path (ConfigurationItems/{configurationItemID}/RelatedItems/{ID})',
+			'Required (parent configuration item numeric ID only — the standard node performs no name resolution; the AI tool also accepts the CI name) — the Autotask API only exposes related-item deletion via the parent-scoped path (ConfigurationItems/{configurationItemID}/RelatedItems/{ID})',
 	},
 	{
 		displayName: 'Fields',

@@ -6,6 +6,10 @@ import {
 	CountOperation,
 } from '../../operations/base';
 import { autotaskApiRequest } from '../../helpers/http';
+import {
+	getOptionalImpersonationResourceId,
+	isImpersonationSupportedForEndpoint,
+} from '../../helpers/impersonation';
 import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 import { ATTACHMENT_TYPE, validateAttachmentSize, type IAttachmentPayload } from '../../helpers/attachment';
 
@@ -54,7 +58,44 @@ export async function executeTicketNoteAttachmentOperation(
 						publish: publish,
 					};
 
-					const response = await autotaskApiRequest.call(this, 'POST', endpoint, payload as IDataObject) as { item?: { itemId?: number } };
+					// Forward impersonation for write attribution (same pattern as
+					// CreateOperation): the UI exposes impersonationResourceId for this
+					// resource and the API honours it on AttachmentInfo child routes.
+					let impersonationResourceId: number | undefined;
+					let proceedWithoutImpersonationIfDenied = false;
+					if (isImpersonationSupportedForEndpoint(endpoint)) {
+						try {
+							impersonationResourceId = getOptionalImpersonationResourceId(this, i);
+							if (impersonationResourceId !== undefined) {
+								proceedWithoutImpersonationIfDenied = this.getNodeParameter(
+									'proceedWithoutImpersonationIfDenied',
+									i,
+									false,
+								) as boolean;
+							}
+						} catch (error) {
+							if (
+								error instanceof Error &&
+								error.message.includes('Could not get parameter')
+							) {
+								impersonationResourceId = undefined;
+							} else {
+								// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
+								throw error;
+							}
+						}
+					}
+
+					const response = await autotaskApiRequest.call(
+						this,
+						'POST',
+						endpoint,
+						payload as IDataObject,
+						{},
+						impersonationResourceId,
+						proceedWithoutImpersonationIfDenied,
+					) as { item?: { itemId?: number } };
+
 					const attachmentId = response?.item?.itemId;
 					if (attachmentId === undefined || attachmentId === null) {
 						throw new Error(`Attachment '${fileName}' for ticket note ${ticketNoteId} created but API response did not contain an attachment ID`);
