@@ -1344,14 +1344,14 @@ export async function executeAiTool(
 						context as unknown as import('n8n-workflow').ILoadOptionsFunctions,
 						'Company',
 					);
-										const candidates = await helper.getValues(true);
+						const candidates = await helper.getValues(true);
 					const label = destTrimmed.toLowerCase();
 					// Codex C4: never trust the helper's active-only filter blindly — if the Company
 					// field-metadata request fails, getValues(true) skips the isActive filter and the
 					// payload carries no isActive field at all. In that case name-based destination
 					// resolution fails closed: a company is never selected as a move destination while
 					// its active state is unestablished.
-					const activeFilterEstablished = candidates.every((c) => {
+					const activeFilterEstablished = candidates.length > 0 && candidates.every((c) => {
 						const o = c as unknown as IDataObject;
 						return o.isActive !== undefined;
 					});
@@ -1385,12 +1385,12 @@ export async function executeAiTool(
 									effectiveOperation,
 									ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
 									activeFilterEstablished
-										? `Write blocked: No match found for field(s): 'destinationCompanyId' (company name ''${destTrimmed}'').`
-										: `Write blocked: No verifiable active company matches ''${destTrimmed}'' — the companies' active state could not be established for this request, so name-based destinations are disabled.`,
+										? `Write blocked: No match found for field(s): 'destinationCompanyId' (company name '${destTrimmed}').`
+										: `Write blocked: No verifiable active company matches '${destTrimmed}' — the companies' active state could not be established for this request, so name-based destinations are disabled.`,
 									`Resolve the destination company to a numeric company ID (e.g. autotask_company with operation 'getMany'), then retry autotask_${resource} with operation 'moveToCompany'.`,
 								),
 							),
-						correlationId,
+							correlationId,
 					);
 					}
 					if (matches.length > 1) {
@@ -1400,12 +1400,12 @@ export async function executeAiTool(
 									resource,
 									effectiveOperation,
 									ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
-									`Write blocked: company name ''${destTrimmed}'' is ambiguous — it matches ${matches.length} active companies (IDs: ${matches.map((m) => m.id).join(', ')}). A contact move must not pick a destination at random.`,
+									`Write blocked: company name '${destTrimmed}' is ambiguous — it matches ${matches.length} active companies (IDs: ${matches.map((m) => m.id).join(', ')}). A contact move must not pick a destination at random.`,
 									`Retry autotask_${resource} with operation 'moveToCompany' using the numeric destinationCompanyId of the intended company (e.g. autotask_company with operation 'getMany' to look it up).`,
 									{ ambiguousCandidates: matches },
 								),
 							),
-						correlationId,
+							correlationId,
 					);
 					}
 					const matchedId = matches[0].id;
@@ -1422,7 +1422,8 @@ export async function executeAiTool(
 						from: destTrimmed,
 						to: matchedId,
 						method: 'reference',
-					});				} catch (err) {
+					});
+				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
 					return attachCorrelation(
 						JSON.stringify(

@@ -1062,7 +1062,7 @@ function getReadOpParams(): ReadOpParamsMap {
 	moveToCompany: {
 		required: [
 			{ field: 'sourceContactId', type: 'number', description: 'Source contact ID to move.' },
-			{ field: 'destinationCompanyId', type: 'string', description: 'Destination company: numeric company ID or the company name (auto-resolved to an ID before the move; the root account record is never selected; unresolvable names fail closed).' },
+			{ field: 'destinationCompanyId', type: 'string', description: 'Destination company: numeric company ID or the company name (auto-resolved to an ID before the move; the root account record is never selected; unresolvable or ambiguous names fail closed).' },
 		],
 		optional: [
 			{

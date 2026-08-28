@@ -919,7 +919,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				shape.destinationCompanyId = rz
 					.coerce.string()
 					.nullish()
-					.describe('Destination company for the cloned contact: numeric company ID, or the company name (auto-resolved to an ID before the move).');
+					.describe('Destination company for the cloned contact: numeric company ID, or the company name (auto-resolved to an ID before the move). A name matching multiple active companies is rejected — retry with the numeric company ID. Unresolvable names and inactive destinations fail closed.');
 			shape.destinationCompanyLocationId = rz
 				.number()
 				.int()
