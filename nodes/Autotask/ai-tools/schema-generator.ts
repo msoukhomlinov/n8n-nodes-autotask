@@ -391,7 +391,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			shape.query = rz
 				.string()
 				.nullish()
-				.describe('Search term to filter picklist values.');
+				.describe(
+					"Search term to filter picklist values — used ONLY with operation 'listPicklistValues'. It is NOT a full-text search on records; use filter fields (or filtersJson) on getMany/count instead.",
+				);
 			shape.page = rz
 				.number()
 				.nullish()
@@ -915,11 +917,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.describe('Source contact ID to move.');
 			if (!shape.destinationCompanyId)
 				shape.destinationCompanyId = rz
-					.number()
-					.int()
-					.min(1)
+					.coerce.string()
 					.nullish()
-					.describe('Destination company ID for the cloned contact.');
+					.describe('Destination company for the cloned contact: numeric company ID, or the company name (auto-resolved to an ID before the move). A name matching multiple active companies is rejected — retry with the numeric company ID. Unresolvable names and inactive destinations fail closed.');
 			shape.destinationCompanyLocationId = rz
 				.number()
 				.int()
@@ -1215,7 +1215,9 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		shape.query = rz
 			.string()
 			.nullish()
-			.describe('Search term to filter picklist values.');
+			.describe(
+				"Search term to filter picklist values — used ONLY with operation 'listPicklistValues'. It is NOT a full-text search on records; use filter fields (or filtersJson) on getMany/count instead.",
+			);
 		if (!shape.limit) {
 			shape.limit = rz
 				.number()

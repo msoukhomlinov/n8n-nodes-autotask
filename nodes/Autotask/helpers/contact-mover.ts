@@ -491,6 +491,72 @@ function resolveTemplate(
 	return result;
 }
 
+/**
+ * CompanyNote.assignedResourceID is required by the API. The impersonation resource
+ * (when the move runs impersonated) has data access to both companies by construction.
+ * Note writes run INSIDE the mover's withActiveImpersonationResource temporary-activation
+ * window, so even a persistently INACTIVE impersonation resource is active while the note
+ * is written (the write-retry machinery therefore has nothing to reactivate) and is
+ * restored to inactive afterwards — no active-state gate is needed on that branch (the
+ * owner fallback below has no such window and keeps its active-only gate).
+ * Without impersonation, fall back to the company's OWN owner resource — the owner
+ * has data access to that company by definition. If neither yields a usable ID, the
+ * caller skips the note and the failure surfaces as a warning (fail-closed).
+ */
+async function resolveNoteAssignedResource(
+	ctx: IExecuteFunctions,
+	companyId: number,
+	impersonationResourceId: number | undefined,
+	warnings: string[],
+): Promise<number | undefined> {
+	if (impersonationResourceId !== undefined) {
+		// Safe to pass through: audit-note writes run inside the mover's
+		// withActiveImpersonationResource window, where the impersonation resource is active
+		// for the duration of the write (restored afterwards), so the write-retry machinery
+		// can never reactivate it from this note. An active-state gate here would read the
+		// resource as active (just temporarily activated) and could never fire.
+		return impersonationResourceId;
+	}
+	try {
+		const rec = (await autotaskApiRequest.call(ctx, 'GET', `Company/${companyId}`)) as { item?: IDataObject };
+		const owner = rec.item?.ownerResourceID;
+		const num =
+			typeof owner === 'number' ? owner : typeof owner === 'string' && /^\d+$/.test(owner) ? parseInt(owner, 10) : NaN;
+		if (!Number.isFinite(num) || num <= 0) {
+			// Round-4c (F-R4b-1): every "no usable assigned resource" class must surface a
+			// warning — with the clean note-skip below, a silent undefined here would make a
+			// requested note vanish from the success envelope (no auditNotes key, no warnings),
+			// which the model would read as "note written".
+			warnings.push(`Audit note skipped: company (ID ${companyId}) has no usable owner resource (ownerResourceID missing or invalid) and no impersonation resource was supplied. Pass impersonationResourceId to write the audit note.`);
+			return undefined;
+		}
+		// Round-3 (F-P1-1): only ACTIVE owners may be used. assignedResourceID is a
+		// RESOURCE_REF_FIELD, so the write-retry machinery (withInactiveRefRetry) would
+		// temporarily ACTIVATE an inactive referenced resource (PATCH Resources/<id>
+		// isActive:true) with only best-effort restore — reactivating a departed
+		// owner's account as a side effect of an audit-note write is unacceptable.
+		try {
+			const res = (await autotaskApiRequest.call(ctx, 'GET', `Resources/${num}`)) as { item?: IDataObject };
+			const active = res.item?.isActive;
+			if (active !== true && active !== 1) {
+				warnings.push(
+					`Audit note skipped: the company's owner resource (ID ${num}) is not active. Pass impersonationResourceId to write the audit note instead.`,
+				);
+				return undefined;
+			}
+		} catch {
+			warnings.push(
+				`Audit note skipped: could not verify the company's owner resource (ID ${num}). Pass impersonationResourceId to write the audit note instead.`,
+			);
+			return undefined;
+		}
+		return num;
+	} catch (err) {
+		warnings.push(`Audit note skipped: could not resolve a usable assigned resource for company ID ${companyId} (${err instanceof Error ? err.message : String(err)}).`);
+		return undefined;
+	}
+}
+
 async function createAuditNotes(
 	ctx: IExecuteFunctions,
 	options: IMoveToCompanyOptions,
@@ -521,28 +587,43 @@ async function createAuditNotes(
 		try {
 			const noteText = resolveTemplate(options.sourceAuditNote, templateVars);
 			const endpoint = buildChildEntityUrl('Company', 'CompanyNote', sourceCompanyId);
+			// CompanyNote API fields are name/note (title/description are not API fields);
+			// actionType 3 = 'Note: General'; the API requires an assigned resource with
+			// data access to the company — the impersonation resource when present, else
+			// the company's owner resource (ownerResourceID) — plus start/end dates.
 			const notePayload: IDataObject = {
 				companyID: sourceCompanyId,
 				contactID: options.sourceContactId,
-				title: 'Contact Transferred',
-				description: noteText,
-				actionType: 1,
-				publish: 1,
+				name: 'Contact Transferred',
+				note: noteText,
+				actionType: 3,
 			};
-			await applyRequiredFieldDefaults('CompanyNote', ctx, notePayload, warnings);
-			const response = await withInactiveRefRetry(ctx, warnings, async () =>
-				autotaskApiRequest.call(
-					ctx,
-					'POST',
-					endpoint,
-					notePayload,
-					{},
-					options.impersonationResourceId,
-					options.proceedWithoutImpersonationIfDenied,
-				) as Promise<IDataObject>,
-			notePayload,
-			);
-			sourceCompanyNoteId = extractCreatedId(response) ?? 0;
+			const sourceAssigned = await resolveNoteAssignedResource(ctx, sourceCompanyId, options.impersonationResourceId, warnings);
+			if (sourceAssigned === undefined) {
+				// The resolver already pushed the warning explaining why (inactive or
+				// unverifiable owner resource); skip the POST instead of sending a payload
+				// without the API-required assignedResourceID (a doomed write whose rejection
+				// would add a second, less informative warning).
+			} else {
+				notePayload.assignedResourceID = sourceAssigned;
+				const auditNow = new Date().toISOString();
+				notePayload.startDateTime = auditNow;
+				notePayload.endDateTime = auditNow;
+				await applyRequiredFieldDefaults('CompanyNote', ctx, notePayload, warnings);
+				const response = await withInactiveRefRetry(ctx, warnings, async () =>
+					autotaskApiRequest.call(
+						ctx,
+						'POST',
+						endpoint,
+						notePayload,
+						{},
+						options.impersonationResourceId,
+						options.proceedWithoutImpersonationIfDenied,
+					) as Promise<IDataObject>,
+				notePayload,
+				);
+				sourceCompanyNoteId = extractCreatedId(response) ?? 0;
+			}
 		} catch (err) {
 			warnings.push(`Failed to create source audit note: ${(err as Error).message}`);
 		}
@@ -556,25 +637,36 @@ async function createAuditNotes(
 			const notePayload: IDataObject = {
 				companyID: options.destinationCompanyId,
 				contactID: newContactId,
-				title: 'Contact Transferred',
-				description: noteText,
-				actionType: 1,
-				publish: 1,
+				name: 'Contact Transferred',
+				note: noteText,
+				actionType: 3,
 			};
-			await applyRequiredFieldDefaults('CompanyNote', ctx, notePayload, warnings);
-			const response = await withInactiveRefRetry(ctx, warnings, async () =>
-				autotaskApiRequest.call(
-					ctx,
-					'POST',
-					endpoint,
-					notePayload,
-					{},
-					options.impersonationResourceId,
-					options.proceedWithoutImpersonationIfDenied,
-				) as Promise<IDataObject>,
-			notePayload,
-			);
-			destinationCompanyNoteId = extractCreatedId(response) ?? 0;
+			const destAssigned = await resolveNoteAssignedResource(ctx, options.destinationCompanyId, options.impersonationResourceId, warnings);
+			if (destAssigned === undefined) {
+				// The resolver already pushed the warning explaining why (inactive or
+				// unverifiable owner resource); skip the POST instead of sending a payload
+				// without the API-required assignedResourceID (a doomed write whose rejection
+				// would add a second, less informative warning).
+			} else {
+				notePayload.assignedResourceID = destAssigned;
+				const auditNow = new Date().toISOString();
+				notePayload.startDateTime = auditNow;
+				notePayload.endDateTime = auditNow;
+				await applyRequiredFieldDefaults('CompanyNote', ctx, notePayload, warnings);
+				const response = await withInactiveRefRetry(ctx, warnings, async () =>
+					autotaskApiRequest.call(
+						ctx,
+						'POST',
+						endpoint,
+						notePayload,
+						{},
+						options.impersonationResourceId,
+						options.proceedWithoutImpersonationIfDenied,
+					) as Promise<IDataObject>,
+				notePayload,
+				);
+				destinationCompanyNoteId = extractCreatedId(response) ?? 0;
+			}
 		} catch (err) {
 			warnings.push(`Failed to create destination audit note: ${(err as Error).message}`);
 		}

@@ -9,6 +9,8 @@ export interface ToolResponseContext {
 	recencyNote?: string;
 	resolutions?: LabelResolution[];
 	resolutionWarnings?: string[];
+	/** F7b: moveToCompany audit-note creation outcomes (survive on the success envelope). */
+	auditNotes?: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
 	pendingConfirmations?: PendingLabelConfirmation[];
 	effectiveOffset?: number;
 	readFields?: FieldMeta[];
@@ -426,6 +428,7 @@ export function buildMutationResponse(
 		pendingConfirmations: context.pendingConfirmations ?? [],
 		warnings: context.resolutionWarnings ?? [],
 	};
+	if (context.auditNotes) response.auditNotes = context.auditNotes;
 	if (record) response.record = record;
 	return response;
 }

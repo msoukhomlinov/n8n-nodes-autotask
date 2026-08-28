@@ -341,6 +341,29 @@ export async function executeAiTool(
 		}
 	}
 	const normalisedOperation = normaliseOperation(operation);
+	// F3 fix (round 2: type-agnostic): 'query' is consumed ONLY by listPicklistValues (it
+	// filters picklist values). It previously passed through every other operation silently
+	// ignored, so the model believed a full-text search had run. Reject loudly instead of
+	// returning unfiltered data. The guard is type-agnostic because the execute() path
+	// passes raw item.json past the Zod gate (numeric/boolean query values included).
+	if (
+		normalisedOperation !== 'listPicklistValues' &&
+		params.query != null &&
+		String(params.query).trim() !== ''
+	) {
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					normalisedOperation,
+					ERROR_TYPES.INVALID_OPERATION,
+					`'query' has no effect on operation '${normalisedOperation}' — it only filters picklist values for operation 'listPicklistValues'. It is NOT a full-text search on records.`,
+					`Call autotask_${resource} with operation 'getMany' using filter_field/filter_value (or filtersJson) to narrow records by field values.`,
+				),
+			),
+			correlationId,
+		);
+	}
 	traceToolCall({
 		phase: 'execute-start',
 		resource,
@@ -633,8 +656,30 @@ export async function executeAiTool(
 		let parsedFiltersJson: any[] = [];
 		try {
 			const parsed: unknown = JSON.parse(params.filtersJson as string);
-			if (!Array.isArray(parsed)) throw new Error('filtersJson must be a JSON array.');
-			parsedFiltersJson = parsed;
+			if (Array.isArray(parsed)) {
+				parsedFiltersJson = parsed as any[];
+			} else if (
+				typeof parsed === 'object' &&
+				parsed !== null &&
+				'op' in (parsed as Record<string, unknown>) &&
+				Array.isArray((parsed as Record<string, unknown>).items)
+			) {
+				// Documented nested form: a single top-level {op:'and'|'or', items:[...]} group —
+				// the same group shape the flat filter path emits for filter_logic='or', which the
+				// API accepts. Enables 3+-condition OR/AND beyond the two named filter slots.
+				const group = parsed as Record<string, unknown>;
+				if (group.op !== 'and' && group.op !== 'or') {
+					throw new Error(`filtersJson group 'op' must be 'and' or 'or' (got '${String(group.op)}').`);
+				}
+				for (const item of group.items as unknown[]) {
+					if (typeof item !== 'object' || item === null || !('op' in (item as object))) {
+						throw new Error('filtersJson group: every item must have at minimum an "op" property.');
+					}
+				}
+				parsedFiltersJson = [group as any];
+			} else {
+				throw new Error('filtersJson must be a JSON array of conditions, or a single {"op":"and"|"or","items":[...]} group.');
+			}
 		} catch (e) {
 			return attachCorrelation(
 				JSON.stringify(
@@ -1259,6 +1304,140 @@ export async function executeAiTool(
 				labelWarnings.push(
 					`[INFRASTRUCTURE] Impersonation resource resolution failed: ${msg}. Provide a numeric ID instead.`,
 				);
+			}
+		}
+	}
+	// F6 fix: moveToCompany destinationCompanyId accepts a company NAME label (schema is
+	// coerce.string, matching the node's reference-field convention). Numeric values pass
+	// through unchanged; name labels resolve to a numeric company ID before the resource
+	// executor's parseRequiredPositiveInt gate. Unmatched/failed resolution fails closed.
+	if (effectiveOperation === 'moveToCompany') {
+		const rawDestCompany = params.destinationCompanyId;
+		if (typeof rawDestCompany === 'number') {
+			(params as Record<string, unknown>).destinationCompanyId = String(rawDestCompany);
+		} else if (typeof rawDestCompany === 'string' && rawDestCompany.trim() === '') {
+			// Round-3: a whitespace-only destination is neither an ID nor a name — fail
+			// closed with a clean envelope (previously it flowed to the resource
+			// executor and failed in the positive-integer gate with a confusing message).
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						'moveToCompany',
+						ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+						"'destinationCompanyId' is empty (whitespace only) — it must be a numeric company ID or an exact company name.",
+						"Call autotask_contact with operation 'moveToCompany' providing destinationCompanyId as a numeric company ID or an exact company name.",
+					),
+				),
+				correlationId,
+			);
+		} else if (typeof rawDestCompany === 'string' && rawDestCompany.trim() !== '') {
+			const destTrimmed = rawDestCompany.trim();
+			const destIsNumericId =
+				/^\d+$/.test(destTrimmed) && String(parseInt(destTrimmed, 10)) === destTrimmed;
+			if (destIsNumericId) {
+				(params as Record<string, unknown>).destinationCompanyId = destTrimmed;
+			} else {
+				try {
+					const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
+					const helper = new EntityValueHelper(
+						context as unknown as import('n8n-workflow').ILoadOptionsFunctions,
+						'Company',
+					);
+					const candidates = await helper.getValues(true);
+					const label = destTrimmed.toLowerCase();
+					// Codex C4: never trust the helper's active-only filter blindly — if the Company
+					// field-metadata request fails, getValues(true) skips the isActive filter and the
+					// payload carries no isActive field at all. In that case name-based destination
+					// resolution fails closed: a company is never selected as a move destination while
+					// its active state is unestablished.
+					const activeFilterEstablished = candidates.length > 0 && candidates.every((c) => {
+						const o = c as unknown as IDataObject;
+						return o.isActive !== undefined;
+					});
+					const matches: Array<{ id: number; name: string }> = [];
+					for (const entity of candidates) {
+						const entityObj = entity as unknown as IDataObject;
+						const entityId = entityObj.id as number;
+						// id 0 = root account record: not a valid move destination (fails the
+						// positive-integer gate downstream and would move contacts to the account root).
+						if (entityId <= 0) continue;
+						// Explicit per-candidate active check (Codex C4): redundant with the helper's
+						// active filter on the normal path, but guards the metadata-failure path where the
+						// filter is skipped. On the NAME-resolution path an inactive destination fails
+						// closed: moving a contact there is almost always a mistake. Explicit numeric
+						// destinations are passed through to the API untouched (the API's own semantics
+						// apply to caller-chosen IDs).
+						const rawActive = entityObj.isActive;
+						if (rawActive !== true && rawActive !== 1) continue;
+						const display = helper.getEntityDisplayName(entityObj);
+						// Codex C2: collect EVERY exact-name match — a destructive contact move must
+						// never silently pick the first of several same-named companies.
+						if (display && display.toLowerCase() === label) {
+							matches.push({ id: entityId, name: display });
+						}
+					}
+					if (matches.length === 0) {
+						return attachCorrelation(
+							JSON.stringify(
+								wrapError(
+									resource,
+									effectiveOperation,
+									ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
+									activeFilterEstablished
+										? `Write blocked: No match found for field(s): 'destinationCompanyId' (company name '${destTrimmed}').`
+										: `Write blocked: No verifiable active company matches '${destTrimmed}' — the companies' active state could not be established for this request, so name-based destinations are disabled.`,
+									`Resolve the destination company to a numeric company ID (e.g. autotask_company with operation 'getMany'), then retry autotask_${resource} with operation 'moveToCompany'.`,
+								),
+							),
+							correlationId,
+						);
+					}
+					if (matches.length > 1) {
+						return attachCorrelation(
+							JSON.stringify(
+								wrapError(
+									resource,
+									effectiveOperation,
+									ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
+									`Write blocked: company name '${destTrimmed}' is ambiguous — it matches ${matches.length} active companies (IDs: ${matches.map((m) => m.id).join(', ')}). A contact move must not pick a destination at random.`,
+									`Retry autotask_${resource} with operation 'moveToCompany' using the numeric destinationCompanyId of the intended company (e.g. autotask_company with operation 'getMany' to look it up).`,
+									{ ambiguousCandidates: matches },
+								),
+							),
+							correlationId,
+						);
+					}
+					const matchedId = matches[0].id;
+					// Mirror into BOTH consumption paths: params (override-A default case) and
+					// fieldValues (override-A 'requestData'/'fieldsToMap' cases, which override-B in
+					// resources/tool/execute.ts prefers for unmapped keys). Without the fieldValues
+					// mirror the resource executor reads the pre-resolution label from requestData.
+					(params as Record<string, unknown>).destinationCompanyId = String(matchedId);
+					if (Object.prototype.hasOwnProperty.call(fieldValues, 'destinationCompanyId')) {
+						(fieldValues as Record<string, unknown>).destinationCompanyId = String(matchedId);
+					}
+					labelResolutions.push({
+						field: 'destinationCompanyId',
+						from: destTrimmed,
+						to: matchedId,
+						method: 'reference',
+					});
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					return attachCorrelation(
+						JSON.stringify(
+							wrapError(
+								resource,
+								effectiveOperation,
+								ERROR_TYPES.WRITE_RESOLUTION_INCOMPLETE,
+								`Write blocked: destination company resolution failed for '${destTrimmed}': ${msg}`,
+								`Provide the destination company as a numeric company ID and retry autotask_${resource} with operation 'moveToCompany'.`,
+							),
+						),
+						correlationId,
+					);
+				}
 			}
 		}
 	}
