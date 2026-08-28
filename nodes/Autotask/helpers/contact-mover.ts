@@ -522,7 +522,14 @@ async function resolveNoteAssignedResource(
 		const owner = rec.item?.ownerResourceID;
 		const num =
 			typeof owner === 'number' ? owner : typeof owner === 'string' && /^\d+$/.test(owner) ? parseInt(owner, 10) : NaN;
-		if (!Number.isFinite(num) || num <= 0) return undefined;
+		if (!Number.isFinite(num) || num <= 0) {
+			// Round-4c (F-R4b-1): every "no usable assigned resource" class must surface a
+			// warning — with the clean note-skip below, a silent undefined here would make a
+			// requested note vanish from the success envelope (no auditNotes key, no warnings),
+			// which the model would read as "note written".
+			warnings.push(`Audit note skipped: company (ID ${companyId}) has no usable owner resource (ownerResourceID missing or invalid) and no impersonation resource was supplied. Pass impersonationResourceId to write the audit note.`);
+			return undefined;
+		}
 		// Round-3 (F-P1-1): only ACTIVE owners may be used. assignedResourceID is a
 		// RESOURCE_REF_FIELD, so the write-retry machinery (withInactiveRefRetry) would
 		// temporarily ACTIVATE an inactive referenced resource (PATCH Resources/<id>

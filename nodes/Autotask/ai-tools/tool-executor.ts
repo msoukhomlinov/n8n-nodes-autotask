@@ -1344,7 +1344,7 @@ export async function executeAiTool(
 						context as unknown as import('n8n-workflow').ILoadOptionsFunctions,
 						'Company',
 					);
-						const candidates = await helper.getValues(true);
+					const candidates = await helper.getValues(true);
 					const label = destTrimmed.toLowerCase();
 					// Codex C4: never trust the helper's active-only filter blindly — if the Company
 					// field-metadata request fails, getValues(true) skips the isActive filter and the
@@ -1391,7 +1391,7 @@ export async function executeAiTool(
 								),
 							),
 							correlationId,
-					);
+						);
 					}
 					if (matches.length > 1) {
 						return attachCorrelation(
@@ -1406,7 +1406,7 @@ export async function executeAiTool(
 								),
 							),
 							correlationId,
-					);
+						);
 					}
 					const matchedId = matches[0].id;
 					// Mirror into BOTH consumption paths: params (override-A default case) and
