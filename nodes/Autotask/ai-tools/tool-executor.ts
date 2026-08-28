@@ -2247,28 +2247,39 @@ export async function executeAiTool(
 			&& params.id !== undefined
 		) {
 			try {
+				// Probe with getMany + id filter, NOT by-ID get: Autotask returns the
+				// SAME permission-flavoured 403 body for a missing record on get as on
+				// update/delete, so a by-ID probe cannot distinguish 'no permission'
+				// from 'no record'. getMany filtered by id reports absence cleanly
+				// (empty list / NO_RESULTS_FOUND) and is unaffected by the 403 masking.
 				const probeContext = {
 					...context,
 					getNodeParameter: ((
 						name: string,
 						...args: unknown[]
 					): unknown => {
-						if (name === 'targetOperation') return `${resource}.get`;
+						if (name === 'targetOperation') return `${resource}.getMany`;
+						if (name === 'filter_field') return 'id';
+						if (name === 'filter_op') return 'eq';
+						if (name === 'filter_value') return String(params.id);
+						if (name === 'limit') return '1';
 						if (name === 'requestData') return '{}';
 						return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
 					}) as typeof context.getNodeParameter,
 				} as typeof context;
 				const probeResult = await executeToolOperation.call(probeContext);
 				const probeItems = probeResult[0] ?? [];
-				// A missing by-ID get does NOT return an empty item array: the inner
-				// executor converts the null entity into an ENTITY_NOT_FOUND envelope
-				// item. Inspect the probe item's envelope (Codex P2 on PR #148).
+				// Inspect the probe item's envelope: absence surfaces as a
+				// NO_RESULTS_FOUND (filtered empty) or ENTITY_NOT_FOUND envelope, or as
+				// a successful zero-record list. Anything else (PERMISSION_DENIED on
+				// the probe itself) means the account genuinely lacks read access and
+				// the original classification stands.
 				const probeJson = (probeItems[0]?.json ?? null) as Record<string, unknown> | null;
 				const probeSaysNotFound =
 					probeItems.length === 0
-					|| probeJson === null
-					|| probeJson.errorType === ERROR_TYPES.ENTITY_NOT_FOUND
-					|| (probeJson.error === true && /not found|no matching/i.test(String(probeJson.summary ?? '')));
+					|| (probeJson !== null && probeJson.errorType === ERROR_TYPES.NO_RESULTS_FOUND)
+					|| (probeJson !== null && probeJson.errorType === ERROR_TYPES.ENTITY_NOT_FOUND)
+					|| (probeJson !== null && Array.isArray(probeJson.records) && probeJson.records.length === 0);
 				if (probeSaysNotFound) {
 					errorEnvelope = wrapError(
 						resource,
