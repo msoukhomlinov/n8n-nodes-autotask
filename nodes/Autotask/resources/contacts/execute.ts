@@ -7,6 +7,7 @@ import {
 	GetOperation,
 	GetManyOperation,
 	CountOperation,
+	DeleteOperation,
 } from '../../operations/base';
 const ENTITY_TYPE = 'contact';
 
@@ -67,6 +68,13 @@ export async function executeContactOperation(
 							entityType: ENTITY_TYPE,
 						},
 					});
+					break;
+				}
+
+				case 'delete': {
+					const deleteOp = new DeleteOperation<IAutotaskEntity>(ENTITY_TYPE, this);
+					const response = await deleteOp.execute(i);
+					returnData.push({ json: (response || { success: true }) as IDataObject });
 					break;
 				}
 

@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.29.0] - 2026-08-28
+
+### Changed
+
+- **Contact resource now supports `delete`** — the Autotask REST API supports `DELETE` on the Contacts entity via the Company-scoped path; the standard node (`Autotask` → Contact → Delete) and the AI tool (`autotask_contact` operation `delete`) both expose it. Resolves #146.
+
 ## [2.28.10] - 2026-08-27
 
 ### Fixed

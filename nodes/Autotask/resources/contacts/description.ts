@@ -45,6 +45,12 @@ export const contactFields: INodeProperties[] = [
 				action: 'Count contacts',
 			},
 			{
+				name: 'Delete',
+				value: 'delete',
+				description: 'Delete a contact',
+				action: 'Delete a contact',
+			},
+			{
 				name: 'Move to Company',
 				value: 'moveToCompany',
 				description: 'Copy a contact to a different company, optionally copy notes and group memberships, then deactivate the source',
@@ -62,7 +68,7 @@ export const contactFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['contact'],
-				operation: ['update', 'get'],
+				operation: ['update', 'get', 'delete'],
 			},
 		},
 		description: 'The ID of the contact to operate on',
