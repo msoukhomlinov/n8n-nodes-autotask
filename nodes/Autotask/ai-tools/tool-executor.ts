@@ -84,7 +84,8 @@ import {
 import { buildWriteResolutionBlocker, summariseResolutionState } from './write-guard';
 import { validateOperationContract, hasProvidedValue } from './operation-contracts';
 import { enrichResponseJson } from '../helpers/enrichment';
-import { autotaskApiRequest } from '../helpers/http';
+import { autotaskApiRequest, buildEntityUrl } from '../helpers/http';
+import { entityNameForResource } from '../constants/entities';
 
 /**
  * Coerce an unknown value to boolean, handling Copilot Studio's integer coercion
@@ -2247,40 +2248,26 @@ export async function executeAiTool(
 			&& params.id !== undefined
 		) {
 			try {
-				// Probe with getMany + id filter, NOT by-ID get: Autotask returns the
-				// SAME permission-flavoured 403 body for a missing record on get as on
-				// update/delete, so a by-ID probe cannot distinguish 'no permission'
-				// from 'no record'. getMany filtered by id reports absence cleanly
-				// (empty list / NO_RESULTS_FOUND) and is unaffected by the 403 masking.
-				const probeContext = {
-					...context,
-					getNodeParameter: ((
-						name: string,
-						...args: unknown[]
-					): unknown => {
-						if (name === 'targetOperation') return `${resource}.getMany`;
-						if (name === 'filter_field') return 'id';
-						if (name === 'filter_op') return 'eq';
-						if (name === 'filter_value') return String(params.id);
-						if (name === 'limit') return '1';
-						if (name === 'requestData') return '{}';
-						return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
-					}) as typeof context.getNodeParameter,
-				} as typeof context;
-				const probeResult = await executeToolOperation.call(probeContext);
-				const probeItems = probeResult[0] ?? [];
-				// Inspect the probe item's envelope: absence surfaces as a
-				// NO_RESULTS_FOUND (filtered empty) or ENTITY_NOT_FOUND envelope, or as
-				// a successful zero-record list. Anything else (PERMISSION_DENIED on
-				// the probe itself) means the account genuinely lacks read access and
-				// the original classification stands.
-				const probeJson = (probeItems[0]?.json ?? null) as Record<string, unknown> | null;
-				const probeSaysNotFound =
-					probeItems.length === 0
-					|| (probeJson !== null && probeJson.errorType === ERROR_TYPES.NO_RESULTS_FOUND)
-					|| (probeJson !== null && probeJson.errorType === ERROR_TYPES.ENTITY_NOT_FOUND)
-					|| (probeJson !== null && Array.isArray(probeJson.records) && probeJson.records.length === 0);
-				if (probeSaysNotFound) {
+				// Probe with a minimal direct API query (NOT the full executor, whose
+				// parameter/override plumbing is too brittle for a side-channel probe,
+				// and NOT by-ID get: Autotask returns the SAME permission-flavoured
+				// 403 body for a missing record on get as on update/delete, so a by-ID
+				// probe cannot distinguish 'no permission' from 'no record'). A
+				// getMany-style POST filtered by id reports absence cleanly (empty
+				// item list) and is unaffected by the 403 masking (Codex P2, PR #148).
+				const probeEntity = entityNameForResource(resource);
+				const probeBody = {
+					filter: [{ field: 'id', op: 'eq', value: String(params.id) }],
+					MaxRecords: 1,
+				};
+				const probeResp = (await autotaskApiRequest.call(
+					context,
+					'POST',
+					buildEntityUrl(probeEntity),
+					probeBody,
+				)) as { items?: Array<Record<string, unknown>> } | Array<Record<string, unknown>> | null;
+				const probeItems = Array.isArray(probeResp) ? probeResp : (probeResp?.items ?? []);
+				if (probeItems.length === 0) {
 					errorEnvelope = wrapError(
 						resource,
 						effectiveOperation,
@@ -2290,13 +2277,12 @@ export async function executeAiTool(
 					);
 				}
 			} catch (probeErr) {
-				// A MISSING by-ID get throws (GetOperation raises a NotFoundError when
-				// the response has no item; the HTTP layer may throw on 404) rather
-				// than returning an empty item array — so classify the probe exception:
-				// not-found-shaped errors confirm the record is gone, anything else
-				// (transport) keeps the original permission classification.
+				// Classify the probe exception: not-found/404-shaped errors confirm
+				// the record is gone; a 403/permission or transport failure keeps
+				// the original PERMISSION_DENIED classification (the account may
+				// genuinely lack access).
 				const pMsg = probeErr instanceof Error ? probeErr.message : String(probeErr);
-				if (/not found|no matching records|notfound|\b404\b/i.test(pMsg)) {
+				if (/not found|no matching|notfound|\b404\b/i.test(pMsg)) {
 					errorEnvelope = wrapError(
 						resource,
 						effectiveOperation,
