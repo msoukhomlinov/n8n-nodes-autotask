@@ -712,6 +712,45 @@ export async function executeAiTool(
 				correlationId,
 			);
 		}
+		// v2.29.0 (X16): filtersJson conditions bypassed the flat path's label
+		// resolution (resolveAndClassifyFilters only sees filters built from the
+		// filter_field slots), so picklist/reference labels in filtersJson were sent
+		// raw and the API rejected them ("Conversion failed when converting the
+		// varchar value ... to data <field> int"). Resolve the leaf conditions in
+		// place (group items included — same object references flow into
+		// combinedFilters) and merge the outcome into the shared accumulators so
+		// resolvedLabels/warnings/pendingConfirmations and the unresolved-filter
+		// guards behave identically for both parameter styles.
+		if (readFields.length > 0) {
+			const jsonLeaves: ToolFilter[] = [];
+			for (const el of parsedFiltersJson as unknown as Array<Record<string, unknown>>) {
+				if (Array.isArray(el.items)) {
+					for (const it of el.items as unknown[]) {
+						if (typeof it === 'object' && it !== null && 'field' in it) {
+							jsonLeaves.push(it as unknown as ToolFilter);
+						}
+					}
+				} else if ('field' in el) {
+					jsonLeaves.push(el as unknown as ToolFilter);
+				}
+			}
+			if (jsonLeaves.length > 0) {
+				const jsonResolution = await resolveAndClassifyFilters(
+					context,
+					resource,
+					jsonLeaves,
+					readFields,
+					params as IDataObject,
+				);
+				filterResolutions.push(...jsonResolution.resolutions);
+				filterWarnings.push(...jsonResolution.warnings);
+				filterPendingConfirmations.push(...jsonResolution.pendingConfirmations);
+				unresolvedIdLikeFilters.push(...jsonResolution.unresolvedIdLikeFilters);
+				unresolvedIdLikeFilterDetails.push(...jsonResolution.unresolvedIdLikeFilterDetails);
+				unresolvedPicklistFilters.push(...jsonResolution.unresolvedPicklistFilters);
+				unresolvedPicklistFilterDetails.push(...jsonResolution.unresolvedPicklistFilterDetails);
+			}
+		}
 		// Recency always AND-appended on top (time window constraint)
 		combinedFilters = [...parsedFiltersJson, ...recencyResult.filters];
 	} else {

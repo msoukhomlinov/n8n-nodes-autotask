@@ -298,6 +298,40 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	 *                     callers (e.g. response enrichment) minimise bandwidth while still
 	 *                     guaranteeing the fields they need are returned by the API.
 	 */
+	/**
+	 * v2.29.0 (X16): targeted candidate fetch for reference-label resolution.
+	 * Replaces the full-entity scan (getValues) which, on large reference
+	 * populations (e.g. ~24k ConfigurationItems), takes minutes and hangs the
+	 * tool call past the MCP protocol timeout. Filters the referenced entity on
+	 * a display-name field (eq or contains) so resolution costs 1-3 small
+	 * API calls regardless of entity size.
+	 */
+	public async getValuesByDisplay(
+		nameField: string,
+		value: string,
+		activeOnly: boolean,
+		op: 'eq' | 'contains' = 'eq',
+		limit = 50,
+	): Promise<T[]> {
+		const mapping = this.getEntityFieldMapping();
+		const filters: Record<string, unknown> = { ...(mapping?.filters || {}) };
+		filters[nameField] = value;
+		if (activeOnly && !('isActive' in filters)) {
+			const supports = await this.entitySupportsIsActiveField();
+			if (supports) filters.isActive = activeOnly;
+		}
+		const query: IAutotaskQueryInput<T> = {
+			filter: Object.entries(filters).map(([field, val]) => ({
+				field,
+				op: field === nameField ? op : 'eq',
+				value: String(val),
+			})),
+			MaxRecords: limit,
+		};
+		const getManyOp = await this.getGetManyOperation();
+		return getManyOp.execute(query);
+	}
+
 	public async getValuesByIds(ids: (string | number)[], includeFields?: string[]): Promise<T[]> {
 		if (!ids || ids.length === 0) {
 			return [];

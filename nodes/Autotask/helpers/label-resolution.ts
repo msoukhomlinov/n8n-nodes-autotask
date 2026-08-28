@@ -1,6 +1,7 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { describeResource, getReferencedEntity, listPicklistValues } from './aiHelper';
 import { EntityValueHelper } from './entity-values/value-helper';
+import type { IAutotaskEntity } from '../types';
 import { PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../constants/field.constants';
 import { isLikelyId } from './id-utils';
 export { isLikelyId } from './id-utils';
@@ -49,6 +50,40 @@ function getEntityNameFields(entityType: string): string[] {
         k => k.toLowerCase() === lowerType,
     );
     return key ? PICKLIST_REFERENCE_FIELD_MAPPINGS[key].nameFields : [];
+}
+
+/**
+ * v2.29.0 (X16): bounded candidate pool for reference-label resolution.
+ * One small `contains` probe per display-name field replaces the previous
+ * full-entity scan (getValues), which on large reference populations (~24k
+ * ConfigurationItems) took minutes and hung the tool call past the MCP
+ * protocol timeout. Any entity whose display name equals or partially
+ * matches the label appears in the pool; labels spanning multiple fields
+ * (e.g. 'Max S') surface as a 'use a numeric ID' warning instead of a hang.
+ */
+async function fetchReferenceCandidates(
+    helper: EntityValueHelper<IAutotaskEntity>,
+    entityType: string,
+    label: string,
+    activeOnly: boolean,
+): Promise<Array<Record<string, unknown>>> {
+    let nameFields = getEntityNameFields(entityType);
+    if (nameFields.length === 0) nameFields = ['name'];
+    const pool = new Map<string | number, Record<string, unknown>>();
+    for (const nameField of nameFields) {
+        try {
+            const rows = await helper.getValuesByDisplay(nameField, label, activeOnly, 'contains', 50);
+            for (const row of rows) {
+                const data = row as unknown as Record<string, unknown>;
+                const id = data.id as string | number | undefined;
+                if (id !== undefined) pool.set(id, data);
+            }
+        } catch {
+            // Best-effort: a probe rejected because the entity lacks that field
+            // must not abort resolution on the remaining name fields.
+        }
+    }
+    return Array.from(pool.values());
 }
 
 function findUniqueNameFieldMatchId(
@@ -247,8 +282,8 @@ export async function resolveLabelsToIds(
 
                 // Two-pass active→all approach
                 // Pass 1: Active entities only
-                const activeCandidates = await helper.getValues(true);
-                let allCandidates: Awaited<ReturnType<typeof helper.getValues>> | undefined;
+                const activeCandidates = await fetchReferenceCandidates(helper, field.referencesEntity, label, true);
+                let allCandidates: Array<Record<string, unknown>> | undefined;
                 let bestId: string | number | undefined;
 
                 for (const entity of activeCandidates) {
@@ -261,7 +296,7 @@ export async function resolveLabelsToIds(
 
                 // No exact match in active set — try Pass 2 (all entities including inactive)
                 if (bestId === undefined) {
-                    allCandidates = await helper.getValues(false);
+                    allCandidates = await fetchReferenceCandidates(helper, field.referencesEntity, label, false);
 
                     for (const entity of allCandidates) {
                         const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
@@ -287,7 +322,7 @@ export async function resolveLabelsToIds(
                     }
 
                     // Reuse allCandidates from Pass 2 (already fetched above)
-                    const allForPartials = allCandidates ?? await helper.getValues(false);
+                    const allForPartials = allCandidates ?? await fetchReferenceCandidates(helper, field.referencesEntity, label, false);
                     for (const entity of allForPartials) {
                         const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
                         const id = (entity as unknown as IDataObject).id as string | number;
@@ -540,8 +575,8 @@ export async function resolveFilterLabelsToIds(
             const helper = new EntityValueHelper(context, effectiveReferenceEntity);
 
             // Pass 1: Active entities
-            const activeCandidates = await helper.getValues(true);
-            let allCandidates: Awaited<ReturnType<typeof helper.getValues>> | undefined;
+            const activeCandidates = await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, true);
+            let allCandidates: Array<Record<string, unknown>> | undefined;
             let bestId: string | number | undefined;
 
             for (const entity of activeCandidates) {
@@ -554,7 +589,7 @@ export async function resolveFilterLabelsToIds(
 
             // No exact match in active set — try Pass 2 (all entities including inactive)
             if (bestId === undefined) {
-                allCandidates = await helper.getValues(false);
+                allCandidates = await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, false);
 
                 for (const entity of allCandidates) {
                     const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
@@ -572,7 +607,7 @@ export async function resolveFilterLabelsToIds(
             // Auto-resolves only when exactly one entity matches on any nameField.
             const nameFields = getEntityNameFields(effectiveReferenceEntity);
             if (bestId === undefined && nameFields.length >= 2) {
-                const allForNameMatch = allCandidates ?? await helper.getValues(false);
+                const allForNameMatch = allCandidates ?? await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, false);
                 const mergedById = new Map<string | number, IDataObject>();
 
                 for (const entity of activeCandidates) {
@@ -615,7 +650,7 @@ export async function resolveFilterLabelsToIds(
                 }
 
                 // Reuse allCandidates from Pass 2 (already fetched above)
-                const allForPartials = allCandidates ?? await helper.getValues(false);
+                const allForPartials = allCandidates ?? await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, false);
                 for (const entity of allForPartials) {
                     const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
                     const id = (entity as unknown as IDataObject).id as string | number;
