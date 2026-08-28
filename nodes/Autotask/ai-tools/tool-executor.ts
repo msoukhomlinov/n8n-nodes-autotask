@@ -1315,6 +1315,22 @@ export async function executeAiTool(
 		const rawDestCompany = params.destinationCompanyId;
 		if (typeof rawDestCompany === 'number') {
 			(params as Record<string, unknown>).destinationCompanyId = String(rawDestCompany);
+		} else if (typeof rawDestCompany === 'string' && rawDestCompany.trim() === '') {
+			// Round-3: a whitespace-only destination is neither an ID nor a name — fail
+			// closed with a clean envelope (previously it flowed to the resource
+			// executor and failed in the positive-integer gate with a confusing message).
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						'moveToCompany',
+						ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+						"'destinationCompanyId' is empty (whitespace only) — it must be a numeric company ID or an exact company name.",
+						"Call autotask_contact with operation 'moveToCompany' providing destinationCompanyId as a numeric company ID or an exact company name.",
+					),
+				),
+				correlationId,
+			);
 		} else if (typeof rawDestCompany === 'string' && rawDestCompany.trim() !== '') {
 			const destTrimmed = rawDestCompany.trim();
 			const destIsNumericId =

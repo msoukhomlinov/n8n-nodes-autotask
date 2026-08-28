@@ -50,8 +50,8 @@ const RESOURCE_LANGUAGE_CONFIG: Record<string, ResourceLanguageConfig> = {
 
 export function buildToolContractBlock(): string {
 	return [
-		'CAPABILITIES: filter/count/paging only. No groupBy/aggregation/server-side sort. Cross-entity lookups need two steps (child first → parent with filter_op=in), except documented convenience ops.',
-		"EFFICIENCY: use operation='count' for totals-only questions. For grouped/top-N analysis pair operation='getMany' with sparse fields (e.g. fields='id,city') + returnAll=true — sparse fields lifts the 500-record payload cap. Aggregation is client-side.",
+		'CAPABILITIES: filter/count/paging only; no groupBy, aggregation, or server-side sort. Cross-entity = two steps (child first → parent with filter_op=in), except convenience ops.',
+		"EFFICIENCY: totals via operation='count'; top-N/grouped via getMany + sparse fields (e.g. fields='id,city') + returnAll=true (sparse fields lift the 500-record cap); aggregate client-side.",
 		'ERRORS: when "error":true, the "nextAction" field is a directive — execute it before retrying. Never retry an unchanged failed call. If the input schema rejects a call, the text names the offending parameter — correct it; do not retry the same payload.',
 		"DOCS: op-specific docs via operation='describeOperation' (param: targetOperation); field metadata via 'describeFields' (param: mode); picklist values via 'listPicklistValues' (param: fieldId).",
 	].join('\n');
@@ -671,6 +671,13 @@ export function buildUnifiedDescriptionTemplate(
 	// Tool contract block — always first, guaranteed to survive truncation.
 	sections.push(buildToolContractBlock());
 
+	// Round-3 (F-P3-1): the canonical Operations list sits in the guaranteed-visible
+	// prefix (right after the contract block) — in round 2 it landed after the long
+	// entity description and was amputated by the 1300-char cut on 14/31 on-surface
+	// tools (10 with NO op list at all). Contract lines were compacted in the same
+	// pass to restore the headroom this prefix needs.
+	sections.push(`Operations: ${allOps.join(', ')}. Set 'operation' to one.`);
+
 	// Safety-critical header — always present for write ops.
 	if (hasWriteOps) {
 		sections.push(
@@ -700,9 +707,6 @@ export function buildUnifiedDescriptionTemplate(
 			"Company identifier priority: domain from email/website first; fall back to companyName contains only when no domain signal.",
 		);
 	}
-
-	// Operations list — single canonical source of which ops this tool exposes.
-	sections.push(`Operations: ${allOps.join(', ')}. Set 'operation' to one.`);
 
 	// Helper-ops pointer now lives in the static contract block (DOCS line,
 	// round-2 L-3: contract block is always first and guaranteed to survive

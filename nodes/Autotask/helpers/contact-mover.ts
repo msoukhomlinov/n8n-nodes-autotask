@@ -502,6 +502,7 @@ async function resolveNoteAssignedResource(
 	ctx: IExecuteFunctions,
 	companyId: number,
 	impersonationResourceId: number | undefined,
+	warnings: string[],
 ): Promise<number | undefined> {
 	if (impersonationResourceId !== undefined) return impersonationResourceId;
 	try {
@@ -509,7 +510,28 @@ async function resolveNoteAssignedResource(
 		const owner = rec.item?.ownerResourceID;
 		const num =
 			typeof owner === 'number' ? owner : typeof owner === 'string' && /^\d+$/.test(owner) ? parseInt(owner, 10) : NaN;
-		return Number.isFinite(num) && num > 0 ? num : undefined;
+		if (!Number.isFinite(num) || num <= 0) return undefined;
+		// Round-3 (F-P1-1): only ACTIVE owners may be used. assignedResourceID is a
+		// RESOURCE_REF_FIELD, so the write-retry machinery (withInactiveRefRetry) would
+		// temporarily ACTIVATE an inactive referenced resource (PATCH Resources/<id>
+		// isActive:true) with only best-effort restore — reactivating a departed
+		// owner's account as a side effect of an audit-note write is unacceptable.
+		try {
+			const res = (await autotaskApiRequest.call(ctx, 'GET', `Resources/${num}`)) as { item?: IDataObject };
+			const active = res.item?.isActive;
+			if (active !== true && active !== 1) {
+				warnings.push(
+					`Audit note skipped: the company's owner resource (ID ${num}) is not active. Pass impersonationResourceId to write the audit note instead.`,
+				);
+				return undefined;
+			}
+		} catch {
+			warnings.push(
+				`Audit note skipped: could not verify the company's owner resource (ID ${num}). Pass impersonationResourceId to write the audit note instead.`,
+			);
+			return undefined;
+		}
+		return num;
 	} catch {
 		return undefined;
 	}
@@ -556,7 +578,7 @@ async function createAuditNotes(
 				note: noteText,
 				actionType: 3,
 			};
-			const sourceAssigned = await resolveNoteAssignedResource(ctx, sourceCompanyId, options.impersonationResourceId);
+			const sourceAssigned = await resolveNoteAssignedResource(ctx, sourceCompanyId, options.impersonationResourceId, warnings);
 			if (sourceAssigned !== undefined) {
 				notePayload.assignedResourceID = sourceAssigned;
 			}
@@ -594,7 +616,7 @@ async function createAuditNotes(
 				note: noteText,
 				actionType: 3,
 			};
-			const destAssigned = await resolveNoteAssignedResource(ctx, options.destinationCompanyId, options.impersonationResourceId);
+			const destAssigned = await resolveNoteAssignedResource(ctx, options.destinationCompanyId, options.impersonationResourceId, warnings);
 			if (destAssigned !== undefined) {
 				notePayload.assignedResourceID = destAssigned;
 			}
