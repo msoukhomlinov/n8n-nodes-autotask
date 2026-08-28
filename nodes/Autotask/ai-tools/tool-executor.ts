@@ -1967,7 +1967,7 @@ export async function executeAiTool(
 		if (selectedColumns.length > 0 && supportsListProjection(effectiveOperation)) {
 			const keep = new Set<string>(selectedColumns);
 			for (const col of selectedColumns) keep.add(`${col}_label`);
-			records = records.map((rec) => {
+			const projected = records.map((rec) => {
 				const r = rec as Record<string, unknown>;
 				const out: Record<string, unknown> = {};
 				for (const key of Object.keys(r)) {
@@ -1977,6 +1977,7 @@ export async function executeAiTool(
 				}
 				return out;
 			});
+			records = projected as unknown as IDataObject[];
 		}
 		const supportsListResponse = ['getMany', 'getPosted', 'getUnposted'].includes(
 			effectiveOperation,

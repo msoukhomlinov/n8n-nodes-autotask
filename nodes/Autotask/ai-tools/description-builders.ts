@@ -10,7 +10,7 @@ import {
 	RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION,
 	RESOURCE_EXTRA_HINTS,
 } from './resource-language';
-import { isNodeOperationImpersonationSupported, isNodeResourceImpersonationSupported } from '../helpers/impersonation';
+import { isNodeResourceImpersonationSupported } from '../helpers/impersonation';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
 import { MAX_RESPONSE_RECORDS } from './operation-handlers/operation-dispatch';
 import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
