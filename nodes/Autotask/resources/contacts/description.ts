@@ -74,6 +74,24 @@ export const contactFields: INodeProperties[] = [
 		description: 'The ID of the contact to operate on',
 	},
 	{
+		// v2.29.0 (Codex P1 on PR #148): the Autotask API exposes contact deletion
+		// only via the company-scoped path (DELETE Companies/{companyID}/Contacts/{id});
+		// DeleteOperation needs companyID to build that URL.
+		displayName: 'Company ID',
+		name: 'companyID',
+		type: 'number',
+		required: true,
+		default: 0,
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['delete'],
+			},
+		},
+		description:
+			"The company the contact belongs to — the API only exposes contact deletion via the company-scoped path (Companies/{companyID}/Contacts/{id})",
+	},
+	{
 		displayName: 'Fields',
 		name: 'fieldsToMap',
 		type: 'resourceMapper',

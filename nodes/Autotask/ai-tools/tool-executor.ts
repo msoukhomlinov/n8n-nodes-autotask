@@ -1141,6 +1141,24 @@ export async function executeAiTool(
 		}
 	}
 
+	// v2.29.0 (Codex P1 on PR #148): contact deletion is only exposed by the API on
+	// the company-scoped path (DELETE Companies/{companyID}/Contacts/{id}). Without
+	// companyID the executor would fall back to a flat endpoint that Autotask rejects.
+	if (resource === 'contact' && effectiveOperation === 'delete' && !hasProvidedValue(params.companyID)) {
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					'delete',
+					ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+					'Deleting a contact requires companyID — the Autotask API only exposes contact deletion via the company-scoped path (Companies/{companyID}/Contacts/{id}).',
+					`Retry autotask_contact with operation 'delete' supplying id and companyID (numeric ID or company name, auto-resolved). If the contact's company is unknown, call autotask_contact with operation 'get' using the contact id and read companyID.`,
+				),
+			),
+			correlationId,
+		);
+	}
+
 	// Pre-flight: reject rejectReason (when rejectReasonPolicy is mandatory)
 	if (
 		effectiveOperation === 'reject' &&
@@ -1208,8 +1226,11 @@ export async function executeAiTool(
 	let labelResolutions: LabelResolution[] = [];
 	let labelWarnings: string[] = [];
 	let labelPendingConfirmations: PendingLabelConfirmation[] = [];
+	// v2.29.0 (Codex P1 on PR #148): include delete so a company name supplied as
+	// companyID on a contact delete is resolved to a numeric ID (the company-scoped
+	// delete endpoint requires the numeric parent company).
 	if (
-		['create', 'update', 'createIfNotExists'].includes(effectiveOperation) &&
+		['create', 'update', 'createIfNotExists', 'delete'].includes(effectiveOperation) &&
 		Object.keys(fieldValues).length > 0
 	) {
 		try {
@@ -1876,10 +1897,19 @@ export async function executeAiTool(
 				if (params.impersonationResourceId !== undefined) {
 					// Impersonation pass-through — same window-based safety as v2.28.10:
 					// the write executes inside the mover's temporary-activation window.
-					fieldValues.assignedResourceID = params.impersonationResourceId;
+					// Use the RESOLVED numeric ID when the model supplied a name/email
+					// (params.impersonationResourceId still holds the original label, and
+					// field-label resolution has already run — a label here would fail).
+					const impId = resolvedImpersonationId ?? params.impersonationResourceId;
+					fieldValues.assignedResourceID = impId;
 					defaults.push(
-						`companyNote.create: assignedResourceID defaulted to the impersonation resource ${params.impersonationResourceId}`,
+						`companyNote.create: assignedResourceID defaulted to the impersonation resource ${impId}`,
 					);
+					if (resolvedImpersonationId === undefined) {
+						labelWarnings.push(
+							`companyNote.create: impersonationResourceId '${String(params.impersonationResourceId)}' could not be resolved to a numeric resource ID — the API may reject it; supply a numeric resource ID or an exact resource name.`,
+						);
+					}
 				} else if (fieldValues.companyID !== undefined) {
 					// Company's owner resource, active-only (same rule as contact-mover).
 					try {
@@ -1998,26 +2028,6 @@ export async function executeAiTool(
 			);
 		}
 		let records = fetchedRecords;
-		// v2.29.0 (X15): enforce the sparse-fields contract client-side. The API's paged
-		// next-URL does not reliably preserve IncludeFields (later pages can come back
-		// with every field), so project every record to the requested columns — keeping
-		// id (so downstream enrichment/labels keep working), any *_label variants, and
-		// userDefinedFields.
-		if (selectedColumns.length > 0 && supportsListProjection(effectiveOperation)) {
-			const keep = new Set<string>(selectedColumns);
-			for (const col of selectedColumns) keep.add(`${col}_label`);
-			const projected = records.map((rec) => {
-				const r = rec as Record<string, unknown>;
-				const out: Record<string, unknown> = {};
-				for (const key of Object.keys(r)) {
-					if (keep.has(key) || key === 'id' || key === 'userDefinedFields') {
-						out[key] = r[key];
-					}
-				}
-				return out;
-			});
-			records = projected as unknown as IDataObject[];
-		}
 		const supportsListResponse = ['getMany', 'getPosted', 'getUnposted'].includes(
 			effectiveOperation,
 		);
@@ -2045,6 +2055,26 @@ export async function executeAiTool(
 					correlationId,
 				);
 			}
+		}
+				// v2.29.0 (X15): enforce the sparse-fields contract client-side. The API's paged
+		// next-URL does not reliably preserve IncludeFields (later pages can come back
+		// with every field), so project every record to the requested columns — keeping
+		// id (so downstream enrichment/labels keep working), any *_label variants, and
+		// userDefinedFields.
+		if (selectedColumns.length > 0 && supportsListProjection(effectiveOperation)) {
+			const keep = new Set<string>(selectedColumns);
+			for (const col of selectedColumns) keep.add(`${col}_label`);
+			const projected = records.map((rec) => {
+				const r = rec as Record<string, unknown>;
+				const out: Record<string, unknown> = {};
+				for (const key of Object.keys(r)) {
+					if (keep.has(key) || key === 'id' || key === 'userDefinedFields') {
+						out[key] = r[key];
+					}
+				}
+				return out;
+			});
+			records = projected as unknown as IDataObject[];
 		}
 		// Merge write label resolutions and filter label resolutions
 		const allResolutions = [...labelResolutions, ...filterResolutions];
@@ -2089,11 +2119,16 @@ export async function executeAiTool(
 		}
 		const mergedWarnings = [...allWarnings, ...countInjectionWarnings, ...rawDatePairWarnings, ...extraWarnings];
 		const responseContext: ToolResponseContext = {
+			// moveConfigurationItem takes its source from sourceConfigurationItemId,
+			// not id — read both so the clone-and-deactivate summary names the real
+			// source record (Codex P2 on PR #148).
 			originalRecordId:
 				effectiveOperation === 'moveConfigurationItem'
-					? params.id !== undefined
-						? params.id
-						: undefined
+					? params.sourceConfigurationItemId !== undefined
+						? String(params.sourceConfigurationItemId)
+						: params.id !== undefined
+							? String(params.id)
+							: undefined
 					: undefined,
 			recencyActive: recencyResult.isActive,
 			recencyNote: recencyResult.note ?? recencyOffsetNote,
@@ -2234,8 +2269,22 @@ export async function executeAiTool(
 						`If the user supplied this ID explicitly, report that no record exists with that ID. Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID.`,
 					);
 				}
-			} catch {
-				// Probe failed (e.g. transport) — keep the classified permission error.
+			} catch (probeErr) {
+				// A MISSING by-ID get throws (GetOperation raises a NotFoundError when
+				// the response has no item; the HTTP layer may throw on 404) rather
+				// than returning an empty item array — so classify the probe exception:
+				// not-found-shaped errors confirm the record is gone, anything else
+				// (transport) keeps the original permission classification.
+				const pMsg = probeErr instanceof Error ? probeErr.message : String(probeErr);
+				if (/not found|no matching records|notfound|\b404\b/i.test(pMsg)) {
+					errorEnvelope = wrapError(
+						resource,
+						effectiveOperation,
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`No ${resource} found with id ${params.id} — the API reports missing records on update/delete as permission errors.`,
+						`If the user supplied this ID explicitly, report that no record exists with that ID. Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID.`,
+					);
+				}
 			}
 		}
 		return attachCorrelation(JSON.stringify(errorEnvelope), correlationId);

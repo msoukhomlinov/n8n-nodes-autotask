@@ -70,6 +70,7 @@ async function fetchReferenceCandidates(
     let nameFields = getEntityNameFields(entityType);
     if (nameFields.length === 0) nameFields = ['name'];
     const pool = new Map<string | number, Record<string, unknown>>();
+    let firstError: Error | undefined;
     for (const nameField of nameFields) {
         try {
             const rows = await helper.getValuesByDisplay(nameField, label, activeOnly, 'contains', 50);
@@ -78,11 +79,15 @@ async function fetchReferenceCandidates(
                 const id = data.id as string | number | undefined;
                 if (id !== undefined) pool.set(id, data);
             }
-        } catch {
+        } catch (err) {
             // Best-effort: a probe rejected because the entity lacks that field
-            // must not abort resolution on the remaining name fields.
+            // must not abort resolution on the remaining name fields — but if
+            // EVERY probe fails, the caller must see the error (a silent pass-through
+            // made unresolved labels look like deliberate negatives on the wire).
+            if (!firstError) firstError = err instanceof Error ? err : new Error(String(err));
         }
     }
+    if (pool.size === 0 && firstError) throw firstError;
     return Array.from(pool.values());
 }
 

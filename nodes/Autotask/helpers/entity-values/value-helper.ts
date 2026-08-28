@@ -3,6 +3,7 @@ import type { IAutotaskEntity, IAutotaskQueryInput } from '../../types';
 import type { GetManyOperation } from '../../operations/base/get-many';
 // REMOVED to break circular dependency: import { GetManyOperation as GetManyOperationClass } from '../../operations/base/get-many';
 import { PICKLIST_REFERENCE_FIELD_MAPPINGS, DEFAULT_PICKLIST_FIELDS } from '../../constants/field.constants';
+import { getEntityMetadata } from '../../constants/entities';
 import type { IPicklistReferenceFieldMapping } from '../../types/base/picklists';
 import { ERROR_TEMPLATES, WARNING_TEMPLATES } from '../../constants/error.constants';
 import type { CacheService } from '../cache';
@@ -41,6 +42,11 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	// LAZY INITIALIZATION: To break circular dependency, GetManyOperation is loaded on first use
 	private _getManyOperation: GetManyOperation<T> | null = null;
 	private readonly entityHelper: EntityHelper;
+	// v2.29.0: the canonical (metadata-cased) entity name. Reference metadata can
+	// arrive lowercase (e.g. referencesEntity 'configurationitem'); API paths are
+	// built from the entity name, so query construction must use the canonical
+	// casing from the entity registry (case-insensitive lookup).
+	private readonly canonicalEntityType: string;
 	private readonly maxReferenceDepth = 3;
 	private currentDepth = 0;
 	private readonly fallbackConfig: IFallbackConfig;
@@ -56,6 +62,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	) {
 		// NOTE: GetManyOperation is now lazily initialized to break circular dependency
 		this.entityHelper = new EntityHelper(entityType, context);
+		this.canonicalEntityType = getEntityMetadata(entityType)?.name ?? entityType;
 
 		// Set fallback configuration
 		this.fallbackConfig = {
@@ -73,7 +80,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		const cached = entitySupportsIsActiveCache.get(key);
 		if (cached !== undefined) return cached;
 		try {
-			const fields = (await getFields(this.entityType, this.context, {
+			const fields = (await getFields(this.canonicalEntityType, this.context, {
 				fieldType: 'standard',
 			})) as IAutotaskField[];
 			const has = fields.some((f) => f.name === 'isActive');
@@ -101,7 +108,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			return true;
 		}
 		try {
-			const fields = (await getFields(this.entityType, this.context, {
+			const fields = (await getFields(this.canonicalEntityType, this.context, {
 				fieldType: 'standard',
 			})) as IAutotaskField[];
 			const has = fields.some((f) => NAME_FIELD_HINTS.has(String(f.name).toLowerCase()));
@@ -144,7 +151,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			// LAZY IMPORT: Import GetManyOperation only when needed to break circular dependency
 			const { GetManyOperation: GetManyOperationClass } = await import('../../operations/base/get-many');
 			this._getManyOperation = new GetManyOperationClass(
-				this.entityType,
+				this.canonicalEntityType,
 				this.context as IExecuteFunctions,
 				{
 					isPicklistQuery: true,

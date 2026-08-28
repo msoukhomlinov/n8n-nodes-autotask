@@ -815,6 +815,22 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 			}
 		}
 
+		// v2.29.0 (Codex P1 on PR #148): the Autotask API exposes contact deletion
+		// only via the company-scoped path (DELETE Companies/{companyID}/Contacts/{id});
+		// without a companyID parameter DeleteOperation falls back to a flat endpoint
+		// the API does not expose. Expose companyID (name or ID, auto-resolved) for
+		// the contact delete operation.
+		if (resource === 'contact' && hasDeleteOp) {
+			if (!shape.companyID) {
+				shape.companyID = rz
+					.coerce.string()
+					.nullish()
+					.describe(
+						'Company name or numeric companyID (auto-resolved). Required to delete a contact — the Autotask API only exposes contact deletion via the company-scoped path.',
+					);
+			}
+		}
+
 		// moveConfigurationItem fields
 		if (hasMoveConfigItem) {
 			if (!shape.sourceConfigurationItemId)
