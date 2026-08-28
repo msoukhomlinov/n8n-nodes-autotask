@@ -83,6 +83,7 @@ import {
 } from './debug-trace';
 import { buildWriteResolutionBlocker, summariseResolutionState } from './write-guard';
 import { validateOperationContract, hasProvidedValue } from './operation-contracts';
+import { isLikelyId } from '../helpers/id-utils';
 import { enrichResponseJson } from '../helpers/enrichment';
 import { autotaskApiRequest, buildEntityUrl } from '../helpers/http';
 import { AUTOTASK_ENTITIES, entityNameForResource, getEntityMetadata } from '../constants/entities';
@@ -724,16 +725,25 @@ export async function executeAiTool(
 		// guards behave identically for both parameter styles.
 		if (readFields.length > 0) {
 			const jsonLeaves: ToolFilter[] = [];
-			for (const el of parsedFiltersJson as unknown as Array<Record<string, unknown>>) {
-				if (Array.isArray(el.items)) {
-					for (const it of el.items as unknown[]) {
-						if (typeof it === 'object' && it !== null && 'field' in it) {
-							jsonLeaves.push(it as unknown as ToolFilter);
-						}
-					}
-				} else if ('field' in el) {
-					jsonLeaves.push(el as unknown as ToolFilter);
+			// v2.29.0 (m5): the filter validator accepts arbitrary nesting (groups
+			// inside groups), so walk every object whose items is an array and collect
+			// every leaf that has a field at any depth. The collected objects are the
+			// same references that flow into combinedFilters — resolution mutates them
+			// in place.
+			const collectJsonLeaves = (node: unknown): void => {
+				if (typeof node !== 'object' || node === null) return;
+				const obj = node as Record<string, unknown>;
+				if ('field' in obj) {
+					jsonLeaves.push(obj as unknown as ToolFilter);
 				}
+				if (Array.isArray(obj.items)) {
+					for (const it of obj.items) {
+						collectJsonLeaves(it);
+					}
+				}
+			};
+			for (const el of parsedFiltersJson as unknown as Array<Record<string, unknown>>) {
+				collectJsonLeaves(el);
 			}
 			if (jsonLeaves.length > 0) {
 				const jsonResolution = await resolveAndClassifyFilters(
@@ -1160,6 +1170,30 @@ export async function executeAiTool(
 		);
 	}
 
+	// v2.29.0 (m4): CIRI deletion is only exposed by the API on the CI-scoped path
+	// (DELETE ConfigurationItems/{configurationItemID}/RelatedItems/{id}). Without
+	// configurationItemID the executor would fall back to a flat endpoint that
+	// Autotask rejects.
+	if (
+		resource === 'configurationItemRelatedItem'
+		&& effectiveOperation === 'delete'
+		&& !hasProvidedValue(params.configurationItemID)
+	) {
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					'delete',
+					ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+					'Delete a configuration item related item requires the parent configurationItemID (numeric ID or CI name)',
+					"supply configurationItemID (a numeric configuration item ID or its name) — run autotask_configurationItemRelatedItem with operation 'describeFields' if unsure",
+					{ missingFields: ['configurationItemID'] },
+				),
+			),
+			correlationId,
+		);
+	}
+
 	// Pre-flight: reject rejectReason (when rejectReasonPolicy is mandatory)
 	if (
 		effectiveOperation === 'reject' &&
@@ -1229,7 +1263,11 @@ export async function executeAiTool(
 	let labelPendingConfirmations: PendingLabelConfirmation[] = [];
 	// v2.29.0 (Codex P1 on PR #148): include delete so a company name supplied as
 	// companyID on a contact delete is resolved to a numeric ID (the company-scoped
-	// delete endpoint requires the numeric parent company).
+	// delete endpoint requires the numeric parent company). The same gate covers
+	// configurationItemRelatedItem deletes: a CI name supplied as configurationItemID
+	// is resolved via the reference field in the create metadata (the CI-scoped
+	// delete endpoint requires the numeric parent CI).
+
 	if (
 		['create', 'update', 'createIfNotExists', 'delete'].includes(effectiveOperation) &&
 		Object.keys(fieldValues).length > 0
@@ -1579,6 +1617,30 @@ export async function executeAiTool(
 				return `${resource}.${effectiveOperation}`;
 			case 'entityId':
 				return entityId;
+			// v2.29.0 (B1): contact delete is company-scoped (DELETE
+			// Companies/{companyID}/Contacts/{id}) — return the label-resolved numeric
+			// company ID so the URL carries a numeric parent, not the raw company name
+			// the model supplied. Non-delete ops (and deletes without a resolved value)
+			// fall through to the usual params/fallback behavior.
+			case 'companyID':
+				if (effectiveOperation === 'delete' && fieldValues.companyID !== undefined) {
+					return fieldValues.companyID;
+				}
+				if (Object.prototype.hasOwnProperty.call(params, 'companyID')) {
+					return params.companyID;
+				}
+				return fallbackValue;
+			// v2.29.0 (m4): CIRI delete is CI-scoped (DELETE
+			// ConfigurationItems/{configurationItemID}/RelatedItems/{id}) — same pattern
+			// as companyID: return the label-resolved numeric parent ID.
+			case 'configurationItemID':
+				if (effectiveOperation === 'delete' && fieldValues.configurationItemID !== undefined) {
+					return fieldValues.configurationItemID;
+				}
+				if (Object.prototype.hasOwnProperty.call(params, 'configurationItemID')) {
+					return params.configurationItemID;
+				}
+				return fallbackValue;
 			case 'requestData': {
 				// Read ops must NEVER use fieldValues as the query body — writable fields
 				// leaking into the request cause Autotask to misinterpret them and reject
@@ -1895,53 +1957,92 @@ export async function executeAiTool(
 				defaults.push(`companyNote.create: endDateTime defaulted to ${nowIso}`);
 			}
 			if (fieldValues.assignedResourceID === undefined) {
-				if (params.impersonationResourceId !== undefined) {
-					// Impersonation pass-through — same window-based safety as v2.28.10:
-					// the write executes inside the mover's temporary-activation window.
-					// Use the RESOLVED numeric ID when the model supplied a name/email
-					// (params.impersonationResourceId still holds the original label, and
-					// field-label resolution has already run — a label here would fail).
-					const impId = resolvedImpersonationId ?? params.impersonationResourceId;
-					fieldValues.assignedResourceID = impId;
-					defaults.push(
-						`companyNote.create: assignedResourceID defaulted to the impersonation resource ${impId}`,
-					);
-					if (resolvedImpersonationId === undefined) {
+				// A generic companyNote.create has NO temporary-activation window (unlike
+				// contact moveToCompany audit notes, which run inside the mover's
+				// withActiveImpersonationResource window). The active-only gate on the
+				// resource IDs injected below is the safety control: an inactive ID
+				// injected here would otherwise be auto-activated by the write-retry
+				// machinery with only best-effort restore.
+				if (hasProvidedValue(params.impersonationResourceId)) {
+					if (resolvedImpersonationId !== undefined) {
+						// Covers both numeric input and name/email input: the earlier
+						// impersonation resolution turns both into a numeric ID (labels
+						// resolve against ACTIVE resources only).
+						fieldValues.assignedResourceID = resolvedImpersonationId;
+						defaults.push(
+							`companyNote.create: assignedResourceID defaulted to the impersonation resource ${resolvedImpersonationId}`,
+						);
+					} else if (isLikelyId(params.impersonationResourceId)) {
+						// Numeric-looking ID left unresolved by the earlier pass — gate it
+						// on active state before injecting (defensive: the normal numeric
+						// path resolves without an API call and lands in the branch above).
+						let impIdActive: boolean | undefined;
+						try {
+							const impProbe = Object.create(context) as typeof context;
+							impProbe.getNodeParameter = ((
+								name: string,
+								...args: unknown[]
+							): unknown => {
+								if (name === 'targetOperation') return 'resource.get';
+								if (name === 'entityId') return params.impersonationResourceId;
+								if (name === 'requestData') return '{}';
+								return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+							}) as typeof context.getNodeParameter;
+							const impResult = await executeToolOperation.call(impProbe);
+							const impRec = (impResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
+							impIdActive =
+								impRec !== null
+								&& (impRec.isActive === true || impRec.isActive === 1 || impRec.isActive === '1' || impRec.isActive === 'true');
+						} catch {
+							// Probe failed — active state unverifiable; fail closed.
+							impIdActive = undefined;
+						}
+						if (impIdActive === true) {
+							fieldValues.assignedResourceID = Number(params.impersonationResourceId);
+							defaults.push(
+								`companyNote.create: assignedResourceID defaulted to the impersonation resource ${params.impersonationResourceId} (active-verified)`,
+							);
+						} else {
+							labelWarnings.push(
+								`companyNote.create: impersonation resource ${params.impersonationResourceId} is inactive (or its active state could not be verified) — the API requires an active assignedResourceID; supply a numeric active resource ID or set assignedResourceID explicitly.`,
+							);
+						}
+					} else {
+						// Unresolvable label — fail closed: never inject the raw label.
+						// (The pre-execution write guard also blocks on
+						// impersonationFailed; this warning keeps the response specific
+						// if that ever changes.)
 						labelWarnings.push(
-							`companyNote.create: impersonationResourceId '${String(params.impersonationResourceId)}' could not be resolved to a numeric resource ID — the API may reject it; supply a numeric resource ID or an exact resource name.`,
+							`companyNote.create: impersonationResourceId '${String(params.impersonationResourceId)}' could not be resolved to a numeric resource ID — the API requires a numeric assignedResourceID; supply a numeric ID, an exact resource name, or set assignedResourceID explicitly.`,
 						);
 					}
 				} else if (fieldValues.companyID !== undefined) {
 					// Company's owner resource, active-only (same rule as contact-mover).
 					try {
-						const compProbe = {
-							...context,
-							getNodeParameter: ((
-								name: string,
-								...args: unknown[]
-							): unknown => {
-								if (name === 'targetOperation') return 'company.get';
-								if (name === 'entityId') return fieldValues.companyID;
-								if (name === 'requestData') return '{}';
-								return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
-							}) as typeof context.getNodeParameter,
-						} as typeof context;
+						const compProbe = Object.create(context) as typeof context;
+						compProbe.getNodeParameter = ((
+							name: string,
+							...args: unknown[]
+						): unknown => {
+							if (name === 'targetOperation') return 'company.get';
+							if (name === 'entityId') return fieldValues.companyID;
+							if (name === 'requestData') return '{}';
+							return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+						}) as typeof context.getNodeParameter;
 						const compResult = await executeToolOperation.call(compProbe);
 						const company = (compResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
 						const ownerResourceID = company?.ownerResourceID;
 						if (ownerResourceID !== undefined && ownerResourceID !== null && ownerResourceID !== 0) {
-							const resProbe = {
-								...context,
-								getNodeParameter: ((
-									name: string,
-									...args: unknown[]
-								): unknown => {
-									if (name === 'targetOperation') return 'resource.get';
-									if (name === 'entityId') return ownerResourceID;
-									if (name === 'requestData') return '{}';
-									return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
-								}) as typeof context.getNodeParameter,
-							} as typeof context;
+							const resProbe = Object.create(context) as typeof context;
+							resProbe.getNodeParameter = ((
+								name: string,
+								...args: unknown[]
+							): unknown => {
+								if (name === 'targetOperation') return 'resource.get';
+								if (name === 'entityId') return ownerResourceID;
+								if (name === 'requestData') return '{}';
+								return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+							}) as typeof context.getNodeParameter;
 							const resResult = await executeToolOperation.call(resProbe);
 							const resRec = (resResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
 							const resActive =
@@ -2057,7 +2158,7 @@ export async function executeAiTool(
 				);
 			}
 		}
-				// v2.29.0 (X15): enforce the sparse-fields contract client-side. The API's paged
+		// v2.29.0 (X15): enforce the sparse-fields contract client-side. The API's paged
 		// next-URL does not reliably preserve IncludeFields (later pages can come back
 		// with every field), so project every record to the requested columns — keeping
 		// id (so downstream enrichment/labels keep working), any *_label variants, and
@@ -2270,19 +2371,31 @@ export async function executeAiTool(
 					);
 					if (cand) probeEntity = cand.name;
 				}
+				// Numeric-strict id: send a real number when params.id is all digits
+				// (string id values can be mishandled by the API's filter type
+				// coercion); pass non-numeric values through as strings.
+				const probeIdValue = /^\d+$/.test(String(params.id))
+					? Number(params.id)
+					: String(params.id);
 				const probeBody = {
-					filter: [{ field: 'id', op: 'eq', value: String(params.id) }],
+					filter: [{ field: 'id', op: 'eq', value: probeIdValue }],
 					MaxRecords: 1,
 				};
 				// isQuery: true is REQUIRED — without it the same POST body is
 				// interpreted by the API as a create (server-side field validation:
 				// 'Missing Required Field: isActive'), which both breaks the probe
 				// and risks writes. (Found via debug logging, 2026-08-29.)
+				// The probe runs with the SAME impersonation as the failed write
+				// (resolvedImpersonationId, plain positional arg after the empty
+				// query) — without it, an empty probe result is a permission
+				// artifact, not proof of non-existence.
 				const probeResp = (await autotaskApiRequest.call(
 					context,
 					'POST',
 					buildEntityUrl(probeEntity, { isQuery: true }),
 					probeBody,
+					{},
+					resolvedImpersonationId,
 				)) as { items?: Array<Record<string, unknown>> } | Array<Record<string, unknown>> | null;
 				const probeItems = Array.isArray(probeResp) ? probeResp : (probeResp?.items ?? []);
 				if (probeItems.length === 0) {
@@ -2290,7 +2403,7 @@ export async function executeAiTool(
 						resource,
 						effectiveOperation,
 						ERROR_TYPES.ENTITY_NOT_FOUND,
-						`No ${resource} found with id ${params.id} — the API reports missing records on update/delete as permission errors.`,
+						`No ${probeEntity} visible to this API user with id ${params.id} — it may not exist, or may be outside the API user's line of business.`,
 						`If the user supplied this ID explicitly, report that no record exists with that ID. Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID.`,
 					);
 				}

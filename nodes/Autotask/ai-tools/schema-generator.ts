@@ -820,13 +820,46 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 		// without a companyID parameter DeleteOperation falls back to a flat endpoint
 		// the API does not expose. Expose companyID (name or ID, auto-resolved) for
 		// the contact delete operation.
+		// R2 fix (C2): contact tools with create/update already have companyID from the
+		// write-fields loop above, so the if-not-present guard could never fire there —
+		// append the delete requirement to the existing field's description instead of
+		// shadowing the field.
 		if (resource === 'contact' && hasDeleteOp) {
-			if (!shape.companyID) {
+			const contactDeleteRequirement =
+				'Required to delete a contact (numeric company ID or company name; auto-resolved).';
+			if (shape.companyID) {
+				const existing =
+					typeof shape.companyID._def?.description === 'string'
+						? shape.companyID._def.description
+						: '';
+				shape.companyID = shape.companyID.describe(
+					existing ? `${existing} ${contactDeleteRequirement}` : contactDeleteRequirement,
+				);
+			} else {
+				// Delete-only contact tool: no write fields entered the shape.
 				shape.companyID = rz
 					.coerce.string()
 					.nullish()
 					.describe(
-						'Company name or numeric companyID (auto-resolved). Required to delete a contact — the Autotask API only exposes contact deletion via the company-scoped path.',
+						`Company name or numeric companyID (auto-resolved). ${contactDeleteRequirement}`,
+					);
+			}
+		}
+
+		// v2.29.0 (PR #148 R2, C1c): the Autotask API exposes configuration item
+		// related item deletion only via the parent-scoped route
+		// (DELETE ConfigurationItems/{configurationItemID}/RelatedItems/{id});
+		// without configurationItemID DeleteOperation falls back to a flat endpoint
+		// the API does not expose. Expose configurationItemID (name or ID,
+		// auto-resolved) for the delete operation — guarded by hasDeleteOp so
+		// create/update-only tools are unaffected.
+		if (resource === 'configurationItemRelatedItem' && hasDeleteOp) {
+			if (!shape.configurationItemID) {
+				shape.configurationItemID = rz
+					.coerce.string()
+					.nullish()
+					.describe(
+						'Parent configuration item name or numeric configurationItemID (auto-resolved). Required to delete a configuration item related item — the Autotask API only exposes deletion via the parent-scoped path (ConfigurationItems/{configurationItemID}/RelatedItems/{id}).',
 					);
 			}
 		}

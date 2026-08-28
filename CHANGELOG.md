@@ -29,6 +29,9 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - **Permission/405 rejections stop advising retries** — `PERMISSION_DENIED` and method-unsupported errors now say the account/permission configuration is the blocker and to use a different operation or credential, instead of suggesting a retry that can never succeed.
 - **Error hints use the unified tool names** — the legacy `aiHelper.*` function references in validation error text now read as `autotask_<resource>` with operation `describeFields`/`listPicklistValues`.
 
+#### Breaking:
+
+- **`configurationItemRelatedItem.delete` is restored** — the R2 removal above was based on a 405 from the flat `ConfigurationItemRelatedItems/{id}` route, which the API never exposes; the API does support the parent-scoped route `DELETE /V1.0/ConfigurationItems/{parentId}/RelatedItems/{id}`, so `delete` is back in the AI tool operation enum, opdoc, and the standard node. Flat by-ID delete was never API-supported: saved workflows calling `delete` must now pass `configurationItemID` (parent configuration item numeric ID or name) alongside `id`.
 
 ## [2.28.10] - 2026-08-27
 

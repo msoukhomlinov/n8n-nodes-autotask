@@ -1,4 +1,5 @@
 import { getEntityMetadata, entityNameForResource } from '../constants/entities';
+import { getResourceOperations } from '../constants/resource-operations';
 
 // ---------------------------------------------------------------------------
 // Error type constants
@@ -178,6 +179,14 @@ export function formatRateLimitError(
 	return base;
 }
 
+/**
+ * v2.29.x (B2): query-control tokens that can leak into the field set of a
+ * write/query request (e.g. "Unable to find limit in the <Entity> Entity").
+ * Those are parameter-set leaks, not phantom FILTER fields — the phantom
+ * branch in formatApiError must not classify them as such.
+ */
+const PHANTOM_FIELD_CONTROL_TOKENS = new Set(['limit', 'maxrecords', 'includefields', 'orderby']);
+
 export function formatApiError(
 	message: string,
 	resource: string,
@@ -223,11 +232,16 @@ export function formatApiError(
 		const idHint = entityId ? `, or update record ${entityId} directly` : '';
 		// errorOnDuplicate is only consumed by the createIfNotExists compound operation —
 		// a plain 'create' ignores/strips it, so directing the model there just makes it
-		// repeat the identical failing request. Make the recovery operation-aware
-		// (Codex P2 on PR #148).
-		const nextAction = operation === 'create'
-			? `Do not repeat the same create. Switch to operation 'createIfNotExists' on autotask_${resource} with dedupFields covering the identifying field(s) and errorOnDuplicate=false${idHint}.`
-			: `Do not repeat the same call. Retry autotask_${resource} with operation 'createIfNotExists' and errorOnDuplicate=false (it will reuse or update the existing record)${idHint}.`;
+		// repeat the identical failing request. And createIfNotExists never UPDATES a
+		// duplicate — it only reuses the existing record (outcome: 'found'). Recommend
+		// it only when the resource actually offers the operation; other resources get
+		// a locate-then-cleanup recovery (Codex P2 + B1 on PR #148).
+		const supportsCreateIfNotExists = getResourceOperations(resource).includes('createIfNotExists');
+		const nextAction = supportsCreateIfNotExists
+			? (operation === 'create'
+				? `Do not repeat the same create. Switch to operation 'createIfNotExists' on autotask_${resource} with dedupFields covering the identifying field(s) and errorOnDuplicate=false — it reuses the existing record (outcome: 'found'), it never updates it${idHint}.`
+				: `Do not repeat the same call. Retry autotask_${resource} with operation 'createIfNotExists' and errorOnDuplicate=false — it reuses the existing record (outcome: 'found'), it does not update it${idHint}.`)
+			: `Locate the duplicate with autotask_${resource} operation 'getMany' filtered on the identifying fields, then update or delete the new record${entityId ? ` (id ${entityId})` : ''}.`;
 		return wrapError(
 			resource,
 			operation,
@@ -244,8 +258,18 @@ export function formatApiError(
 	// values. The generic API_ERROR recovery ('call describeFields first and retry') loops
 	// forever because describeFields re-advertises the phantom field — classify with a
 	// non-looping nextAction that tells the model to drop the field.
-	const phantomFieldMatch = message.match(/unable to find\s+('([^']+)'|([\w]+))\s+in the/i);
-	if (phantomFieldMatch) {
+	// v2.29.x (B2) tightened: the match requires the '… in the <Entity> Entity'
+	// tail (only the query engine's entity-field rejection has it), the branch
+	// is skipped for picklist-territory messages ('picklist'), and the captured
+	// name must not be a query-control token — the documented 'Unable to find
+	// limit in the <Entity>' write-field leak is a parameter-set leak, not a
+	// phantom filter field.
+	const phantomFieldMatch = message.match(/unable to find\s+('([^']+)'|([\w]+))\s+in the\s+[\w]+\s+entity/i);
+	if (
+		phantomFieldMatch
+		&& !lowerMessage.includes('picklist')
+		&& !PHANTOM_FIELD_CONTROL_TOKENS.has((phantomFieldMatch[2] ?? phantomFieldMatch[3] ?? '').toLowerCase())
+	) {
 		const phantomField = phantomFieldMatch[2] ?? phantomFieldMatch[3];
 		return wrapError(
 			resource,
@@ -381,7 +405,20 @@ export function formatApiError(
 
 	// v2.29.0 (X7): API method not supported for this resource (HTTP 405). Retrying can
 	// never help — tell the model to stop and check the operation list.
+	// v2.29.x (B3): one exception — configurationItemRelatedItem.delete 405s on the
+	// FLAT route only; supplying the parent identifier (configurationItemID)
+	// switches the request to the parent-scoped route, which the API supports, so
+	// for that pair the firm "cannot succeed / do not retry" wording is false.
 	if (/does not support http method/i.test(message)) {
+		if (resource === 'configurationItemRelatedItem' && operation === 'delete') {
+			return wrapError(
+				resource,
+				operation,
+				ERROR_TYPES.INVALID_OPERATION,
+				`The flat Autotask API route does not support this HTTP method for ${resource} — the parent-scoped route does.`,
+				`Supply the parent identifier (configurationItemID) so the API uses the parent-scoped route, then retry autotask_${resource} with operation 'delete'.`,
+			);
+		}
 		return wrapError(
 			resource,
 			operation,

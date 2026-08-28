@@ -410,13 +410,11 @@ export function buildMutationResponse(
 							? 'Posted'
 							: operation === 'moveToCompany'
 								? 'Moved to company for'
-								: operation === 'moveConfigurationItem'
-									? 'Moved configuration item for'
-									: operation === 'transferOwnership'
-										? 'Transferred ownership for'
-										: operation.endsWith('e')
-											? operation.charAt(0).toUpperCase() + operation.slice(1) + 'd'
-											: operation.charAt(0).toUpperCase() + operation.slice(1) + 'ed';
+								: operation === 'transferOwnership'
+									? 'Transferred ownership for'
+									: operation.endsWith('e')
+										? operation.charAt(0).toUpperCase() + operation.slice(1) + 'd'
+										: operation.charAt(0).toUpperCase() + operation.slice(1) + 'ed';
 	const identity = record ? buildIdentityString(resource, record) : '';
 	const summary =
 		operation === 'moveConfigurationItem'

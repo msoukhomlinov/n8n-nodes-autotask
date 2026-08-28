@@ -53,20 +53,29 @@ function getEntityNameFields(entityType: string): string[] {
 }
 
 /**
- * v2.29.0 (X16): bounded candidate pool for reference-label resolution.
- * A small `contains` probe per display-name field replaces the previous
- * full-entity scan (getValues), which on large reference populations (~24k
- * ConfigurationItems) took minutes and hung the tool call past the MCP
- * protocol timeout. Probe values are the full label plus each whitespace
- * token (length >= 2 to skip 'for'/'and' noise), deduplicated: on
- * composite-name entities (Resource/Contact: firstName + lastName) a label
- * like 'Max Soukhomlinov' matches NEITHER name field individually, so the
- * token probes are what pull the entity into the pool, where the downstream
- * exact / unique display-name matching resolves it. Single-token labels
- * ('Contoso', 'EPSON-TX610FW') produce exactly one probe value — unchanged
- * probe cost vs v2.29.0. Labels spanning multiple fields (e.g. 'Max S')
+ * v2.29.0 (X16), tightened in v2.29.x (B4): bounded candidate pool for
+ * reference-label resolution. A small per display-name-field probe (exact
+ * first, `contains` only if the exact pass left the pool empty) replaces
+ * the previous full-entity scan (getValues), which on large reference
+ * populations (~24k ConfigurationItems) took minutes and hung the tool call
+ * past the MCP protocol timeout.
+ *
+ * Probe values (B4a): the whitespace tokens of the label with length >= 2,
+ * deduped and capped at two — when no token qualifies, the full label is
+ * probed instead (tokens and full label are never combined). Single-token
+ * labels ('Contoso', 'EPSON-TX610FW') produce exactly one probe value —
+ * unchanged probe cost vs v2.29.0. On composite-name entities (Resource/
+ * Contact: firstName + lastName) a label like 'Max Soukhomlinov' matches
+ * NEITHER name field individually, so the token probes are what pull the
+ * entity into the pool, where the downstream exact / unique display-name
+ * matching resolves it. Labels spanning multiple fields (e.g. 'Max S')
  * surface as partial-match confirmations or a 'use a numeric ID' warning
  * instead of a hang.
+ *
+ * Name fields (B4d): taken from the value-helper's usable-name-field gate
+ * (mapping entry or metadata scan) instead of re-deriving them here; the
+ * `['name']` fallback survives only when the gate yields no list. Probes
+ * run with bounded concurrency <= 4 (B4b) instead of sequential awaits.
  */
 async function fetchReferenceCandidates(
     helper: EntityValueHelper<IAutotaskEntity>,
@@ -74,35 +83,64 @@ async function fetchReferenceCandidates(
     label: string,
     activeOnly: boolean,
 ): Promise<Array<Record<string, unknown>>> {
-    let nameFields = getEntityNameFields(entityType);
-    if (nameFields.length === 0) nameFields = ['name'];
-    // Full label first, then each whitespace token (length >= 2), deduplicated.
-    // Callers pass a trimmed non-empty label, so single-token labels collapse
-    // to exactly one probe value.
-    const probeValues = new Set<string>([label]);
-    for (const token of label.split(/\s+/)) {
-        if (token.length >= 2) probeValues.add(token);
-    }
+    // B4d: usable name fields come from the value-helper gate (B5) — the
+    // ['name'] fallback applies only when the gate yields no list (null).
+    // (entityType is part of the stable call signature; the helper already
+    // carries it for the gate.)
+    const usableNameFields = await helper.getUsableReferenceNameFields();
+    const nameFields = usableNameFields ?? ['name'];
+    // B4a: whitespace tokens (length >= 2), deduped, capped at two. The full
+    // label is probed only when no token qualifies — never alongside tokens.
+    const tokenProbes = Array.from(new Set(label.split(/\s+/).filter((token) => token.length >= 2))).slice(0, 2);
+    const probeValues = tokenProbes.length > 0 ? tokenProbes : [label];
+
     const pool = new Map<string | number, Record<string, unknown>>();
     let firstError: Error | undefined;
-    for (const nameField of nameFields) {
-        for (const probeValue of probeValues) {
-            try {
-                const rows = await helper.getValuesByDisplay(nameField, probeValue, activeOnly, 'contains', 50);
-                for (const row of rows) {
-                    const data = row as unknown as Record<string, unknown>;
-                    const id = data.id as string | number | undefined;
-                    if (id !== undefined) pool.set(id, data);
-                }
-            } catch (err) {
-                // Best-effort: a probe rejected because the entity lacks that
-                // field (or the API rejected the value) must not abort
-                // resolution on the remaining probes — but if EVERY probe
-                // fails, the caller must see the error (a silent pass-through
-                // made unresolved labels look like deliberate negatives on the wire).
-                if (!firstError) firstError = err instanceof Error ? err : new Error(String(err));
+
+    const buildProbeTasks = (op: 'eq' | 'contains'): Array<() => Promise<void>> => {
+        const tasks: Array<() => Promise<void>> = [];
+        for (const nameField of nameFields) {
+            for (const probeValue of probeValues) {
+                tasks.push(async () => {
+                    try {
+                        const rows = await helper.getValuesByDisplay(nameField, probeValue, activeOnly, op, 50);
+                        for (const row of rows) {
+                            const data = row as unknown as Record<string, unknown>;
+                            const id = data.id as string | number | undefined;
+                            if (id !== undefined) pool.set(id, data);
+                        }
+                    } catch (err) {
+                        // Best-effort: a probe rejected because the entity lacks that
+                        // field (or the API rejected the value) must not abort
+                        // resolution on the remaining probes — but if EVERY probe
+                        // fails, the caller must see the error (a silent pass-through
+                        // made unresolved labels look like deliberate negatives on the wire).
+                        if (!firstError) firstError = err instanceof Error ? err : new Error(String(err));
+                    }
+                });
             }
         }
+        return tasks;
+    };
+
+    // B4b: bounded-concurrency runner — at most `limit` probes in flight.
+    const runBounded = async (tasks: Array<() => Promise<void>>, limit: number): Promise<void> => {
+        let next = 0;
+        const worker = async (): Promise<void> => {
+            while (next < tasks.length) {
+                const index = next;
+                next += 1;
+                await tasks[index]();
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => worker()));
+    };
+
+    // B4c: stage 1 = exact ('eq') probes; stage 2 = 'contains' probes, only
+    // if the exact pass left the pool empty.
+    await runBounded(buildProbeTasks('eq'), 4);
+    if (pool.size === 0) {
+        await runBounded(buildProbeTasks('contains'), 4);
     }
     if (pool.size === 0 && firstError) throw firstError;
     return Array.from(pool.values());

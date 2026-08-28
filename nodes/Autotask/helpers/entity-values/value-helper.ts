@@ -14,8 +14,10 @@ import { QUERY_LIMITS } from '../../constants/operations';
 /** Memoises per-entity isActive field support. Keyed by lowercased entity type. */
 const entitySupportsIsActiveCache = new Map<string, boolean>();
 
-// v2.29.0 (X10): name-field capability cache — see entityHasUsableNameField().
-const entityHasNameFieldCache = new Map<string, boolean>();
+// v2.29.0 (X10) / B5: usable-name-field capability cache — stores the matched
+// NAME_FIELD_HINTS field list (null = entity has no usable name field).
+// See resolveUsableNameFields() / getUsableReferenceNameFields().
+const entityUsableNameFieldsCache = new Map<string, string[] | null>();
 
 /** Field names (lowercase) that can serve as a human label for reference resolution. */
 const NAME_FIELD_HINTS = new Set([
@@ -98,22 +100,47 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		}
 	}
 
-	private async entityHasUsableNameField(): Promise<boolean> {
+	/**
+	 * v2.29.0 (X10) / B5: name-field capability gate. Returns the MATCHED usable
+	 * name fields (mapping entry first, then a standard-field metadata scan
+	 * against NAME_FIELD_HINTS) so callers probe exactly the display fields the
+	 * entity publishes:
+	 *   - string[]   entity has usable name fields (cached)
+	 *   - null       entity has NO usable name field (cached)
+	 *   - undefined  capability unknown for this call — a transient getFields
+	 *                failure, or a non-throwing EMPTY fields response (poison
+	 *                guard: a degraded metadata read must NOT be cached, so it
+	 *                cannot disable name resolution for the module lifetime —
+	 *                the next call re-probes)
+	 */
+	private async resolveUsableNameFields(): Promise<string[] | null | undefined> {
 		const key = this.entityType.toLowerCase();
-		const cached = entityHasNameFieldCache.get(key);
+		const cached = entityUsableNameFieldsCache.get(key);
 		if (cached !== undefined) return cached;
 		// A mapping entry means the entity has known-good display fields.
-		if (this.getEntityFieldMapping()) {
-			entityHasNameFieldCache.set(key, true);
-			return true;
+		const mapping = this.getEntityFieldMapping();
+		if (mapping) {
+			const mapped = mapping.nameFields;
+			entityUsableNameFieldsCache.set(key, mapped);
+			return mapped;
 		}
 		try {
 			const fields = (await getFields(this.canonicalEntityType, this.context, {
 				fieldType: 'standard',
 			})) as IAutotaskField[];
-			const has = fields.some((f) => NAME_FIELD_HINTS.has(String(f.name).toLowerCase()));
-			entityHasNameFieldCache.set(key, has);
-			return has;
+			// Poison guard: an empty (non-throwing) fields response is a degraded
+			// metadata read, not evidence of a missing name field — treat as unknown
+			// and do NOT cache, so name resolution is not disabled for the module
+			// lifetime (the next call re-probes).
+			if (fields.length === 0) {
+				return undefined;
+			}
+			const usable = fields
+				.filter((f) => NAME_FIELD_HINTS.has(String(f.name).toLowerCase()))
+				.map((f) => String(f.name));
+			const result = usable.length > 0 ? usable : null;
+			entityUsableNameFieldsCache.set(key, result);
+			return result;
 		} catch (err) {
 			console.warn(
 				`[EntityValueHelper] Could not check name-field support for ${this.entityType}: ${
@@ -121,8 +148,19 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 				}. Falling back to the fetch attempt.`,
 			);
 			// Transient failure — do NOT cache; fall back to the previous behaviour.
-			return true;
+			return undefined;
 		}
+	}
+
+	/**
+	 * B5 public gate: the matched usable reference-name fields for this entity,
+	 * or null when the entity has no usable name field (an unknown capability
+	 * also collapses to null — callers keep their `['name']` fallback / pre-gate
+	 * behaviour for that call).
+	 */
+	public async getUsableReferenceNameFields(): Promise<string[] | null> {
+		const resolved = await this.resolveUsableNameFields();
+		return resolved === undefined ? null : resolved;
 	}
 
 	private getEntityFieldMapping(): IPicklistReferenceFieldMapping | undefined {
@@ -230,12 +268,15 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		// unmatchable field, hanging the tool call past the protocol timeout
 		// (observed: filtering a ConfigurationItem reference by its referenceTitle
 		// label scanned all active CIs).
-		if (!(await this.entityHasUsableNameField())) {
+		const usableNameFields = await this.resolveUsableNameFields();
+		if (usableNameFields === null) {
 			console.warn(
 				`[EntityValueHelper] ${this.entityType} has no name-like field — no reference labels can match; skipping value fetch.`,
 			);
 			return [];
 		}
+		// undefined = unknown capability (transient / degraded metadata, not cached):
+		// keep the pre-gate behaviour — attempt the fetch for this call.
 		try {
 			// Apply any configured filters from PICKLIST_REFERENCE_FIELD_MAPPINGS
 			const mapping = this.getEntityFieldMapping();

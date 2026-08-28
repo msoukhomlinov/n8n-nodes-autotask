@@ -48,16 +48,26 @@ const NODE_RESOURCE_IMPERSONATION_SUPPORTED = new Set([
 	'contractNote',
 	'configurationItems',
 	'configurationItemNote',
+	// R2 (C3): the endpoint gate (isImpersonationSupportedForEndpoint) already accepts
+	// /purchaseorders and every /attachments child route (backed by AttachmentInfo);
+	// the node resource keys below are the ones that exist in resources/definitions.ts,
+	// so the UI can advertise the field the executor actually honours for them.
+	'expenseItemAttachment',
 	'opportunity',
+	'opportunityAttachment',
 	'product',
 	'project',
 	'projectNote',
+	'purchaseOrders',
 	'quote',
 	'serviceCall',
 	'subscription',
 	'ticket',
+	'ticketAttachment',
 	'ticketNote',
+	'ticketNoteAttachment',
 	'timeEntry',
+	'timeEntryAttachment',
 ]);
 
 /**

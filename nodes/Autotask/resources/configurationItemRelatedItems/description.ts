@@ -62,6 +62,26 @@ export const configurationItemRelatedItemFields: INodeProperties[] = [
 		description: 'The ID of the related item to retrieve or delete',
 	},
 	{
+		// v2.29.0 (PR #148 R2, C1b): the Autotask API exposes related-item deletion
+		// only via the parent-scoped path
+		// (DELETE ConfigurationItems/{configurationItemID}/RelatedItems/{id});
+		// DeleteOperation needs configurationItemID to build that URL.
+		displayName: 'Configuration Item ID',
+		name: 'configurationItemID',
+		type: 'string',
+		required: true,
+		default: '',
+		displayOptions:
+		{
+			show: {
+				resource: ['configurationItemRelatedItem'],
+				operation: ['delete'],
+			},
+		},
+		description:
+			'Required (parent configuration item numeric ID or name) — the Autotask API only exposes related-item deletion via the parent-scoped path (ConfigurationItems/{configurationItemID}/RelatedItems/{ID})',
+	},
+	{
 		displayName: 'Fields',
 		name: 'fieldsToMap',
 		type: 'resourceMapper',
