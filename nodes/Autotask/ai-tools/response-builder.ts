@@ -540,7 +540,11 @@ export function buildCountResponse(
 		resource,
 		operation: `${resource}.${operation}`,
 		matchCount,
-		warnings: [],
+		// x4 (Codex P2): a read-path label resolution from an incomplete candidate
+		// pool still selects an ID (deliberate, warned) — surface those warnings
+		// like every other builder; previously hard-coded [] made a count for an
+		// arbitrarily selected record look unqualified.
+		warnings: context.resolutionWarnings ?? [],
 	};
 	// v2.29.0 (X14): report label->ID resolutions on count responses too (a label
 	// filter that resolved silently was invisible to the model).

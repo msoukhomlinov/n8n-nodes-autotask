@@ -73,7 +73,14 @@ export const configurationItemRelatedItemFields: INodeProperties[] = [
 		name: 'configurationItemID',
 		type: 'number',
 		required: true,
-		default: 0,
+		// x4 (Codex P2): undefined default (no UI prefill) — the previous
+		// `default: 0` satisfied `required: true` without prompting, and the
+		// untouched value produced a ConfigurationItems/0/... failure (or the
+		// 405 flat-route after n8n strips default-equal values). Configuration
+		// item IDs are strictly positive (unlike the root-company ID 0 the
+		// contact-delete companyID field legitimately allows). n8n never
+		// consults the property default at runtime, so this only affects the UI.
+		default: undefined,
 		displayOptions:
 		{
 			show: {
