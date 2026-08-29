@@ -2236,20 +2236,30 @@ export async function executeAiTool(
 		// id (so downstream enrichment/labels keep working), any *_label variants, and
 		// userDefinedFields.
 		if (selectedColumns.length > 0 && supportsListProjection(effectiveOperation)) {
-			const keep = new Set<string>(selectedColumns);
-			for (const col of selectedColumns) keep.add(`${col}_label`);
+			// v2.29.x (m5): validateReadFields() accepts field names case-insensitively
+			// (both sides lowercased), so a call may request e.g. 'Status' while the
+			// API's canonical key — and the record keys it returns — is 'status'.
+			// Build the keep set lowercased (plus each field's '_label' variant) and
+			// test returned keys lowercased, so a requested 'status' keeps both
+			// 'status' and the derived 'status_label' regardless of request casing.
+			const keep = new Set<string>();
+			for (const col of selectedColumns) {
+				const base = col.toLowerCase();
+				keep.add(base);
+				keep.add(`${base}_label`);
+			}
 			// v2.29.x (m4): enrichment trigger fields are kept even when not
 			// selected — otherwise projection strips ticketID/taskID and
 			// enrichResponseJson silently stops firing. Contract: the display
 			// fields enrichment ADDS are an accepted exception to the sparse
 			// selection contract (documented here and in the opdoc).
-			keep.add('ticketID');
-			keep.add('taskID');
+			keep.add('ticketid');
+			keep.add('taskid');
 			const projected = records.map((rec) => {
 				const r = rec as Record<string, unknown>;
 				const out: Record<string, unknown> = {};
 				for (const key of Object.keys(r)) {
-					if (keep.has(key) || key === 'id' || key === 'userDefinedFields') {
+					if (keep.has(key.toLowerCase()) || key === 'id' || key === 'userDefinedFields') {
 						out[key] = r[key];
 					}
 				}
