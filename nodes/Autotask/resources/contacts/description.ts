@@ -81,7 +81,13 @@ export const contactFields: INodeProperties[] = [
 		name: 'companyID',
 		type: 'number',
 		required: true,
-		default: 0,
+		// x4 (Codex P2f): unset by default — a prefilled 0 satisfied required:true
+		// without prompting, so ordinary contact deletions (contact not on the
+		// root company) sent DELETE Companies/0/Contacts/{id} and failed. 0 is
+		// still a VALID value (root-company contacts) — the user can enter it
+		// explicitly. n8n never consults the property default at runtime, so this
+		// is UI-only.
+		default: undefined,
 		displayOptions: {
 			show: {
 				resource: ['contact'],
@@ -89,7 +95,7 @@ export const contactFields: INodeProperties[] = [
 			},
 		},
 		description:
-			"The company the contact belongs to — the API only exposes contact deletion via the company-scoped path (Companies/{companyID}/Contacts/{id})",
+			"The company the contact belongs to — the API only exposes contact deletion via the company-scoped path (Companies/{companyID}/Contacts/{id}). Root-company contacts use 0 — enter 0 explicitly only for those.",
 	},
 	{
 		displayName: 'Fields',

@@ -467,10 +467,14 @@ export function buildMutationResponse(
 
 /**
  * Flat response for NO-CHANGE mutation outcomes — moveToCompany skip (duplicate
- * email safeguard) and dry run. Compound-style envelope: top-level `outcome`,
- * root context fields (sourceContactId, destinationCompanyId, duplicateContactId
- * when present), warnings when non-empty, and NO top-level `id` — a skip must
- * not look like a successful move (F-C, v2.28.6).
+ * email safeguard) and move dry runs (moveToCompany, moveConfigurationItem —
+ * x4 P2g: a dry run has runId but no destination record; it must render as
+ * 'No changes were made' with the run ID as reference, never as a mutation
+ * success). Compound-style envelope: top-level `outcome`, root context fields
+ * (sourceContactId / sourceConfigurationItemId, destinationCompanyId,
+ * duplicateContactId, dryRunId when present), warnings when non-empty, and NO
+ * top-level `id` — a skip/dry-run must not look like a successful move (F-C,
+ * v2.28.6).
  */
 export function buildNoChangeMutationResponse(
 	resource: string,
@@ -499,8 +503,14 @@ export function buildNoChangeMutationResponse(
 	if (typeof details?.sourceContactId === 'number') {
 		response.sourceContactId = details.sourceContactId;
 	}
+	if (typeof details?.sourceConfigurationItemId === 'number') {
+		response.sourceConfigurationItemId = details.sourceConfigurationItemId;
+	}
 	if (typeof details?.destinationCompanyId === 'number') {
 		response.destinationCompanyId = details.destinationCompanyId;
+	}
+	if (typeof details?.dryRunId === 'string' && details.dryRunId.trim() !== '') {
+		response.dryRunId = details.dryRunId;
 	}
 	if (typeof details?.duplicateContactId === 'number' && details.duplicateContactId > 0) {
 		response.duplicateContactId = details.duplicateContactId;

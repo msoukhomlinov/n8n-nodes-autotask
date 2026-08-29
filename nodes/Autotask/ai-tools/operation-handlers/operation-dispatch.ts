@@ -328,12 +328,33 @@ export function dispatchOperationResponse(
 				if (status && Array.isArray(status.warnings) && (status.warnings as string[]).length > 0) {
 					mutationContext.resolutionWarnings = status.warnings as string[];
 				}
+				// x4 (Codex P2g): a dry run returns runId only — no destination record
+				// exists. Passing the runId to the mutation builder as the ID made the
+				// envelope claim 'Cloned ... (ID: ci-move-...)', letting an agent believe
+				// the migration already happened. Mirror the moveToCompany sibling
+				// branch: report the dry run as a no-change outcome (no top-level id).
+				// (Today unreachable on the AI path — the schema no longer exposes
+				// dryRun and tool-executor strips it — but the branch must stay honest
+				// in case dry-run is ever re-exposed.)
+				const runId = record?.runId;
+				if (record?.dryRun === true && !(typeof movedId === 'number' && movedId > 0)) {
+					const noChangeContext: Record<string, unknown> = {};
+					if (typeof record?.sourceConfigurationItemId === 'number') {
+						noChangeContext.sourceConfigurationItemId = record.sourceConfigurationItemId;
+					}
+					if (typeof record?.destinationCompanyId === 'number') {
+						noChangeContext.destinationCompanyId = record.destinationCompanyId;
+					}
+					if (typeof runId === 'string' && runId.trim() !== '') {
+						noChangeContext.dryRunId = runId;
+					}
+					if (status && Array.isArray(status.warnings) && (status.warnings as string[]).length > 0) {
+						noChangeContext.warnings = status.warnings;
+					}
+					return { ok: true, outcome: 'dry-run', noChangeContext };
+				}
 				if (typeof movedId === 'number' && movedId > 0) {
 					return { ok: true, id: movedId, ...(Object.keys(mutationContext).length > 0 ? { mutationContext } : {}) };
-				}
-				const runId = record?.runId;
-				if (record?.dryRun === true && typeof runId === 'string' && runId.trim() !== '') {
-					return { ok: true, id: runId, ...(Object.keys(mutationContext).length > 0 ? { mutationContext } : {}) };
 				}
 				return {
 					ok: false,
