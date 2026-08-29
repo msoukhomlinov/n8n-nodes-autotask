@@ -225,8 +225,10 @@ export function formatApiError(
 	// v2.29.0 (X3b): the API rejects duplicate creates with "Duplicate <Entity> found
 	// (ID: X) ..." when the pre-dispatch dedup scan misses the record (concurrency or
 	// dedup-field mismatch). Classify as DUPLICATE_RECORD with a concrete recovery
-	// instead of the generic API_ERROR retry loop.
-	const duplicateMatch = message.match(/duplicate\s+(\w+)\s+found(\s+\(ID: ([\d]+)\))?/i);
+	// instead of the generic API_ERROR retry loop. The entity phrase may be
+	// multi-word ('time entry', 'expense item') — the lazy capture stops at the
+	// first 'found'; the optional ID group is unchanged.
+	const duplicateMatch = message.match(/duplicate\s+(\w[\w ]*?)\s+found(\s+\(ID: ([\d]+)\))?/i);
 	if (duplicateMatch) {
 		const entityId = duplicateMatch[3] ?? undefined;
 		const idHint = entityId ? `, or update record ${entityId} directly` : '';
@@ -246,7 +248,7 @@ export function formatApiError(
 			resource,
 			operation,
 			ERROR_TYPES.DUPLICATE_RECORD,
-			`Duplicate ${duplicateMatch[1]} found${entityId ? ` (ID: ${entityId})` : ''} — a record with the same identifying values already exists.`,
+			`Duplicate ${duplicateMatch[1].trim()} found${entityId ? ` (ID: ${entityId})` : ''} — a record with the same identifying values already exists.`,
 			nextAction,
 			entityId ? { duplicateId: Number(entityId) } : undefined,
 		);

@@ -21,8 +21,8 @@ const entityUsableNameFieldsCache = new Map<string, string[] | null>();
 
 /** Field names (lowercase) that can serve as a human label for reference resolution. */
 const NAME_FIELD_HINTS = new Set([
-	'name', 'referenceTitle', 'title', 'displayName', 'firstName', 'lastName',
-	'label', 'companyName', 'contractName', 'projectName', 'userName', 'email',
+	'name', 'referencetitle', 'title', 'displayname', 'firstname', 'lastname',
+	'label', 'companyname', 'contractname', 'projectname', 'username', 'email',
 ]);
 
 interface IFallbackConfig {
