@@ -314,6 +314,18 @@ function supportsListProjection(operation: string): boolean {
 // helpers/http/request.ts).
 let aiToolDenialTokenSeq = 0;
 
+// PR #148 SEC-3 (x3 V2): drain this execution's impersonation-denial markers
+// (request.ts tags them onto the per-call token) into the response warnings
+// array. Idempotent — each drain empties the token's queue, so calling it
+// more than once per operation is a no-op after the first.
+function drainDenialWarningsInto(token: string, warnings: string[]): void {
+	for (const denial of drainImpersonationDenialMarkers(token)) {
+		warnings.push(
+			`impersonation denied for resource ${denial.resourceId} on ${denial.method} ${denial.endpoint}; the request was retried without impersonation and executed as the credential user — the record is attributed to the API user, not the impersonated resource.`,
+		);
+	}
+}
+
 export async function executeAiTool(
 	context: IExecuteFunctions,
 	resource: string,
@@ -332,12 +344,28 @@ export async function executeAiTool(
 
 	// PR #148 SEC-3: execution-scoped token for the impersonation-denial retry
 	// mechanism in request.ts. autotaskApiRequest() tags every denial-retry it
-	// performs for this context (or an Object.create(context) probe derivative);
-	// the markers are drained after the operation runs (surfaced in warnings[])
-	// and cleared in the finally block. Legacy standard-node executions never
-	// register a token, so they keep the console.warn-only behaviour.
+	// performs for this CALL context (or an Object.create(callContext) probe
+	// derivative — request.ts walks the prototype chain, so it finds the nearest
+	// per-call token); the markers are drained into warnings[] after the
+	// operation runs and cleared in the finally block. Legacy standard-node
+	// executions never register a token, so they keep the console.warn-only
+	// behaviour.
+	//
+	// Per-call context derivative (x3 V7): supplyData()'s func() arrow closes
+	// over ONE shared n8n context object (under the MCP trigger a single
+	// long-running execution serves every tool call), so concurrent
+	// executeAiTool() invocations all see the same base `context` object.
+	// Registering the token on that shared object meant a second call's
+	// registerImpersonationDenialToken() overwrote the first call's token in
+	// the WeakMap — a denial from call A was attributed to call B's token and
+	// A's warnings[] lost it. This call therefore operates on a lightweight
+	// per-call derivative (Object.create preserves the base's methods and
+	// state through the prototype chain — the same pattern the probe
+	// derivatives below use); the base `context` is only read before the
+	// derivative is created and is never mutated from this point on.
+	const callContext: IExecuteFunctions = Object.create(context);
 	const impersonationDenialToken = `ai-denial-${++aiToolDenialTokenSeq}`;
-	registerImpersonationDenialToken(context, impersonationDenialToken);
+	registerImpersonationDenialToken(callContext, impersonationDenialToken);
 
 	// Strip n8n framework metadata injected into every tool call
 	const params = {} as ToolExecutorParams;
@@ -421,9 +449,12 @@ export async function executeAiTool(
 		},
 	});
 
-	const timezone = await getConfiguredTimezone.call(context);
+	const timezone = await getConfiguredTimezone.call(callContext);
 
-	const originalGetNodeParameter = context.getNodeParameter.bind(context);
+	// Bound to the per-call derivative: the override is not installed yet, so
+	// this captures the base n8n getter (reached via the prototype chain) for
+	// the keys the flat-param override delegates to.
+	const originalGetNodeParameter = callContext.getNodeParameter.bind(callContext);
 	const readFields = metadata.readFields ?? [];
 	const writeFields = metadata.writeFields ?? [];
 	const fieldValues = buildFieldValues(params, ['id'], writeFields);
@@ -469,7 +500,7 @@ export async function executeAiTool(
 		unresolvedPicklistFilters,
 		unresolvedPicklistFilterDetails,
 	} = await resolveAndClassifyFilters(
-		context,
+		callContext,
 		resource,
 		filters,
 		readFields,
@@ -516,7 +547,7 @@ export async function executeAiTool(
 		try {
 			const mode = (params.mode as 'read' | 'write') ?? 'read';
 			const result = await describeResource(
-				context as unknown as ILoadOptionsFunctions,
+				callContext as unknown as ILoadOptionsFunctions,
 				resource,
 				mode,
 			);
@@ -575,7 +606,7 @@ export async function executeAiTool(
 		}
 		try {
 			const result = await listPicklistValues(
-				context as unknown as ILoadOptionsFunctions,
+				callContext as unknown as ILoadOptionsFunctions,
 				resource,
 				params.fieldId as string,
 				params.query as string | undefined,
@@ -827,7 +858,7 @@ export async function executeAiTool(
 			}
 			if (jsonLeaves.length > 0) {
 				const jsonResolution = await resolveAndClassifyFilters(
-					context,
+					callContext,
 					resource,
 					jsonLeaves,
 					readFields,
@@ -1384,7 +1415,7 @@ export async function executeAiTool(
 	) {
 		try {
 			const resolution = await resolveLabelsToIds(
-				context,
+				callContext,
 				resource,
 				fieldValues as IDataObject,
 				params as IDataObject,
@@ -1471,7 +1502,7 @@ export async function executeAiTool(
 			try {
 				const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
 				const helper = new EntityValueHelper(
-					context as unknown as import('n8n-workflow').ILoadOptionsFunctions,
+					callContext as unknown as import('n8n-workflow').ILoadOptionsFunctions,
 					'Resource',
 				);
 				const candidates = await helper.getValues(true);
@@ -1554,7 +1585,7 @@ export async function executeAiTool(
 				try {
 					const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
 					const helper = new EntityValueHelper(
-						context as unknown as import('n8n-workflow').ILoadOptionsFunctions,
+						callContext as unknown as import('n8n-workflow').ILoadOptionsFunctions,
 						'Company',
 					);
 					const candidates = await helper.getValues(true);
@@ -1681,7 +1712,7 @@ export async function executeAiTool(
 		if (resId > 0) {
 			try {
 				const resResponse = await autotaskApiRequest.call(
-					context, 'GET', `Resources/${resId}`,
+					callContext, 'GET', `Resources/${resId}`,
 				) as { item?: Record<string, unknown> };
 				const defaultRoleId = resResponse?.item?.defaultServiceDeskRoleID;
 				if (typeof defaultRoleId === 'number' && defaultRoleId > 0) {
@@ -1710,7 +1741,7 @@ export async function executeAiTool(
 		);
 		if (blocker !== null) return attachCorrelation(blocker, correlationId);
 	}
-	context.getNodeParameter = ((
+	callContext.getNodeParameter = ((
 		name: string,
 		index: number,
 		fallbackValue?: unknown,
@@ -1926,13 +1957,32 @@ export async function executeAiTool(
 				}
 				return fallbackValue;
 		}
-	}) as typeof context.getNodeParameter;
+	}) as typeof callContext.getNodeParameter;
 
 	try {
 		// Compound operation short-circuit: createIfNotExists bypasses the standard executor
 		if (effectiveOperation === 'createIfNotExists') {
+			// PR #148 SEC-3 (x3 V2): the compound handler returns BEFORE the
+			// post-operation denial drain below, so drain denials accrued so far
+			// into labelWarnings up front (idempotent — each drain empties the
+			// token queue). The handler also receives a drain-aware view of
+			// labelWarnings: compound-operations.ts spreads this array when it
+			// builds the response, and the iterator trap drains any markers the
+			// handler's own impersonated create/update calls (performCreate /
+			// performPatch) recorded mid-flight — without this, an identity
+			// substitution inside the compound flow would only reach the
+			// console.warn in the finally block and stay invisible to the model.
+			drainDenialWarningsInto(impersonationDenialToken, labelWarnings);
+			const drainAwareLabelWarnings = new Proxy(labelWarnings, {
+				get(target, prop) {
+					if (prop === Symbol.iterator) {
+						drainDenialWarningsInto(impersonationDenialToken, target);
+					}
+					return Reflect.get(target, prop);
+				},
+			});
 			const compoundState: ExecutorState = {
-				context,
+				context: callContext,
 				resource,
 				operation: effectiveOperation,
 				params,
@@ -1945,7 +1995,7 @@ export async function executeAiTool(
 				effectiveReturnAll,
 				recencyResult,
 				labelResolutions,
-				labelWarnings,
+				labelWarnings: drainAwareLabelWarnings,
 				labelPendingConfirmations,
 				filterResolutions,
 				filterWarnings,
@@ -2005,8 +2055,9 @@ export async function executeAiTool(
 		// Dispatch to registered special handlers
 		const specialHandler = SPECIAL_HANDLERS[effectiveOperation];
 		if (specialHandler) {
+			// No denial drain needed on this path: all SPECIAL_HANDLERS operations are read-only with zero impersonation references (x3 V2), so no denial marker can be recorded here.
 			const executorState: ExecutorState = {
-				context,
+				context: callContext,
 				resource,
 				operation: effectiveOperation,
 				params,
@@ -2084,7 +2135,7 @@ export async function executeAiTool(
 						// already set resolvedImpersonationId.)
 						let impIdActive: boolean | undefined;
 						try {
-							const impProbe = Object.create(context) as typeof context;
+							const impProbe = Object.create(callContext) as typeof callContext;
 							impProbe.getNodeParameter = ((
 								name: string,
 								...args: unknown[]
@@ -2092,8 +2143,8 @@ export async function executeAiTool(
 								if (name === 'targetOperation') return 'resource.get';
 								if (name === 'entityId') return impId;
 								if (name === 'requestData') return '{}';
-								return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
-							}) as typeof context.getNodeParameter;
+								return (callContext.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+							}) as typeof callContext.getNodeParameter;
 							const impResult = await executeToolOperation.call(impProbe);
 							const impRec = (impResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
 							impIdActive =
@@ -2127,7 +2178,7 @@ export async function executeAiTool(
 				} else if (fieldValues.companyID !== undefined) {
 					// Company's owner resource, active-only (same rule as contact-mover).
 					try {
-						const compProbe = Object.create(context) as typeof context;
+						const compProbe = Object.create(callContext) as typeof callContext;
 						compProbe.getNodeParameter = ((
 							name: string,
 							...args: unknown[]
@@ -2135,13 +2186,13 @@ export async function executeAiTool(
 							if (name === 'targetOperation') return 'company.get';
 							if (name === 'entityId') return fieldValues.companyID;
 							if (name === 'requestData') return '{}';
-							return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
-						}) as typeof context.getNodeParameter;
+							return (callContext.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+						}) as typeof callContext.getNodeParameter;
 						const compResult = await executeToolOperation.call(compProbe);
 						const company = (compResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
 						const ownerResourceID = company?.ownerResourceID;
 						if (ownerResourceID !== undefined && ownerResourceID !== null && ownerResourceID !== 0) {
-							const resProbe = Object.create(context) as typeof context;
+							const resProbe = Object.create(callContext) as typeof callContext;
 							resProbe.getNodeParameter = ((
 								name: string,
 								...args: unknown[]
@@ -2149,8 +2200,8 @@ export async function executeAiTool(
 								if (name === 'targetOperation') return 'resource.get';
 								if (name === 'entityId') return ownerResourceID;
 								if (name === 'requestData') return '{}';
-								return (context.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
-							}) as typeof context.getNodeParameter;
+								return (callContext.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+							}) as typeof callContext.getNodeParameter;
 							const resResult = await executeToolOperation.call(resProbe);
 							const resRec = (resResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
 							const resActive =
@@ -2185,9 +2236,9 @@ export async function executeAiTool(
 			if (defaults.length > 0) labelWarnings.push(...defaults);
 		}
 		const [result, parallelCountResult] = await Promise.all([
-			executeToolOperation.call(context),
+			executeToolOperation.call(callContext),
 			needsParallelCount
-				? executeCountOperation(resource, combinedFilters, context)
+				? executeCountOperation(resource, combinedFilters, callContext)
 				: Promise.resolve<number | null>(null),
 		]);
 		const items = result[0] ?? [];
@@ -2195,12 +2246,10 @@ export async function executeAiTool(
 		// PR #148 SEC-3: impersonation-denial retries (the requested resource was
 		// stripped and the request re-issued as the credential user) must be
 		// visible to the model — otherwise the record is mis-attributed and the
-		// substitution stays invisible in the response.
-		for (const denial of drainImpersonationDenialMarkers(impersonationDenialToken)) {
-			labelWarnings.push(
-				`impersonation denied for resource ${denial.resourceId} on ${denial.method} ${denial.endpoint}; the request was retried without impersonation and executed as the credential user — the record is attributed to the API user, not the impersonated resource.`,
-			);
-		}
+		// substitution stays invisible in the response. Also covers the
+		// compound-handler fall-through (handler returned null → standard path):
+		// this is the drain that surfaces any marker it recorded.
+		drainDenialWarningsInto(impersonationDenialToken, labelWarnings);
 		const fetchedRecords = items.map((item) => item.json);
 		// Cap lift: when sparse fields + returnAll both active, agent controls context cost.
 		// Gate on effectiveReturnAll — without it, fetchedRecords is already bounded by limit.
@@ -2226,7 +2275,7 @@ export async function executeAiTool(
 		} else if (effectiveOperation === 'getMany' && isProbablyTruncated && !effectiveReturnAll) {
 			// Path B — non-recency truncation: sequential count fetch now that we know we need it
 			// effectiveOperation guard excludes getPosted/getUnposted (cross-entity join; wrong total)
-			injectedCount = await executeCountOperation(resource, combinedFilters, context);
+			injectedCount = await executeCountOperation(resource, combinedFilters, callContext);
 			if (injectedCount === null) {
 				countQueryFailed = true;
 				countInjectionWarnings.push(
@@ -2403,7 +2452,7 @@ export async function executeAiTool(
 		// Apply Change Info Field aliases to ticket read results.
 		// Note: 'summary' applies aliases internally via buildTicketSummary — do not apply here.
 		if (resource === 'ticket' && effectiveOperation !== 'summary') {
-			const creds = (await context.getCredentials('autotaskApi')) as IAutotaskCredentials;
+			const creds = (await callContext.getCredentials('autotaskApi')) as IAutotaskCredentials;
 			if (shouldApplyAliases(creds)) {
 				const aliasMap = buildAliasMap(creds);
 				if (effectiveOperation === 'slaHealthCheck') {
@@ -2437,7 +2486,7 @@ export async function executeAiTool(
 				noResultsClassification: records.length === 0 ? 'empty' : 'non-empty',
 			},
 		});
-		const enrichedResponse = await enrichResponseJson(formattedResponse, context);
+		const enrichedResponse = await enrichResponseJson(formattedResponse, callContext);
 		return attachCorrelation(enrichedResponse, correlationId);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -2534,7 +2583,7 @@ export async function executeAiTool(
 				const probeImpersonation =
 					effectiveOperation === 'delete' ? undefined : resolvedImpersonationId;
 				const probeResp = (await autotaskApiRequest.call(
-					context,
+					callContext,
 					'POST',
 					buildEntityUrl(probeEntity, { isQuery: true }),
 					probeBody,
@@ -2578,13 +2627,17 @@ export async function executeAiTool(
 		}
 		return attachCorrelation(JSON.stringify(errorEnvelope), correlationId);
 	} finally {
-		context.getNodeParameter = originalGetNodeParameter;
+		// The base context is never mutated (the override lived on the per-call
+		// derivative, x3 V7) — retiring the derivative's own property keeps the
+		// discarded derivative from carrying this call's flat-param mapping.
+		callContext.getNodeParameter = originalGetNodeParameter;
 
 		// PR #148 SEC-3: clear this execution's denial-token registration and log
 		// any markers not drained by the warnings path (e.g. the flow errored
 		// after a denial-retry) — legacy-path behaviour (console.warn already
-		// emitted by request.ts, marker logged here).
-		clearImpersonationDenialToken(context);
+		// emitted by request.ts, marker logged here). The registration and this
+		// cleanup both target the per-call derivative (x3 V7).
+		clearImpersonationDenialToken(callContext);
 		const leftoverDenials = drainImpersonationDenialMarkers(impersonationDenialToken);
 		if (leftoverDenials.length > 0) {
 			console.warn(

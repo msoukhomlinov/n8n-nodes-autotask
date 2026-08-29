@@ -454,10 +454,36 @@ export async function resolveLabelsToIds(
                 let allPool: ReferenceCandidatePool | undefined;
                 let allCandidates: Array<Record<string, unknown>> | undefined;
                 let bestId: string | number | undefined;
+                // x3 V1: the write path gates auto-resolution on pool
+                // completeness with the same signal the read path carries as
+                // probeIncomplete (and the R9 name-field gate below uses). A
+                // pool fed by a rejected probe or a row-cap-saturated probe is
+                // an arbitrary sample — an exact display match inside it may be
+                // one of many identically-displayed records, so auto-resolving
+                // it into the write body would be an arbitrary pick. bestId
+                // stays undefined and the field routes to
+                // pendingConfirmations / the no-match warning instead.
+                const activeProbeIncomplete = Boolean(activePool.probeError || activePool.truncated);
+                // A field yields at most ONE [NAME_POOL_INCOMPLETE] warning:
+                // the pass-1, pass-2, and R9 gates below share this flag.
+                let incompleteWarned = false;
+                const noteIncompletePool = (): void => {
+                    if (incompleteWarned) return;
+                    incompleteWarned = true;
+                    warnings.push(
+                        `[NAME_POOL_INCOMPLETE] Identity of exact match '${label}' for field '${field.id}' (${field.referencesEntity}) ` +
+                        'could not be verified — the candidate sample was incomplete (a probe failed or hit its row cap). ' +
+                        'Confirm the record or supply the numeric ID.',
+                    );
+                };
 
                 for (const entity of activeCandidates) {
                     const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
                     if (display && display.toLowerCase() === label.toLowerCase()) {
+                        if (activeProbeIncomplete) {
+                            noteIncompletePool();
+                            break;
+                        }
                         bestId = (entity as unknown as IDataObject).id as string | number;
                         break;
                     }
@@ -467,10 +493,15 @@ export async function resolveLabelsToIds(
                 if (bestId === undefined) {
                     allPool = await fetchReferenceCandidates(helper, field.referencesEntity, label, false);
                     allCandidates = allPool.rows;
+                    const allProbeIncomplete = Boolean(allPool.probeError || allPool.truncated);
 
                     for (const entity of allCandidates) {
                         const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
                         if (display && display.toLowerCase() === label.toLowerCase()) {
+                            if (allProbeIncomplete) {
+                                noteIncompletePool();
+                                break;
+                            }
                             bestId = (entity as unknown as IDataObject).id as string | number;
                             break;
                         }
@@ -528,11 +559,16 @@ export async function resolveLabelsToIds(
                             activePool.probeError || activePool.truncated ||
                             nameMatchPool.probeError || nameMatchPool.truncated;
                         if (nameMatchProbeIncomplete) {
-                            warnings.push(
-                                `[NAME_POOL_INCOMPLETE] Uniqueness of '${label}' for field '${field.id}' (${field.referencesEntity}) ` +
-                                'could not be verified — the candidate sample was incomplete (a probe failed or hit its row cap). ' +
-                                'Confirm the record or supply the numeric ID.',
-                            );
+                            // x3 V1: a pass-1/pass-2 pool gate may already have
+                            // warned for this field — keep it to one warning.
+                            if (!incompleteWarned) {
+                                incompleteWarned = true;
+                                warnings.push(
+                                    `[NAME_POOL_INCOMPLETE] Uniqueness of '${label}' for field '${field.id}' (${field.referencesEntity}) ` +
+                                    'could not be verified — the candidate sample was incomplete (a probe failed or hit its row cap). ' +
+                                    'Confirm the record or supply the numeric ID.',
+                                );
+                            }
                         } else {
                             bestId = nameFieldMatchId;
                         }

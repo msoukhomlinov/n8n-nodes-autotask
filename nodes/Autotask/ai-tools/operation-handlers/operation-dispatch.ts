@@ -317,6 +317,11 @@ export function dispatchOperationResponse(
 					record?.status && typeof record.status === 'object' && !Array.isArray(record.status)
 						? (record.status as Record<string, unknown>)
 						: null;
+				// x3 V10: this mutationContext is intentionally always non-empty
+				// (sourceDeactivated is seeded unconditionally — fail-closed), so
+				// the `Object.keys(...).length > 0` spread guards below are
+				// vacuous here; they mirror the moveToCompany branch, where the
+				// context starts empty and the guard is live. Kept for parity.
 				const mutationContext: NonNullable<MutationValidationResult['mutationContext']> = {
 					sourceDeactivated: status?.sourceDeactivated === true,
 				};
