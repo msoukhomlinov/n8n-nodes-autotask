@@ -235,15 +235,17 @@ export function formatApiError(
 		const idHint = entityId ? `, or update record ${entityId} directly` : '';
 		// errorOnDuplicate is only consumed by the createIfNotExists compound operation —
 		// a plain 'create' ignores/strips it, so directing the model there just makes it
-		// repeat the identical failing request. And createIfNotExists never UPDATES a
-		// duplicate — it only reuses the existing record (outcome: 'found'). Recommend
-		// it only when the resource actually offers the operation; other resources get
-		// a locate-then-cleanup recovery (Codex P2 + B1 on PR #148).
+		// repeat the identical failing request. createIfNotExists reuses an existing
+		// duplicate WITHOUT changing it (outcome: 'skipped') and CAN reconcile it when
+		// updateFields are supplied and differ (outcome: 'updated'); 'found' is never
+		// an emitted outcome. Recommend it only when the resource actually offers the
+		// operation; other resources get a locate-then-cleanup recovery (Codex P2 + B1
+		// on PR #148; x4 P2: corrected the 'found'/never-updates recovery contract).
 		const supportsCreateIfNotExists = getResourceOperations(resource).includes('createIfNotExists');
 		const nextAction = supportsCreateIfNotExists
 			? (operation === 'create'
-				? `Do not repeat the same create. Switch to operation 'createIfNotExists' on autotask_${resource} with dedupFields covering the identifying field(s) and errorOnDuplicate=false — it reuses the existing record (outcome: 'found'), it never updates it${idHint}.`
-				: `Do not repeat the same call. Retry autotask_${resource} with operation 'createIfNotExists' and errorOnDuplicate=false — it reuses the existing record (outcome: 'found'), it does not update it${idHint}.`)
+				? `Do not repeat the same create. Switch to operation 'createIfNotExists' on autotask_${resource} with dedupFields covering the identifying field(s) and errorOnDuplicate=false — an existing duplicate is reused without changes (outcome: 'skipped'); supplying updateFields reconciles fields that differ on the duplicate (outcome: 'updated')${idHint}.`
+				: `Do not repeat the same call. Retry autotask_${resource} with operation 'createIfNotExists' and errorOnDuplicate=false — an existing duplicate is reused without changes (outcome: 'skipped'); supplying updateFields updates the fields that differ on the duplicate (outcome: 'updated')${idHint}.`)
 			: `Locate the duplicate with autotask_${resource} operation 'getMany' filtered on the identifying fields, then update or delete the new record${entityId ? ` (id ${entityId})` : ''}.`;
 		return wrapError(
 			resource,
