@@ -53,12 +53,13 @@ function getEntityNameFields(entityType: string): string[] {
 }
 
 /**
- * v2.29.0 (X16), tightened in v2.29.x (B4): bounded candidate pool for
- * reference-label resolution. A small per display-name-field probe (exact
- * first, `contains` only if the exact pass left the pool empty) replaces
- * the previous full-entity scan (getValues), which on large reference
- * populations (~24k ConfigurationItems) took minutes and hung the tool call
- * past the MCP protocol timeout.
+ * v2.29.0 (X16), tightened in v2.29.x (B4), broadened in B1: bounded
+ * candidate pool for reference-label resolution. A small per display-name-
+ * field probe (exact first, `contains` — probe values PLUS the full label —
+ * only if the exact pass left no candidate whose display name exactly
+ * matches the label) replaces the previous full-entity scan (getValues),
+ * which on large reference populations (~24k ConfigurationItems) took
+ * minutes and hung the tool call past the MCP protocol timeout.
  *
  * Probe values (B4a): the whitespace tokens of the label with length >= 2,
  * deduped and capped at two — when no token qualifies, the full label is
@@ -97,10 +98,13 @@ async function fetchReferenceCandidates(
     const pool = new Map<string | number, Record<string, unknown>>();
     let firstError: Error | undefined;
 
-    const buildProbeTasks = (op: 'eq' | 'contains'): Array<() => Promise<void>> => {
+    const buildProbeTasks = (
+        op: 'eq' | 'contains',
+        probeSet: string[] = probeValues,
+    ): Array<() => Promise<void>> => {
         const tasks: Array<() => Promise<void>> = [];
         for (const nameField of nameFields) {
-            for (const probeValue of probeValues) {
+            for (const probeValue of probeSet) {
                 tasks.push(async () => {
                     try {
                         const rows = await helper.getValuesByDisplay(nameField, probeValue, activeOnly, op, 50);
@@ -136,11 +140,41 @@ async function fetchReferenceCandidates(
         await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => worker()));
     };
 
-    // B4c: stage 1 = exact ('eq') probes; stage 2 = 'contains' probes, only
-    // if the exact pass left the pool empty.
+    // B4c: stage 1 = exact ('eq') probes over the token/full-label probe
+    // values; stage 2 = 'contains' probes over those values PLUS the full
+    // label (a composite record like 'Acme Corporation' is only findable via
+    // a multi-word contains probe).
     await runBounded(buildProbeTasks('eq'), 4);
-    if (pool.size === 0) {
-        await runBounded(buildProbeTasks('contains'), 4);
+
+    // B1: an exact token hit on ANOTHER record (label 'Acme Corporation'
+    // while a company named 'Acme' exists) fills the pool at stage 1, so
+    // gating stage 2 on `pool.size === 0` suppressed the broader pass and
+    // the requested record was never probed — downstream exact display-name
+    // matching then failed and valid name-based writes/filters were blocked.
+    // Stage 2 now runs unless the pool already holds a candidate whose
+    // display name EXACTLY matches the label: any single name field equals
+    // it, or the whitespace-joined composite of the name fields does
+    // (case-insensitive, non-empty parts only — mirrors the display-name
+    // join, so composite entities like Resource resolve without the extra
+    // contains pass).
+    const poolMatchesLabel = (): boolean => {
+        const target = label.toLowerCase();
+        for (const row of pool.values()) {
+            const parts = nameFields
+                .map((nameField) => {
+                    const raw = row[nameField];
+                    return raw === undefined || raw === null ? '' : String(raw).trim();
+                })
+                .filter((part) => part !== '');
+            if (parts.some((part) => part.toLowerCase() === target)) return true;
+            if (parts.join(' ').toLowerCase() === target) return true;
+        }
+        return false;
+    };
+
+    if (!poolMatchesLabel()) {
+        const stage2ProbeValues = Array.from(new Set([...probeValues, label]));
+        await runBounded(buildProbeTasks('contains', stage2ProbeValues), 4);
     }
     if (pool.size === 0 && firstError) throw firstError;
     return Array.from(pool.values());

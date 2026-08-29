@@ -2026,15 +2026,26 @@ export async function executeAiTool(
 				// machinery with only best-effort restore.
 				if (hasProvidedValue(params.impersonationResourceId)) {
 					const impIsNumeric = isLikelyId(params.impersonationResourceId);
-					if (impIsNumeric) {
-						// Numeric input: the earlier impersonation resolution is a
-						// passthrough for numeric IDs (no active-state check), so the
-						// active gate MUST run here — an inactive ID injected here
-						// would be auto-activated by the write-retry machinery with
-						// only best-effort restore. (Verifier V1: the previous shape
-						// left this gate unreachable because every numeric input had
+					// ID that would be injected: numeric input passes through the
+					// earlier resolution unchanged (no active-state check), label
+					// input is the resolved numeric ID. Unresolvable label →
+					// undefined → fail-closed branch below.
+					const impId = impIsNumeric
+						? resolvedImpersonationId ?? Number(params.impersonationResourceId)
+						: resolvedImpersonationId;
+					if (impId !== undefined) {
+						// Explicit active probe for BOTH input kinds: numeric
+						// resolution is a passthrough with no active-state check,
+						// and label resolution searches active resources only
+						// when the isActive metadata lookup succeeds — when it
+						// fails, getValues(true) deliberately skips the active
+						// filter, so a name/email label can resolve to an
+						// INACTIVE resource (NOT "active by construction"). An
+						// inactive ID injected here would be auto-activated by
+						// the write-retry machinery with only best-effort
+						// restore. (Verifier V1: the previous shape left this
+						// gate unreachable because every numeric input had
 						// already set resolvedImpersonationId.)
-						const impId = resolvedImpersonationId ?? Number(params.impersonationResourceId);
 						let impIdActive: boolean | undefined;
 						try {
 							const impProbe = Object.create(context) as typeof context;
@@ -2059,20 +2070,15 @@ export async function executeAiTool(
 						if (impIdActive === true) {
 							fieldValues.assignedResourceID = impId;
 							defaults.push(
-								`companyNote.create: assignedResourceID defaulted to the impersonation resource ${impId} (active-verified)`,
+								impIsNumeric
+									? `companyNote.create: assignedResourceID defaulted to the impersonation resource ${impId} (active-verified)`
+									: `companyNote.create: assignedResourceID defaulted to the impersonation resource ${impId} (resolved from '${String(params.impersonationResourceId)}', active-verified)`,
 							);
 						} else {
 							labelWarnings.push(
 								`companyNote.create: impersonation resource ${impId} is inactive (or its active state could not be verified) — the API requires an active assignedResourceID; supply a numeric active resource ID or set assignedResourceID explicitly.`,
 							);
 						}
-					} else if (resolvedImpersonationId !== undefined) {
-						// Label input: impersonation resolution searches ACTIVE
-						// resources only, so a resolved ID is active by construction.
-						fieldValues.assignedResourceID = resolvedImpersonationId;
-						defaults.push(
-							`companyNote.create: assignedResourceID defaulted to the impersonation resource ${resolvedImpersonationId} (resolved from '${String(params.impersonationResourceId)}')`,
-						);
 					} else {
 						// Unresolvable label — fail closed: never inject the raw label.
 						// (The pre-execution write guard also blocks on
@@ -2458,17 +2464,22 @@ export async function executeAiTool(
 				// interpreted by the API as a create (server-side field validation:
 				// 'Missing Required Field: isActive'), which both breaks the probe
 				// and risks writes. (Found via debug logging, 2026-08-29.)
-				// The probe runs with the SAME impersonation as the failed write
-				// (resolvedImpersonationId, plain positional arg after the empty
-				// query) — without it, an empty probe result is a permission
+				// Identity matching per operation family: the probe must run with
+				// the SAME identity the failed write actually used — create/update
+				// forward impersonationResourceId to their API call, but
+				// DeleteOperation does NOT (its DELETE runs under the credential
+				// user), so the delete probe drops impersonation; with a
+				// mismatched identity an empty probe result is a permission
 				// artifact, not proof of non-existence.
+				const probeImpersonation =
+					effectiveOperation === 'delete' ? undefined : resolvedImpersonationId;
 				const probeResp = (await autotaskApiRequest.call(
 					context,
 					'POST',
 					buildEntityUrl(probeEntity, { isQuery: true }),
 					probeBody,
 					{},
-					resolvedImpersonationId,
+					probeImpersonation,
 				)) as { items?: Array<Record<string, unknown>> } | Array<Record<string, unknown>> | null;
 				const probeItems = Array.isArray(probeResp) ? probeResp : (probeResp?.items ?? []);
 				// v2.29.x: the by-ID query route for configurationItemRelatedItem is
