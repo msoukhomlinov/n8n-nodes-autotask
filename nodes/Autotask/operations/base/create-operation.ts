@@ -97,7 +97,15 @@ export class CreateOperation<T extends IAutotaskEntity> extends BaseOperation {
 						proceedWithoutImpersonationIfDenied = this.context.getNodeParameter(
 							'proceedWithoutImpersonationIfDenied',
 							itemIndex,
-							false,
+							// PR #148 SEC-3: align the code default with the advertised
+							// "(default true)" contract — the three standard node
+							// properties (contact.moveToCompany, resource.transferOwnership,
+							// configurationItem.moveConfigurationItem) all default to on,
+							// and the AI tool schema describes "retry without it
+							// (default true)". The previous `false` made ordinary
+							// creates fail closed on an omitted flag while attachment
+							// uploads failed open.
+							true,
 						) as boolean;
 					}
 				} catch (error) {

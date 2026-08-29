@@ -143,10 +143,14 @@ interface MutationValidationResult {
 	 * F7b: root context fields for CHANGE outcomes (moveToCompany success) — mover
 	 * warnings + auditNotes — so a successful move no longer swallows audit-note
 	 * creation failures. Merged into the ToolResponseContext at envelope build time.
+	 * `sourceDeactivated` (moveConfigurationItem) — the mover's ACTUAL deactivation
+	 * outcome (true only when the deactivation PATCH was issued and acknowledged).
+	 * The success summary must never claim a deactivation the mover did not perform.
 	 */
 	mutationContext?: {
 		resolutionWarnings?: string[];
 		auditNotes?: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
+		sourceDeactivated?: boolean;
 	};
 	errorType?: string;
 	message?: string;
@@ -303,10 +307,28 @@ export function dispatchOperationResponse(
 			}
 			case 'moveConfigurationItem': {
 				const movedId = record?.newConfigurationItemId;
-				if (typeof movedId === 'number' && movedId > 0) return { ok: true, id: movedId };
+				// MAJOR-1 (PR #148 round 10): thread the mover's ACTUAL deactivation
+				// outcome into the envelope, mirroring the moveToCompany sibling —
+				// `status.sourceDeactivated` is true only when the deactivation PATCH
+				// was issued and acknowledged; it stays false when `deactivateSource`
+				// is off or audit-note failure skips the PATCH. Absent/unverifiable
+				// status fails closed: never claim a deactivation that did not happen.
+				const status =
+					record?.status && typeof record.status === 'object' && !Array.isArray(record.status)
+						? (record.status as Record<string, unknown>)
+						: null;
+				const mutationContext: NonNullable<MutationValidationResult['mutationContext']> = {
+					sourceDeactivated: status?.sourceDeactivated === true,
+				};
+				if (status && Array.isArray(status.warnings) && (status.warnings as string[]).length > 0) {
+					mutationContext.resolutionWarnings = status.warnings as string[];
+				}
+				if (typeof movedId === 'number' && movedId > 0) {
+					return { ok: true, id: movedId, ...(Object.keys(mutationContext).length > 0 ? { mutationContext } : {}) };
+				}
 				const runId = record?.runId;
 				if (record?.dryRun === true && typeof runId === 'string' && runId.trim() !== '') {
-					return { ok: true, id: runId };
+					return { ok: true, id: runId, ...(Object.keys(mutationContext).length > 0 ? { mutationContext } : {}) };
 				}
 				return {
 					ok: false,
@@ -536,6 +558,7 @@ export function dispatchOperationResponse(
 					resolutionWarnings: validation.mutationContext.resolutionWarnings
 						? [...(context.resolutionWarnings ?? []), ...validation.mutationContext.resolutionWarnings]
 						: context.resolutionWarnings,
+					sourceDeactivated: validation.mutationContext.sourceDeactivated,
 				}
 			: context;
 		return JSON.stringify(

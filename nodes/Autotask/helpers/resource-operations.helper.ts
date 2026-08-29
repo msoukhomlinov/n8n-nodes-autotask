@@ -224,7 +224,10 @@ export function addOperationsToResource(
 				displayName: 'Proceed Without Impersonation If Denied',
 				name: 'proceedWithoutImpersonationIfDenied',
 				type: 'boolean',
-				default: false,
+				// PR #148 SEC-3: align with the advertised "(default true)" contract and the
+				// three hardcoded sibling properties (contact.moveToCompany, resource.transferOwnership,
+				// configurationItem.moveConfigurationItem).
+				default: true,
 				displayOptions: {
 					show: {
 						resource: [config.resourceName],

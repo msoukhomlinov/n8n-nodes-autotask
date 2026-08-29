@@ -13,6 +13,8 @@ export interface ToolResponseContext {
 	auditNotes?: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
 	/** v2.29.0 (X4): for moveConfigurationItem — the SOURCE record id (the move clones to a new id and deactivates the source). */
 	originalRecordId?: number | string;
+	/** MAJOR-1 (PR #148 round 10): moveConfigurationItem — true only when the mover ACTUALLY issued (and the API acknowledged) the source deactivation PATCH; false/absent means the source was left untouched. */
+	sourceDeactivated?: boolean;
 	pendingConfirmations?: PendingLabelConfirmation[];
 	effectiveOffset?: number;
 	readFields?: FieldMeta[];
@@ -416,11 +418,33 @@ export function buildMutationResponse(
 										? operation.charAt(0).toUpperCase() + operation.slice(1) + 'd'
 										: operation.charAt(0).toUpperCase() + operation.slice(1) + 'ed';
 	const identity = record ? buildIdentityString(resource, record) : '';
+	const isMoveConfigurationItem = operation === 'moveConfigurationItem';
+	// MAJOR-1 (PR #148 round 10): the deactivation claim must mirror the mover's
+	// ACTUAL outcome (`sourceDeactivated` — true only when the deactivation PATCH
+	// was issued and acknowledged). `deactivateSource=false` or audit-note failure
+	// skips the PATCH, leaving the source active — the summary must say so.
+	const sourceRef = context.originalRecordId !== undefined ? context.originalRecordId : 'record';
+	const deactivationClause =
+		context.sourceDeactivated === true
+			? `the original ${sourceRef} was DEACTIVATED (Autotask 'move' = clone + deactivate — no in-place move exists).`
+			: `the original ${sourceRef} was NOT deactivated — the deactivation was not performed (deactivateSource=false, or skipped), so it remains active.`;
+	const mutationWarnings = isMoveConfigurationItem
+		? [
+				...(context.resolutionWarnings ?? []),
+				...(
+					context.sourceDeactivated === true
+						? []
+						: [
+								'moveConfigurationItem: the source configuration item was NOT deactivated — the deactivation PATCH was not performed (deactivateSource=false, or deactivation was skipped). The original record remains active.',
+							]
+				),
+			]
+		: context.resolutionWarnings ?? [];
 	const summary =
-		operation === 'moveConfigurationItem'
+		isMoveConfigurationItem
 			? context.originalRecordId !== undefined
-				? `Cloned configuration item ${context.originalRecordId} to a new record (ID: ${id}); the original ${context.originalRecordId} was DEACTIVATED (Autotask 'move' = clone + deactivate — no in-place move exists).`
-				: `Cloned configuration item to a new record (ID: ${id}); the original record was DEACTIVATED (Autotask 'move' = clone + deactivate — no in-place move exists).`
+				? `Cloned configuration item ${context.originalRecordId} to a new record (ID: ${id}); ${deactivationClause}`
+				: `Cloned configuration item to a new record (ID: ${id}); ${deactivationClause}`
 			: identity
 				? `${opVerb} ${resource} ${identity} successfully.`
 				: `${opVerb} ${resource} (ID: ${id}) successfully.`;
@@ -431,8 +455,11 @@ export function buildMutationResponse(
 		id,
 		resolvedLabels: toResolvedLabels(context.resolutions),
 		pendingConfirmations: context.pendingConfirmations ?? [],
-		warnings: context.resolutionWarnings ?? [],
+		warnings: mutationWarnings,
 	};
+	if (isMoveConfigurationItem && typeof context.sourceDeactivated === 'boolean') {
+		response.sourceDeactivated = context.sourceDeactivated;
+	}
 	if (context.auditNotes) response.auditNotes = context.auditNotes;
 	if (record) response.record = record;
 	return response;

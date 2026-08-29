@@ -77,6 +77,22 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		this.cacheService = options?.cacheService;
 	}
 
+	/**
+	 * v2.29.0: whether the referenced entity publishes an `isActive` field, so
+	 * callers know whether an `activeOnly` filter can safely be applied.
+	 *
+	 * 3-state cache semantics (mirrors resolveUsableNameFields' poison guard):
+	 *   - cached true   entity HAS isActive  (evidence: non-empty standard fields)
+	 *   - cached false  entity LACKS isActive (evidence: non-empty standard fields)
+	 *   - not cached    capability unknown for this call — a getFields throw, or a
+	 *                   non-throwing EMPTY fields response (a degraded metadata read).
+	 *                   Degraded reads are NEVER cached, so they cannot disable
+	 *                   isActive filtering for the module lifetime; the next call
+	 *                   re-probes. On such a read we fail safe by assuming the field
+	 *                   IS supported, so the active filter is KEPT (an over-filter
+	 *                   surfaces as an API error; an under-filter silently admits
+	 *                   inactive rows on the write path).
+	 */
 	private async entitySupportsIsActiveField(): Promise<boolean> {
 		const key = this.entityType.toLowerCase();
 		const cached = entitySupportsIsActiveCache.get(key);
@@ -85,6 +101,13 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			const fields = (await getFields(this.canonicalEntityType, this.context, {
 				fieldType: 'standard',
 			})) as IAutotaskField[];
+			// Poison guard: an empty (non-throwing) fields response is a degraded
+			// metadata read, not evidence that the entity lacks isActive. Do NOT
+			// cache it (the next call re-probes); fail safe by assuming support
+			// so the active filter is kept rather than silently dropped.
+			if (fields.length === 0) {
+				return true;
+			}
 			const has = fields.some((f) => f.name === 'isActive');
 			entitySupportsIsActiveCache.set(key, has);
 			return has;
@@ -92,11 +115,13 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			console.warn(
 				`[EntityValueHelper] Could not check isActive support for ${this.entityType}: ${
 					err instanceof Error ? err.message : 'unknown error'
-				}. Skipping isActive filter.`,
+				}. Keeping isActive filter (safe direction).`,
 			);
 			// Do NOT write to entitySupportsIsActiveCache here — a transient failure
 			// must not permanently suppress isActive filtering for this entity type.
-			return false;
+			// Fail safe: assume the entity supports isActive so the active filter
+			// is kept (matches the empty-read direction above).
+			return true;
 		}
 	}
 

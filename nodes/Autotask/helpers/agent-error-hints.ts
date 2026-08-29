@@ -66,7 +66,7 @@ export function generateAgentHint(
             return `Field '${fieldName}' not found on ${resource}. Call autotask_${resource} with operation 'describeFields' (mode '${operation === 'get' ? 'read' : 'write'}') to see the available fields and their exact names.`;
 
         case ErrorCategory.OVER_FETCHING:
-            return `Too many results returned. Reduce maxRecords parameter or add more specific filters. Consider using selectColumnsJson to limit returned fields and reduce payload size.`;
+            return `Too many results returned. Reduce the limit parameter or add more specific filters. Consider using the fields parameter to limit returned fields and reduce payload size.`;
 
         case ErrorCategory.RATE_LIMIT:
             return `API rate limit exceeded. Wait before retrying, reduce request frequency, or use smaller batch sizes. Consider using outputMode: 'rawIds' to reduce response size.`;
@@ -222,8 +222,8 @@ function generateSuggestions(
         case ErrorCategory.OVER_FETCHING:
             return [
                 'Add filters to reduce result set size',
-                'Use selectColumnsJson to limit returned fields',
-                'Set maxRecords to a lower value',
+                'Use the fields parameter to limit returned fields',
+                'Set limit to a lower value',
                 'Consider outputMode: "rawIds" for smaller payloads'
             ];
 

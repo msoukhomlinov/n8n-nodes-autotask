@@ -848,18 +848,34 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 
 		// v2.29.0 (PR #148 R2, C1c): the Autotask API exposes configuration item
 		// related item deletion only via the parent-scoped route
-		// (DELETE ConfigurationItems/{configurationItemID}/RelatedItems/{id});
+		// (DELETE /V1.0/ConfigurationItems/{configurationItemID}/RelatedItems/{id});
 		// without configurationItemID DeleteOperation falls back to a flat endpoint
 		// the API does not expose. Expose configurationItemID (name or ID,
 		// auto-resolved) for the delete operation — guarded by hasDeleteOp so
 		// create/update-only tools are unaffected.
+		// R2 fix (C1c): CIRI tools with create/update already have
+		// configurationItemID from the write-fields loop above, so the
+		// if-not-present guard could never fire there — append the delete
+		// requirement to the existing field's description instead of shadowing
+		// the field (mirrors the contact companyID block above).
 		if (resource === 'configurationItemRelatedItem' && hasDeleteOp) {
-			if (!shape.configurationItemID) {
+			const ciriDeleteRequirement =
+				'Required to delete a configuration item related item — the Autotask API only exposes deletion via the parent-scoped path (DELETE /V1.0/ConfigurationItems/{configurationItemID}/RelatedItems/{id}).';
+			if (shape.configurationItemID) {
+				const existing =
+					typeof shape.configurationItemID._def?.description === 'string'
+						? shape.configurationItemID._def.description
+						: '';
+				shape.configurationItemID = shape.configurationItemID.describe(
+					existing ? `${existing} ${ciriDeleteRequirement}` : ciriDeleteRequirement,
+				);
+			} else {
+				// Delete-only CIRI tool: no write fields entered the shape.
 				shape.configurationItemID = rz
 					.coerce.string()
 					.nullish()
 					.describe(
-						'Parent configuration item name or numeric configurationItemID (auto-resolved). Required to delete a configuration item related item — the Autotask API only exposes deletion via the parent-scoped path (ConfigurationItems/{configurationItemID}/RelatedItems/{id}).',
+						`Parent configuration item name or numeric configurationItemID (auto-resolved). ${ciriDeleteRequirement}`,
 					);
 			}
 		}

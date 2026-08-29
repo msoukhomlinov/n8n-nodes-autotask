@@ -63,7 +63,7 @@ function buildPersonEntry(
 	};
 }
 
-const ENRICHMENT_REGISTRY: Record<string, EnrichmentConfig> = {
+export const ENRICHMENT_REGISTRY: Record<string, EnrichmentConfig> = {
 	ticketID: {
 		entityName: 'Ticket',
 		fetchFields: ['id', 'ticketNumber', 'title'],

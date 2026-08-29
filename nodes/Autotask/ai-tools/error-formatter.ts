@@ -1,5 +1,6 @@
 import { getEntityMetadata, entityNameForResource } from '../constants/entities';
 import { getResourceOperations } from '../constants/resource-operations';
+import { isWriteOperation } from './operation-metadata';
 
 // ---------------------------------------------------------------------------
 // Error type constants
@@ -273,12 +274,26 @@ export function formatApiError(
 		&& !PHANTOM_FIELD_CONTROL_TOKENS.has((phantomFieldMatch[2] ?? phantomFieldMatch[3] ?? '').toLowerCase())
 	) {
 		const phantomField = phantomFieldMatch[2] ?? phantomFieldMatch[3];
+		// Fix round (MINOR-5): the same 'Unable to find X in the <Entity> Entity'
+		// body is also emitted on WRITE operations (a field the entity does not
+		// accept in the request). The old nextAction only knew read-side filters
+		// (filter_field/filtersJson), which writes do not have — a directive that
+		// misdirects the model. Gate on the operation: write operations get the
+		// write-appropriate corrective (describeFields mode 'write'); read
+		// operations keep the query-engine wording.
+		const writeBranch = isWriteOperation(operation);
+		const summary = writeBranch
+			? `Field '${phantomField}' is advertised by describeFields but the Autotask API does not accept it on this entity (phantom field). It cannot be used in requests.`
+			: `Filter field '${phantomField}' is advertised by describeFields but the Autotask query engine does not support it (phantom field). It cannot be used in filters.`;
+		const nextAction = writeBranch
+			? `Remove '${phantomField}' from the write fields (bodyJson/fieldsToMap). Call autotask_${resource} with operation 'describeFields' with mode 'write' to confirm which fields this entity accepts — do NOT retry '${phantomField}' on a write operation.`
+			: `Remove '${phantomField}' from filter_field/filter_op/filter_value and filtersJson, and use a field the API query engine supports (for configuration items: 'referenceTitle' with filter_op 'contains' is the viable brand/manufacturer search). Do NOT retry '${phantomField}' — describeFields will keep advertising it.`;
 		return wrapError(
 			resource,
 			operation,
 			ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
-			`Filter field '${phantomField}' is advertised by describeFields but the Autotask query engine does not support it (phantom field). It cannot be used in filters.`,
-			`Remove '${phantomField}' from filter_field/filter_op/filter_value and filtersJson, and use a field the API query engine supports (for configuration items: 'referenceTitle' with filter_op 'contains' is the viable brand/manufacturer search). Do NOT retry '${phantomField}' — describeFields will keep advertising it.`,
+			summary,
+			nextAction,
 		);
 	}
 
@@ -343,12 +358,32 @@ export function formatApiError(
 	// required-field failure into the picklist branch (it runs first). A
 	// 'required field' phrase is the dominant signal — yield to the
 	// required-field classifier below.
-	if (
-		!lowerMessage.includes('required field')
-		&& (lowerMessage.includes('picklist')
-			|| lowerMessage.includes('invalid value')
-			|| lowerMessage.includes('not a valid value'))
-	) {
+	// Fix round (MINOR-6): the V4 guard tested only the exact substring
+	// 'required field'; a body phrased "the following fields are required" that
+	// also carries the generic listPicklistValues help line still fell into the
+	// picklist branch and lost the required-field directive. Yield whenever the
+	// required-field classifier below would claim the body ('required' or
+	// 'missing'); when BOTH signals are present emit a combined directive —
+	// required-field priority (describeFields mode 'write') with the picklist
+	// hint appended, so neither corrective is lost. Required-field-only bodies
+	// still fall through to the classifier below (round-4 precedence intact).
+	const hasPicklistText =
+		lowerMessage.includes('picklist')
+		|| lowerMessage.includes('invalid value')
+		|| lowerMessage.includes('not a valid value');
+	const hasRequiredText = lowerMessage.includes('required') || lowerMessage.includes('missing');
+	if (hasPicklistText && hasRequiredText) {
+		return wrapError(
+			resource,
+			operation,
+			ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+			message,
+			`Call autotask_${resource} with operation 'describeFields' with mode 'write' to review required fields, then retry with all required fields supplied. If any of the failing fields are picklists, also call autotask_${resource} with operation 'listPicklistValues' with the relevant fieldId to get valid values.`,
+			undefined,
+			['describeFields', 'listPicklistValues'],
+		);
+	}
+	if (hasPicklistText) {
 		return wrapError(
 			resource,
 			operation,

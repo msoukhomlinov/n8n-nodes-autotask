@@ -84,9 +84,31 @@ import {
 import { buildWriteResolutionBlocker, summariseResolutionState } from './write-guard';
 import { validateOperationContract, hasProvidedValue } from './operation-contracts';
 import { isLikelyId } from '../helpers/id-utils';
-import { enrichResponseJson } from '../helpers/enrichment';
-import { autotaskApiRequest, buildEntityUrl } from '../helpers/http';
+import { ENRICHMENT_REGISTRY, enrichResponseJson } from '../helpers/enrichment';
+import {
+	autotaskApiRequest,
+	buildEntityUrl,
+	clearImpersonationDenialToken,
+	drainImpersonationDenialMarkers,
+	registerImpersonationDenialToken,
+} from '../helpers/http';
 import { AUTOTASK_ENTITIES, entityNameForResource, getEntityMetadata } from '../constants/entities';
+
+/**
+ * Lowercased trigger fields of the enrichment registry (ENRICHMENT_REGISTRY in
+ * helpers/enrichment.ts — the registry keys ARE the trigger fields
+ * enrichResponseJson() reads off each record). The sparse-fields projection
+ * keeps these even when not requested, so enrichment keeps firing (X15: the
+ * previous hardcoded ticketID/taskID-only keep-set silently disabled every
+ * other trigger under sparse `fields` selection).
+ *
+ * Derived LIVE from the registry: adding an ENRICHMENT_REGISTRY entry needs no
+ * change here (the documented contract that enrichment additions are
+ * tool-executor-free).
+ */
+const ENRICHMENT_TRIGGER_FIELDS = [
+	...new Set(Object.keys(ENRICHMENT_REGISTRY).map((key) => key.toLowerCase())),
+];
 
 /**
  * Coerce an unknown value to boolean, handling Copilot Studio's integer coercion
@@ -287,6 +309,11 @@ function supportsListProjection(operation: string): boolean {
 	return ['getMany', 'getPosted', 'getUnposted'].includes(operation);
 }
 
+// PR #148 SEC-3: per-invocation counter so each executeAiTool() call gets a
+// unique impersonation-denial token (see registerImpersonationDenialToken in
+// helpers/http/request.ts).
+let aiToolDenialTokenSeq = 0;
+
 export async function executeAiTool(
 	context: IExecuteFunctions,
 	resource: string,
@@ -302,6 +329,15 @@ export async function executeAiTool(
 			: typeof rawCorrelation === 'number'
 				? String(rawCorrelation)
 				: undefined;
+
+	// PR #148 SEC-3: execution-scoped token for the impersonation-denial retry
+	// mechanism in request.ts. autotaskApiRequest() tags every denial-retry it
+	// performs for this context (or an Object.create(context) probe derivative);
+	// the markers are drained after the operation runs (surfaced in warnings[])
+	// and cleared in the finally block. Legacy standard-node executions never
+	// register a token, so they keep the console.warn-only behaviour.
+	const impersonationDenialToken = `ai-denial-${++aiToolDenialTokenSeq}`;
+	registerImpersonationDenialToken(context, impersonationDenialToken);
 
 	// Strip n8n framework metadata injected into every tool call
 	const params = {} as ToolExecutorParams;
@@ -2155,6 +2191,16 @@ export async function executeAiTool(
 				: Promise.resolve<number | null>(null),
 		]);
 		const items = result[0] ?? [];
+
+		// PR #148 SEC-3: impersonation-denial retries (the requested resource was
+		// stripped and the request re-issued as the credential user) must be
+		// visible to the model — otherwise the record is mis-attributed and the
+		// substitution stays invisible in the response.
+		for (const denial of drainImpersonationDenialMarkers(impersonationDenialToken)) {
+			labelWarnings.push(
+				`impersonation denied for resource ${denial.resourceId} on ${denial.method} ${denial.endpoint}; the request was retried without impersonation and executed as the credential user — the record is attributed to the API user, not the impersonated resource.`,
+			);
+		}
 		const fetchedRecords = items.map((item) => item.json);
 		// Cap lift: when sparse fields + returnAll both active, agent controls context cost.
 		// Gate on effectiveReturnAll — without it, fetchedRecords is already bounded by limit.
@@ -2253,8 +2299,12 @@ export async function executeAiTool(
 			// enrichResponseJson silently stops firing. Contract: the display
 			// fields enrichment ADDS are an accepted exception to the sparse
 			// selection contract (documented here and in the opdoc).
-			keep.add('ticketid');
-			keep.add('taskid');
+			// v2.29.x (X15): keep EVERY enrichment trigger field, not just
+			// ticketID/taskID — see ENRICHMENT_TRIGGER_FIELDS (must stay in sync
+			// with ENRICHMENT_REGISTRY in helpers/enrichment.ts).
+			for (const field of ENRICHMENT_TRIGGER_FIELDS) {
+				keep.add(field);
+			}
 			const projected = records.map((rec) => {
 				const r = rec as Record<string, unknown>;
 				const out: Record<string, unknown> = {};
@@ -2529,5 +2579,19 @@ export async function executeAiTool(
 		return attachCorrelation(JSON.stringify(errorEnvelope), correlationId);
 	} finally {
 		context.getNodeParameter = originalGetNodeParameter;
+
+		// PR #148 SEC-3: clear this execution's denial-token registration and log
+		// any markers not drained by the warnings path (e.g. the flow errored
+		// after a denial-retry) — legacy-path behaviour (console.warn already
+		// emitted by request.ts, marker logged here).
+		clearImpersonationDenialToken(context);
+		const leftoverDenials = drainImpersonationDenialMarkers(impersonationDenialToken);
+		if (leftoverDenials.length > 0) {
+			console.warn(
+				`[executeAiTool] Impersonation denied for resource(s) ${leftoverDenials
+					.map((d) => `${d.resourceId} (${d.method} ${d.endpoint})`)
+					.join(', ')} on ${resource} '${effectiveOperation}'; the request(s) executed as the credential user.`,
+			);
+		}
 	}
 }
