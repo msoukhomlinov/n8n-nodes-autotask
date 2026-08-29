@@ -78,6 +78,35 @@ export function isNodeResourceImpersonationSupported(resourceName: string): bool
 }
 
 /**
+ * x4 (Codex P2 on PR #148): operation-scoped impersonation support.
+ *
+ * `resource` (Autotask Resource) is NOT impersonation-capable as an entity —
+ * `/Resources/` is not in IMPERSONATION_SUPPORTED_SEGMENTS, so `resource.update`
+ * must not advertise the field (the base UpdateOperation's endpoint gate would
+ * silently ignore it — the X9 model trap). But `resource.transferOwnership`
+ * forwards impersonationResourceId to the reassignment sub-calls
+ * (Companies/Tickets/Tasks/Projects/Opportunities PATCH + note POSTs), which ARE
+ * on supported segments. 'resource' is the only resource registering
+ * transferOwnership, so the exemption is naturally op-scoped. Adding 'resource'
+ * to the resource-level set instead would co-advertise the field on
+ * resource.update — exactly the trap this split avoids.
+ */
+export function isOperationImpersonationSupported(
+	resourceName: string | undefined,
+	operations: readonly string[],
+): boolean {
+	if (
+		resourceName === undefined ||
+		isNodeResourceImpersonationSupported(resourceName)
+	) {
+		return true;
+	}
+	return (
+		resourceName === 'resource' && operations.includes('transferOwnership')
+	);
+}
+
+/**
  * Check whether an API endpoint supports impersonation based on the
  * entity type derived from the URL.
  *

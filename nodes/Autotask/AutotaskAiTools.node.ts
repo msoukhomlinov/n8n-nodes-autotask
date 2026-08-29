@@ -30,7 +30,7 @@ import {
 } from './ai-tools/operation-metadata';
 import { RuntimeDynamicStructuredTool, runtimeZod, getLazyLogWrapper } from './ai-tools/runtime';
 import { getRuntimeSchemaBuilders } from './ai-tools/schema-generator';
-import { isNodeResourceImpersonationSupported } from './helpers/impersonation';
+import { isOperationImpersonationSupported } from './helpers/impersonation';
 import { wrapError, ERROR_TYPES } from './ai-tools/error-formatter';
 import {
 	validateOperationContract,
@@ -471,7 +471,11 @@ export class AutotaskAiTools implements INodeType {
 		const supplyStart = Date.now();
 		const resourceLabel = formatResourceName(resource);
 		const referenceUtc = getReferenceUtcNow();
-		const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
+		// x4 (Codex P2): op-scoped exemption — resource.transferOwnership is
+		// impersonation-capable (reassignment sub-calls) even though the resource
+		// entity itself is not; feeds both the description pointer line and the
+		// artifactCache key, so cache flips automatically.
+		const supportsImpersonation = isOperationImpersonationSupported(resource, effectiveOps);
 		const credentialIdentity = await resolveCredentialIdentity(this);
 		const acceptInjectedCredentials = this.getNodeParameter(
 			'acceptInjectedCredentials',
@@ -908,7 +912,11 @@ export class AutotaskAiTools implements INodeType {
 		// F1 promise: "intentionally left as-is"; base v2.28.3 used strip
 		// semantics), so this call site parses with a strip-flavoured variant
 		// derived from the same schema shape (see below) — round-4 L2.
-		const supportsImpersonation = isNodeResourceImpersonationSupported(resource);
+		// x4 (Codex P2): op-scoped exemption — resource.transferOwnership is
+		// impersonation-capable (reassignment sub-calls) even though the resource
+		// entity itself is not; feeds both the description pointer line and the
+		// artifactCache key, so cache flips automatically.
+		const supportsImpersonation = isOperationImpersonationSupported(resource, effectiveOps);
 		let zodSchema: ZodSafeParseable;
 		{
 			const cachedArtifact = credentialIdentity !== null

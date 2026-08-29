@@ -6,7 +6,7 @@ import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
 import { RESOURCES_WITH_PRIORITY, RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } from './resource-language';
-import { isNodeResourceImpersonationSupported } from '../helpers/impersonation';
+import { isOperationImpersonationSupported } from '../helpers/impersonation';
 import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
 
 /** Helper operations always present in the operation enum — not "real" data operations. */
@@ -52,7 +52,10 @@ export function schemaHasImpersonationField(
 	// resource Autotask does not support impersonation on — the description side is
 	// resource-gated (impersonation.ts), and a schema param the executor rejects is a
 	// model trap (configurationItemTypes used to advertise it via the ops-only gate).
-	return resource === undefined || isNodeResourceImpersonationSupported(resource);
+	// x4 (Codex P2): isOperationImpersonationSupported carries the
+	// resource.transferOwnership op-scoped exemption (its reassignment sub-calls are
+	// impersonation-capable even though /Resources/ itself is not).
+	return isOperationImpersonationSupported(resource, operations);
 }
 
 /** Shared impersonationResourceId field description — used at all 5 schema insertion sites. */
