@@ -26,6 +26,7 @@ import {
 	shouldApplyAliases,
 } from '../helpers/change-info-aliases';
 import { buildOperationDoc } from './description-builders';
+import { operationSupportsImpersonation } from '../helpers/impersonation';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
 import { getConfiguredTimezone } from '../helpers/date-time/utils';
 import {
@@ -1460,6 +1461,33 @@ export async function executeAiTool(
 		} catch {
 			labelWarnings.push('userDefinedFields is not valid JSON. Provide a JSON object like {"Field Name": "value"}. UDF values were not set.');
 		}
+	}
+
+	// x4 (Codex P2e): per-call impersonation guard. The unified schema exposes
+	// impersonationResourceId when the resource's operation SET contains an
+	// impersonation-capable op (for 'resource': transferOwnership), but
+	// resource.update targets /Resources/, which the endpoint gate treats as
+	// unsupported and SILENTLY drops the parameter — a successful response
+	// would then falsely imply the requested attribution was applied. Reject
+	// per call instead of letting it be dropped. transferOwnership is exempt:
+	// its reassignment sub-calls (Companies/Tickets/Tasks/...) are on
+	// supported segments.
+	if (
+		params.impersonationResourceId !== undefined &&
+		params.impersonationResourceId !== null &&
+		params.impersonationResourceId !== '' &&
+		!operationSupportsImpersonation(resource, effectiveOperation)
+	) {
+		return JSON.stringify(
+			wrapError(
+				resource,
+				effectiveOperation,
+				ERROR_TYPES.INVALID_WRITE_FIELDS,
+				`impersonationResourceId is not supported for ${resource}.${effectiveOperation} — the Autotask API does not support impersonation on that endpoint, and passing it there is silently ignored while the call still succeeds.`,
+				`Remove impersonationResourceId (and proceedWithoutImpersonationIfDenied) and retry autotask_${resource} with operation '${effectiveOperation}', or use operation 'transferOwnership' which forwards it to the reassignment calls.`,
+				{ providedValue: String(params.impersonationResourceId) },
+			),
+		);
 	}
 
 	// Resolve impersonationResourceId name/email → numeric ID for write operations only.

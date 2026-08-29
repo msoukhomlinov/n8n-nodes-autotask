@@ -703,7 +703,15 @@ export function buildUnifiedDescriptionTemplate(
 	// schema actually contains the field (F3b: read-only configs must not
 	// advertise a param the strict schema would reject).
 	if (supportsImpersonation && schemaHasImpersonationField(operations)) {
-		sections.push("Impersonation supported: pass 'impersonationResourceId' for write attribution.");
+		// x4 (Codex P2e): for 'resource' the field is honoured by transferOwnership
+		// only (its reassignment sub-calls); the executor rejects it per call for
+		// other operations (e.g. update → /Resources/) so a success never implies
+		// attribution the API silently dropped.
+		sections.push(
+			resource === 'resource'
+				? "Impersonation supported: pass 'impersonationResourceId' for write attribution — honoured by operation 'transferOwnership' only; it is rejected for this resource's other operations (e.g. update)."
+				: "Impersonation supported: pass 'impersonationResourceId' for write attribution.",
+		);
 	}
 
 	const aiDescription = getEntityMetadata(resource)?.aiDescription;

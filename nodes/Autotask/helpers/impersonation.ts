@@ -107,6 +107,29 @@ export function isOperationImpersonationSupported(
 }
 
 /**
+ * x4 (Codex P2e): per-CALL impersonation support. The unified schema exposes
+ * impersonationResourceId whenever the resource's operation SET contains an
+ * impersonation-capable operation (isOperationImpersonationSupported), so a
+ * single tool can mix supported (resource.transferOwnership — its reassignment
+ * sub-calls hit Companies/Tickets/...) and unsupported (resource.update →
+ * /Resources/) operations. The executor answers this predicate per call and
+ * REJECTS the parameter when the called operation's endpoint would silently
+ * drop it — a success response must never imply attribution that was ignored.
+ */
+export function operationSupportsImpersonation(
+	resourceName: string | undefined,
+	operation: string,
+): boolean {
+	if (
+		resourceName === undefined ||
+		isNodeResourceImpersonationSupported(resourceName)
+	) {
+		return true;
+	}
+	return resourceName === 'resource' && operation === 'transferOwnership';
+}
+
+/**
  * Check whether an API endpoint supports impersonation based on the
  * entity type derived from the URL.
  *
