@@ -3,6 +3,7 @@ import { describeResource, getReferencedEntity, listPicklistValues } from './aiH
 import { EntityValueHelper } from './entity-values/value-helper';
 import type { IAutotaskEntity } from '../types';
 import { PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../constants/field.constants';
+import type { IPicklistReferenceFieldMapping } from '../types/base/picklists';
 import { isLikelyId } from './id-utils';
 export { isLikelyId } from './id-utils';
 import {
@@ -41,15 +42,38 @@ function inferReferenceEntityFromField(fieldId: string, resource: string): strin
     return getReferencedEntity(fieldId, resource);
 }
 
-function getEntityNameFields(entityType: string): string[] {
+function getEntityFieldMapping(entityType: string): IPicklistReferenceFieldMapping | undefined {
     const direct = PICKLIST_REFERENCE_FIELD_MAPPINGS[entityType];
-    if (direct) return direct.nameFields;
+    if (direct) return direct;
 
     const lowerType = entityType.toLowerCase();
     const key = Object.keys(PICKLIST_REFERENCE_FIELD_MAPPINGS).find(
         k => k.toLowerCase() === lowerType,
     );
-    return key ? PICKLIST_REFERENCE_FIELD_MAPPINGS[key].nameFields : [];
+    return key ? PICKLIST_REFERENCE_FIELD_MAPPINGS[key] : undefined;
+}
+
+function getEntityNameFields(entityType: string): string[] {
+    return getEntityFieldMapping(entityType)?.nameFields ?? [];
+}
+
+/**
+ * v2.29.x (R9): true when the entity has exactly ONE name field plus a bracket
+ * field (e.g. ConfigurationItem: referenceTitle + referenceNumber → display
+ * "Server (CI-123)"). For these entities a bare name label can NEVER equal the
+ * formatted display name, so the unique name-field exact match is the only
+ * exact resolution path for it.
+ *
+ * Single-name-field entities WITHOUT brackets (Company: display = companyName)
+ * already resolve through the display-name pass — no extra path needed.
+ * Multi-name-field entities (Resource/Contact: firstName + lastName) are covered
+ * by the `nameFields.length >= 2` gate at the call sites.
+ */
+function hasSingleBracketedNameField(entityType: string): boolean {
+    const mapping = getEntityFieldMapping(entityType);
+    if (!mapping || mapping.nameFields.length !== 1) return false;
+    const bracket = mapping.bracketField;
+    return Boolean(bracket && (Array.isArray(bracket) ? bracket.length > 0 : true));
 }
 
 /**
@@ -186,7 +210,14 @@ function findUniqueNameFieldMatchId(
     nameFields: string[],
 ): string | number | undefined {
     const trimmedLabel = label.trim();
-    if (trimmedLabel === '' || nameFields.length < 2) {
+    // v2.29.x (R9): the legacy `nameFields.length < 2` guard assumed single-
+    // name-field entities were fully covered by the formatted display-name
+    // match — true for bracket-less entities (Company: display = companyName)
+    // but false for single-name-field entities with a bracket field
+    // (ConfigurationItem: "Server (CI-123)"), where a bare title can never
+    // equal the display. This path is their only exact match; the uniqueness
+    // rule below still prevents a random pick on duplicate titles.
+    if (trimmedLabel === '' || nameFields.length === 0) {
         return undefined;
     }
 
@@ -398,6 +429,46 @@ export async function resolveLabelsToIds(
                             bestId = (entity as unknown as IDataObject).id as string | number;
                             break;
                         }
+                    }
+                }
+
+                // v2.29.x (R9): single-name-field entities with a bracketed
+                // display (e.g. ConfigurationItem "Server (CI-123)") can never
+                // match a bare title through the formatted display above. For
+                // these entities the name field IS the full identifier, so a
+                // UNIQUE exact name-field match is unambiguous and safe to
+                // auto-resolve on the write path (duplicate titles — 2+ CIs
+                // titled "Server" — stay ambiguous and confirmation-gated).
+                // Multi-name-field entities are deliberately excluded: a bare
+                // first name ("Max") is a partial identifier there and remains
+                // confirmation-gated on writes.
+                if (bestId === undefined && hasSingleBracketedNameField(field.referencesEntity)) {
+                    const nameFields = getEntityNameFields(field.referencesEntity);
+                    const allForNameMatch = allCandidates ?? await fetchReferenceCandidates(helper, field.referencesEntity, label, false);
+                    const mergedById = new Map<string | number, IDataObject>();
+
+                    for (const entity of activeCandidates) {
+                        const data = entity as unknown as IDataObject;
+                        const id = data.id as string | number | undefined;
+                        if (id !== undefined) {
+                            mergedById.set(id, data);
+                        }
+                    }
+                    for (const entity of allForNameMatch) {
+                        const data = entity as unknown as IDataObject;
+                        const id = data.id as string | number | undefined;
+                        if (id !== undefined && !mergedById.has(id)) {
+                            mergedById.set(id, data);
+                        }
+                    }
+
+                    const nameFieldMatchId = findUniqueNameFieldMatchId(
+                        Array.from(mergedById.values()),
+                        label,
+                        nameFields,
+                    );
+                    if (nameFieldMatchId !== undefined) {
+                        bestId = nameFieldMatchId;
                     }
                 }
 
@@ -694,13 +765,21 @@ export async function resolveFilterLabelsToIds(
                 }
             }
 
-            // Individual nameField matching for multi-field entities.
-            // When the mapping has 2+ nameFields (e.g. firstName + lastName for Resource),
-            // the label may match a single field exactly even though the full display name
-            // (e.g. "Max Soukhomlinov") doesn't match the partial label ("Max").
+            // Individual nameField matching, beyond the formatted display-name
+            // passes above. Two entity classes need it:
+            //   - multi-name-field entities (Resource/Contact: firstName +
+            //     lastName), where the label may match a single field exactly
+            //     even though the full display name ("Max Soukhomlinov") doesn't
+            //     match the partial label ("Max");
+            //   - v2.29.x (R9): single-name-field entities with a bracket field
+            //     (ConfigurationItem: "Server (CI-123)"), where a bare title
+            //     label can never equal the formatted display.
             // Auto-resolves only when exactly one entity matches on any nameField.
             const nameFields = getEntityNameFields(effectiveReferenceEntity);
-            if (bestId === undefined && nameFields.length >= 2) {
+            if (
+                bestId === undefined &&
+                (nameFields.length >= 2 || hasSingleBracketedNameField(effectiveReferenceEntity))
+            ) {
                 const allForNameMatch = allCandidates ?? await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, false);
                 const mergedById = new Map<string | number, IDataObject>();
 
