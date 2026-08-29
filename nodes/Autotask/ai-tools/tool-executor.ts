@@ -2132,6 +2132,12 @@ export async function executeAiTool(
 		// create, not an audit note).
 		if (resource === 'companyNote' && effectiveOperation === 'create') {
 			const defaults: string[] = [...x11PreDefaults];
+			// x4 (Codex P2h): if no default assignedResourceID can be derived,
+			// warning-only still dispatches the create and the API's rejection
+			// surfaces without this context. Track the failure and return a
+			// missing-required error before dispatch instead.
+			let assignedResourceDerivationFailed = false;
+			let assignedResourceFailReason = '';
 			if (fieldValues.assignedResourceID === undefined) {
 				// A generic companyNote.create has NO temporary-activation window (unlike
 				// contact moveToCompany audit notes, which run inside the mover's
@@ -2193,6 +2199,8 @@ export async function executeAiTool(
 							labelWarnings.push(
 								`companyNote.create: impersonation resource ${impId} is inactive (or its active state could not be verified) — the API requires an active assignedResourceID; supply a numeric active resource ID or set assignedResourceID explicitly.`,
 							);
+							assignedResourceDerivationFailed = true;
+							assignedResourceFailReason = 'the impersonation resource is inactive (or unverifiable)';
 						}
 					} else {
 						// Unresolvable label — fail closed: never inject the raw label.
@@ -2202,6 +2210,8 @@ export async function executeAiTool(
 						labelWarnings.push(
 							`companyNote.create: impersonationResourceId '${String(params.impersonationResourceId)}' could not be resolved to a numeric resource ID — the API requires a numeric assignedResourceID; supply a numeric ID, an exact resource name, or set assignedResourceID explicitly.`,
 						);
+						assignedResourceDerivationFailed = true;
+						assignedResourceFailReason = 'the impersonation resource could not be resolved to a numeric ID';
 					}
 				} else if (fieldValues.companyID !== undefined) {
 					// Company's owner resource, active-only (same rule as contact-mover).
@@ -2244,24 +2254,47 @@ export async function executeAiTool(
 								labelWarnings.push(
 									`companyNote.create: no assignedResourceID supplied and company ${fieldValues.companyID} has no usable (active) owner resource — the API requires assignedResourceID; supply it explicitly.`,
 								);
+								assignedResourceDerivationFailed = true;
+								assignedResourceFailReason = 'the company owner is missing or inactive';
 							}
 						} else {
 							labelWarnings.push(
 								`companyNote.create: company ${fieldValues.companyID} has no owner resource and no assignedResourceID was supplied — the API requires assignedResourceID; supply it explicitly.`,
 							);
+							assignedResourceDerivationFailed = true;
+							assignedResourceFailReason = 'the company has no owner resource';
 						}
 					} catch {
 						labelWarnings.push(
 							'companyNote.create: could not derive a default assignedResourceID (company/owner lookup failed) — supply assignedResourceID explicitly.',
 						);
+						assignedResourceDerivationFailed = true;
+						assignedResourceFailReason = 'the company/owner lookup failed';
 					}
 				} else {
 					labelWarnings.push(
 						'companyNote.create: no assignedResourceID supplied and no companyID to derive an owner from — the API requires assignedResourceID; supply it explicitly.',
 					);
+					assignedResourceDerivationFailed = true;
+					assignedResourceFailReason = 'no companyID was supplied to derive an owner from';
 				}
 			}
 			if (defaults.length > 0) labelWarnings.push(...defaults);
+			if (assignedResourceDerivationFailed) {
+				// x4 (Codex P2h): fail closed BEFORE dispatch — the API would reject
+				// the create for the missing assignedResourceID and format the raw
+				// rejection without this derivation context.
+				return JSON.stringify(
+					wrapError(
+						resource,
+						effectiveOperation,
+						ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+						`companyNote.create requires assignedResourceID and no default could be derived (${assignedResourceFailReason}).`,
+						`Supply assignedResourceID explicitly — a numeric active resource ID, or an exact resource name/email that resolves to an active resource — and retry autotask_${resource} with operation 'create'.`,
+						{ derivationWarnings: labelWarnings },
+					),
+				);
+			}
 		}
 		const [result, parallelCountResult] = await Promise.all([
 			executeToolOperation.call(callContext),
