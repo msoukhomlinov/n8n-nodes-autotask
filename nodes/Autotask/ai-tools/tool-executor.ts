@@ -2643,6 +2643,20 @@ export async function executeAiTool(
 				// artifact, not proof of non-existence.
 				const probeImpersonation =
 					effectiveOperation === 'delete' ? undefined : resolvedImpersonationId;
+				// x4 (Codex P2i): the probe must use the SAME identity policy as
+				// the failed write. If the caller set proceedWithoutImpersonationIfDenied=false,
+				// the failed write stayed under the impersonated identity — but the
+				// probe would otherwise fall back to autotaskApiRequest's true
+				// default, retry its read as the credential user, and an empty
+				// fallback result (different line-of-business visibility) would
+				// misclassify a genuine impersonation denial as ENTITY_NOT_FOUND.
+				// undefined here keeps the true default (matches the write's own
+				// fallback when the model passed nothing).
+				// params values are loosely typed (schema coerces to boolean at parse).
+				const probeProceedWithout =
+					typeof params.proceedWithoutImpersonationIfDenied === 'boolean'
+						? params.proceedWithoutImpersonationIfDenied
+						: undefined;
 				const probeResp = (await autotaskApiRequest.call(
 					callContext,
 					'POST',
@@ -2650,6 +2664,7 @@ export async function executeAiTool(
 					probeBody,
 					{},
 					probeImpersonation,
+					probeProceedWithout,
 				)) as { items?: Array<Record<string, unknown>> } | Array<Record<string, unknown>> | null;
 				const probeItems = Array.isArray(probeResp) ? probeResp : (probeResp?.items ?? []);
 				// v2.29.x: the by-ID query route for configurationItemRelatedItem is
