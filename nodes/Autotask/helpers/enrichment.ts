@@ -243,6 +243,22 @@ function getCachedRaw(key: string): Record<string, unknown> | undefined {
 	return entry.fields;
 }
 
+// PR #151 review: rawCache is only ever swept lazily on read of the exact expired
+// key, so an id that's never queried again stays resident for the full TTL — and
+// scoping the key by credentialIdentity (#142) multiplies the resident set by
+// tenant count in exactly the multi-tenant deployment this fix targets. Sweep
+// expired entries opportunistically at a size threshold rather than adding a
+// timer/LRU.
+const RAW_CACHE_SWEEP_THRESHOLD = 5_000;
+
+function sweepExpiredRawCacheEntries(): void {
+	if (rawCache.size <= RAW_CACHE_SWEEP_THRESHOLD) return;
+	const now = Date.now();
+	for (const [key, entry] of rawCache) {
+		if (now > entry.expiresAt) rawCache.delete(key);
+	}
+}
+
 function applyOutputFields(
 	sourceRecord: Record<string, unknown>,
 	outputFields: Record<string, OutputFieldSpec>,
@@ -360,6 +376,7 @@ async function fetchEntityFields(
 		// Skip caching entirely when identity is null — never fall back to a shared key.
 		const cacheKey = buildRawCacheKey(credentialIdentity, entityName, id);
 		if (cacheKey !== null) {
+			sweepExpiredRawCacheEntries();
 			rawCache.set(cacheKey, { fields: rawResult, expiresAt });
 		}
 
