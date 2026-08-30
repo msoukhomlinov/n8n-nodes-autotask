@@ -13,6 +13,8 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 - **`package-lock.json` version lag** — the lockfile's root `version` field lagged `package.json` (2.27.4 committed / 2.28.9 in the working tree vs 2.29.0 published); it now tracks the package version.
 - **Metadata re-fetch storm on degraded `getFields` reads** — the isActive-capability check in the entity value helper returned its safe-direction verdict uncached on every degraded (empty or throwing) metadata read, re-probing the metadata endpoint on every value lookup for the duration of the degraded window. Degraded verdicts are now memoised for a short TTL (60 s): the storm stops, the memo expires, and the next lookup re-probes — so a transient failure still cannot permanently suppress the active-filtering direction, and a recovered endpoint is picked up promptly.
 
+## [2.29.0] - 2026-08-28
+
 ### Changed
 
 - **Contact resource now supports `delete`** — the Autotask REST API supports `DELETE` on the Contacts entity only via the Company-scoped path (`DELETE Companies/{companyID}/Contacts/{id}`, resolved automatically); the standard node (`Autotask` → Contact → Delete, with a Dry Run toggle) and the AI tool (`autotask_contact` operation `delete`) both expose it. Resolves #146.

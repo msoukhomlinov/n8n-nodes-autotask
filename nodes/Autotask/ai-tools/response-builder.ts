@@ -13,7 +13,7 @@ export interface ToolResponseContext {
 	auditNotes?: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
 	/** v2.29.0 (X4): for moveConfigurationItem — the SOURCE record id (the move clones to a new id and deactivates the source). */
 	originalRecordId?: number | string;
-	/** MAJOR-1 (PR #148 round 10): moveConfigurationItem — true only when the mover ACTUALLY issued (and the API acknowledged) the source deactivation PATCH; false/absent means the source was left untouched. */
+	/** MAJOR-1 (PR #148 round 10), extended x3-V8 (v2.29.1): moveConfigurationItem and moveToCompany — true only when the mover ACTUALLY issued (and the API acknowledged) the source deactivation PATCH; false/absent means the source was left untouched. */
 	sourceDeactivated?: boolean;
 	pendingConfirmations?: PendingLabelConfirmation[];
 	effectiveOffset?: number;
