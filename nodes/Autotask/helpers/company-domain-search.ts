@@ -6,6 +6,7 @@ import { getFields } from './entity/api';
 import {
 	getRedisClient,
 	getRedisConfigFromCredentials,
+	invalidateRedisClient,
 	redisKeyHash,
 	redisUsageKeyHash,
 	type RedisLike,
@@ -83,6 +84,42 @@ const COUNT_PENDING_TTL_MS = 360_000;
  * consecutive missed or jammed renewals still hold the claim.
  */
 const COUNT_RENEW_MS = 60_000;
+/**
+ * Hard per-ATTEMPT bound on ONE `renewCountClaim` EVAL (Codex R5 P1 on PR #150).
+ *
+ * R4 decoupled the JS timers — each tick schedules the next BEFORE awaiting its
+ * renewal — but that alone does not make the attempts independent, because they
+ * are not independent at the TRANSPORT: `getRedisClient` hands every caller for
+ * one credential the SAME node-redis client, i.e. ONE socket whose commands and
+ * replies are queued FIFO. A half-open connection (peer stops replying, no error
+ * and no close event) parks the first EVAL forever, and every later tick's EVAL
+ * queues behind it. Timers keep firing, no renewal ever reaches Redis, the marker
+ * expires at its 360 s TTL, and another worker claims it while this count is
+ * still running. Bounding each attempt and then FORCING the shared connection out
+ * of the registry (`invalidateRedisClient`) is what actually restores
+ * independence: the wedged socket is torn down instead of accumulating a queue,
+ * and the next `getRedisClient` for that credential builds a fresh one.
+ *
+ * 10 s, i.e. 6x under the 60 s cadence: a healthy Redis answers an EVAL in
+ * sub-millisecond time and even a badly overloaded one is orders of magnitude
+ * inside this, so a merely SLOW server is never torn down; while a genuinely hung
+ * connection is detected within its FIRST cycle rather than after several wasted
+ * 60 s rounds. Same order as the connect bound (3 s) and the caller's entry
+ * deadline (10 s) — the scale this file already treats as "no healthy Redis is
+ * ever this slow".
+ *
+ * ACCEPTED WORST CASE: once the connection is invalidated, THIS loop's captured
+ * `redis` reference is a destroyed object for the remainder of the request. Its
+ * later ticks fail FAST (node-redis rejects on a closed client) instead of
+ * hanging — which is the point — but they no longer renew, so the marker may
+ * still expire and be reaped/re-claimed by another worker, producing at most a
+ * duplicate count. That is the SAME worst case this mechanism already accepts for
+ * a crashed claimant (see the pending-TTL doc above and the crash-variant test):
+ * renewal is advisory throughout. The job of this bound is to cap the damage and
+ * let the SYSTEM self-heal — not to keep one in-flight loop alive across an
+ * indefinitely dead socket.
+ */
+const COUNT_RENEW_TIMEOUT_MS = 10_000;
 /**
  * Stale-claim reap threshold (lead F-5 on PR #150): a coordination marker whose
  * embedded renewal epoch is older than this belongs to a claimant that has
@@ -450,6 +487,41 @@ function trackInFlightCount(
 }
 
 /**
+ * ONE renewal attempt under a hard, TRANSPORT-INDEPENDENT bound (Codex R5 P1).
+ * The timeout is a plain `setTimeout` race — it cannot be held open by the very
+ * socket it is policing, which is the entire difference from relying on the EVAL
+ * to settle. On expiry the shared client is force-evicted from the registry so
+ * the NEXT `getRedisClient` for this credential reconnects, then the attempt
+ * falls through as a failure — the caller treats a timeout exactly like a
+ * rejected or `false` renewal, which is why nothing downstream needs to tell
+ * them apart.
+ */
+async function renewAttemptBounded(
+	redis: RedisLike,
+	pendingKey: string,
+	ownerToken: string,
+): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		const attempt = renewCountClaim(
+			redis,
+			pendingKey,
+			countClaimOwnerPrefix(ownerToken),
+			countClaimValue(ownerToken, Date.now()),
+			COUNT_PENDING_TTL_MS,
+		);
+		const timeoutPromise = new Promise<typeof COUNT_TIMEOUT_SENTINEL>((resolve) => {
+			timer = setTimeout(() => resolve(COUNT_TIMEOUT_SENTINEL), COUNT_RENEW_TIMEOUT_MS);
+		});
+		if ((await Promise.race([attempt, timeoutPromise])) === COUNT_TIMEOUT_SENTINEL) {
+			invalidateRedisClient(redis);
+		}
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/**
  * Start the owner-token renewal loop for a live claimant (Codex R3 P1-C). The
  * fixed pending TTL cannot cover the real lifetime of a count: `executeWithRetry`
  * can spend most of its ~5-minute budget queueing and retrying BEFORE an Autotask
@@ -467,12 +539,19 @@ function trackInFlightCount(
  * `renewCountClaim`'s EVAL a command timeout, so a half-open connection can leave
  * one renewal pending indefinitely. Scheduling from `.finally()` would then stall
  * every later tick too, letting the marker expire under a still-live claimant.
- * Ticks are independent of each other's completion, so a stalled renewal costs at
- * most that one attempt.
  *
- * Returns a `stop` handle. Renewal is best-effort: a failed or thrown EVAL only
- * means we may have lost the claim, and the loop keeps trying until the request
- * settles. Nothing here can reject — the whole chain ends in `.catch()`.
+ * That timer-level decoupling is necessary but NOT sufficient (Codex R5 P1): the
+ * ticks still share ONE node-redis client, i.e. one socket with a FIFO command
+ * queue, so a first EVAL that never gets a reply parks every later EVAL behind it
+ * and no renewal reaches Redis at all. `renewAttemptBounded` therefore gives each
+ * attempt its own hard deadline and, on expiry, evicts the shared connection from
+ * the client registry so the transport itself stops being the shared stall point
+ * — see `COUNT_RENEW_TIMEOUT_MS` for the constant and the accepted worst case.
+ *
+ * Returns a `stop` handle. Renewal is best-effort: a failed, thrown, or
+ * timed-out EVAL all mean the same thing — we may have lost the claim — and the
+ * loop keeps trying until the request settles. Nothing here can reject: the whole
+ * chain ends in `.catch()`.
  */
 function startCountRenewal(
 	redis: RedisLike,
@@ -484,14 +563,7 @@ function startCountRenewal(
 	const tick = () => {
 		if (stopped) return;
 		timer = setTimeout(tick, COUNT_RENEW_MS);
-		const now = Date.now();
-		void renewCountClaim(
-			redis,
-			pendingKey,
-			countClaimOwnerPrefix(ownerToken),
-			countClaimValue(ownerToken, now),
-			COUNT_PENDING_TTL_MS,
-		).catch(() => {
+		void renewAttemptBounded(redis, pendingKey, ownerToken).catch(() => {
 			// Renewal is advisory: losing it costs at most a duplicate count later.
 		});
 	};
@@ -499,7 +571,7 @@ function startCountRenewal(
 	return () => {
 		stopped = true;
 		if (timer !== undefined) clearTimeout(timer);
-	}
+	};
 }
 
 /**

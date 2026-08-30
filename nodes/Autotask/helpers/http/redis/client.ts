@@ -185,6 +185,43 @@ export async function getRedisClient(cfg: RedisConfig): Promise<RedisLike | null
 	return entry.connecting;
 }
 
+/**
+ * Force-invalidate a client the CALLER has judged dead, without waiting for
+ * node-redis to notice (Codex R5 P1 on PR #150).
+ *
+ * The `client.on('error')` handler above does the same three things, but it only
+ * runs when node-redis DETECTS a failure. A silently half-open connection emits
+ * nothing at all: the socket stays up, the peer never replies, and node-redis —
+ * which queues commands and replies FIFO on that ONE socket per registry entry —
+ * simply parks every subsequent command behind the first unanswered one. No
+ * error, no close, no timeout of its own (`RedisLike` supplies no per-command
+ * timeout and the client config sets none). Only a caller that imposed its own
+ * bound on a command and saw it blow through can know the connection is gone;
+ * this is how it tells the registry.
+ *
+ * Deliberately a direct, synchronous registry mutation rather than anything
+ * event-driven — it must work in exactly the case where no event will ever fire.
+ * The teardown mirrors the error handler: mark unhealthy, stamp `lastFailedAt`
+ * (so `getRedisClient` observes the usual `RETRY_AFTER_FAIL_MS` backoff instead
+ * of hammering a broken endpoint), best-effort `destroy()`, and null the client
+ * so the next call past the backoff builds a FRESH connection.
+ *
+ * The caller's own captured reference stays dead for the rest of its request —
+ * that is accepted. What this buys is SYSTEM-level recovery: every other caller
+ * for the same credential (`connectionKey`) stops being handed the wedged socket.
+ * Unknown/already-replaced clients are a no-op, so it is safe to call repeatedly.
+ */
+export function invalidateRedisClient(client: RedisLike): void {
+	for (const entry of registry.values()) {
+		if (entry.client !== client) continue;
+		entry.healthy = false;
+		entry.lastFailedAt = Date.now();
+		try { entry.client?.destroy?.(); } catch { /* ignore */ }
+		entry.client = null;
+		return;
+	}
+}
+
 /** Test-only: reset the client registry. */
 export function __resetRedisRegistry(): void {
 	for (const entry of registry.values()) {
