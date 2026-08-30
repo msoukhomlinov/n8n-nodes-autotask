@@ -1,9 +1,14 @@
 import type { IDataObject, IExecuteFunctions, IGetNodeParameterOptions } from 'n8n-workflow';
 import { CountOperation, GetManyOperation } from '../operations/base';
-import type { IAutotaskEntity } from '../types';
+import type { IAutotaskCredentials, IAutotaskEntity } from '../types';
 import type { IFilterCondition } from '../types/base/entity-types';
 import { getFields } from './entity/api';
-import { resolveCredentialIdentity } from './cache/service';
+import {
+	getRedisClient,
+	getRedisConfigFromCredentials,
+	redisKeyHash,
+	type RedisLike,
+} from './http/redis/client';
 
 const MAX_DOMAIN_LIMIT = 100;
 const DEFAULT_DOMAIN_LIMIT = 25;
@@ -17,6 +22,40 @@ const MAX_CONTACT_FALLBACK_LIMIT = 500;
  */
 const COMPANY_TOTAL_COUNT_TIMEOUT_MS = 10_000;
 const COUNT_TIMEOUT_SENTINEL = Symbol('countCompanyTotal:timeout');
+
+/**
+ * Redis key prefix for the distributed single-flight marker of the tenant-wide
+ * count. Same `{baseUrl, APIIntegrationcode}` scope as the thread semaphore
+ * (`n8n-autotask:thr:{hash}:{endpoint}` in `http/request.ts`), different prefix
+ * so a count marker can never collide with a semaphore slot.
+ */
+const COUNT_KEY_PREFIX = 'n8n-autotask:cnt';
+/**
+ * TTL of the in-flight (`pending`) marker. It MUST outlive the longest a count
+ * request can legitimately run: Autotask's own REST execution timeout is 300 s
+ * and the Redis thread lease guarding the endpoint sits above that at 330 s. A
+ * marker that expired first would let another worker claim and start a duplicate
+ * count for a slot that is still busy — the exact oversubscription this dedup
+ * exists to prevent — so the marker sits above both (360 s). A crashed
+ * claimant's marker expires at the TTL and the next caller re-claims.
+ */
+const COUNT_PENDING_TTL_MS = 360_000;
+/**
+ * TTL of a settled count published for the rest of the cluster. `totalAvailable`
+ * is informational coverage context on a bounded scan, not a billing figure, so
+ * a 30 s shared window is well inside its accuracy budget while collapsing a
+ * burst of searches across queue workers into ONE real count.
+ */
+const COUNT_RESULT_TTL_MS = 30_000;
+/**
+ * TTL of the negative marker. Brief on purpose: long enough to stop a retry
+ * storm during an outage from re-stacking doomed counts onto the endpoint, short
+ * enough to never hide a count that would now succeed.
+ */
+const COUNT_ERR_TTL_MS = 10_000;
+/** Non-claimer poll cadence: 250 ms base, doubling per iteration, capped 1 s. */
+const COUNT_POLL_BASE_MS = 250;
+const COUNT_POLL_MAX_MS = 1000;
 const COMPANY_DOMAIN_FIELD_PRIORITY = [
 	'webAddress',
 	'webaddress',
@@ -70,24 +109,132 @@ export interface CompanySearchCoverage extends IDataObject {
 }
 
 /**
- * Module-level single-flight map for the REAL (unraced) count request, keyed by
- * credential identity via `resolveCredentialIdentity()` — same derivation and
- * per-tenant keying discipline as `inFlightMap` in `helpers/enrichment.ts` and
- * `picklistIdSetCache` in `ai-tools/filter-builder.ts` (never key by anything
- * unscoped — that reintroduces the cross-tenant cache leak class this repo has
- * already hit once).
+ * Module-level single-flight map for the REAL (unraced) count request, keyed on
+ * the SHARED THREAD-BUDGET identity — `redisKeyHash(normalizedBaseUrl,
+ * APIIntegrationcode)` — i.e. the SAME scope as the `Itgenatr005` 3-slot
+ * semaphore in `http/request.ts`, and deliberately NOT the username-scoped
+ * `resolveCredentialIdentity()` used by the response caches. Autotask scopes the
+ * concurrent-thread limit by (endpoint + tracking identifier), and the tracking
+ * identifier is the integration code, not the API username: two API users sharing
+ * one integration code share ONE thread budget, so a username-scoped dedup key
+ * would let each of them start its own real count and oversubscribe the very
+ * semaphore this de-dup protects (Codex R2 P1-B on PR #150). One
+ * (normalizedBaseUrl, integrationCode) pair is one Autotask database by that same
+ * scoping (see the `redisKeyHash` doc in `http/redis/client.ts`), so the shared
+ * count is per-database with no cross-database bleed.
  *
- * Why: the 10s Promise.race below only stops OUR code from waiting — it does
- * not cancel the underlying HTTP request or free the Company-endpoint slot it
- * holds in `EndpointThreadTracker` (3 concurrent requests per endpoint, per
- * Autotask's post-2023.1 integration limit). On a slow tenant, retrying the
- * same search a few times previously spawned a fresh real count request each
- * time — each holding a slot for its full ~5-minute real duration — until all 3
- * Company slots were exhausted and the bounded scans that also need the
- * `company` endpoint stalled too (Codex P1 on PR #150 / issue #144). Concurrent
- * or rapid-repeat calls for the SAME tenant now share one underlying request.
+ * Why the map at all: the 10s Promise.race below only stops OUR code from
+ * waiting — it does not cancel the underlying HTTP request or free the
+ * Company-endpoint slot it holds (3 concurrent requests per endpoint, per
+ * Autotask's post-2023.1 integration limit). On a slow tenant, retrying the same
+ * search a few times previously spawned a fresh real count request each time —
+ * each holding a slot for its full ~5-minute real duration — until all 3 Company
+ * slots were exhausted and the bounded scans that also need the `company`
+ * endpoint stalled too (Codex P1 on PR #150 / issue #144).
+ *
+ * With Redis enabled this map is the SAME-PROCESS fast join: the cluster-wide
+ * claimant registers its promise here, so further callers in this process join it
+ * directly without another Redis round-trip. Cross-process coordination is the
+ * `n8n-autotask:cnt:{identity}` marker below.
  */
 const countInFlightMap = new Map<string, Promise<number | undefined>>();
+
+/**
+ * Resolve the two things the distributed single-flight needs: the thread-budget
+ * identity (the same hash the semaphore uses) and a Redis client for the
+ * credential's Redis, or `null` when Redis is disabled/unhealthy.
+ *
+ * Base-URL resolution and normalisation are byte-identical to
+ * `autotaskApiRequest`'s (`zone === 'other' ? customZoneUrl : zone`, trailing
+ * slashes stripped) so the identity here is the SAME hash as the semaphore's
+ * `threadHash` — that equivalence is the whole point: the count shares the exact
+ * budget scope the semaphore protects, never a narrower one.
+ *
+ * Fail-open: any failure (unreadable credentials, missing zone, Redis down)
+ * returns `{ null, null }` and the caller falls back to the in-process map (or
+ * to a direct call when even the identity is unavailable). Scoping must never be
+ * the reason a search fails.
+ *
+ * `getRedisClient`'s first connect can take up to ~3 s and is awaited OUTSIDE
+ * the caller's 10s race window — the same precedent `request.ts` sets by awaiting
+ * it inside the request path; subsequent calls hit its in-process registry.
+ */
+async function resolveCountScoping(context: IExecuteFunctions): Promise<{
+	identity: string | null;
+	redis: RedisLike | null;
+}> {
+	try {
+		const credentials = (await context.getCredentials('autotaskApi')) as IAutotaskCredentials;
+		const baseUrl = credentials.zone === 'other' ? credentials.customZoneUrl || '' : credentials.zone;
+		const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+		if (!normalizedBaseUrl) {
+			return { identity: null, redis: null };
+		}
+		const identity = redisKeyHash(normalizedBaseUrl, String(credentials.APIIntegrationcode ?? ''));
+		const redisConfig = getRedisConfigFromCredentials(credentials as unknown as Record<string, unknown>);
+		const redis = redisConfig ? await getRedisClient(redisConfig) : null;
+		return { identity, redis };
+	} catch {
+		return { identity: null, redis: null };
+	}
+}
+
+/**
+ * Read a cached count marker. `pending` (a claim, not a value) and `err` (a
+ * recent failure) are control tokens, never counts; anything that does not parse
+ * to a finite non-negative integer is treated as absent rather than trusted, so
+ * a foreign value on the key can never be published as `totalAvailable`.
+ */
+function parseCountValue(raw: string | null): number | undefined {
+	if (raw === null || raw === 'pending' || raw === 'err') return undefined;
+	const value = Number(raw);
+	return Number.isFinite(value) && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+/**
+ * Wait for another worker's count to land, polling the shared marker with a
+ * 250 ms base doubling to a 1 s cap. Self-terminating: the deadline is checked
+ * at the TOP of every iteration, so the loop can never outlive the caller's
+ * budget and no timer is left running past it (at most one in-flight GET may
+ * resolve after the deadline — a dropped no-op). Any Redis error degrades to
+ * `undefined` immediately rather than burning the remaining budget.
+ */
+async function pollPending(redis: RedisLike, key: string, deadline: number): Promise<number | undefined> {
+	let delay = COUNT_POLL_BASE_MS;
+	for (;;) {
+		if (Date.now() >= deadline) return undefined;
+		await new Promise((resolve) => setTimeout(resolve, delay));
+		delay = Math.min(delay * 2, COUNT_POLL_MAX_MS);
+		let raw: string | null;
+		try {
+			raw = await redis.get(key);
+		} catch {
+			return undefined;
+		}
+		if (raw === 'err') return undefined;
+		const value = parseCountValue(raw);
+		if (value !== undefined) return value;
+	}
+}
+
+/**
+ * The per-caller 10s bound, extracted so every path (fresh, same-process join,
+ * cluster join) applies it identically. The underlying request is NOT cancelled
+ * — it keeps running and its result is still published for whoever reads the
+ * marker next; only this caller stops waiting.
+ */
+async function raceWithTimeout(promise: Promise<number | undefined>): Promise<number | undefined> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		const timeoutPromise = new Promise<typeof COUNT_TIMEOUT_SENTINEL>((resolve) => {
+			timer = setTimeout(() => resolve(COUNT_TIMEOUT_SENTINEL), COMPANY_TOTAL_COUNT_TIMEOUT_MS);
+		});
+		const count = await Promise.race([promise, timeoutPromise]);
+		return count === COUNT_TIMEOUT_SENTINEL ? undefined : count;
+	} finally {
+		clearTimeout(timer);
+	}
+}
 
 /**
  * The real, unbounded /query/count call. Isolated from the timeout/dedup
@@ -138,55 +285,141 @@ async function runCountCompanyTotalRequest(
 }
 
 /**
+ * Register a started count in the same-process join map, deleting the entry only
+ * when the promise stored there is still the one we registered (a later caller
+ * must never have its entry removed by an earlier request's finally).
+ */
+function trackInFlightCount(
+	identity: string,
+	sharedPromise: Promise<number | undefined>,
+): void {
+	countInFlightMap.set(identity, sharedPromise);
+	void sharedPromise
+		.finally(() => {
+			if (countInFlightMap.get(identity) === sharedPromise) {
+				countInFlightMap.delete(identity);
+			}
+		})
+		.catch(() => {
+			// runCountCompanyTotalRequest never rejects (catch-all above), but the
+			// finally-chain itself must never produce an unhandled rejection even if
+			// that invariant is ever broken by a future edit.
+		});
+}
+
+/**
  * Total company count from one unfiltered /query/count call, de-duplicated
- * per tenant (see `countInFlightMap` above) and bounded by
- * COMPANY_TOTAL_COUNT_TIMEOUT_MS (issue #144). Each caller — whether it starts
- * the request or joins an already-in-flight one for the same credential — is
- * individually raced against its own 10s timer via Promise.race, so no
- * individual call ever waits past that bound even though the underlying
- * request may still be running for a slower/first caller. A `null`
- * credentialIdentity (credentials unreadable) bypasses the in-flight map
- * entirely — same fail-safe as the #142 precedent — and runs the count
- * directly, matching pre-dedup behaviour.
+ * CLUSTER-WIDE and bounded per caller by COMPANY_TOTAL_COUNT_TIMEOUT_MS
+ * (issue #144, Codex P1 / R2 P1-A + P1-B on PR #150).
+ *
+ * Three layers, cheapest first:
+ * 1. Same-process join — an in-flight count for this thread identity is joined
+ *    directly (no Redis round-trip).
+ * 2. Distributed single-flight — through the SAME Redis the thread semaphore
+ *    uses, an atomic `SET NX` claims the `n8n-autotask:cnt:{identity}` marker
+ *    with a `pending` value. The claimant runs the real request and publishes
+ *    the outcome (number for 30 s, `err` for 10 s); every other caller in every
+ *    worker sees `pending`, polls for the settled value, and makes ZERO API
+ *    calls. This is the distributed form of the same decision the in-process map
+ *    makes: de-duplicate rather than cancel, because queue-mode workers each had
+ *    their own map and each held a Company-endpoint slot for the request's full
+ *    real duration.
+ * 3. In-process fallback — when Redis is disabled or unhealthy (or the identity
+ *    cannot be resolved at all), behaviour is exactly the pre-Redis map: scoped by
+ *    thread identity when known, direct/unscoped-and-never-shared when it is not
+ *    (the #142 fail-safe precedent: never key by anything unreadable).
+ *
+ * Bounds are unchanged per caller: every caller is raced against its own 10s
+ * timer, so a slow count degrades to `undefined` for that caller even though the
+ * shared request keeps running and its result is still published for the next
+ * reader. The `pending` TTL (360 s) exceeds the 330 s thread lease, which in
+ * turn exceeds Autotask's 300 s REST execution timeout, so a marker can never
+ * expire while the request it represents is still live; a crashed claimant's
+ * marker simply expires and the next caller re-claims.
  */
 export async function countCompanyTotal(
 	context: IExecuteFunctions,
 	itemIndex: number,
 ): Promise<number | undefined> {
-	const credentialIdentity = await resolveCredentialIdentity(context);
+	const { identity, redis } = await resolveCountScoping(context);
 
-	let sharedPromise: Promise<number | undefined>;
-	const existing = credentialIdentity !== null ? countInFlightMap.get(credentialIdentity) : undefined;
-	if (existing) {
-		sharedPromise = existing;
-	} else {
-		sharedPromise = runCountCompanyTotalRequest(context, itemIndex);
-		if (credentialIdentity !== null) {
-			countInFlightMap.set(credentialIdentity, sharedPromise);
-			void sharedPromise
-				.finally(() => {
-					if (countInFlightMap.get(credentialIdentity) === sharedPromise) {
-						countInFlightMap.delete(credentialIdentity);
-					}
-				})
-				.catch(() => {
-					// runCountCompanyTotalRequest never rejects (catch-all above), but the
-					// finally-chain itself must never produce an unhandled rejection even if
-					// that invariant is ever broken by a future edit.
-				});
+	// 1. Same-process fast join (also the only join available when Redis is off).
+	if (identity !== null) {
+		const existing = countInFlightMap.get(identity);
+		if (existing) return await raceWithTimeout(existing);
+	}
+
+	// 2. Distributed single-flight across queue workers.
+	if (redis !== null && identity !== null) {
+		const key = `${COUNT_KEY_PREFIX}:${identity}`;
+
+		let raw: string | null = null;
+		try {
+			raw = await redis.get(key);
+		} catch {
+			raw = null;
 		}
+		const cached = parseCountValue(raw);
+		if (cached !== undefined) return cached;
+		if (raw === 'err') return undefined;
+
+		let claimed = false;
+		if (raw === null) {
+			try {
+				claimed = (await redis.set(key, 'pending', { NX: true, PX: COUNT_PENDING_TTL_MS })) === 'OK';
+			} catch {
+				claimed = false;
+			}
+		}
+
+		if (!claimed) {
+			// Another worker claimed it (or a result/err marker appeared between
+			// our GET and our SET). Re-read once, then poll within OUR budget.
+			let settled: string | null = null;
+			try {
+				settled = await redis.get(key);
+			} catch {
+				settled = null;
+			}
+			const value = parseCountValue(settled);
+			if (value !== undefined) return value;
+			if (settled === 'err') return undefined;
+			return await pollPending(redis, key, Date.now() + COMPANY_TOTAL_COUNT_TIMEOUT_MS);
+		}
+
+		// We are the cluster-wide claimant.
+		// Invariant (PR #150 security review S-2): this request runs under the CLAIMANT's
+		// context + itemIndex, yet its result is published cluster-wide and shared with
+		// callers that carry different contexts, while the marker key carries neither.
+		// That is safe only because the count outcome is a pure function of the
+		// thread-budget identity: runCountCompanyTotalRequest neutralises every
+		// caller-specific input (the scoped override forces filtersFromTool=undefined /
+		// fieldsToMap={}), company is a root entity (no parent lookup), and
+		// CountOperation passes no impersonationResourceId. If any of those ever
+		// changes, the shared outcome must be re-keyed per caller before publishing.
+		const sharedPromise = runCountCompanyTotalRequest(context, itemIndex);
+		trackInFlightCount(identity, sharedPromise);
+		// Best-effort publish: a failed SET only means other workers re-claim
+		// later (fail-open), it must never turn into a failed search.
+		void sharedPromise
+			.then((count) =>
+				count === undefined
+					? redis.set(key, 'err', { PX: COUNT_ERR_TTL_MS })
+					: redis.set(key, String(count), { PX: COUNT_RESULT_TTL_MS }),
+			)
+			.catch(() => {
+				// Publish is advisory; swallow so it can never reject unobserved.
+			});
+		return await raceWithTimeout(sharedPromise);
 	}
 
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	try {
-		const timeoutPromise = new Promise<typeof COUNT_TIMEOUT_SENTINEL>((resolve) => {
-			timer = setTimeout(() => resolve(COUNT_TIMEOUT_SENTINEL), COMPANY_TOTAL_COUNT_TIMEOUT_MS);
-		});
-		const count = await Promise.race([sharedPromise, timeoutPromise]);
-		return count === COUNT_TIMEOUT_SENTINEL ? undefined : count;
-	} finally {
-		clearTimeout(timer);
+	// 3. In-process fallback (Redis disabled/unhealthy).
+	if (identity === null) {
+		return await raceWithTimeout(runCountCompanyTotalRequest(context, itemIndex));
 	}
+	const sharedPromise = runCountCompanyTotalRequest(context, itemIndex);
+	trackInFlightCount(identity, sharedPromise);
+	return await raceWithTimeout(sharedPromise);
 }
 
 /**
