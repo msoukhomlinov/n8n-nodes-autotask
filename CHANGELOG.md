@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.29.2] - 2026-08-30
+
+### Fixed
+
+- **`company.searchByDomain` no longer silently no-ops on an explicit `domain: null`** — the schema's `.nullish()` let an explicit `null` through untouched, and the executor's generic null-normalisation loop then collapsed it to "not provided" before dispatch, producing a misleading "search completed, no matches" (or, in some cases, an opaque internal-error) response for a search that never actually ran. `domain` now joins `EXPLICITNESS_SENSITIVE_KEYS` so an explicit `null` survives to a new pre-flight guard, which rejects `null`/blank string/the literal string `'null'` with `INVALID_FILTER_CONSTRAINT` before any dispatch. Omitting `domain` entirely is unaffected — it keeps its existing graceful "no domain supplied" behaviour. Resolves #143.
+
 ## [2.29.1] - 2026-08-30
 
 ### Changed
