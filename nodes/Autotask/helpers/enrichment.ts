@@ -1,5 +1,6 @@
 import type { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-workflow';
 import { QUERY_LIMITS } from '../constants/operations';
+import { resolveCredentialIdentity } from './cache/service';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,15 +30,31 @@ interface EnrichmentCacheEntry {
 }
 
 /**
- * Cache of raw source records keyed by `raw:${entityName}:${id}`.
+ * Cache of raw source records keyed by `${credentialIdentity}|raw:${entityName}:${id}`.
  * Raw records are entity/outputFields-agnostic — outputFields are computed per call,
  * avoiding shape collision when multiple registry entries share the same entityName
  * (e.g. resourceID + assignedResourceID both resolve Resource; taskID nextHop + direct
  * projectID both resolve Project).
+ *
+ * Keyed by credential identity (issue #142) — same derivation
+ * (`resolveCredentialIdentity`) used by metadataCache/artifactCache/picklistIdSetCache
+ * elsewhere in this repo. Without this, tenant A's enrichment fetches could be served
+ * to tenant B's calls for the same record IDs in a multi-tenant process. A null
+ * identity (credentials unreadable) bypasses the cache entirely — see
+ * `buildRawCacheKey`.
  */
 const rawCache = new Map<string, EnrichmentCacheEntry>();
 
 const inFlightMap = new Map<string, Promise<Record<string, unknown>[]>>();
+
+/** Returns `null` (never cache) when credentialIdentity is null — never fall back to a shared key. */
+function buildRawCacheKey(
+	credentialIdentity: string | null,
+	entityName: string,
+	id: number,
+): string | null {
+	return credentialIdentity !== null ? `${credentialIdentity}|raw:${entityName}:${id}` : null;
+}
 
 // ---------------------------------------------------------------------------
 // Enrichment registry
@@ -259,6 +276,7 @@ async function fetchEntityFields(
 	context: IExecuteFunctions | ILoadOptionsFunctions,
 	warnings: string[],
 	MAX_IN_CLAUSE: number,
+	credentialIdentity: string | null,
 ): Promise<Map<number, Record<string, unknown>>> {
 	const resultMap = new Map<number, Record<string, unknown>>();
 
@@ -267,7 +285,8 @@ async function fetchEntityFields(
 	// per entity:id, since multiple registry entries can share an entityName.
 	const uncachedIds: number[] = [];
 	for (const id of ids) {
-		const rawRecord = getCachedRaw(`raw:${entityName}:${id}`);
+		const cacheKey = buildRawCacheKey(credentialIdentity, entityName, id);
+		const rawRecord = cacheKey !== null ? getCachedRaw(cacheKey) : undefined;
 		if (rawRecord !== undefined) {
 			resultMap.set(id, applyOutputFields(rawRecord, outputFields));
 		} else {
@@ -287,7 +306,13 @@ async function fetchEntityFields(
 		uncachedIds.splice(MAX_IN_CLAUSE);
 	}
 
-	const batchKey = `batch:${entityName}:${[...uncachedIds].sort((a, b) => a - b).join(',')}`;
+	const sortedIds = [...uncachedIds].sort((a, b) => a - b).join(',');
+	// Null identity (credentials unreadable) → unique key per call, so this batch never
+	// coalesces with any other call's in-flight fetch or is left behind in inFlightMap.
+	const batchKey =
+		credentialIdentity !== null
+			? `${credentialIdentity}|batch:${entityName}:${sortedIds}`
+			: `nocache:${Date.now()}:${Math.random()}|batch:${entityName}:${sortedIds}`;
 
 	if (!inFlightMap.has(batchKey)) {
 		const promise = (async () => {
@@ -318,8 +343,12 @@ async function fetchEntityFields(
 		const id = rawResult['id'] as number;
 		if (id == null) continue;
 
-		// Cache only the raw source record — outputFields computed per call (see above)
-		rawCache.set(`raw:${entityName}:${id}`, { fields: rawResult, expiresAt });
+		// Cache only the raw source record — outputFields computed per call (see above).
+		// Skip caching entirely when identity is null — never fall back to a shared key.
+		const cacheKey = buildRawCacheKey(credentialIdentity, entityName, id);
+		if (cacheKey !== null) {
+			rawCache.set(cacheKey, { fields: rawResult, expiresAt });
+		}
 
 		resultMap.set(id, applyOutputFields(rawResult, outputFields));
 	}
@@ -367,6 +396,13 @@ export async function enrichResponseJson(
 			return responseJson;
 		}
 
+		// Credential identity for cache scoping (#142) — resolved once per call, threaded
+		// through to every rawCache/inFlightMap key below. Null (credentials unreadable)
+		// bypasses caching entirely rather than falling back to a shared key.
+		const credentialIdentity = await resolveCredentialIdentity(
+			context as unknown as IExecuteFunctions,
+		);
+
 		const warnings: string[] = [];
 
 		for (const [fieldKey, config] of Object.entries(ENRICHMENT_REGISTRY)) {
@@ -392,6 +428,7 @@ export async function enrichResponseJson(
 				context,
 				warnings,
 				QUERY_LIMITS.MAX_IN_CLAUSE_VALUES,
+				credentialIdentity,
 			);
 
 			// Handle optional second hop
@@ -401,7 +438,8 @@ export async function enrichResponseJson(
 				// Collect unique next-hop IDs by reading raw source records from rawCache
 				const nextHopIdSet = new Set<number>();
 				for (const id of uniqueIds) {
-					const rawRecord = getCachedRaw(`raw:${config.entityName}:${id}`);
+					const cacheKey = buildRawCacheKey(credentialIdentity, config.entityName, id);
+					const rawRecord = cacheKey !== null ? getCachedRaw(cacheKey) : undefined;
 					if (rawRecord) {
 						const nextIdRaw = rawRecord[nextHop.idField];
 						if (typeof nextIdRaw === 'number' && nextIdRaw > 0) {
@@ -419,6 +457,7 @@ export async function enrichResponseJson(
 						context,
 						warnings,
 						QUERY_LIMITS.MAX_IN_CLAUSE_VALUES,
+						credentialIdentity,
 					);
 				}
 			}
@@ -440,7 +479,8 @@ export async function enrichResponseJson(
 
 				// Inject next-hop output fields
 				if (nextHopMap && config.nextHop) {
-					const rawRecord = getCachedRaw(`raw:${config.entityName}:${v}`);
+					const cacheKey = buildRawCacheKey(credentialIdentity, config.entityName, v);
+					const rawRecord = cacheKey !== null ? getCachedRaw(cacheKey) : undefined;
 					if (rawRecord) {
 						const nextId = rawRecord[config.nextHop.idField];
 						if (typeof nextId === 'number' && nextId > 0) {

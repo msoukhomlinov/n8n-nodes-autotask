@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.29.2] - 2026-08-30
+
+### Fixed
+
+- **Enrichment cache not scoped by credential identity** — the module-level raw-response cache and in-flight coalescing map in `helpers/enrichment.ts` (ticket/task/etc. display-field enrichment) were keyed without the credential identity, unlike every other per-tenant cache in the node. In a multi-tenant process (`acceptInjectedCredentials` / per-user MCP credentials), tenant A's enrichment API responses could be served to tenant B's calls for the same record IDs. Both caches are now keyed by `resolveCredentialIdentity(context)` (same derivation used by `metadataCache`/`artifactCache`/the picklist ID-set cache); a null identity (credentials unreadable) bypasses caching entirely rather than falling back to a shared key. Resolves #142.
+
 ## [2.29.1] - 2026-08-30
 
 ### Changed
