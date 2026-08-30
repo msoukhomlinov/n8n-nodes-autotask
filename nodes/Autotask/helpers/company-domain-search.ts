@@ -163,11 +163,17 @@ export async function countCompanyTotal(
 		sharedPromise = runCountCompanyTotalRequest(context, itemIndex);
 		if (credentialIdentity !== null) {
 			countInFlightMap.set(credentialIdentity, sharedPromise);
-			void sharedPromise.finally(() => {
-				if (countInFlightMap.get(credentialIdentity) === sharedPromise) {
-					countInFlightMap.delete(credentialIdentity);
-				}
-			});
+			void sharedPromise
+				.finally(() => {
+					if (countInFlightMap.get(credentialIdentity) === sharedPromise) {
+						countInFlightMap.delete(credentialIdentity);
+					}
+				})
+				.catch(() => {
+					// runCountCompanyTotalRequest never rejects (catch-all above), but the
+					// finally-chain itself must never produce an unhandled rejection even if
+					// that invariant is ever broken by a future edit.
+				});
 		}
 	}
 
