@@ -26,6 +26,7 @@ import {
 	shouldApplyAliases,
 } from '../helpers/change-info-aliases';
 import { buildOperationDoc } from './description-builders';
+import { operationSupportsImpersonation } from '../helpers/impersonation';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
 import { getConfiguredTimezone } from '../helpers/date-time/utils';
 import {
@@ -83,8 +84,32 @@ import {
 } from './debug-trace';
 import { buildWriteResolutionBlocker, summariseResolutionState } from './write-guard';
 import { validateOperationContract, hasProvidedValue } from './operation-contracts';
-import { enrichResponseJson } from '../helpers/enrichment';
-import { autotaskApiRequest } from '../helpers/http';
+import { isLikelyId } from '../helpers/id-utils';
+import { ENRICHMENT_REGISTRY, enrichResponseJson } from '../helpers/enrichment';
+import {
+	autotaskApiRequest,
+	buildEntityUrl,
+	clearImpersonationDenialToken,
+	drainImpersonationDenialMarkers,
+	registerImpersonationDenialToken,
+} from '../helpers/http';
+import { AUTOTASK_ENTITIES, entityNameForResource, getEntityMetadata } from '../constants/entities';
+
+/**
+ * Lowercased trigger fields of the enrichment registry (ENRICHMENT_REGISTRY in
+ * helpers/enrichment.ts — the registry keys ARE the trigger fields
+ * enrichResponseJson() reads off each record). The sparse-fields projection
+ * keeps these even when not requested, so enrichment keeps firing (X15: the
+ * previous hardcoded ticketID/taskID-only keep-set silently disabled every
+ * other trigger under sparse `fields` selection).
+ *
+ * Derived LIVE from the registry: adding an ENRICHMENT_REGISTRY entry needs no
+ * change here (the documented contract that enrichment additions are
+ * tool-executor-free).
+ */
+const ENRICHMENT_TRIGGER_FIELDS = [
+	...new Set(Object.keys(ENRICHMENT_REGISTRY).map((key) => key.toLowerCase())),
+];
 
 /**
  * Coerce an unknown value to boolean, handling Copilot Studio's integer coercion
@@ -281,6 +306,27 @@ export const EXPLICITNESS_SENSITIVE_KEYS = new Set<string>(['status', 'priority'
  * Execute an Autotask operation by routing to the existing tool executor
  * with getNodeParameter overridden to map flat AI tool params.
  */
+function supportsListProjection(operation: string): boolean {
+	return ['getMany', 'getPosted', 'getUnposted'].includes(operation);
+}
+
+// PR #148 SEC-3: per-invocation counter so each executeAiTool() call gets a
+// unique impersonation-denial token (see registerImpersonationDenialToken in
+// helpers/http/request.ts).
+let aiToolDenialTokenSeq = 0;
+
+// PR #148 SEC-3 (x3 V2): drain this execution's impersonation-denial markers
+// (request.ts tags them onto the per-call token) into the response warnings
+// array. Idempotent — each drain empties the token's queue, so calling it
+// more than once per operation is a no-op after the first.
+function drainDenialWarningsInto(token: string, warnings: string[]): void {
+	for (const denial of drainImpersonationDenialMarkers(token)) {
+		warnings.push(
+			`impersonation denied for resource ${denial.resourceId} on ${denial.method} ${denial.endpoint}; the request was retried without impersonation and executed as the credential user — the record is attributed to the API user, not the impersonated resource.`,
+		);
+	}
+}
+
 export async function executeAiTool(
 	context: IExecuteFunctions,
 	resource: string,
@@ -296,6 +342,31 @@ export async function executeAiTool(
 			: typeof rawCorrelation === 'number'
 				? String(rawCorrelation)
 				: undefined;
+
+	// PR #148 SEC-3: execution-scoped token for the impersonation-denial retry
+	// mechanism in request.ts. autotaskApiRequest() tags every denial-retry it
+	// performs for this CALL context (or an Object.create(callContext) probe
+	// derivative — request.ts walks the prototype chain, so it finds the nearest
+	// per-call token); the markers are drained into warnings[] after the
+	// operation runs and cleared in the finally block. Legacy standard-node
+	// executions never register a token, so they keep the console.warn-only
+	// behaviour.
+	//
+	// Per-call context derivative (x3 V7): supplyData()'s func() arrow closes
+	// over ONE shared n8n context object (under the MCP trigger a single
+	// long-running execution serves every tool call), so concurrent
+	// executeAiTool() invocations all see the same base `context` object.
+	// Registering the token on that shared object meant a second call's
+	// registerImpersonationDenialToken() overwrote the first call's token in
+	// the WeakMap — a denial from call A was attributed to call B's token and
+	// A's warnings[] lost it. This call therefore operates on a lightweight
+	// per-call derivative (Object.create preserves the base's methods and
+	// state through the prototype chain — the same pattern the probe
+	// derivatives below use); the base `context` is only read before the
+	// derivative is created and is never mutated from this point on.
+	const callContext: IExecuteFunctions = Object.create(context);
+	const impersonationDenialToken = `ai-denial-${++aiToolDenialTokenSeq}`;
+	registerImpersonationDenialToken(callContext, impersonationDenialToken);
 
 	// Strip n8n framework metadata injected into every tool call
 	const params = {} as ToolExecutorParams;
@@ -379,9 +450,12 @@ export async function executeAiTool(
 		},
 	});
 
-	const timezone = await getConfiguredTimezone.call(context);
+	const timezone = await getConfiguredTimezone.call(callContext);
 
-	const originalGetNodeParameter = context.getNodeParameter.bind(context);
+	// Bound to the per-call derivative: the override is not installed yet, so
+	// this captures the base n8n getter (reached via the prototype chain) for
+	// the keys the flat-param override delegates to.
+	const originalGetNodeParameter = callContext.getNodeParameter.bind(callContext);
 	const readFields = metadata.readFields ?? [];
 	const writeFields = metadata.writeFields ?? [];
 	const fieldValues = buildFieldValues(params, ['id'], writeFields);
@@ -427,7 +501,7 @@ export async function executeAiTool(
 		unresolvedPicklistFilters,
 		unresolvedPicklistFilterDetails,
 	} = await resolveAndClassifyFilters(
-		context,
+		callContext,
 		resource,
 		filters,
 		readFields,
@@ -474,7 +548,7 @@ export async function executeAiTool(
 		try {
 			const mode = (params.mode as 'read' | 'write') ?? 'read';
 			const result = await describeResource(
-				context as unknown as ILoadOptionsFunctions,
+				callContext as unknown as ILoadOptionsFunctions,
 				resource,
 				mode,
 			);
@@ -533,7 +607,7 @@ export async function executeAiTool(
 		}
 		try {
 			const result = await listPicklistValues(
-				context as unknown as ILoadOptionsFunctions,
+				callContext as unknown as ILoadOptionsFunctions,
 				resource,
 				params.fieldId as string,
 				params.query as string | undefined,
@@ -707,6 +781,98 @@ export async function executeAiTool(
 				),
 				correlationId,
 			);
+		}
+		// v2.29.0 (Codex F2 on PR #148): a leaf whose 'field' key holds a
+		// non-string or empty value (e.g. {"field":null,"op":"eq","value":"Open"})
+		// passes the op-only checks above and would crash
+		// resolveAndClassifyFilters' .toLowerCase() call sites (outside its
+		// per-resolution try/catch) as a raw thrown tool failure. Reject such
+		// leaves at this validation step with the standard filter-constraint
+		// envelope, naming the malformed leaf.
+		let malformedJsonLeaf: string | null = null;
+		const checkJsonLeafFields = (node: unknown): void => {
+			if (malformedJsonLeaf !== null) return;
+			if (typeof node !== 'object' || node === null) return;
+			const obj = node as Record<string, unknown>;
+			if ('field' in obj) {
+				const field = obj.field;
+				if (typeof field !== 'string' || field.trim() === '') {
+					malformedJsonLeaf = JSON.stringify(obj).slice(0, 200);
+					return;
+				}
+			}
+			if (Array.isArray(obj.items)) {
+				for (const it of obj.items) {
+					checkJsonLeafFields(it);
+				}
+			}
+		};
+		for (const el of parsedFiltersJson) {
+			checkJsonLeafFields(el);
+		}
+		if (malformedJsonLeaf !== null) {
+			return attachCorrelation(
+				JSON.stringify(
+					formatFilterConstraintError(
+						resource,
+						normalisedOperation,
+						`filtersJson validation error: every leaf condition needs a non-empty string 'field' (malformed leaf: ${malformedJsonLeaf}).`,
+						'Fix the malformed filtersJson leaf: "field" must be a non-empty string field name (e.g. {"field":"status","op":"eq","value":5}).',
+					),
+				),
+				correlationId,
+			);
+		}
+		// v2.29.0 (X16): filtersJson conditions bypassed the flat path's label
+		// resolution (resolveAndClassifyFilters only sees filters built from the
+		// filter_field slots), so picklist/reference labels in filtersJson were sent
+		// raw and the API rejected them ("Conversion failed when converting the
+		// varchar value ... to data <field> int"). Resolve the leaf conditions in
+		// place (group items included — same object references flow into
+		// combinedFilters) and merge the outcome into the shared accumulators so
+		// resolvedLabels/warnings/pendingConfirmations and the unresolved-filter
+		// guards behave identically for both parameter styles.
+		if (readFields.length > 0) {
+			const jsonLeaves: ToolFilter[] = [];
+			// v2.29.0 (m5): the filter validator accepts arbitrary nesting (groups
+			// inside groups), so walk every object whose items is an array and collect
+			// every leaf that has a field at any depth. The collected objects are the
+			// same references that flow into combinedFilters — resolution mutates them
+			// in place.
+			const collectJsonLeaves = (node: unknown): void => {
+				if (typeof node !== 'object' || node === null) return;
+				const obj = node as Record<string, unknown>;
+				// Only leaves with a usable field name reach resolution — a
+				// non-string/empty 'field' was already rejected at the validation
+				// step above (Codex F2 on PR #148).
+				if ('field' in obj && typeof obj.field === 'string' && (obj.field as string).trim() !== '') {
+					jsonLeaves.push(obj as unknown as ToolFilter);
+				}
+				if (Array.isArray(obj.items)) {
+					for (const it of obj.items) {
+						collectJsonLeaves(it);
+					}
+				}
+			};
+			for (const el of parsedFiltersJson as unknown as Array<Record<string, unknown>>) {
+				collectJsonLeaves(el);
+			}
+			if (jsonLeaves.length > 0) {
+				const jsonResolution = await resolveAndClassifyFilters(
+					callContext,
+					resource,
+					jsonLeaves,
+					readFields,
+					params as IDataObject,
+				);
+				filterResolutions.push(...jsonResolution.resolutions);
+				filterWarnings.push(...jsonResolution.warnings);
+				filterPendingConfirmations.push(...jsonResolution.pendingConfirmations);
+				unresolvedIdLikeFilters.push(...jsonResolution.unresolvedIdLikeFilters);
+				unresolvedIdLikeFilterDetails.push(...jsonResolution.unresolvedIdLikeFilterDetails);
+				unresolvedPicklistFilters.push(...jsonResolution.unresolvedPicklistFilters);
+				unresolvedPicklistFilterDetails.push(...jsonResolution.unresolvedPicklistFilterDetails);
+			}
 		}
 		// Recency always AND-appended on top (time window constraint)
 		combinedFilters = [...parsedFiltersJson, ...recencyResult.filters];
@@ -1098,6 +1264,48 @@ export async function executeAiTool(
 		}
 	}
 
+	// v2.29.0 (Codex P1 on PR #148): contact deletion is only exposed by the API on
+	// the company-scoped path (DELETE Companies/{companyID}/Contacts/{id}). Without
+	// companyID the executor would fall back to a flat endpoint that Autotask rejects.
+	if (resource === 'contact' && effectiveOperation === 'delete' && !hasProvidedValue(params.companyID)) {
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					'delete',
+					ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+					'Deleting a contact requires companyID — the Autotask API only exposes contact deletion via the company-scoped path (Companies/{companyID}/Contacts/{id}).',
+					`Retry autotask_contact with operation 'delete' supplying id and companyID (numeric ID or company name, auto-resolved). If the contact's company is unknown, call autotask_contact with operation 'get' using the contact id and read companyID.`,
+				),
+			),
+			correlationId,
+		);
+	}
+
+	// v2.29.0 (m4): CIRI deletion is only exposed by the API on the CI-scoped path
+	// (DELETE ConfigurationItems/{configurationItemID}/RelatedItems/{id}). Without
+	// configurationItemID the executor would fall back to a flat endpoint that
+	// Autotask rejects.
+	if (
+		resource === 'configurationItemRelatedItem'
+		&& effectiveOperation === 'delete'
+		&& !hasProvidedValue(params.configurationItemID)
+	) {
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					'delete',
+					ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+					'Delete a configuration item related item requires the parent configurationItemID (numeric ID or CI name)',
+					"supply configurationItemID (a numeric configuration item ID or its name) — run autotask_configurationItemRelatedItem with operation 'describeFields' if unsure",
+					{ missingFields: ['configurationItemID'] },
+				),
+			),
+			correlationId,
+		);
+	}
+
 	// Pre-flight: reject rejectReason (when rejectReasonPolicy is mandatory)
 	if (
 		effectiveOperation === 'reject' &&
@@ -1148,9 +1356,39 @@ export async function executeAiTool(
 		}
 	}
 
+	// v2.29.x (X11 ordering fix): companyNote.create parity defaults must exist
+	// BEFORE the required-field validation below, or a minimal create
+	// (note + companyID) is rejected here before the defaults run. The three
+	// unconditional defaults are set now (notes kept for the warnings block);
+	// assignedResourceID is derived AFTER this point (impersonation / company-
+	// owner probes), so it is sentinel-exempted from the required check — if no
+	// usable resource can be derived, the X11 block warns and the API's own
+	// missing-field error surfaces.
+	const x11PreDefaults: string[] = [];
+	if (resource === 'companyNote' && effectiveOperation === 'create') {
+		const x11NowIso = new Date().toISOString();
+		if (fieldValues.actionType === undefined) {
+			fieldValues.actionType = 3; // 'Note: General'
+			x11PreDefaults.push("companyNote.create: actionType defaulted to 3 ('Note: General')");
+		}
+		if (fieldValues.startDateTime === undefined) {
+			fieldValues.startDateTime = x11NowIso;
+			x11PreDefaults.push(`companyNote.create: startDateTime defaulted to ${x11NowIso}`);
+		}
+		if (fieldValues.endDateTime === undefined) {
+			fieldValues.endDateTime = x11NowIso;
+			x11PreDefaults.push(`companyNote.create: endDateTime defaulted to ${x11NowIso}`);
+		}
+	}
 	if (['create', 'update', 'createIfNotExists'].includes(effectiveOperation)) {
+		const writeValidationInput =
+			resource === 'companyNote'
+			&& effectiveOperation === 'create'
+			&& fieldValues.assignedResourceID === undefined
+				? { ...fieldValues, assignedResourceID: 0 }
+				: fieldValues;
 		const writeValidation = validateWriteFields(
-			fieldValues,
+			writeValidationInput,
 			writeFields,
 			resource,
 			effectiveOperation,
@@ -1165,13 +1403,20 @@ export async function executeAiTool(
 	let labelResolutions: LabelResolution[] = [];
 	let labelWarnings: string[] = [];
 	let labelPendingConfirmations: PendingLabelConfirmation[] = [];
+	// v2.29.0 (Codex P1 on PR #148): include delete so a company name supplied as
+	// companyID on a contact delete is resolved to a numeric ID (the company-scoped
+	// delete endpoint requires the numeric parent company). The same gate covers
+	// configurationItemRelatedItem deletes: a CI name supplied as configurationItemID
+	// is resolved via the reference field in the create metadata (the CI-scoped
+	// delete endpoint requires the numeric parent CI).
+
 	if (
-		['create', 'update', 'createIfNotExists'].includes(effectiveOperation) &&
+		['create', 'update', 'createIfNotExists', 'delete'].includes(effectiveOperation) &&
 		Object.keys(fieldValues).length > 0
 	) {
 		try {
 			const resolution = await resolveLabelsToIds(
-				context,
+				callContext,
 				resource,
 				fieldValues as IDataObject,
 				params as IDataObject,
@@ -1186,6 +1431,61 @@ export async function executeAiTool(
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			labelWarnings.push(`Label resolution failed: ${msg}.`);
+		}
+	}
+
+	// x5: a company/CI name that failed to resolve above stays as the raw label
+	// string in fieldValues — dispatching that to the parent-scoped delete
+	// endpoint (e.g. Companies/{name}/Contacts/{id}) sends a doomed request.
+	// Fail closed with a specific error instead of a raw API rejection.
+	if (effectiveOperation === 'delete') {
+		if (
+			resource === 'contact' &&
+			fieldValues.companyID !== undefined &&
+			!isLikelyId(fieldValues.companyID)
+		) {
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						'delete',
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`companyID '${String(fieldValues.companyID)}' could not be resolved to a numeric company ID.`,
+						`Supply a numeric companyID, an exact company name, or call autotask_contact with operation 'get' using the contact id to read the correct companyID, then retry autotask_contact with operation 'delete'.`,
+						{
+							...(labelPendingConfirmations.length > 0
+								? { pendingConfirmations: labelPendingConfirmations }
+								: {}),
+							...(labelWarnings.length > 0 ? { warnings: labelWarnings } : {}),
+						},
+					),
+				),
+				correlationId,
+			);
+		}
+		if (
+			resource === 'configurationItemRelatedItem' &&
+			fieldValues.configurationItemID !== undefined &&
+			!isLikelyId(fieldValues.configurationItemID)
+		) {
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						'delete',
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`configurationItemID '${String(fieldValues.configurationItemID)}' could not be resolved to a numeric configuration item ID.`,
+						`Supply a numeric configurationItemID or an exact configuration item name, then retry autotask_configurationItemRelatedItem with operation 'delete'.`,
+						{
+							...(labelPendingConfirmations.length > 0
+								? { pendingConfirmations: labelPendingConfirmations }
+								: {}),
+							...(labelWarnings.length > 0 ? { warnings: labelWarnings } : {}),
+						},
+					),
+				),
+				correlationId,
+			);
 		}
 	}
 
@@ -1216,6 +1516,36 @@ export async function executeAiTool(
 		} catch {
 			labelWarnings.push('userDefinedFields is not valid JSON. Provide a JSON object like {"Field Name": "value"}. UDF values were not set.');
 		}
+	}
+
+	// x4 (Codex P2e): per-call impersonation guard. The unified schema exposes
+	// impersonationResourceId when the resource's operation SET contains an
+	// impersonation-capable op (for 'resource': transferOwnership), but
+	// resource.update targets /Resources/, which the endpoint gate treats as
+	// unsupported and SILENTLY drops the parameter — a successful response
+	// would then falsely imply the requested attribution was applied. Reject
+	// per call instead of letting it be dropped. transferOwnership is exempt:
+	// its reassignment sub-calls (Companies/Tickets/Tasks/...) are on
+	// supported segments.
+	if (
+		params.impersonationResourceId !== undefined &&
+		params.impersonationResourceId !== null &&
+		params.impersonationResourceId !== '' &&
+		!operationSupportsImpersonation(resource, effectiveOperation)
+	) {
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					effectiveOperation,
+					ERROR_TYPES.INVALID_WRITE_FIELDS,
+					`impersonationResourceId is not supported for ${resource}.${effectiveOperation} — the Autotask API does not support impersonation on that endpoint, and passing it there is silently ignored while the call still succeeds.`,
+					`Remove impersonationResourceId (and proceedWithoutImpersonationIfDenied) and retry autotask_${resource} with operation '${effectiveOperation}', or use operation 'transferOwnership' which forwards it to the reassignment calls.`,
+					{ providedValue: String(params.impersonationResourceId) },
+				),
+			),
+			correlationId,
+		);
 	}
 
 	// Resolve impersonationResourceId name/email → numeric ID for write operations only.
@@ -1258,7 +1588,7 @@ export async function executeAiTool(
 			try {
 				const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
 				const helper = new EntityValueHelper(
-					context as unknown as import('n8n-workflow').ILoadOptionsFunctions,
+					callContext as unknown as import('n8n-workflow').ILoadOptionsFunctions,
 					'Resource',
 				);
 				const candidates = await helper.getValues(true);
@@ -1341,7 +1671,7 @@ export async function executeAiTool(
 				try {
 					const { EntityValueHelper } = await import('../helpers/entity-values/value-helper');
 					const helper = new EntityValueHelper(
-						context as unknown as import('n8n-workflow').ILoadOptionsFunctions,
+						callContext as unknown as import('n8n-workflow').ILoadOptionsFunctions,
 						'Company',
 					);
 					const candidates = await helper.getValues(true);
@@ -1468,7 +1798,7 @@ export async function executeAiTool(
 		if (resId > 0) {
 			try {
 				const resResponse = await autotaskApiRequest.call(
-					context, 'GET', `Resources/${resId}`,
+					callContext, 'GET', `Resources/${resId}`,
 				) as { item?: Record<string, unknown> };
 				const defaultRoleId = resResponse?.item?.defaultServiceDeskRoleID;
 				if (typeof defaultRoleId === 'number' && defaultRoleId > 0) {
@@ -1497,7 +1827,7 @@ export async function executeAiTool(
 		);
 		if (blocker !== null) return attachCorrelation(blocker, correlationId);
 	}
-	context.getNodeParameter = ((
+	callContext.getNodeParameter = ((
 		name: string,
 		index: number,
 		fallbackValue?: unknown,
@@ -1514,6 +1844,30 @@ export async function executeAiTool(
 				return `${resource}.${effectiveOperation}`;
 			case 'entityId':
 				return entityId;
+			// v2.29.0 (B1): contact delete is company-scoped (DELETE
+			// Companies/{companyID}/Contacts/{id}) — return the label-resolved numeric
+			// company ID so the URL carries a numeric parent, not the raw company name
+			// the model supplied. Non-delete ops (and deletes without a resolved value)
+			// fall through to the usual params/fallback behavior.
+			case 'companyID':
+				if (effectiveOperation === 'delete' && fieldValues.companyID !== undefined) {
+					return fieldValues.companyID;
+				}
+				if (Object.prototype.hasOwnProperty.call(params, 'companyID')) {
+					return params.companyID;
+				}
+				return fallbackValue;
+			// v2.29.0 (m4): CIRI delete is CI-scoped (DELETE
+			// ConfigurationItems/{configurationItemID}/RelatedItems/{id}) — same pattern
+			// as companyID: return the label-resolved numeric parent ID.
+			case 'configurationItemID':
+				if (effectiveOperation === 'delete' && fieldValues.configurationItemID !== undefined) {
+					return fieldValues.configurationItemID;
+				}
+				if (Object.prototype.hasOwnProperty.call(params, 'configurationItemID')) {
+					return params.configurationItemID;
+				}
+				return fallbackValue;
 			case 'requestData': {
 				// Read ops must NEVER use fieldValues as the query body — writable fields
 				// leaking into the request cause Autotask to misinterpret them and reject
@@ -1689,13 +2043,30 @@ export async function executeAiTool(
 				}
 				return fallbackValue;
 		}
-	}) as typeof context.getNodeParameter;
+	}) as typeof callContext.getNodeParameter;
 
 	try {
 		// Compound operation short-circuit: createIfNotExists bypasses the standard executor
 		if (effectiveOperation === 'createIfNotExists') {
+			// PR #148 SEC-3 (x3 V2): the compound handler returns BEFORE the
+			// post-operation denial drain below, so drain denials accrued so far
+			// into labelWarnings up front (idempotent — each drain empties the
+			// token queue). The handler also receives a drain-aware view of
+			// labelWarnings: compound-operations.ts spreads this array when it
+			// builds the response, and the iterator trap drains any markers the
+			// handler's own impersonated create/update calls (performCreate /
+			// performPatch) recorded mid-flight — without this, an identity
+			// substitution inside the compound flow would only reach the
+			// console.warn in the finally block and stay invisible to the model.
+			drainDenialWarningsInto(impersonationDenialToken, labelWarnings);
+			const drainAwareLabelWarnings = new Proxy(labelWarnings, {
+				get(target, prop) {
+					drainDenialWarningsInto(impersonationDenialToken, target);
+					return Reflect.get(target, prop);
+				},
+			});
 			const compoundState: ExecutorState = {
-				context,
+				context: callContext,
 				resource,
 				operation: effectiveOperation,
 				params,
@@ -1708,7 +2079,7 @@ export async function executeAiTool(
 				effectiveReturnAll,
 				recencyResult,
 				labelResolutions,
-				labelWarnings,
+				labelWarnings: drainAwareLabelWarnings,
 				labelPendingConfirmations,
 				filterResolutions,
 				filterWarnings,
@@ -1768,8 +2139,21 @@ export async function executeAiTool(
 		// Dispatch to registered special handlers
 		const specialHandler = SPECIAL_HANDLERS[effectiveOperation];
 		if (specialHandler) {
+			// Drain unconditionally rather than trust a "this path never records markers"
+			// invariant that nothing enforces — idempotent no-op if the queue is empty.
+			// The handler also receives a drain-aware view of labelWarnings (same
+			// pattern as the compound path above) so any impersonated call the
+			// handler itself makes mid-flight still surfaces its denial marker in
+			// the response instead of only the finally-block console.warn.
+			drainDenialWarningsInto(impersonationDenialToken, labelWarnings);
+			const drainAwareSpecialHandlerWarnings = new Proxy(labelWarnings, {
+				get(target, prop) {
+					drainDenialWarningsInto(impersonationDenialToken, target);
+					return Reflect.get(target, prop);
+				},
+			});
 			const executorState: ExecutorState = {
-				context,
+				context: callContext,
 				resource,
 				operation: effectiveOperation,
 				params,
@@ -1782,7 +2166,7 @@ export async function executeAiTool(
 				effectiveReturnAll,
 				recencyResult,
 				labelResolutions,
-				labelWarnings,
+				labelWarnings: drainAwareSpecialHandlerWarnings,
 				labelPendingConfirmations,
 				filterResolutions,
 				filterWarnings,
@@ -1807,13 +2191,205 @@ export async function executeAiTool(
 		const needsParallelCount =
 			effectiveOperation === 'getMany' &&  // excludes getPosted/getUnposted (cross-entity join; wrong total)
 			recencyResult.isActive && !isShortWindow && !effectiveReturnAll;
+		// v2.29.0 (X11): companyNote.create parity defaults — mirror the contact
+		// moveToCompany audit-note semantics (v2.28.10): the API requires actionType,
+		// startDateTime, endDateTime and an API-required assignedResourceID. Default
+		// them so an explicit create succeeds with minimal input; every default is
+		// reported in warnings, and when no usable assigned resource can be derived
+		// the model is told to supply one (never a silent skip — this is an explicit
+		// create, not an audit note).
+		if (resource === 'companyNote' && effectiveOperation === 'create') {
+			const defaults: string[] = [...x11PreDefaults];
+			// x4 (Codex P2h): if no default assignedResourceID can be derived,
+			// warning-only still dispatches the create and the API's rejection
+			// surfaces without this context. Track the failure and return a
+			// missing-required error before dispatch instead.
+			let assignedResourceDerivationFailed = false;
+			let assignedResourceFailReason = '';
+			if (fieldValues.assignedResourceID === undefined) {
+				// A generic companyNote.create has NO temporary-activation window (unlike
+				// contact moveToCompany audit notes, which run inside the mover's
+				// withActiveImpersonationResource window). The active-only gate on the
+				// resource IDs injected below is the safety control: an inactive ID
+				// injected here would otherwise be auto-activated by the write-retry
+				// machinery with only best-effort restore.
+				if (hasProvidedValue(params.impersonationResourceId)) {
+					const impIsNumeric = isLikelyId(params.impersonationResourceId);
+					// ID that would be injected: numeric input passes through the
+					// earlier resolution unchanged (no active-state check), label
+					// input is the resolved numeric ID. Unresolvable label →
+					// undefined → fail-closed branch below.
+					const impId = impIsNumeric
+						? resolvedImpersonationId ?? Number(params.impersonationResourceId)
+						: resolvedImpersonationId;
+					if (impId !== undefined) {
+						// Explicit active probe for BOTH input kinds: numeric
+						// resolution is a passthrough with no active-state check,
+						// and label resolution searches active resources only
+						// when the isActive metadata lookup succeeds — when it
+						// fails, getValues(true) deliberately skips the active
+						// filter, so a name/email label can resolve to an
+						// INACTIVE resource (NOT "active by construction"). An
+						// inactive ID injected here would be auto-activated by
+						// the write-retry machinery with only best-effort
+						// restore. (Verifier V1: the previous shape left this
+						// gate unreachable because every numeric input had
+						// already set resolvedImpersonationId.)
+						let impIdActive: boolean | undefined;
+						try {
+							const impProbe = Object.create(callContext) as typeof callContext;
+							impProbe.getNodeParameter = ((
+								name: string,
+								...args: unknown[]
+							): unknown => {
+								if (name === 'targetOperation') return 'resource.get';
+								if (name === 'entityId') return impId;
+								if (name === 'requestData') return '{}';
+								return (callContext.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+							}) as typeof callContext.getNodeParameter;
+							const impResult = await executeToolOperation.call(impProbe);
+							const impRec = (impResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
+							impIdActive =
+								impRec !== null
+								&& (impRec.isActive === true || impRec.isActive === 1 || impRec.isActive === '1' || impRec.isActive === 'true');
+						} catch (probeErr) {
+							// Probe failed — active state unverifiable; fail closed.
+							console.warn(
+								`companyNote.create: impersonation-resource active-state probe failed for resource ${impId}:`,
+								probeErr instanceof Error ? probeErr.message : String(probeErr),
+							);
+							impIdActive = undefined;
+						}
+						if (impIdActive === true) {
+							fieldValues.assignedResourceID = impId;
+							defaults.push(
+								impIsNumeric
+									? `companyNote.create: assignedResourceID defaulted to the impersonation resource ${impId} (active-verified)`
+									: `companyNote.create: assignedResourceID defaulted to the impersonation resource ${impId} (resolved from '${String(params.impersonationResourceId)}', active-verified)`,
+							);
+						} else {
+							labelWarnings.push(
+								`companyNote.create: impersonation resource ${impId} is inactive (or its active state could not be verified) — the API requires an active assignedResourceID; supply a numeric active resource ID or set assignedResourceID explicitly.`,
+							);
+							assignedResourceDerivationFailed = true;
+							assignedResourceFailReason = 'the impersonation resource is inactive (or unverifiable)';
+						}
+					} else {
+						// Unresolvable label — fail closed: never inject the raw label.
+						// (The pre-execution write guard also blocks on
+						// impersonationFailed; this warning keeps the response specific
+						// if that ever changes.)
+						labelWarnings.push(
+							`companyNote.create: impersonationResourceId '${String(params.impersonationResourceId)}' could not be resolved to a numeric resource ID — the API requires a numeric assignedResourceID; supply a numeric ID, an exact resource name, or set assignedResourceID explicitly.`,
+						);
+						assignedResourceDerivationFailed = true;
+						assignedResourceFailReason = 'the impersonation resource could not be resolved to a numeric ID';
+					}
+				} else if (fieldValues.companyID !== undefined) {
+					// Company's owner resource, active-only (same rule as contact-mover).
+					try {
+						const compProbe = Object.create(callContext) as typeof callContext;
+						compProbe.getNodeParameter = ((
+							name: string,
+							...args: unknown[]
+						): unknown => {
+							if (name === 'targetOperation') return 'company.get';
+							if (name === 'entityId') return fieldValues.companyID;
+							if (name === 'requestData') return '{}';
+							return (callContext.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+						}) as typeof callContext.getNodeParameter;
+						const compResult = await executeToolOperation.call(compProbe);
+						const company = (compResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
+						const ownerResourceID = company?.ownerResourceID;
+						if (ownerResourceID !== undefined && ownerResourceID !== null && ownerResourceID !== 0) {
+							const resProbe = Object.create(callContext) as typeof callContext;
+							resProbe.getNodeParameter = ((
+								name: string,
+								...args: unknown[]
+							): unknown => {
+								if (name === 'targetOperation') return 'resource.get';
+								if (name === 'entityId') return ownerResourceID;
+								if (name === 'requestData') return '{}';
+								return (callContext.getNodeParameter as (n: string, ...a: unknown[]) => unknown)(name, ...args);
+							}) as typeof callContext.getNodeParameter;
+							const resResult = await executeToolOperation.call(resProbe);
+							const resRec = (resResult[0]?.[0]?.json ?? null) as Record<string, unknown> | null;
+							const resActive =
+								resRec !== null
+								&& (resRec.isActive === true || resRec.isActive === 1 || resRec.isActive === '1' || resRec.isActive === 'true');
+							if (resActive) {
+								fieldValues.assignedResourceID = ownerResourceID;
+								defaults.push(
+									`companyNote.create: assignedResourceID defaulted to the company's owner resource ${ownerResourceID} (active-only)`,
+								);
+							} else {
+								labelWarnings.push(
+									`companyNote.create: no assignedResourceID supplied and company ${fieldValues.companyID} has no usable (active) owner resource — the API requires assignedResourceID; supply it explicitly.`,
+								);
+								assignedResourceDerivationFailed = true;
+								assignedResourceFailReason = 'the company owner is missing or inactive';
+							}
+						} else {
+							labelWarnings.push(
+								`companyNote.create: company ${fieldValues.companyID} has no owner resource and no assignedResourceID was supplied — the API requires assignedResourceID; supply it explicitly.`,
+							);
+							assignedResourceDerivationFailed = true;
+							assignedResourceFailReason = 'the company has no owner resource';
+						}
+					} catch (lookupErr) {
+						console.warn(
+							`companyNote.create: company/owner resource lookup failed for companyID ${fieldValues.companyID}:`,
+							lookupErr instanceof Error ? lookupErr.message : String(lookupErr),
+						);
+						labelWarnings.push(
+							'companyNote.create: could not derive a default assignedResourceID (company/owner lookup failed) — supply assignedResourceID explicitly.',
+						);
+						assignedResourceDerivationFailed = true;
+						assignedResourceFailReason = 'the company/owner lookup failed';
+					}
+				} else {
+					labelWarnings.push(
+						'companyNote.create: no assignedResourceID supplied and no companyID to derive an owner from — the API requires assignedResourceID; supply it explicitly.',
+					);
+					assignedResourceDerivationFailed = true;
+					assignedResourceFailReason = 'no companyID was supplied to derive an owner from';
+				}
+			}
+			if (defaults.length > 0) labelWarnings.push(...defaults);
+			if (assignedResourceDerivationFailed) {
+				// x4 (Codex P2h): fail closed BEFORE dispatch — the API would reject
+				// the create for the missing assignedResourceID and format the raw
+				// rejection without this derivation context.
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							effectiveOperation,
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							`companyNote.create requires assignedResourceID and no default could be derived (${assignedResourceFailReason}).`,
+							`Supply assignedResourceID explicitly — a numeric active resource ID, or an exact resource name/email that resolves to an active resource — and retry autotask_${resource} with operation 'create'.`,
+							{ derivationWarnings: labelWarnings },
+						),
+					),
+					correlationId,
+				);
+			}
+		}
 		const [result, parallelCountResult] = await Promise.all([
-			executeToolOperation.call(context),
+			executeToolOperation.call(callContext),
 			needsParallelCount
-				? executeCountOperation(resource, combinedFilters, context)
+				? executeCountOperation(resource, combinedFilters, callContext)
 				: Promise.resolve<number | null>(null),
 		]);
 		const items = result[0] ?? [];
+
+		// PR #148 SEC-3: impersonation-denial retries (the requested resource was
+		// stripped and the request re-issued as the credential user) must be
+		// visible to the model — otherwise the record is mis-attributed and the
+		// substitution stays invisible in the response. Also covers the
+		// compound-handler fall-through (handler returned null → standard path):
+		// this is the drain that surfaces any marker it recorded.
+		drainDenialWarningsInto(impersonationDenialToken, labelWarnings);
 		const fetchedRecords = items.map((item) => item.json);
 		// Cap lift: when sparse fields + returnAll both active, agent controls context cost.
 		// Gate on effectiveReturnAll — without it, fetchedRecords is already bounded by limit.
@@ -1839,7 +2415,7 @@ export async function executeAiTool(
 		} else if (effectiveOperation === 'getMany' && isProbablyTruncated && !effectiveReturnAll) {
 			// Path B — non-recency truncation: sequential count fetch now that we know we need it
 			// effectiveOperation guard excludes getPosted/getUnposted (cross-entity join; wrong total)
-			injectedCount = await executeCountOperation(resource, combinedFilters, context);
+			injectedCount = await executeCountOperation(resource, combinedFilters, callContext);
 			if (injectedCount === null) {
 				countQueryFailed = true;
 				countInjectionWarnings.push(
@@ -1889,6 +2465,47 @@ export async function executeAiTool(
 				);
 			}
 		}
+		// v2.29.0 (X15): enforce the sparse-fields contract client-side. The API's paged
+		// next-URL does not reliably preserve IncludeFields (later pages can come back
+		// with every field), so project every record to the requested columns — keeping
+		// id (so downstream enrichment/labels keep working), any *_label variants, and
+		// userDefinedFields.
+		if (selectedColumns.length > 0 && supportsListProjection(effectiveOperation)) {
+			// v2.29.x (m5): validateReadFields() accepts field names case-insensitively
+			// (both sides lowercased), so a call may request e.g. 'Status' while the
+			// API's canonical key — and the record keys it returns — is 'status'.
+			// Build the keep set lowercased (plus each field's '_label' variant) and
+			// test returned keys lowercased, so a requested 'status' keeps both
+			// 'status' and the derived 'status_label' regardless of request casing.
+			const keep = new Set<string>();
+			for (const col of selectedColumns) {
+				const base = col.toLowerCase();
+				keep.add(base);
+				keep.add(`${base}_label`);
+			}
+			// v2.29.x (m4): enrichment trigger fields are kept even when not
+			// selected — otherwise projection strips ticketID/taskID and
+			// enrichResponseJson silently stops firing. Contract: the display
+			// fields enrichment ADDS are an accepted exception to the sparse
+			// selection contract (documented here and in the opdoc).
+			// v2.29.x (X15): keep EVERY enrichment trigger field, not just
+			// ticketID/taskID — see ENRICHMENT_TRIGGER_FIELDS (must stay in sync
+			// with ENRICHMENT_REGISTRY in helpers/enrichment.ts).
+			for (const field of ENRICHMENT_TRIGGER_FIELDS) {
+				keep.add(field);
+			}
+			const projected = records.map((rec) => {
+				const r = rec as Record<string, unknown>;
+				const out: Record<string, unknown> = {};
+				for (const key of Object.keys(r)) {
+					if (keep.has(key.toLowerCase()) || key === 'id' || key === 'userDefinedFields') {
+						out[key] = r[key];
+					}
+				}
+				return out;
+			});
+			records = projected as unknown as IDataObject[];
+		}
 		// Merge write label resolutions and filter label resolutions
 		const allResolutions = [...labelResolutions, ...filterResolutions];
 		const allWarnings = [...labelWarnings, ...filterWarnings];
@@ -1918,8 +2535,31 @@ export async function executeAiTool(
 				}
 			}
 		}
-		const mergedWarnings = [...allWarnings, ...countInjectionWarnings, ...rawDatePairWarnings];
+		const extraWarnings: string[] = [];
+		// v2.29.0 (X6): the Autotask by-ID GET route for ConfigurationItemRelatedItem
+		// does not resolve the ID returned by create (API-side inconsistency; getMany
+		// DOES find the record). Warn on mutations so the model doesn't loop on get.
+		if (
+			resource === 'configurationItemRelatedItem'
+			&& (effectiveOperation === 'create' || effectiveOperation === 'update')
+		) {
+			extraWarnings.push(
+				"configurationItemRelatedItem: the ID returned by this API may not resolve with operation 'get' (Autotask by-ID route inconsistency) — verify with getMany filtered by configurationItemID instead.",
+			);
+		}
+		const mergedWarnings = [...allWarnings, ...countInjectionWarnings, ...rawDatePairWarnings, ...extraWarnings];
 		const responseContext: ToolResponseContext = {
+			// moveConfigurationItem takes its source from sourceConfigurationItemId,
+			// not id — read both so the clone-and-deactivate summary names the real
+			// source record (Codex P2 on PR #148).
+			originalRecordId:
+				effectiveOperation === 'moveConfigurationItem'
+					? params.sourceConfigurationItemId !== undefined
+						? String(params.sourceConfigurationItemId)
+						: params.id !== undefined
+							? String(params.id)
+							: undefined
+					: undefined,
 			recencyActive: recencyResult.isActive,
 			recencyNote: recencyResult.note ?? recencyOffsetNote,
 			recencyWindowLimited:
@@ -1952,7 +2592,7 @@ export async function executeAiTool(
 		// Apply Change Info Field aliases to ticket read results.
 		// Note: 'summary' applies aliases internally via buildTicketSummary — do not apply here.
 		if (resource === 'ticket' && effectiveOperation !== 'summary') {
-			const creds = (await context.getCredentials('autotaskApi')) as IAutotaskCredentials;
+			const creds = (await callContext.getCredentials('autotaskApi')) as IAutotaskCredentials;
 			if (shouldApplyAliases(creds)) {
 				const aliasMap = buildAliasMap(creds);
 				if (effectiveOperation === 'slaHealthCheck') {
@@ -1986,7 +2626,7 @@ export async function executeAiTool(
 				noResultsClassification: records.length === 0 ? 'empty' : 'non-empty',
 			},
 		});
-		const enrichedResponse = await enrichResponseJson(formattedResponse, context);
+		const enrichedResponse = await enrichResponseJson(formattedResponse, callContext);
 		return attachCorrelation(enrichedResponse, correlationId);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -2015,21 +2655,151 @@ export async function executeAiTool(
 					: {}),
 			},
 		});
-		return attachCorrelation(
-			JSON.stringify(
-				isInternal
-					? wrapError(
+		let errorEnvelope = isInternal
+			? wrapError(
+				resource,
+				effectiveOperation,
+				ERROR_TYPES.INTERNAL_ERROR,
+				internalSummary,
+				'This appears to be a bug in the tool. Do not retry with the same parameters.',
+			)
+			: formatApiError(message, resource, effectiveOperation);
+		// v2.29.0 (X2): Autotask reports a MISSING record on update/delete as a
+		// permission-flavoured 403 ("…may not have the required permissions" /
+		// "No matching records found"), which formatApiError classifies as
+		// PERMISSION_DENIED and sends the model down a security-debugging path.
+		// Confirm with a read before reporting: if the record does not exist, the
+		// truthful error is ENTITY_NOT_FOUND. One extra GET, only on this rare path.
+		if (
+			!isInternal
+			&& errorEnvelope.errorType === ERROR_TYPES.PERMISSION_DENIED
+			&& (effectiveOperation === 'update' || effectiveOperation === 'delete')
+			&& params.id !== undefined
+		) {
+			try {
+				// Probe with a minimal direct API query (NOT the full executor, whose
+				// parameter/override plumbing is too brittle for a side-channel probe,
+				// and NOT by-ID get: Autotask returns the SAME permission-flavoured
+				// 403 body for a missing record on get as on update/delete, so a by-ID
+				// probe cannot distinguish 'no permission' from 'no record'). A
+				// getMany-style POST filtered by id reports absence cleanly (empty
+				// item list) and is unaffected by the 403 masking (Codex P2, PR #148).
+				let probeEntity = entityNameForResource(resource);
+				if (!getEntityMetadata(probeEntity)) {
+					// Plural resource keys without a resourceKey override (e.g.
+					// 'configurationItemTypes' -> 'ConfigurationItemType') are not
+					// resolved by entityNameForResource — fall back to a tolerant
+					// name/resourceKey match for the probe.
+					const key = resource.toLowerCase();
+					const cand = AUTOTASK_ENTITIES.find(
+						(e) =>
+							(e.resourceKey && e.resourceKey.toLowerCase() === key)
+							|| e.name.toLowerCase() === key
+							|| `${e.name.toLowerCase()}s` === key,
+					);
+					if (cand) probeEntity = cand.name;
+				}
+				// Numeric-strict id: send a real number when params.id is all digits
+				// (string id values can be mishandled by the API's filter type
+				// coercion); pass non-numeric values through as strings.
+				const probeIdValue = /^\d+$/.test(String(params.id))
+					? Number(params.id)
+					: String(params.id);
+				const probeBody = {
+					filter: [{ field: 'id', op: 'eq', value: probeIdValue }],
+					MaxRecords: 1,
+				};
+				// isQuery: true is REQUIRED — without it the same POST body is
+				// interpreted by the API as a create (server-side field validation:
+				// 'Missing Required Field: isActive'), which both breaks the probe
+				// and risks writes. (Found via debug logging, 2026-08-29.)
+				// Identity matching per operation family: the probe must run with
+				// the SAME identity the failed write actually used — create/update
+				// forward impersonationResourceId to their API call, but
+				// DeleteOperation does NOT (its DELETE runs under the credential
+				// user), so the delete probe drops impersonation; with a
+				// mismatched identity an empty probe result is a permission
+				// artifact, not proof of non-existence.
+				const probeImpersonation =
+					effectiveOperation === 'delete' ? undefined : resolvedImpersonationId;
+				// x4 (Codex P2i): the probe must use the SAME identity policy as
+				// the failed write. If the caller set proceedWithoutImpersonationIfDenied=false,
+				// the failed write stayed under the impersonated identity — but the
+				// probe would otherwise fall back to autotaskApiRequest's true
+				// default, retry its read as the credential user, and an empty
+				// fallback result (different line-of-business visibility) would
+				// misclassify a genuine impersonation denial as ENTITY_NOT_FOUND.
+				// undefined here keeps the true default (matches the write's own
+				// fallback when the model passed nothing).
+				// params values are loosely typed (schema coerces to boolean at parse).
+				const probeProceedWithout =
+					typeof params.proceedWithoutImpersonationIfDenied === 'boolean'
+						? params.proceedWithoutImpersonationIfDenied
+						: undefined;
+				const probeResp = (await autotaskApiRequest.call(
+					callContext,
+					'POST',
+					buildEntityUrl(probeEntity, { isQuery: true }),
+					probeBody,
+					{},
+					probeImpersonation,
+					probeProceedWithout,
+				)) as { items?: Array<Record<string, unknown>> } | Array<Record<string, unknown>> | null;
+				const probeItems = Array.isArray(probeResp) ? probeResp : (probeResp?.items ?? []);
+				// v2.29.x: the by-ID query route for configurationItemRelatedItem is
+				// inconsistent (X6/F3: create-response IDs may not resolve with
+				// by-ID queries), so an empty probe there proves NOTHING about
+				// existence — keep the original permission envelope instead of
+				// asserting ENTITY_NOT_FOUND for a record that may be visible via
+				// getMany.
+				if (probeItems.length === 0 && resource !== 'configurationItemRelatedItem') {
+					errorEnvelope = wrapError(
 						resource,
 						effectiveOperation,
-						ERROR_TYPES.INTERNAL_ERROR,
-						internalSummary,
-						'This appears to be a bug in the tool. Do not retry with the same parameters.',
-					)
-					: formatApiError(message, resource, effectiveOperation),
-			),
-			correlationId,
-		);
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`No ${probeEntity} visible to this API user with id ${params.id} — it may not exist, or may be outside the API user's line of business.`,
+						`If the user supplied this ID explicitly, report that no record was found with that ID (it may not exist, or may be outside the API user's permissions). Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID.`,
+					);
+				}
+			} catch (probeErr) {
+				// Classify the probe exception: not-found/404-shaped errors confirm
+				// the record is gone; a 403/permission or transport failure keeps
+				// the original PERMISSION_DENIED classification (the account may
+				// genuinely lack access). For configurationItemRelatedItem the
+				// by-ID query route is unreliable (X6/F3), so a probe exception
+				// there also proves nothing — keep the permission envelope.
+				const pMsg = probeErr instanceof Error ? probeErr.message : String(probeErr);
+				if (resource !== 'configurationItemRelatedItem' && /not found|no matching|notfound|\b404\b/i.test(pMsg)) {
+					errorEnvelope = wrapError(
+						resource,
+						effectiveOperation,
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`No ${resource} visible to this API user with id ${params.id} — it may not exist, or may be outside the API user's line of business.`,
+						`If the user supplied this ID explicitly, report that no record was found with that ID (it may not exist, or may be outside the API user's permissions). Use autotask_${resource} with operation 'getMany' and a filter to locate a valid record ID.`,
+					);
+				}
+			}
+		}
+		return attachCorrelation(JSON.stringify(errorEnvelope), correlationId);
 	} finally {
-		context.getNodeParameter = originalGetNodeParameter;
+		// The base context is never mutated (the override lived on the per-call
+		// derivative, x3 V7) — retiring the derivative's own property keeps the
+		// discarded derivative from carrying this call's flat-param mapping.
+		callContext.getNodeParameter = originalGetNodeParameter;
+
+		// PR #148 SEC-3: clear this execution's denial-token registration and log
+		// any markers not drained by the warnings path (e.g. the flow errored
+		// after a denial-retry) — legacy-path behaviour (console.warn already
+		// emitted by request.ts, marker logged here). The registration and this
+		// cleanup both target the per-call derivative (x3 V7).
+		clearImpersonationDenialToken(callContext);
+		const leftoverDenials = drainImpersonationDenialMarkers(impersonationDenialToken);
+		if (leftoverDenials.length > 0) {
+			console.warn(
+				`[executeAiTool] Impersonation denied for resource(s) ${leftoverDenials
+					.map((d) => `${d.resourceId} (${d.method} ${d.endpoint})`)
+					.join(', ')} on ${resource} '${effectiveOperation}'; the request(s) executed as the credential user.`,
+			);
+		}
 	}
 }

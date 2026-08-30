@@ -35,6 +35,14 @@ export const PICKLIST_REFERENCE_FIELD_MAPPINGS: Record<string, IPicklistReferenc
 	'CompanyLocation': {
 		nameFields: ['name'],
 	},
+	// v2.29.0 (X5): the ConfigurationItem entity has NO 'name' field (display name is
+	// referenceTitle) — without this entry the value helper fell back to
+	// DEFAULT_PICKLIST_FIELDS ['id','name'] and every reference-label fetch for a CI
+	// reference failed with "Unable to find name in the ConfigurationItem Entity".
+	'ConfigurationItem': {
+		nameFields: ['referenceTitle'],
+		bracketField: ['referenceNumber'],
+	},
 } as const;
 
 /**

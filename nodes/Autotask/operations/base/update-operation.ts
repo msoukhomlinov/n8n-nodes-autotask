@@ -99,7 +99,12 @@ export class UpdateOperation<T extends IAutotaskEntity> extends BaseOperation {
 						proceedWithoutImpersonationIfDenied = this.context.getNodeParameter(
 							'proceedWithoutImpersonationIfDenied',
 							itemIndex,
-							false,
+							// PR #148: align the code fallback with the advertised
+							// "(default true)" contract; per n8n-core the property
+							// default is never consulted at runtime, so this
+							// fallback literal is the effective default on both
+							// execution paths.
+							true,
 						) as boolean;
 					}
 				} catch (error) {

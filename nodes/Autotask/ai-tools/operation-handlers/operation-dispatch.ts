@@ -143,10 +143,14 @@ interface MutationValidationResult {
 	 * F7b: root context fields for CHANGE outcomes (moveToCompany success) — mover
 	 * warnings + auditNotes — so a successful move no longer swallows audit-note
 	 * creation failures. Merged into the ToolResponseContext at envelope build time.
+	 * `sourceDeactivated` (moveConfigurationItem) — the mover's ACTUAL deactivation
+	 * outcome (true only when the deactivation PATCH was issued and acknowledged).
+	 * The success summary must never claim a deactivation the mover did not perform.
 	 */
 	mutationContext?: {
 		resolutionWarnings?: string[];
 		auditNotes?: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
+		sourceDeactivated?: boolean;
 	};
 	errorType?: string;
 	message?: string;
@@ -303,10 +307,54 @@ export function dispatchOperationResponse(
 			}
 			case 'moveConfigurationItem': {
 				const movedId = record?.newConfigurationItemId;
-				if (typeof movedId === 'number' && movedId > 0) return { ok: true, id: movedId };
+				// MAJOR-1 (PR #148 round 10): thread the mover's ACTUAL deactivation
+				// outcome into the envelope, mirroring the moveToCompany sibling —
+				// `status.sourceDeactivated` is true only when the deactivation PATCH
+				// was issued and acknowledged; it stays false when `deactivateSource`
+				// is off or audit-note failure skips the PATCH. Absent/unverifiable
+				// status fails closed: never claim a deactivation that did not happen.
+				const status =
+					record?.status && typeof record.status === 'object' && !Array.isArray(record.status)
+						? (record.status as Record<string, unknown>)
+						: null;
+				// x3 V10: this mutationContext is intentionally always non-empty
+				// (sourceDeactivated is seeded unconditionally — fail-closed), so
+				// the `Object.keys(...).length > 0` spread guards below are
+				// vacuous here; they mirror the moveToCompany branch, where the
+				// context starts empty and the guard is live. Kept for parity.
+				const mutationContext: NonNullable<MutationValidationResult['mutationContext']> = {
+					sourceDeactivated: status?.sourceDeactivated === true,
+				};
+				if (status && Array.isArray(status.warnings) && (status.warnings as string[]).length > 0) {
+					mutationContext.resolutionWarnings = status.warnings as string[];
+				}
+				// x4 (Codex P2g): a dry run returns runId only — no destination record
+				// exists. Passing the runId to the mutation builder as the ID made the
+				// envelope claim 'Cloned ... (ID: ci-move-...)', letting an agent believe
+				// the migration already happened. Mirror the moveToCompany sibling
+				// branch: report the dry run as a no-change outcome (no top-level id).
+				// (Today unreachable on the AI path — the schema no longer exposes
+				// dryRun and tool-executor strips it — but the branch must stay honest
+				// in case dry-run is ever re-exposed.)
 				const runId = record?.runId;
-				if (record?.dryRun === true && typeof runId === 'string' && runId.trim() !== '') {
-					return { ok: true, id: runId };
+				if (record?.dryRun === true && !(typeof movedId === 'number' && movedId > 0)) {
+					const noChangeContext: Record<string, unknown> = {};
+					if (typeof record?.sourceConfigurationItemId === 'number') {
+						noChangeContext.sourceConfigurationItemId = record.sourceConfigurationItemId;
+					}
+					if (typeof record?.destinationCompanyId === 'number') {
+						noChangeContext.destinationCompanyId = record.destinationCompanyId;
+					}
+					if (typeof runId === 'string' && runId.trim() !== '') {
+						noChangeContext.dryRunId = runId;
+					}
+					if (status && Array.isArray(status.warnings) && (status.warnings as string[]).length > 0) {
+						noChangeContext.warnings = status.warnings;
+					}
+					return { ok: true, outcome: 'dry-run', noChangeContext };
+				}
+				if (typeof movedId === 'number' && movedId > 0) {
+					return { ok: true, id: movedId, ...(Object.keys(mutationContext).length > 0 ? { mutationContext } : {}) };
 				}
 				return {
 					ok: false,
@@ -536,6 +584,7 @@ export function dispatchOperationResponse(
 					resolutionWarnings: validation.mutationContext.resolutionWarnings
 						? [...(context.resolutionWarnings ?? []), ...validation.mutationContext.resolutionWarnings]
 						: context.resolutionWarnings,
+					sourceDeactivated: validation.mutationContext.sourceDeactivated,
 				}
 			: context;
 		return JSON.stringify(
@@ -794,7 +843,7 @@ export function dispatchOperationResponse(
 
 		case 'count': {
 			const countValue = records[0]?.count ?? records.length;
-			return JSON.stringify(buildCountResponse(resource, operation, countValue as number));
+			return JSON.stringify(buildCountResponse(resource, operation, countValue as number, context));
 		}
 
 		case 'getByResource':

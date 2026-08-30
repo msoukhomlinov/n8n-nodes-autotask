@@ -1,7 +1,9 @@
 import type { IExecuteFunctions, IDataObject } from 'n8n-workflow';
 import { describeResource, getReferencedEntity, listPicklistValues } from './aiHelper';
 import { EntityValueHelper } from './entity-values/value-helper';
+import type { IAutotaskEntity } from '../types';
 import { PICKLIST_REFERENCE_FIELD_MAPPINGS } from '../constants/field.constants';
+import type { IPicklistReferenceFieldMapping } from '../types/base/picklists';
 import { isLikelyId } from './id-utils';
 export { isLikelyId } from './id-utils';
 import {
@@ -40,15 +42,213 @@ function inferReferenceEntityFromField(fieldId: string, resource: string): strin
     return getReferencedEntity(fieldId, resource);
 }
 
-function getEntityNameFields(entityType: string): string[] {
+function getEntityFieldMapping(entityType: string): IPicklistReferenceFieldMapping | undefined {
     const direct = PICKLIST_REFERENCE_FIELD_MAPPINGS[entityType];
-    if (direct) return direct.nameFields;
+    if (direct) return direct;
 
     const lowerType = entityType.toLowerCase();
     const key = Object.keys(PICKLIST_REFERENCE_FIELD_MAPPINGS).find(
         k => k.toLowerCase() === lowerType,
     );
-    return key ? PICKLIST_REFERENCE_FIELD_MAPPINGS[key].nameFields : [];
+    return key ? PICKLIST_REFERENCE_FIELD_MAPPINGS[key] : undefined;
+}
+
+function getEntityNameFields(entityType: string): string[] {
+    return getEntityFieldMapping(entityType)?.nameFields ?? [];
+}
+
+/**
+ * v2.29.x (R9): true when the entity has exactly ONE name field plus a bracket
+ * field (e.g. ConfigurationItem: referenceTitle + referenceNumber → display
+ * "Server (CI-123)"). For these entities a bare name label can NEVER equal the
+ * formatted display name, so the unique name-field exact match is the only
+ * exact resolution path for it.
+ *
+ * Single-name-field entities WITHOUT brackets (Company: display = companyName)
+ * already resolve through the display-name pass — no extra path needed.
+ * Multi-name-field entities (Resource/Contact: firstName + lastName) are covered
+ * by the `nameFields.length >= 2` gate at the call sites.
+ */
+function hasSingleBracketedNameField(entityType: string): boolean {
+    const mapping = getEntityFieldMapping(entityType);
+    if (!mapping || mapping.nameFields.length !== 1) return false;
+    const bracket = mapping.bracketField;
+    return Boolean(bracket && (Array.isArray(bracket) ? bracket.length > 0 : true));
+}
+
+/**
+ * v2.29.x (C1): bounded candidate-probe outcome. `rows` is the deduped
+ * candidate pool; `probeError`/`truncated` flag probes that were rejected
+ * by the API or that saturated at the row cap, in which case the pool is an
+ * arbitrary sample — not the entity population — and any uniqueness derived
+ * from it (e.g. findUniqueNameFieldMatchId) cannot be trusted.
+ */
+interface ReferenceCandidatePool {
+    rows: Array<Record<string, unknown>>;
+    /** True if one or more probes for this pool were rejected by the API. */
+    probeError: boolean;
+    /** True if one or more probes returned the full row cap — the returned window is arbitrary. */
+    truncated: boolean;
+}
+
+/** False when the pool's `rows` cannot be trusted for uniqueness/exact-match decisions. */
+function poolIsComplete(pool: ReferenceCandidatePool): boolean {
+    return !pool.probeError && !pool.truncated;
+}
+
+/** Row cap per display probe (passed to getValuesByDisplay as MaxRecords). */
+const PROBE_ROW_LIMIT = 50;
+
+/**
+ * v2.29.0 (X16), tightened in v2.29.x (B4), broadened in B1: bounded
+ * candidate pool for reference-label resolution. A small per display-name-
+ * field probe (exact first, `contains` — probe values PLUS the full label —
+ * only if the exact pass left no candidate whose display name exactly
+ * matches the label) replaces the previous full-entity scan (getValues),
+ * which on large reference populations (~24k ConfigurationItems) took
+ * minutes and hung the tool call past the MCP protocol timeout.
+ *
+ * Probe values (B4a, extended in v2.29.x C1): the whitespace tokens of the
+ * label with length >= 2, deduped and capped at two, ALWAYS alongside the
+ * full label. Before C1 the full label was probed only when no token
+ * qualified — a multi-token label was never eq-probed in full, so its
+ * uniqueness was judged from a truncated `contains` sample. Single-token
+ * labels ('Contoso', 'EPSON-TX610FW') produce exactly one probe value —
+ * unchanged probe cost vs v2.29.0. On composite-name entities (Resource/
+ * Contact: firstName + lastName) a label like 'Max Soukhomlinov' matches
+ * NEITHER name field individually, so the token probes are what pull the
+ * entity into the pool, where the downstream exact / unique display-name
+ * matching resolves it. Labels spanning multiple fields (e.g. 'Max S')
+ * surface as partial-match confirmations or a 'use a numeric ID' warning
+ * instead of a hang.
+ *
+ * Completeness (C1): the result reports `probeError` (one or more probes
+ * were rejected by the API) and `truncated` (one or more probes saturated
+ * at the row cap). When either is set, the pool is an arbitrary sample
+ * rather than the entity population — write-path auto-resolution is gated
+ * on both being clear, and the read path surfaces a warning.
+ *
+ * Name fields (B4d): taken from the value-helper's usable-name-field gate
+ * (mapping entry or metadata scan) instead of re-deriving them here; the
+ * `['name']` fallback survives only when the gate yields no list. Probes
+ * run with bounded concurrency <= 4 (B4b) instead of sequential awaits.
+ */
+async function fetchReferenceCandidates(
+    helper: EntityValueHelper<IAutotaskEntity>,
+    entityType: string,
+    label: string,
+    activeOnly: boolean,
+): Promise<ReferenceCandidatePool> {
+    // B4d: usable name fields come from the value-helper gate (B5) — the
+    // ['name'] fallback applies only when the gate yields no list (null).
+    // (entityType is part of the stable call signature; the helper already
+    // carries it for the gate.)
+    const usableNameFields = await helper.getUsableReferenceNameFields();
+    const nameFields = usableNameFields ?? ['name'];
+    // B4a (extended in v2.29.x C1): whitespace tokens (length >= 2), deduped,
+    // capped at two — plus the full label, always. eq-probing the full label
+    // at stage 1 means uniqueness for multi-token labels is established on an
+    // exact probe instead of a truncated `contains` sample.
+    const tokenProbes = Array.from(new Set(label.split(/\s+/).filter((token) => token.length >= 2))).slice(0, 2);
+    const probeValues = Array.from(new Set([...tokenProbes, label]));
+
+    const pool = new Map<string | number, Record<string, unknown>>();
+    let firstError: Error | undefined;
+    // C1: a probe that returns the full row cap hit an arbitrary window — the
+    // pool is then a sample and callers must not assert uniqueness over it.
+    let truncated = false;
+
+    const buildProbeTasks = (
+        op: 'eq' | 'contains',
+        probeSet: string[] = probeValues,
+    ): Array<() => Promise<void>> => {
+        const tasks: Array<() => Promise<void>> = [];
+        for (const nameField of nameFields) {
+            for (const probeValue of probeSet) {
+                tasks.push(async () => {
+                    try {
+                        const rows = await helper.getValuesByDisplay(nameField, probeValue, activeOnly, op, PROBE_ROW_LIMIT);
+                        if (rows.length >= PROBE_ROW_LIMIT) truncated = true;
+                        for (const row of rows) {
+                            const data = row as unknown as Record<string, unknown>;
+                            const id = data.id as string | number | undefined;
+                            if (id !== undefined) pool.set(id, data);
+                        }
+                    } catch (err) {
+                        // Best-effort: a probe rejected because the entity lacks that
+                        // field (or the API rejected the value) must not abort
+                        // resolution on the remaining probes — but if EVERY probe
+                        // fails, the caller must see the error (a silent pass-through
+                        // made unresolved labels look like deliberate negatives on the wire).
+                        if (!firstError) firstError = err instanceof Error ? err : new Error(String(err));
+                    }
+                });
+            }
+        }
+        return tasks;
+    };
+
+    // B4b: bounded-concurrency runner — at most `limit` probes in flight.
+    const runBounded = async (tasks: Array<() => Promise<void>>, limit: number): Promise<void> => {
+        let next = 0;
+        const worker = async (): Promise<void> => {
+            while (next < tasks.length) {
+                const index = next;
+                next += 1;
+                await tasks[index]();
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => worker()));
+    };
+
+    // B4c (extended in v2.29.x C1): stage 1 = exact ('eq') probes over the
+    // token probe values PLUS the full label (since C1 the full label is
+    // always in probeValues); stage 2 = 'contains' probes over the same
+    // values (a composite record like 'Acme Corporation' is only findable
+    // via a multi-word contains probe).
+    await runBounded(buildProbeTasks('eq'), 4);
+
+    // B1: an exact token hit on ANOTHER record (label 'Acme Corporation'
+    // while a company named 'Acme' exists) fills the pool at stage 1, so
+    // gating stage 2 on `pool.size === 0` suppressed the broader pass and
+    // the requested record was never probed — downstream exact display-name
+    // matching then failed and valid name-based writes/filters were blocked.
+    // Stage 2 now runs unless the pool already holds a candidate whose
+    // display name EXACTLY matches the label: any single name field equals
+    // it, or the whitespace-joined composite of the name fields does
+    // (case-insensitive, non-empty parts only — mirrors the display-name
+    // join, so composite entities like Resource resolve without the extra
+    // contains pass).
+    const poolMatchesLabel = (): boolean => {
+        const target = label.toLowerCase();
+        for (const row of pool.values()) {
+            const parts = nameFields
+                .map((nameField) => {
+                    const raw = row[nameField];
+                    return raw === undefined || raw === null ? '' : String(raw).trim();
+                })
+                .filter((part) => part !== '');
+            if (parts.some((part) => part.toLowerCase() === target)) return true;
+            if (parts.join(' ').toLowerCase() === target) return true;
+        }
+        return false;
+    };
+
+    if (!poolMatchesLabel()) {
+        // The full label is already in probeValues (C1) — the Set keeps the
+        // stage self-documenting in case probeValues' construction changes.
+        const stage2ProbeValues = Array.from(new Set([...probeValues, label]));
+        await runBounded(buildProbeTasks('contains', stage2ProbeValues), 4);
+    }
+    if (pool.size === 0 && firstError) throw firstError;
+    // C1: propagate pool completeness — a partial probe failure or a
+    // saturated probe means the pool is a sample, and callers that assert
+    // uniqueness over it (write-path auto-resolution) must see that.
+    return {
+        rows: Array.from(pool.values()),
+        probeError: firstError !== undefined,
+        truncated,
+    };
 }
 
 function findUniqueNameFieldMatchId(
@@ -57,7 +257,14 @@ function findUniqueNameFieldMatchId(
     nameFields: string[],
 ): string | number | undefined {
     const trimmedLabel = label.trim();
-    if (trimmedLabel === '' || nameFields.length < 2) {
+    // v2.29.x (R9): the legacy `nameFields.length < 2` guard assumed single-
+    // name-field entities were fully covered by the formatted display-name
+    // match — true for bracket-less entities (Company: display = companyName)
+    // but false for single-name-field entities with a bracket field
+    // (ConfigurationItem: "Server (CI-123)"), where a bare title can never
+    // equal the display. This path is their only exact match; the uniqueness
+    // rule below still prevents a random pick on duplicate titles.
+    if (trimmedLabel === '' || nameFields.length === 0) {
         return undefined;
     }
 
@@ -247,13 +454,41 @@ export async function resolveLabelsToIds(
 
                 // Two-pass active→all approach
                 // Pass 1: Active entities only
-                const activeCandidates = await helper.getValues(true);
-                let allCandidates: Awaited<ReturnType<typeof helper.getValues>> | undefined;
+                const activePool = await fetchReferenceCandidates(helper, field.referencesEntity, label, true);
+                const activeCandidates = activePool.rows;
+                let allPool: ReferenceCandidatePool | undefined;
+                let allCandidates: Array<Record<string, unknown>> | undefined;
                 let bestId: string | number | undefined;
+                // x3 V1: the write path gates auto-resolution on pool
+                // completeness with the same signal the read path carries as
+                // probeIncomplete (and the R9 name-field gate below uses). A
+                // pool fed by a rejected probe or a row-cap-saturated probe is
+                // an arbitrary sample — an exact display match inside it may be
+                // one of many identically-displayed records, so auto-resolving
+                // it into the write body would be an arbitrary pick. bestId
+                // stays undefined and the field routes to
+                // pendingConfirmations / the no-match warning instead.
+                const activeProbeIncomplete = !poolIsComplete(activePool);
+                // A field yields at most ONE [NAME_POOL_INCOMPLETE] warning:
+                // the pass-1, pass-2, and R9 gates below share this flag.
+                let incompleteWarned = false;
+                const noteIncompletePool = (): void => {
+                    if (incompleteWarned) return;
+                    incompleteWarned = true;
+                    warnings.push(
+                        `[NAME_POOL_INCOMPLETE] Identity of exact match '${label}' for field '${field.id}' (${field.referencesEntity}) ` +
+                        'could not be verified — the candidate sample was incomplete (a probe failed or hit its row cap). ' +
+                        'Confirm the record or supply the numeric ID.',
+                    );
+                };
 
                 for (const entity of activeCandidates) {
                     const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
                     if (display && display.toLowerCase() === label.toLowerCase()) {
+                        if (activeProbeIncomplete) {
+                            noteIncompletePool();
+                            break;
+                        }
                         bestId = (entity as unknown as IDataObject).id as string | number;
                         break;
                     }
@@ -261,13 +496,85 @@ export async function resolveLabelsToIds(
 
                 // No exact match in active set — try Pass 2 (all entities including inactive)
                 if (bestId === undefined) {
-                    allCandidates = await helper.getValues(false);
+                    allPool = await fetchReferenceCandidates(helper, field.referencesEntity, label, false);
+                    allCandidates = allPool.rows;
+                    const allProbeIncomplete = !poolIsComplete(allPool);
 
                     for (const entity of allCandidates) {
                         const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
                         if (display && display.toLowerCase() === label.toLowerCase()) {
+                            if (allProbeIncomplete) {
+                                noteIncompletePool();
+                                break;
+                            }
                             bestId = (entity as unknown as IDataObject).id as string | number;
                             break;
+                        }
+                    }
+                }
+
+                // v2.29.x (R9, gated by C1): single-name-field entities with
+                // a bracketed display (e.g. ConfigurationItem "Server
+                // (CI-123)") can never match a bare title through the
+                // formatted display above. For these entities the name field
+                // IS the full identifier, so a UNIQUE exact name-field match
+                // is unambiguous (duplicate titles — 2+ CIs titled "Server" —
+                // stay ambiguous and confirmation-gated). Multi-name-field
+                // entities are deliberately excluded: a bare first name
+                // ("Max") is a partial identifier there and remains
+                // confirmation-gated on writes.
+                //
+                // C1 gate: that uniqueness is only provable when every probe
+                // that fed the merged pool (pass 1 + pass 2) succeeded AND
+                // returned fewer rows than the cap. A rejected probe or a
+                // saturated 50-row window means the sample may hide a second
+                // identically-titled record, and auto-resolving one of them
+                // into the write body would be a random pick — so on an
+                // incomplete sample bestId stays undefined and the
+                // partial-match pass below surfaces the candidate as a
+                // pendingConfirmation (which blocks the write).
+                if (bestId === undefined && hasSingleBracketedNameField(field.referencesEntity)) {
+                    const nameFields = getEntityNameFields(field.referencesEntity);
+                    const nameMatchPool = allPool ?? await fetchReferenceCandidates(helper, field.referencesEntity, label, false);
+                    const allForNameMatch = nameMatchPool.rows;
+                    const mergedById = new Map<string | number, IDataObject>();
+
+                    for (const entity of activeCandidates) {
+                        const data = entity as unknown as IDataObject;
+                        const id = data.id as string | number | undefined;
+                        if (id !== undefined) {
+                            mergedById.set(id, data);
+                        }
+                    }
+                    for (const entity of allForNameMatch) {
+                        const data = entity as unknown as IDataObject;
+                        const id = data.id as string | number | undefined;
+                        if (id !== undefined && !mergedById.has(id)) {
+                            mergedById.set(id, data);
+                        }
+                    }
+
+                    const nameFieldMatchId = findUniqueNameFieldMatchId(
+                        Array.from(mergedById.values()),
+                        label,
+                        nameFields,
+                    );
+                    if (nameFieldMatchId !== undefined) {
+                        const nameMatchProbeIncomplete =
+                            !poolIsComplete(activePool) || !poolIsComplete(nameMatchPool);
+                        if (nameMatchProbeIncomplete) {
+                            // x3 V1: a pass-1/pass-2 pool gate may already have
+                            // warned for this field — keep it to one warning.
+                            if (!incompleteWarned) {
+                                incompleteWarned = true;
+                                warnings.push(
+                                    `[NAME_POOL_INCOMPLETE] Uniqueness of '${label}' for field '${field.id}' (${field.referencesEntity}) ` +
+                                    'could not be verified — the candidate sample was incomplete (a probe failed or hit its row cap). ' +
+                                    'Confirm the record or supply the numeric ID.',
+                                );
+                            }
+                        } else {
+                            bestId = nameFieldMatchId;
                         }
                     }
                 }
@@ -286,8 +593,10 @@ export async function resolveLabelsToIds(
                         }
                     }
 
-                    // Reuse allCandidates from Pass 2 (already fetched above)
-                    const allForPartials = allCandidates ?? await helper.getValues(false);
+                    // Reuse allPool from Pass 2 (set whenever bestId is still
+                    // undefined — Pass 2 always ran by here)
+                    const partialsPool = allPool ?? await fetchReferenceCandidates(helper, field.referencesEntity, label, false);
+                    const allForPartials = partialsPool.rows;
                     for (const entity of allForPartials) {
                         const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
                         const id = (entity as unknown as IDataObject).id as string | number;
@@ -540,9 +849,15 @@ export async function resolveFilterLabelsToIds(
             const helper = new EntityValueHelper(context, effectiveReferenceEntity);
 
             // Pass 1: Active entities
-            const activeCandidates = await helper.getValues(true);
-            let allCandidates: Awaited<ReturnType<typeof helper.getValues>> | undefined;
+            const activePool = await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, true);
+            const activeCandidates = activePool.rows;
+            let allPool: ReferenceCandidatePool | undefined;
+            let allCandidates: Array<Record<string, unknown>> | undefined;
             let bestId: string | number | undefined;
+            // C1: whether any pool fetched for this label is incomplete —
+            // surfaced as a warning below (the read path keeps its
+            // auto-resolution; only the write path gates on completeness).
+            let probeIncomplete = !poolIsComplete(activePool);
 
             for (const entity of activeCandidates) {
                 const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
@@ -554,7 +869,9 @@ export async function resolveFilterLabelsToIds(
 
             // No exact match in active set — try Pass 2 (all entities including inactive)
             if (bestId === undefined) {
-                allCandidates = await helper.getValues(false);
+                allPool = await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, false);
+                allCandidates = allPool.rows;
+                if (!poolIsComplete(allPool)) probeIncomplete = true;
 
                 for (const entity of allCandidates) {
                     const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
@@ -565,14 +882,24 @@ export async function resolveFilterLabelsToIds(
                 }
             }
 
-            // Individual nameField matching for multi-field entities.
-            // When the mapping has 2+ nameFields (e.g. firstName + lastName for Resource),
-            // the label may match a single field exactly even though the full display name
-            // (e.g. "Max Soukhomlinov") doesn't match the partial label ("Max").
+            // Individual nameField matching, beyond the formatted display-name
+            // passes above. Two entity classes need it:
+            //   - multi-name-field entities (Resource/Contact: firstName +
+            //     lastName), where the label may match a single field exactly
+            //     even though the full display name ("Max Soukhomlinov") doesn't
+            //     match the partial label ("Max");
+            //   - v2.29.x (R9): single-name-field entities with a bracket field
+            //     (ConfigurationItem: "Server (CI-123)"), where a bare title
+            //     label can never equal the formatted display.
             // Auto-resolves only when exactly one entity matches on any nameField.
             const nameFields = getEntityNameFields(effectiveReferenceEntity);
-            if (bestId === undefined && nameFields.length >= 2) {
-                const allForNameMatch = allCandidates ?? await helper.getValues(false);
+            if (
+                bestId === undefined &&
+                (nameFields.length >= 2 || hasSingleBracketedNameField(effectiveReferenceEntity))
+            ) {
+                const nameMatchPool = allPool ?? await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, false);
+                if (!poolIsComplete(nameMatchPool)) probeIncomplete = true;
+                const allForNameMatch = nameMatchPool.rows;
                 const mergedById = new Map<string | number, IDataObject>();
 
                 for (const entity of activeCandidates) {
@@ -614,8 +941,11 @@ export async function resolveFilterLabelsToIds(
                     }
                 }
 
-                // Reuse allCandidates from Pass 2 (already fetched above)
-                const allForPartials = allCandidates ?? await helper.getValues(false);
+                // Reuse allPool from Pass 2 (set whenever bestId is still
+                // undefined — Pass 2 always ran by here)
+                const partialsPool = allPool ?? await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, false);
+                if (!poolIsComplete(partialsPool)) probeIncomplete = true;
+                const allForPartials = partialsPool.rows;
                 for (const entity of allForPartials) {
                     const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
                     const id = (entity as unknown as IDataObject).id as string | number;
@@ -652,6 +982,18 @@ export async function resolveFilterLabelsToIds(
                 resolutions.push({ field: filterField, from: label, to: bestId, method: 'reference' });
             } else if (pendingConfirmations.length === 0) {
                 warnings.push(`Could not resolve reference filter label '${label}' for field '${filterField}' (${effectiveReferenceEntity})`);
+            }
+
+            // C1: the candidate pool for this label was an incomplete sample
+            // (a probe failed or saturated at the row cap) — the resolution /
+            // candidate set above may not cover the full population, so flag
+            // it instead of presenting it as complete.
+            if (probeIncomplete) {
+                warnings.push(
+                    `[NAME_POOL_INCOMPLETE] Reference filter candidate sample for '${label}' on '${filterField}' ` +
+                    `(${effectiveReferenceEntity}) was incomplete (a probe failed or hit its row cap) — the match above ` +
+                    'may not be the only one; prefer the numeric ID when in doubt.',
+                );
             }
         } catch (err) {
             const msg = (err as Error).message ?? String(err);

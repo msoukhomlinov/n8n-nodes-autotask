@@ -48,16 +48,26 @@ const NODE_RESOURCE_IMPERSONATION_SUPPORTED = new Set([
 	'contractNote',
 	'configurationItems',
 	'configurationItemNote',
+	// R2 (C3): the endpoint gate (isImpersonationSupportedForEndpoint) already accepts
+	// /purchaseorders and every /attachments child route (backed by AttachmentInfo);
+	// the node resource keys below are the ones that exist in resources/definitions.ts,
+	// so the UI can advertise the field the executor actually honours for them.
+	'expenseItemAttachment',
 	'opportunity',
+	'opportunityAttachment',
 	'product',
 	'project',
 	'projectNote',
+	'purchaseOrders',
 	'quote',
 	'serviceCall',
 	'subscription',
 	'ticket',
+	'ticketAttachment',
 	'ticketNote',
+	'ticketNoteAttachment',
 	'timeEntry',
+	'timeEntryAttachment',
 ]);
 
 /**
@@ -65,6 +75,58 @@ const NODE_RESOURCE_IMPERSONATION_SUPPORTED = new Set([
  */
 export function isNodeResourceImpersonationSupported(resourceName: string): boolean {
 	return NODE_RESOURCE_IMPERSONATION_SUPPORTED.has(resourceName);
+}
+
+/**
+ * x4 (Codex P2 on PR #148): operation-scoped impersonation support.
+ *
+ * `resource` (Autotask Resource) is NOT impersonation-capable as an entity —
+ * `/Resources/` is not in IMPERSONATION_SUPPORTED_SEGMENTS, so `resource.update`
+ * must not advertise the field (the base UpdateOperation's endpoint gate would
+ * silently ignore it — the X9 model trap). But `resource.transferOwnership`
+ * forwards impersonationResourceId to the reassignment sub-calls
+ * (Companies/Tickets/Tasks/Projects/Opportunities PATCH + note POSTs), which ARE
+ * on supported segments. 'resource' is the only resource registering
+ * transferOwnership, so the exemption is naturally op-scoped. Adding 'resource'
+ * to the resource-level set instead would co-advertise the field on
+ * resource.update — exactly the trap this split avoids.
+ */
+export function isOperationImpersonationSupported(
+	resourceName: string | undefined,
+	operations: readonly string[],
+): boolean {
+	if (
+		resourceName === undefined ||
+		isNodeResourceImpersonationSupported(resourceName)
+	) {
+		return true;
+	}
+	return (
+		resourceName === 'resource' && operations.includes('transferOwnership')
+	);
+}
+
+/**
+ * x4 (Codex P2e): per-CALL impersonation support. The unified schema exposes
+ * impersonationResourceId whenever the resource's operation SET contains an
+ * impersonation-capable operation (isOperationImpersonationSupported), so a
+ * single tool can mix supported (resource.transferOwnership — its reassignment
+ * sub-calls hit Companies/Tickets/...) and unsupported (resource.update →
+ * /Resources/) operations. The executor answers this predicate per call and
+ * REJECTS the parameter when the called operation's endpoint would silently
+ * drop it — a success response must never imply attribution that was ignored.
+ */
+export function operationSupportsImpersonation(
+	resourceName: string | undefined,
+	operation: string,
+): boolean {
+	if (
+		resourceName === undefined ||
+		isNodeResourceImpersonationSupported(resourceName)
+	) {
+		return true;
+	}
+	return resourceName === 'resource' && operation === 'transferOwnership';
 }
 
 /**
@@ -139,4 +201,41 @@ export function getOptionalImpersonationResourceId(
 		);
 	}
 	return parsed;
+}
+
+/**
+ * Forward impersonation options for an attachment create call — the five
+ * hand-rolled attachment resources (Ticket/TicketNote/TimeEntry/ExpenseItem/
+ * OpportunityAttachments) all need this identical resolve-or-fall-back logic.
+ */
+export function resolveAttachmentImpersonationOptions(
+	context: IExecuteFunctions,
+	itemIndex: number,
+	endpoint: string,
+): { impersonationResourceId: number | undefined; proceedWithoutImpersonationIfDenied: boolean } {
+	let impersonationResourceId: number | undefined;
+	let proceedWithoutImpersonationIfDenied = false;
+	if (isImpersonationSupportedForEndpoint(endpoint)) {
+		try {
+			impersonationResourceId = getOptionalImpersonationResourceId(context, itemIndex);
+			if (impersonationResourceId !== undefined) {
+				proceedWithoutImpersonationIfDenied = context.getNodeParameter(
+					'proceedWithoutImpersonationIfDenied',
+					itemIndex,
+					true,
+				) as boolean;
+			}
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.includes('Could not get parameter')
+			) {
+				impersonationResourceId = undefined;
+			} else {
+				// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
+				throw error;
+			}
+		}
+	}
+	return { impersonationResourceId, proceedWithoutImpersonationIfDenied };
 }

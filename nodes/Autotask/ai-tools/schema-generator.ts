@@ -6,6 +6,7 @@ import { safeKeys, summariseFields, traceSchemaBuild } from './debug-trace';
 import { getOperationMetadata, isWriteOperation } from './operation-metadata';
 import { TYPED_REFERENCE_STRATEGIES } from '../helpers/typed-reference';
 import { RESOURCES_WITH_PRIORITY, RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION } from './resource-language';
+import { isOperationImpersonationSupported } from '../helpers/impersonation';
 import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
 
 /** Helper operations always present in the operation enum — not "real" data operations. */
@@ -40,8 +41,21 @@ export const IMPERSONATION_FIELD_WRITE_OPERATIONS = [
 	'createIfNotExists',
 ] as const;
 
-export function schemaHasImpersonationField(operations: readonly string[]): boolean {
-	return IMPERSONATION_FIELD_WRITE_OPERATIONS.some((op) => operations.includes(op));
+export function schemaHasImpersonationField(
+	operations: readonly string[],
+	resource?: string,
+): boolean {
+	if (!IMPERSONATION_FIELD_WRITE_OPERATIONS.some((op) => operations.includes(op))) {
+		return false;
+	}
+	// v2.29.0 (X9): the schema must not advertise impersonationResourceId for a
+	// resource Autotask does not support impersonation on — the description side is
+	// resource-gated (impersonation.ts), and a schema param the executor rejects is a
+	// model trap (configurationItemTypes used to advertise it via the ops-only gate).
+	// x4 (Codex P2): isOperationImpersonationSupported carries the
+	// resource.transferOwnership op-scoped exemption (its reassignment sub-calls are
+	// impersonation-capable even though /Resources/ itself is not).
+	return isOperationImpersonationSupported(resource, operations);
 }
 
 /** Shared impersonationResourceId field description — used at all 5 schema insertion sites. */
@@ -792,7 +806,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 						'For picklist UDFs use the picklist value ID (label resolution not supported for UDFs).',
 					);
 			}
-			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations, resource)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -801,6 +815,71 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.coerce.boolean()
 					.nullish()
 					.describe(IMPERSONATION_PROCEED_DESCRIBE);
+			}
+		}
+
+		// v2.29.0 (Codex P1 on PR #148): the Autotask API exposes contact deletion
+		// only via the company-scoped path (DELETE Companies/{companyID}/Contacts/{id});
+		// without a companyID parameter DeleteOperation falls back to a flat endpoint
+		// the API does not expose. Expose companyID (name or ID, auto-resolved) for
+		// the contact delete operation.
+		// R2 fix (C2): contact tools with create/update already have companyID from the
+		// write-fields loop above, so the if-not-present guard could never fire there —
+		// append the delete requirement to the existing field's description instead of
+		// shadowing the field.
+		if (resource === 'contact' && hasDeleteOp) {
+			const contactDeleteRequirement =
+				'Required to delete a contact (numeric company ID or company name; auto-resolved).';
+			if (shape.companyID) {
+				const existing =
+					typeof shape.companyID._def?.description === 'string'
+						? shape.companyID._def.description
+						: '';
+				shape.companyID = shape.companyID.describe(
+					existing ? `${existing} ${contactDeleteRequirement}` : contactDeleteRequirement,
+				);
+			} else {
+				// Delete-only contact tool: no write fields entered the shape.
+				shape.companyID = rz
+					.coerce.string()
+					.nullish()
+					.describe(
+						`Company name or numeric companyID (auto-resolved). ${contactDeleteRequirement}`,
+					);
+			}
+		}
+
+		// v2.29.0 (PR #148 R2, C1c): the Autotask API exposes configuration item
+		// related item deletion only via the parent-scoped route
+		// (DELETE /V1.0/ConfigurationItems/{configurationItemID}/RelatedItems/{id});
+		// without configurationItemID DeleteOperation falls back to a flat endpoint
+		// the API does not expose. Expose configurationItemID (name or ID,
+		// auto-resolved) for the delete operation — guarded by hasDeleteOp so
+		// create/update-only tools are unaffected.
+		// R2 fix (C1c): CIRI tools with create/update already have
+		// configurationItemID from the write-fields loop above, so the
+		// if-not-present guard could never fire there — append the delete
+		// requirement to the existing field's description instead of shadowing
+		// the field (mirrors the contact companyID block above).
+		if (resource === 'configurationItemRelatedItem' && hasDeleteOp) {
+			const ciriDeleteRequirement =
+				'Required to delete a configuration item related item — the Autotask API only exposes deletion via the parent-scoped path (DELETE /V1.0/ConfigurationItems/{configurationItemID}/RelatedItems/{id}).';
+			if (shape.configurationItemID) {
+				const existing =
+					typeof shape.configurationItemID._def?.description === 'string'
+						? shape.configurationItemID._def.description
+						: '';
+				shape.configurationItemID = shape.configurationItemID.describe(
+					existing ? `${existing} ${ciriDeleteRequirement}` : ciriDeleteRequirement,
+				);
+			} else {
+				// Delete-only CIRI tool: no write fields entered the shape.
+				shape.configurationItemID = rz
+					.coerce.string()
+					.nullish()
+					.describe(
+						`Parent configuration item name or numeric configurationItemID (auto-resolved). ${ciriDeleteRequirement}`,
+					);
 			}
 		}
 
@@ -894,7 +973,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.min(1)
 				.nullish()
 				.describe('Maximum attachment size per file in bytes (default 6291456).');
-			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations, resource)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -952,7 +1031,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.string()
 				.nullish()
 				.describe('Audit note written to the destination company context.');
-			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations, resource)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -1093,7 +1172,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 				.describe(
 					'Audit note template with placeholders: {sourceResourceName}, {sourceResourceId}, {destinationResourceName}, {destinationResourceId}, {date}, {entityType}, {entityId}.',
 				);
-			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations, resource)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()
@@ -1185,7 +1264,7 @@ export function getRuntimeSchemaBuilders(rz: RuntimeZod) {
 					.describe(
 						"If true, error on duplicate instead of returning outcome: skipped. Default false.",
 					);
-			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations)) {
+			if (!shape.impersonationResourceId && schemaHasImpersonationField(operations, resource)) {
 				shape.impersonationResourceId = rz
 					.coerce.string()
 					.nullish()

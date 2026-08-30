@@ -458,6 +458,74 @@ export async function fetchThresholdInformation(
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Impersonation-denial retry visibility (PR #148 SEC-3)
+// ---------------------------------------------------------------------------
+// When an impersonated request is denied ("does not have the adequate
+// permissions") and proceedWithoutImpersonationIfDenied is active, the
+// request below is retried ONCE without impersonation and the record ends up
+// attributed to the credential user. Previously that substitution was
+// advisory-only (console.warn) and invisible to the AI tool response, so the
+// model reported the write as attributed to the impersonated resource.
+//
+// The AI tools path registers an execution-scoped token for its n8n context
+// (registerImpersonationDenialToken); every denial-retry performed through
+// autotaskApiRequest with `this` = that context (or an Object.create(context)
+// probe derivative) is tagged with the token and can be drained by the
+// executor (drainImpersonationDenialMarkers) and surfaced in warnings[].
+// Unregistered callers (legacy standard-node paths) keep console.warn only.
+//
+// Tokens are keyed by the context OBJECT (WeakMap) rather than a module-global
+// "current" value so concurrent executions in one process cannot cross-wire
+// each other's denials.
+
+export interface ImpersonationDenialMarker {
+	readonly resourceId: number;
+	readonly method: string;
+	readonly endpoint: string;
+}
+
+const impersonationDenialTokens = new WeakMap<object, string>();
+const impersonationDenialMarkers = new Map<string, ImpersonationDenialMarker[]>();
+
+/**
+ * Register an execution-scoped token for a context so impersonation-denial
+ * retries made through autotaskApiRequest (with `this` = that context, or an
+ * Object.create(context) copy of it) are attributed to this execution.
+ */
+export function registerImpersonationDenialToken(context: object, token: string): void {
+	impersonationDenialTokens.set(context, token);
+}
+
+/** Remove the registration for a context (execution cleanup). */
+export function clearImpersonationDenialToken(context: object): void {
+	impersonationDenialTokens.delete(context);
+}
+
+function lookupImpersonationDenialToken(context: object): string | null {
+	let cursor: object | null = context;
+	while (cursor !== null) {
+		const token = impersonationDenialTokens.get(cursor);
+		if (token !== undefined) return token;
+		cursor = Object.getPrototypeOf(cursor);
+	}
+	return null;
+}
+
+function noteImpersonationDenial(token: string, marker: ImpersonationDenialMarker): void {
+	const list = impersonationDenialMarkers.get(token) ?? [];
+	list.push(marker);
+	impersonationDenialMarkers.set(token, list);
+}
+
+/** Take (and clear) all denial markers recorded for a token. */
+export function drainImpersonationDenialMarkers(token: string): ImpersonationDenialMarker[] {
+	const markers = impersonationDenialMarkers.get(token);
+	if (!markers) return [];
+	impersonationDenialMarkers.delete(token);
+	return markers;
+}
+
 /**
  * Makes an authenticated request to the Autotask API
  *
@@ -781,6 +849,17 @@ export async function autotaskApiRequest<T = JsonObject>(
 			console.warn(
 				`[autotaskApiRequest] Impersonation denied for resource ${effectiveImpersonation}; retrying ${method} ${endpoint} without impersonation.`,
 			);
+			// PR #148 SEC-3: tag the retry to the executing AI tool call (if any)
+			// so the identity substitution is reported in the response warnings[]
+			// instead of staying advisory-only.
+			const denialToken = lookupImpersonationDenialToken(this);
+			if (denialToken !== null) {
+				noteImpersonationDenial(denialToken, {
+					resourceId: effectiveImpersonation,
+					method,
+					endpoint,
+				});
+			}
 			return autotaskApiRequest.call(
 				this,
 				method,

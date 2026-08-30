@@ -48,25 +48,25 @@ export function generateAgentHint(
 
     switch (category) {
         case ErrorCategory.MISSING_REQUIRED_FIELD:
-            return `Call aiHelper.describeResource('${resource}', 'write') to see required fields for ${operation} operations. Then ensure all required fields are provided in your bodyJson or resource mapper.`;
+            return `Call autotask_${resource} with operation 'describeFields' (mode 'write') to see the required fields for ${operation}. Then retry with all required fields supplied.`;
 
         case ErrorCategory.INVALID_PICKLIST_VALUE:
             if (fieldName) {
-                return `Field '${fieldName}' has invalid value '${fieldValue}'. Use aiHelper.listPicklistValues('${resource}', '${fieldName}') to get valid options, then retry with a valid value.`;
+                return `Field '${fieldName}' has invalid value '${fieldValue}'. Call autotask_${resource} with operation 'listPicklistValues' (fieldId '${fieldName}') to get the valid options, then retry with a valid value.`;
             }
-            return `Invalid picklist value detected. Use aiHelper.describeResource('${resource}', 'write') to identify picklist fields, then aiHelper.listPicklistValues() to get valid values.`;
+            return `Invalid picklist value detected. Call autotask_${resource} with operation 'describeFields' (mode 'write') to identify picklist fields, then operation 'listPicklistValues' to get valid values.`;
 
         case ErrorCategory.INVALID_REFERENCE_VALUE:
             if (fieldName) {
-                return `Reference field '${fieldName}' has invalid ID '${fieldValue}'. Use aiHelper.listPicklistValues('${resource}', '${fieldName}', 'search_term') to find valid reference ID, then retry.`;
+                return `Reference field '${fieldName}' has invalid ID '${fieldValue}'. Call autotask_${resource} with operation 'listPicklistValues' (fieldId '${fieldName}') to find a valid reference ID, then retry.`;
             }
-            return `Invalid reference ID detected. Use aiHelper.describeResource('${resource}', 'write') to identify reference fields and get valid ID values.`;
+            return `Invalid reference ID detected. Call autotask_${resource} with operation 'describeFields' (mode 'write') to identify reference fields and their valid ID values.`;
 
         case ErrorCategory.FIELD_NOT_FOUND:
-            return `Field '${fieldName}' not found in ${resource}. Call aiHelper.describeResource('${resource}', '${operation === 'get' ? 'read' : 'write'}') to see available fields and their exact names.`;
+            return `Field '${fieldName}' not found on ${resource}. Call autotask_${resource} with operation 'describeFields' (mode '${operation === 'get' ? 'read' : 'write'}') to see the available fields and their exact names.`;
 
         case ErrorCategory.OVER_FETCHING:
-            return `Too many results returned. Reduce maxRecords parameter or add more specific filters. Consider using selectColumnsJson to limit returned fields and reduce payload size.`;
+            return `Too many results returned. Reduce the limit parameter or add more specific filters. Consider using the fields parameter to limit returned fields and reduce payload size.`;
 
         case ErrorCategory.RATE_LIMIT:
             return `API rate limit exceeded. Wait before retrying, reduce request frequency, or use smaller batch sizes. Consider using outputMode: 'rawIds' to reduce response size.`;
@@ -78,16 +78,16 @@ export function generateAgentHint(
             if (fieldName) {
                 return `Field '${fieldName}' is read-only and cannot be modified in ${operation} operations. Remove it from your bodyJson or resource mapper.`;
             }
-            return `Read-only field detected in ${operation} operation. Use aiHelper.describeResource('${resource}', 'write') to see which fields can be modified.`;
+            return `Read-only field detected in ${operation}. Call autotask_${resource} with operation 'describeFields' (mode 'write') to see which fields can be modified.`;
 
         case ErrorCategory.PARENT_ID_MISSING:
             return `Parent entity ID required for ${resource} ${operation}. This is a child entity - ensure you provide the parent entity ID in your request.`;
 
         case ErrorCategory.VALIDATION_ERROR:
-            return `Field validation failed. Use aiHelper.describeResource('${resource}', 'write') to see field requirements, data types, and constraints. Ensure all field values match expected formats.`;
+            return `Field validation failed. Call autotask_${resource} with operation 'describeFields' (mode 'write') to see field requirements, data types, and constraints. Ensure all field values match expected formats.`;
 
         default:
-            return `Use aiHelper.describeResource('${resource}', '${operation === 'get' ? 'read' : 'write'}') to understand field requirements and constraints for ${operation} operations.`;
+            return `Call autotask_${resource} with operation 'describeFields' (mode '${operation === 'get' ? 'read' : 'write'}') to understand field requirements and constraints for ${operation}.`;
     }
 }
 
@@ -173,8 +173,8 @@ export function withAgentHint(
 
     // Add helpful operations
     agentError.extensions.helpfulOperations = [
-        'aiHelper.describeResource',
-        'aiHelper.listPicklistValues'
+        'describeFields',
+        'listPicklistValues'
     ];
 
     // Add specific suggestions based on error category
@@ -196,7 +196,7 @@ function generateSuggestions(
     switch (category) {
         case ErrorCategory.MISSING_REQUIRED_FIELD:
             return [
-                `Check required fields: aiHelper.describeResource('${resource}', 'write')`,
+                `Check required fields: autotask_${resource} operation 'describeFields' (mode 'write')`,
                 'Ensure all required fields are included in bodyJson',
                 'Verify field names are spelled correctly'
             ];
@@ -204,8 +204,8 @@ function generateSuggestions(
         case ErrorCategory.INVALID_PICKLIST_VALUE:
             return [
                 fieldName
-                    ? `Get valid values: aiHelper.listPicklistValues('${resource}', '${fieldName}')`
-                    : `Get valid values: aiHelper.listPicklistValues('${resource}', 'fieldName')`,
+                    ? `Get valid values: autotask_${resource} operation 'listPicklistValues' (fieldId '${fieldName}')`
+                    : `Get valid values: autotask_${resource} operation 'listPicklistValues'`,
                 'Use exact values from the picklist response',
                 'Check for case sensitivity and spacing'
             ];
@@ -213,7 +213,7 @@ function generateSuggestions(
         case ErrorCategory.INVALID_REFERENCE_VALUE:
             return [
                 fieldName
-                    ? `Find valid ID: aiHelper.listPicklistValues('${resource}', '${fieldName}', 'search')`
+                    ? `Find valid ID: autotask_${resource} operation 'listPicklistValues' (fieldId '${fieldName}')`
                     : 'Search for valid reference IDs using listPicklistValues',
                 'Ensure the referenced entity exists',
                 'Use numeric IDs for reference fields'
@@ -222,8 +222,8 @@ function generateSuggestions(
         case ErrorCategory.OVER_FETCHING:
             return [
                 'Add filters to reduce result set size',
-                'Use selectColumnsJson to limit returned fields',
-                'Set maxRecords to a lower value',
+                'Use the fields parameter to limit returned fields',
+                'Set limit to a lower value',
                 'Consider outputMode: "rawIds" for smaller payloads'
             ];
 

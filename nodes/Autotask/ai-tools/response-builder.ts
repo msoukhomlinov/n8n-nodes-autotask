@@ -11,6 +11,10 @@ export interface ToolResponseContext {
 	resolutionWarnings?: string[];
 	/** F7b: moveToCompany audit-note creation outcomes (survive on the success envelope). */
 	auditNotes?: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
+	/** v2.29.0 (X4): for moveConfigurationItem — the SOURCE record id (the move clones to a new id and deactivates the source). */
+	originalRecordId?: number | string;
+	/** MAJOR-1 (PR #148 round 10): moveConfigurationItem — true only when the mover ACTUALLY issued (and the API acknowledged) the source deactivation PATCH; false/absent means the source was left untouched. */
+	sourceDeactivated?: boolean;
 	pendingConfirmations?: PendingLabelConfirmation[];
 	effectiveOffset?: number;
 	readFields?: FieldMeta[];
@@ -408,17 +412,42 @@ export function buildMutationResponse(
 							? 'Posted'
 							: operation === 'moveToCompany'
 								? 'Moved to company for'
-								: operation === 'moveConfigurationItem'
-									? 'Moved configuration item for'
-									: operation === 'transferOwnership'
-										? 'Transferred ownership for'
-										: operation.endsWith('e')
-											? operation.charAt(0).toUpperCase() + operation.slice(1) + 'd'
-											: operation.charAt(0).toUpperCase() + operation.slice(1) + 'ed';
+								: operation === 'transferOwnership'
+									? 'Transferred ownership for'
+									: operation.endsWith('e')
+										? operation.charAt(0).toUpperCase() + operation.slice(1) + 'd'
+										: operation.charAt(0).toUpperCase() + operation.slice(1) + 'ed';
 	const identity = record ? buildIdentityString(resource, record) : '';
-	const summary = identity
-		? `${opVerb} ${resource} ${identity} successfully.`
-		: `${opVerb} ${resource} (ID: ${id}) successfully.`;
+	const isMoveConfigurationItem = operation === 'moveConfigurationItem';
+	// MAJOR-1 (PR #148 round 10): the deactivation claim must mirror the mover's
+	// ACTUAL outcome (`sourceDeactivated` — true only when the deactivation PATCH
+	// was issued and acknowledged). `deactivateSource=false` or audit-note failure
+	// skips the PATCH, leaving the source active — the summary must say so.
+	const sourceRef = context.originalRecordId !== undefined ? context.originalRecordId : 'record';
+	const deactivationClause =
+		context.sourceDeactivated === true
+			? `the original ${sourceRef} was DEACTIVATED (Autotask 'move' = clone + deactivate — no in-place move exists).`
+			: `the original ${sourceRef} was NOT deactivated — the deactivation was not performed (deactivateSource=false, or skipped), so it remains active.`;
+	const mutationWarnings = isMoveConfigurationItem
+		? [
+				...(context.resolutionWarnings ?? []),
+				...(
+					context.sourceDeactivated === true
+						? []
+						: [
+								'moveConfigurationItem: the source configuration item was NOT deactivated — the deactivation PATCH was not performed (deactivateSource=false, or deactivation was skipped). The original record remains active.',
+							]
+				),
+			]
+		: context.resolutionWarnings ?? [];
+	const summary =
+		isMoveConfigurationItem
+			? context.originalRecordId !== undefined
+				? `Cloned configuration item ${context.originalRecordId} to a new record (ID: ${id}); ${deactivationClause}`
+				: `Cloned configuration item to a new record (ID: ${id}); ${deactivationClause}`
+			: identity
+				? `${opVerb} ${resource} ${identity} successfully.`
+				: `${opVerb} ${resource} (ID: ${id}) successfully.`;
 	const response: Record<string, unknown> = {
 		summary,
 		resource,
@@ -426,8 +455,11 @@ export function buildMutationResponse(
 		id,
 		resolvedLabels: toResolvedLabels(context.resolutions),
 		pendingConfirmations: context.pendingConfirmations ?? [],
-		warnings: context.resolutionWarnings ?? [],
+		warnings: mutationWarnings,
 	};
+	if (isMoveConfigurationItem && typeof context.sourceDeactivated === 'boolean') {
+		response.sourceDeactivated = context.sourceDeactivated;
+	}
 	if (context.auditNotes) response.auditNotes = context.auditNotes;
 	if (record) response.record = record;
 	return response;
@@ -435,10 +467,14 @@ export function buildMutationResponse(
 
 /**
  * Flat response for NO-CHANGE mutation outcomes — moveToCompany skip (duplicate
- * email safeguard) and dry run. Compound-style envelope: top-level `outcome`,
- * root context fields (sourceContactId, destinationCompanyId, duplicateContactId
- * when present), warnings when non-empty, and NO top-level `id` — a skip must
- * not look like a successful move (F-C, v2.28.6).
+ * email safeguard) and move dry runs (moveToCompany, moveConfigurationItem —
+ * x4 P2g: a dry run has runId but no destination record; it must render as
+ * 'No changes were made' with the run ID as reference, never as a mutation
+ * success). Compound-style envelope: top-level `outcome`, root context fields
+ * (sourceContactId / sourceConfigurationItemId, destinationCompanyId,
+ * duplicateContactId, dryRunId when present), warnings when non-empty, and NO
+ * top-level `id` — a skip/dry-run must not look like a successful move (F-C,
+ * v2.28.6).
  */
 export function buildNoChangeMutationResponse(
 	resource: string,
@@ -467,8 +503,14 @@ export function buildNoChangeMutationResponse(
 	if (typeof details?.sourceContactId === 'number') {
 		response.sourceContactId = details.sourceContactId;
 	}
+	if (typeof details?.sourceConfigurationItemId === 'number') {
+		response.sourceConfigurationItemId = details.sourceConfigurationItemId;
+	}
 	if (typeof details?.destinationCompanyId === 'number') {
 		response.destinationCompanyId = details.destinationCompanyId;
+	}
+	if (typeof details?.dryRunId === 'string' && details.dryRunId.trim() !== '') {
+		response.dryRunId = details.dryRunId;
 	}
 	if (typeof details?.duplicateContactId === 'number' && details.duplicateContactId > 0) {
 		response.duplicateContactId = details.duplicateContactId;
@@ -501,14 +543,24 @@ export function buildCountResponse(
 	resource: string,
 	operation: string,
 	matchCount: number,
+	context: ToolResponseContext = {},
 ): Record<string, unknown> {
-	return {
+	const response: Record<string, unknown> = {
 		summary: `${matchCount} ${resource} records match the filter.`,
 		resource,
 		operation: `${resource}.${operation}`,
 		matchCount,
-		warnings: [],
+		// x4 (Codex P2): a read-path label resolution from an incomplete candidate
+		// pool still selects an ID (deliberate, warned) — surface those warnings
+		// like every other builder; previously hard-coded [] made a count for an
+		// arbitrarily selected record look unqualified.
+		warnings: context.resolutionWarnings ?? [],
 	};
+	// v2.29.0 (X14): report label->ID resolutions on count responses too (a label
+	// filter that resolved silently was invisible to the model).
+	const resolvedLabels = toResolvedLabels(context.resolutions);
+	if (resolvedLabels.length > 0) response.resolvedLabels = resolvedLabels;
+	return response;
 }
 
 export function buildCompoundResponse(

@@ -74,6 +74,30 @@ export const contactFields: INodeProperties[] = [
 		description: 'The ID of the contact to operate on',
 	},
 	{
+		// v2.29.0 (Codex P1 on PR #148): the Autotask API exposes contact deletion
+		// only via the company-scoped path (DELETE Companies/{companyID}/Contacts/{id});
+		// DeleteOperation needs companyID to build that URL.
+		displayName: 'Company ID',
+		name: 'companyID',
+		type: 'number',
+		required: true,
+		// x4 (Codex P2f): unset by default — a prefilled 0 satisfied required:true
+		// without prompting, so ordinary contact deletions (contact not on the
+		// root company) sent DELETE Companies/0/Contacts/{id} and failed. 0 is
+		// still a VALID value (root-company contacts) — the user can enter it
+		// explicitly. n8n never consults the property default at runtime, so this
+		// is UI-only.
+		default: undefined,
+		displayOptions: {
+			show: {
+				resource: ['contact'],
+				operation: ['delete'],
+			},
+		},
+		description:
+			"The company the contact belongs to — the API only exposes contact deletion via the company-scoped path (Companies/{companyID}/Contacts/{ID}). Root-company contacts use 0 — enter 0 explicitly only for those.",
+	},
+	{
 		displayName: 'Fields',
 		name: 'fieldsToMap',
 		type: 'resourceMapper',

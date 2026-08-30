@@ -10,6 +10,7 @@ import {
 	RESOURCES_WITH_TERMINAL_STATUS_EXCLUSION,
 	RESOURCE_EXTRA_HINTS,
 } from './resource-language';
+import { isNodeResourceImpersonationSupported } from '../helpers/impersonation';
 import { getIdentifierPairConfig } from '../constants/resource-operations';
 import { MAX_RESPONSE_RECORDS } from './operation-handlers/operation-dispatch';
 import { READ_PARAM_DESC, fieldsDesc, filtersJsonDesc, returnAllDesc } from './read-param-descriptions';
@@ -292,8 +293,19 @@ export function buildUpdateDescription(
 }
 
 export function buildDeleteDescription(resourceLabel: string, resourceName: string): string {
+	// v2.29.0 (PR #148): parent-scoped delete routes — the API only exposes contact
+	// deletion via the company-scoped path and CIRI deletion via the parent-scoped
+	// path, so the runtime additionally requires the parent identifier for these two
+	// resources (name or ID, auto-resolved). All other resources stay ID-only.
+	const parentScopeNote =
+		resourceName === 'contact'
+			? `Also supply companyID (numeric company ID or company name; auto-resolved) — the API only exposes contact deletion via the company-scoped path. `
+			: resourceName === 'configurationItemRelatedItem'
+				? `Also supply configurationItemID (numeric configuration item ID or CI name; auto-resolved) — deletion is only exposed via the parent-scoped path. `
+				: '';
 	return (
 		`Delete a ${resourceLabel} record by numeric ID — ONLY on explicit user intent, never inferred from context. ` +
+		`${parentScopeNote}` +
 		`Confirm the correct ID first via autotask_${resourceName} with operation 'getMany' or operation 'get'. ` +
 		`Delete responses may be minimal; treat non-200 outcomes as failures.`
 	);
@@ -691,7 +703,15 @@ export function buildUnifiedDescriptionTemplate(
 	// schema actually contains the field (F3b: read-only configs must not
 	// advertise a param the strict schema would reject).
 	if (supportsImpersonation && schemaHasImpersonationField(operations)) {
-		sections.push("Impersonation supported: pass 'impersonationResourceId' for write attribution.");
+		// x4 (Codex P2e): for 'resource' the field is honoured by transferOwnership
+		// only (its reassignment sub-calls); the executor rejects it per call for
+		// other operations (e.g. update → /Resources/) so a success never implies
+		// attribution the API silently dropped.
+		sections.push(
+			resource === 'resource'
+				? "Impersonation supported: pass 'impersonationResourceId' for write attribution — honoured by operation 'transferOwnership' only; it is rejected for this resource's other operations (e.g. update)."
+				: "Impersonation supported: pass 'impersonationResourceId' for write attribution.",
+		);
 	}
 
 	const aiDescription = getEntityMetadata(resource)?.aiDescription;
@@ -875,10 +895,37 @@ function getReadOpParams(): ReadOpParamsMap {
 			{ field: 'excludeTerminalStatuses', type: 'boolean', description: 'Exclude Complete/Cancelled (ticket/task/project only, default true).' },
 		],
 	},
-	delete: {
-		required: [{ field: 'id', type: 'number', description: 'Numeric entity ID to delete.' }],
+	// v2.29.0 (PR #148): parent-scoped delete routes — contact and
+	// configurationItemRelatedItem deletions are only exposed through parent-scoped
+	// API routes, so the runtime additionally requires the parent identifier
+	// (name or ID, auto-resolved) for those two resources. All other resources
+	// keep the plain ID-only contract.
+	delete: (resource: string) => ({
+		required: [
+			{ field: 'id', type: 'number', description: 'Numeric entity ID to delete.' },
+			...(resource === 'contact'
+				? [
+						{
+							field: 'companyID',
+							type: 'number | string',
+							description:
+								'Numeric company ID or company name; auto-resolved — the API only exposes contact deletion via the company-scoped path (Companies/{companyID}/Contacts/{id}).',
+						},
+					]
+				: []),
+			...(resource === 'configurationItemRelatedItem'
+				? [
+						{
+							field: 'configurationItemID',
+							type: 'number | string',
+							description:
+								'Numeric configuration item ID or CI name; auto-resolved — deletion is only exposed via the parent-scoped path (ConfigurationItems/{configurationItemID}/RelatedItems/{id}).',
+						},
+					]
+				: []),
+		],
 		optional: [],
-	},
+	}),
 	whoAmI: {
 		required: [],
 		optional: [
@@ -1418,6 +1465,7 @@ function getReadOpParams(): ReadOpParamsMap {
 function buildWriteParams(
 	writeFields: FieldMeta[],
 	includeDedup = false,
+	resource?: string,
 ): { required: OperationParam[]; optional: OperationParam[] } {
 	const required: OperationParam[] = [];
 	const optional: OperationParam[] = [];
@@ -1462,13 +1510,17 @@ function buildWriteParams(
 			},
 		);
 	}
-	optional.push(
-		{
-			field: 'impersonationResourceId',
-			type: 'number | string',
-			description: 'Resource ID or name for write attribution (auto-resolved).',
-		},
-	);
+	// v2.29.0 (X9): only document impersonationResourceId for resources Autotask
+	// actually supports impersonation on (parity with the schema gate + description line).
+	if (resource === undefined || isNodeResourceImpersonationSupported(resource)) {
+		optional.push(
+			{
+				field: 'impersonationResourceId',
+				type: 'number | string',
+				description: 'Resource ID or name for write attribution (auto-resolved).',
+			},
+		);
+	}
 	return { required, optional };
 }
 
@@ -1647,7 +1699,7 @@ export function buildOperationDoc(
 
 	let parameters: ReadOpParams;
 	if (WRITE_OPS_WITH_FIELD_METADATA.has(targetOperation)) {
-		parameters = buildWriteParams(writeFields, targetOperation === 'createIfNotExists');
+		parameters = buildWriteParams(writeFields, targetOperation === 'createIfNotExists', resource);
 	} else {
 		parameters = resolveReadOpParams(resource, targetOperation);
 	}

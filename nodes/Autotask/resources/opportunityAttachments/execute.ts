@@ -6,6 +6,7 @@ import {
 	CountOperation,
 } from '../../operations/base';
 import { autotaskApiRequest } from '../../helpers/http';
+import { resolveAttachmentImpersonationOptions } from '../../helpers/impersonation';
 import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 import { ATTACHMENT_TYPE, validateAttachmentSize, type IAttachmentPayload } from '../../helpers/attachment';
 
@@ -54,7 +55,19 @@ export async function executeOpportunityAttachmentOperation(
 						publish: publish,
 					};
 
-					const response = await autotaskApiRequest.call(this, 'POST', endpoint, payload as IDataObject) as { item?: { itemId?: number } };
+					const { impersonationResourceId, proceedWithoutImpersonationIfDenied } =
+						resolveAttachmentImpersonationOptions(this, i, endpoint);
+
+					const response = await autotaskApiRequest.call(
+						this,
+						'POST',
+						endpoint,
+						payload as IDataObject,
+						{},
+						impersonationResourceId,
+						proceedWithoutImpersonationIfDenied,
+					) as { item?: { itemId?: number } };
+
 					const attachmentId = response?.item?.itemId;
 					if (attachmentId === undefined || attachmentId === null) {
 						throw new Error(`Attachment '${fileName}' for opportunity ${opportunityId} created but API response did not contain an attachment ID`);

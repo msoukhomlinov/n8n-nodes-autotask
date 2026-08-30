@@ -3,6 +3,7 @@ import type { IAutotaskEntity, IAutotaskQueryInput } from '../../types';
 import type { GetManyOperation } from '../../operations/base/get-many';
 // REMOVED to break circular dependency: import { GetManyOperation as GetManyOperationClass } from '../../operations/base/get-many';
 import { PICKLIST_REFERENCE_FIELD_MAPPINGS, DEFAULT_PICKLIST_FIELDS } from '../../constants/field.constants';
+import { getEntityMetadata } from '../../constants/entities';
 import type { IPicklistReferenceFieldMapping } from '../../types/base/picklists';
 import { ERROR_TEMPLATES, WARNING_TEMPLATES } from '../../constants/error.constants';
 import type { CacheService } from '../cache';
@@ -12,6 +13,17 @@ import { QUERY_LIMITS } from '../../constants/operations';
 
 /** Memoises per-entity isActive field support. Keyed by lowercased entity type. */
 const entitySupportsIsActiveCache = new Map<string, boolean>();
+
+// v2.29.0 (X10) / B5: usable-name-field capability cache — stores the matched
+// NAME_FIELD_HINTS field list (null = entity has no usable name field).
+// See resolveUsableNameFields() / getUsableReferenceNameFields().
+const entityUsableNameFieldsCache = new Map<string, string[] | null>();
+
+/** Field names (lowercase) that can serve as a human label for reference resolution. */
+const NAME_FIELD_HINTS = new Set([
+	'name', 'referencetitle', 'title', 'displayname', 'firstname', 'lastname',
+	'label', 'companyname', 'contractname', 'projectname', 'username', 'email',
+]);
 
 interface IFallbackConfig {
 	enabled: boolean;
@@ -32,6 +44,11 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	// LAZY INITIALIZATION: To break circular dependency, GetManyOperation is loaded on first use
 	private _getManyOperation: GetManyOperation<T> | null = null;
 	private readonly entityHelper: EntityHelper;
+	// v2.29.0: the canonical (metadata-cased) entity name. Reference metadata can
+	// arrive lowercase (e.g. referencesEntity 'configurationitem'); API paths are
+	// built from the entity name, so query construction must use the canonical
+	// casing from the entity registry (case-insensitive lookup).
+	private readonly canonicalEntityType: string;
 	private readonly maxReferenceDepth = 3;
 	private currentDepth = 0;
 	private readonly fallbackConfig: IFallbackConfig;
@@ -47,6 +64,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	) {
 		// NOTE: GetManyOperation is now lazily initialized to break circular dependency
 		this.entityHelper = new EntityHelper(entityType, context);
+		this.canonicalEntityType = getEntityMetadata(entityType)?.name ?? entityType;
 
 		// Set fallback configuration
 		this.fallbackConfig = {
@@ -59,14 +77,37 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		this.cacheService = options?.cacheService;
 	}
 
+	/**
+	 * v2.29.0: whether the referenced entity publishes an `isActive` field, so
+	 * callers know whether an `activeOnly` filter can safely be applied.
+	 *
+	 * 3-state cache semantics (mirrors resolveUsableNameFields' poison guard):
+	 *   - cached true   entity HAS isActive  (evidence: non-empty standard fields)
+	 *   - cached false  entity LACKS isActive (evidence: non-empty standard fields)
+	 *   - not cached    capability unknown for this call — a getFields throw, or a
+	 *                   non-throwing EMPTY fields response (a degraded metadata read).
+	 *                   Degraded reads are NEVER cached, so they cannot disable
+	 *                   isActive filtering for the module lifetime; the next call
+	 *                   re-probes. On such a read we fail safe by assuming the field
+	 *                   IS supported, so the active filter is KEPT (an over-filter
+	 *                   surfaces as an API error; an under-filter silently admits
+	 *                   inactive rows on the write path).
+	 */
 	private async entitySupportsIsActiveField(): Promise<boolean> {
 		const key = this.entityType.toLowerCase();
 		const cached = entitySupportsIsActiveCache.get(key);
 		if (cached !== undefined) return cached;
 		try {
-			const fields = (await getFields(this.entityType, this.context, {
+			const fields = (await getFields(this.canonicalEntityType, this.context, {
 				fieldType: 'standard',
 			})) as IAutotaskField[];
+			// Poison guard: an empty (non-throwing) fields response is a degraded
+			// metadata read, not evidence that the entity lacks isActive. Do NOT
+			// cache it (the next call re-probes); fail safe by assuming support
+			// so the active filter is kept rather than silently dropped.
+			if (fields.length === 0) {
+				return true;
+			}
 			const has = fields.some((f) => f.name === 'isActive');
 			entitySupportsIsActiveCache.set(key, has);
 			return has;
@@ -74,12 +115,77 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			console.warn(
 				`[EntityValueHelper] Could not check isActive support for ${this.entityType}: ${
 					err instanceof Error ? err.message : 'unknown error'
-				}. Skipping isActive filter.`,
+				}. Keeping isActive filter (safe direction).`,
 			);
 			// Do NOT write to entitySupportsIsActiveCache here — a transient failure
 			// must not permanently suppress isActive filtering for this entity type.
-			return false;
+			// Fail safe: assume the entity supports isActive so the active filter
+			// is kept (matches the empty-read direction above).
+			return true;
 		}
+	}
+
+	/**
+	 * v2.29.0 (X10) / B5: name-field capability gate. Returns the MATCHED usable
+	 * name fields (mapping entry first, then a standard-field metadata scan
+	 * against NAME_FIELD_HINTS) so callers probe exactly the display fields the
+	 * entity publishes:
+	 *   - string[]   entity has usable name fields (cached)
+	 *   - null       entity has NO usable name field (cached)
+	 *   - undefined  capability unknown for this call — a transient getFields
+	 *                failure, or a non-throwing EMPTY fields response (poison
+	 *                guard: a degraded metadata read must NOT be cached, so it
+	 *                cannot disable name resolution for the module lifetime —
+	 *                the next call re-probes)
+	 */
+	private async resolveUsableNameFields(): Promise<string[] | null | undefined> {
+		const key = this.entityType.toLowerCase();
+		const cached = entityUsableNameFieldsCache.get(key);
+		if (cached !== undefined) return cached;
+		// A mapping entry means the entity has known-good display fields.
+		const mapping = this.getEntityFieldMapping();
+		if (mapping) {
+			const mapped = mapping.nameFields;
+			entityUsableNameFieldsCache.set(key, mapped);
+			return mapped;
+		}
+		try {
+			const fields = (await getFields(this.canonicalEntityType, this.context, {
+				fieldType: 'standard',
+			})) as IAutotaskField[];
+			// Poison guard: an empty (non-throwing) fields response is a degraded
+			// metadata read, not evidence of a missing name field — treat as unknown
+			// and do NOT cache, so name resolution is not disabled for the module
+			// lifetime (the next call re-probes).
+			if (fields.length === 0) {
+				return undefined;
+			}
+			const usable = fields
+				.filter((f) => NAME_FIELD_HINTS.has(String(f.name).toLowerCase()))
+				.map((f) => String(f.name));
+			const result = usable.length > 0 ? usable : null;
+			entityUsableNameFieldsCache.set(key, result);
+			return result;
+		} catch (err) {
+			console.warn(
+				`[EntityValueHelper] Could not check name-field support for ${this.entityType}: ${
+					err instanceof Error ? err.message : 'unknown error'
+				}. Falling back to the fetch attempt.`,
+			);
+			// Transient failure — do NOT cache; fall back to the previous behaviour.
+			return undefined;
+		}
+	}
+
+	/**
+	 * B5 public gate: the matched usable reference-name fields for this entity,
+	 * or null when the entity has no usable name field (an unknown capability
+	 * also collapses to null — callers keep their `['name']` fallback / pre-gate
+	 * behaviour for that call).
+	 */
+	public async getUsableReferenceNameFields(): Promise<string[] | null> {
+		const resolved = await this.resolveUsableNameFields();
+		return resolved === undefined ? null : resolved;
 	}
 
 	private getEntityFieldMapping(): IPicklistReferenceFieldMapping | undefined {
@@ -108,7 +214,7 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			// LAZY IMPORT: Import GetManyOperation only when needed to break circular dependency
 			const { GetManyOperation: GetManyOperationClass } = await import('../../operations/base/get-many');
 			this._getManyOperation = new GetManyOperationClass(
-				this.entityType,
+				this.canonicalEntityType,
 				this.context as IExecuteFunctions,
 				{
 					isPicklistQuery: true,
@@ -181,6 +287,21 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	 *                   so labels can still be generated for IDs that point to inactive (historical) records.
 	 */
 	public async getValues(activeOnly = false): Promise<T[]> {
+		// v2.29.0 (X10): fail fast when the entity has no usable name field — the
+		// DEFAULT_PICKLIST_FIELDS fallback would make the API reject the fetch
+		// ('Unable to find name in the X Entity') or burn minutes scanning an
+		// unmatchable field, hanging the tool call past the protocol timeout
+		// (observed: filtering a ConfigurationItem reference by its referenceTitle
+		// label scanned all active CIs).
+		const usableNameFields = await this.resolveUsableNameFields();
+		if (usableNameFields === null) {
+			console.warn(
+				`[EntityValueHelper] ${this.entityType} has no name-like field — no reference labels can match; skipping value fetch.`,
+			);
+			return [];
+		}
+		// undefined = unknown capability (transient / degraded metadata, not cached):
+		// keep the pre-gate behaviour — attempt the fetch for this call.
 		try {
 			// Apply any configured filters from PICKLIST_REFERENCE_FIELD_MAPPINGS
 			const mapping = this.getEntityFieldMapping();
@@ -250,6 +371,40 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 	 *                     callers (e.g. response enrichment) minimise bandwidth while still
 	 *                     guaranteeing the fields they need are returned by the API.
 	 */
+	/**
+	 * v2.29.0 (X16): targeted candidate fetch for reference-label resolution.
+	 * Replaces the full-entity scan (getValues) which, on large reference
+	 * populations (e.g. ~24k ConfigurationItems), takes minutes and hangs the
+	 * tool call past the MCP protocol timeout. Filters the referenced entity on
+	 * a display-name field (eq or contains) so resolution costs 1-3 small
+	 * API calls regardless of entity size.
+	 */
+	public async getValuesByDisplay(
+		nameField: string,
+		value: string,
+		activeOnly: boolean,
+		op: 'eq' | 'contains' = 'eq',
+		limit = 50,
+	): Promise<T[]> {
+		const mapping = this.getEntityFieldMapping();
+		const filters: Record<string, unknown> = { ...(mapping?.filters || {}) };
+		filters[nameField] = value;
+		if (activeOnly && !('isActive' in filters)) {
+			const supports = await this.entitySupportsIsActiveField();
+			if (supports) filters.isActive = activeOnly;
+		}
+		const query: IAutotaskQueryInput<T> = {
+			filter: Object.entries(filters).map(([field, val]) => ({
+				field,
+				op: field === nameField ? op : 'eq',
+				value: String(val),
+			})),
+			MaxRecords: limit,
+		};
+		const getManyOp = await this.getGetManyOperation();
+		return getManyOp.execute(query);
+	}
+
 	public async getValuesByIds(ids: (string | number)[], includeFields?: string[]): Promise<T[]> {
 		if (!ids || ids.length === 0) {
 			return [];

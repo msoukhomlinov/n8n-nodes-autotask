@@ -62,6 +62,36 @@ export const configurationItemRelatedItemFields: INodeProperties[] = [
 		description: 'The ID of the related item to retrieve or delete',
 	},
 	{
+		// v2.29.0 (PR #148 R2, C1b): the Autotask API exposes related-item deletion
+		// only via the parent-scoped path
+		// (DELETE ConfigurationItems/{configurationItemID}/RelatedItems/{id});
+		// DeleteOperation needs configurationItemID to build that URL.
+		// v2.29.0 (Codex F1 on PR #148): numeric ID only on the standard node —
+		// this path performs no name resolution (the AI tool path resolves a CI
+		// name to a numeric ID), mirroring the contact-delete companyID field.
+		displayName: 'Configuration Item ID',
+		name: 'configurationItemID',
+		type: 'number',
+		required: true,
+		// x4 (Codex P2): undefined default (no UI prefill) — the previous
+		// `default: 0` satisfied `required: true` without prompting, and the
+		// untouched value produced a ConfigurationItems/0/... failure (or the
+		// 405 flat-route after n8n strips default-equal values). Configuration
+		// item IDs are strictly positive (unlike the root-company ID 0 the
+		// contact-delete companyID field legitimately allows). n8n never
+		// consults the property default at runtime, so this only affects the UI.
+		default: undefined,
+		displayOptions:
+		{
+			show: {
+				resource: ['configurationItemRelatedItem'],
+				operation: ['delete'],
+			},
+		},
+		description:
+			'Required (parent configuration item numeric ID only — the standard node performs no name resolution; the AI tool also accepts the CI name) — the Autotask API only exposes related-item deletion via the parent-scoped path (ConfigurationItems/{configurationItemID}/RelatedItems/{ID})',
+	},
+	{
 		displayName: 'Fields',
 		name: 'fieldsToMap',
 		type: 'resourceMapper',
