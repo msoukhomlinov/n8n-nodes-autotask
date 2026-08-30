@@ -6,7 +6,7 @@ import type { RedisLike } from './client';
  * Mirrors the layout of ./threadStore.ts: the Lua scripts live next to the
  * client, the caller owns the key names and the TTL values.
  *
- * TWO keys with DIFFERENT scopes, deliberately (Codex R3 P1-A on PR #150):
+ * TWO keys with DIFFERENT scopes, deliberately:
  *
  * - COORDINATION key `n8n-autotask:cnt-pend:{threadHash}` — keyed on the
  *   THREAD-BUDGET identity (`redisKeyHash`, NO username), the same scope as the
@@ -21,7 +21,7 @@ import type { RedisLike } from './client';
  *   another database's total. Splitting the keys keeps the serialisation shared
  *   (which is what protects the thread budget) while keeping the DATA private.
  *
- * Ownership is token-based (Codex R3 P1-C): the marker value is
+ * Ownership is token-based: the marker value is
  * `pending:{ownerToken}:{renewEpochMs}`. The epoch moves on every renewal, so
  * every mutation of the marker is a compare-and-set against either the OWNER
  * PREFIX (renew/release: the epoch legitimately changes under the same owner) or
