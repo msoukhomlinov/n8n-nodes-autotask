@@ -7,6 +7,15 @@ import { getFields } from './entity/api';
 const MAX_DOMAIN_LIMIT = 100;
 const DEFAULT_DOMAIN_LIMIT = 25;
 const MAX_CONTACT_FALLBACK_LIMIT = 500;
+/**
+ * Bound on the unfiltered `countCompanyTotal` call (issue #144). This count runs in
+ * parallel with the bounded scans and is purely informational context (`totalAvailable`)
+ * — on a slow/large tenant it must never stall the whole searchByDomain/searchByIdentity
+ * response. Degrades to `undefined` on timeout via the same failure-tolerant path already
+ * used for outright errors.
+ */
+const COMPANY_TOTAL_COUNT_TIMEOUT_MS = 10_000;
+const COUNT_TIMEOUT_SENTINEL = Symbol('countCompanyTotal:timeout');
 const COMPANY_DOMAIN_FIELD_PRIORITY = [
 	'webAddress',
 	'webaddress',
@@ -77,8 +86,15 @@ export interface CompanySearchCoverage extends IDataObject {
  * so later processing (or the next input item) read neutralised filters and
  * field mappings. Same isolated-context pattern as executeCountOperation
  * (ai-tools/tool-executor-helpers.ts). The shared context is never mutated.
+ *
+ * Bounded by COMPANY_TOTAL_COUNT_TIMEOUT_MS (issue #144): raced against a timer via
+ * Promise.race so a slow/large tenant can never stall the caller past that bound —
+ * on timeout this degrades to undefined exactly like the existing error catch-all.
+ * The underlying call's promise is left with a no-op .catch() so a late
+ * resolve/reject after the timeout has already won the race never surfaces as an
+ * unhandled rejection.
  */
-async function countCompanyTotal(
+export async function countCompanyTotal(
 	context: IExecuteFunctions,
 	itemIndex: number,
 ): Promise<number | undefined> {
@@ -94,12 +110,21 @@ async function countCompanyTotal(
 		if (name === 'fieldsToMap') return { value: {} };
 		return originalGetNodeParameter(name, index, fallbackValue, options);
 	}) as IExecuteFunctions['getNodeParameter'];
+	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
 		const countOp = new CountOperation<IAutotaskEntity>('company', scopedContext);
-		const count = await countOp.execute(itemIndex);
+		const execPromise = countOp.execute(itemIndex);
+		execPromise.catch(() => {});
+		const timeoutPromise = new Promise<typeof COUNT_TIMEOUT_SENTINEL>((resolve) => {
+			timer = setTimeout(() => resolve(COUNT_TIMEOUT_SENTINEL), COMPANY_TOTAL_COUNT_TIMEOUT_MS);
+		});
+		const count = await Promise.race([execPromise, timeoutPromise]);
+		if (count === COUNT_TIMEOUT_SENTINEL) return undefined;
 		return typeof count === 'number' && Number.isFinite(count) ? count : undefined;
 	} catch {
 		return undefined;
+	} finally {
+		clearTimeout(timer);
 	}
 }
 
