@@ -1364,7 +1364,7 @@ export async function executeAiTool(
 	// owner probes), so it is sentinel-exempted from the required check — if no
 	// usable resource can be derived, the X11 block warns and the API's own
 	// missing-field error surfaces.
-	let x11PreDefaults: string[] = [];
+	const x11PreDefaults: string[] = [];
 	if (resource === 'companyNote' && effectiveOperation === 'create') {
 		const x11NowIso = new Date().toISOString();
 		if (fieldValues.actionType === undefined) {
@@ -1434,6 +1434,61 @@ export async function executeAiTool(
 		}
 	}
 
+	// x5: a company/CI name that failed to resolve above stays as the raw label
+	// string in fieldValues — dispatching that to the parent-scoped delete
+	// endpoint (e.g. Companies/{name}/Contacts/{id}) sends a doomed request.
+	// Fail closed with a specific error instead of a raw API rejection.
+	if (effectiveOperation === 'delete') {
+		if (
+			resource === 'contact' &&
+			fieldValues.companyID !== undefined &&
+			!isLikelyId(fieldValues.companyID)
+		) {
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						'delete',
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`companyID '${String(fieldValues.companyID)}' could not be resolved to a numeric company ID.`,
+						`Supply a numeric companyID, an exact company name, or call autotask_contact with operation 'get' using the contact id to read the correct companyID, then retry autotask_contact with operation 'delete'.`,
+						{
+							...(labelPendingConfirmations.length > 0
+								? { pendingConfirmations: labelPendingConfirmations }
+								: {}),
+							...(labelWarnings.length > 0 ? { warnings: labelWarnings } : {}),
+						},
+					),
+				),
+				correlationId,
+			);
+		}
+		if (
+			resource === 'configurationItemRelatedItem' &&
+			fieldValues.configurationItemID !== undefined &&
+			!isLikelyId(fieldValues.configurationItemID)
+		) {
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						'delete',
+						ERROR_TYPES.ENTITY_NOT_FOUND,
+						`configurationItemID '${String(fieldValues.configurationItemID)}' could not be resolved to a numeric configuration item ID.`,
+						`Supply a numeric configurationItemID or an exact configuration item name, then retry autotask_configurationItemRelatedItem with operation 'delete'.`,
+						{
+							...(labelPendingConfirmations.length > 0
+								? { pendingConfirmations: labelPendingConfirmations }
+								: {}),
+							...(labelWarnings.length > 0 ? { warnings: labelWarnings } : {}),
+						},
+					),
+				),
+				correlationId,
+			);
+		}
+	}
+
 	// Parse userDefinedFields JSON string → [{name, value}] array and inject into fieldValues.
 	// buildFieldValues excludes userDefinedFields (raw JSON string must not reach API).
 	// This runs after label resolution — UDF values are passed raw (no label resolution for UDFs).
@@ -1478,15 +1533,18 @@ export async function executeAiTool(
 		params.impersonationResourceId !== '' &&
 		!operationSupportsImpersonation(resource, effectiveOperation)
 	) {
-		return JSON.stringify(
-			wrapError(
-				resource,
-				effectiveOperation,
-				ERROR_TYPES.INVALID_WRITE_FIELDS,
-				`impersonationResourceId is not supported for ${resource}.${effectiveOperation} — the Autotask API does not support impersonation on that endpoint, and passing it there is silently ignored while the call still succeeds.`,
-				`Remove impersonationResourceId (and proceedWithoutImpersonationIfDenied) and retry autotask_${resource} with operation '${effectiveOperation}', or use operation 'transferOwnership' which forwards it to the reassignment calls.`,
-				{ providedValue: String(params.impersonationResourceId) },
+		return attachCorrelation(
+			JSON.stringify(
+				wrapError(
+					resource,
+					effectiveOperation,
+					ERROR_TYPES.INVALID_WRITE_FIELDS,
+					`impersonationResourceId is not supported for ${resource}.${effectiveOperation} — the Autotask API does not support impersonation on that endpoint, and passing it there is silently ignored while the call still succeeds.`,
+					`Remove impersonationResourceId (and proceedWithoutImpersonationIfDenied) and retry autotask_${resource} with operation '${effectiveOperation}', or use operation 'transferOwnership' which forwards it to the reassignment calls.`,
+					{ providedValue: String(params.impersonationResourceId) },
+				),
 			),
+			correlationId,
 		);
 	}
 
@@ -2003,9 +2061,7 @@ export async function executeAiTool(
 			drainDenialWarningsInto(impersonationDenialToken, labelWarnings);
 			const drainAwareLabelWarnings = new Proxy(labelWarnings, {
 				get(target, prop) {
-					if (prop === Symbol.iterator) {
-						drainDenialWarningsInto(impersonationDenialToken, target);
-					}
+					drainDenialWarningsInto(impersonationDenialToken, target);
 					return Reflect.get(target, prop);
 				},
 			});
@@ -2083,7 +2139,19 @@ export async function executeAiTool(
 		// Dispatch to registered special handlers
 		const specialHandler = SPECIAL_HANDLERS[effectiveOperation];
 		if (specialHandler) {
-			// No denial drain needed on this path: all SPECIAL_HANDLERS operations are read-only with zero impersonation references (x3 V2), so no denial marker can be recorded here.
+			// Drain unconditionally rather than trust a "this path never records markers"
+			// invariant that nothing enforces — idempotent no-op if the queue is empty.
+			// The handler also receives a drain-aware view of labelWarnings (same
+			// pattern as the compound path above) so any impersonated call the
+			// handler itself makes mid-flight still surfaces its denial marker in
+			// the response instead of only the finally-block console.warn.
+			drainDenialWarningsInto(impersonationDenialToken, labelWarnings);
+			const drainAwareSpecialHandlerWarnings = new Proxy(labelWarnings, {
+				get(target, prop) {
+					drainDenialWarningsInto(impersonationDenialToken, target);
+					return Reflect.get(target, prop);
+				},
+			});
 			const executorState: ExecutorState = {
 				context: callContext,
 				resource,
@@ -2098,7 +2166,7 @@ export async function executeAiTool(
 				effectiveReturnAll,
 				recencyResult,
 				labelResolutions,
-				labelWarnings,
+				labelWarnings: drainAwareSpecialHandlerWarnings,
 				labelPendingConfirmations,
 				filterResolutions,
 				filterWarnings,
@@ -2184,8 +2252,12 @@ export async function executeAiTool(
 							impIdActive =
 								impRec !== null
 								&& (impRec.isActive === true || impRec.isActive === 1 || impRec.isActive === '1' || impRec.isActive === 'true');
-						} catch {
+						} catch (probeErr) {
 							// Probe failed — active state unverifiable; fail closed.
+							console.warn(
+								`companyNote.create: impersonation-resource active-state probe failed for resource ${impId}:`,
+								probeErr instanceof Error ? probeErr.message : String(probeErr),
+							);
 							impIdActive = undefined;
 						}
 						if (impIdActive === true) {
@@ -2264,7 +2336,11 @@ export async function executeAiTool(
 							assignedResourceDerivationFailed = true;
 							assignedResourceFailReason = 'the company has no owner resource';
 						}
-					} catch {
+					} catch (lookupErr) {
+						console.warn(
+							`companyNote.create: company/owner resource lookup failed for companyID ${fieldValues.companyID}:`,
+							lookupErr instanceof Error ? lookupErr.message : String(lookupErr),
+						);
 						labelWarnings.push(
 							'companyNote.create: could not derive a default assignedResourceID (company/owner lookup failed) — supply assignedResourceID explicitly.',
 						);
@@ -2284,15 +2360,18 @@ export async function executeAiTool(
 				// x4 (Codex P2h): fail closed BEFORE dispatch — the API would reject
 				// the create for the missing assignedResourceID and format the raw
 				// rejection without this derivation context.
-				return JSON.stringify(
-					wrapError(
-						resource,
-						effectiveOperation,
-						ERROR_TYPES.MISSING_REQUIRED_FIELDS,
-						`companyNote.create requires assignedResourceID and no default could be derived (${assignedResourceFailReason}).`,
-						`Supply assignedResourceID explicitly — a numeric active resource ID, or an exact resource name/email that resolves to an active resource — and retry autotask_${resource} with operation 'create'.`,
-						{ derivationWarnings: labelWarnings },
+				return attachCorrelation(
+					JSON.stringify(
+						wrapError(
+							resource,
+							effectiveOperation,
+							ERROR_TYPES.MISSING_REQUIRED_FIELDS,
+							`companyNote.create requires assignedResourceID and no default could be derived (${assignedResourceFailReason}).`,
+							`Supply assignedResourceID explicitly — a numeric active resource ID, or an exact resource name/email that resolves to an active resource — and retry autotask_${resource} with operation 'create'.`,
+							{ derivationWarnings: labelWarnings },
+						),
 					),
+					correlationId,
 				);
 			}
 		}

@@ -91,6 +91,11 @@ interface ReferenceCandidatePool {
     truncated: boolean;
 }
 
+/** False when the pool's `rows` cannot be trusted for uniqueness/exact-match decisions. */
+function poolIsComplete(pool: ReferenceCandidatePool): boolean {
+    return !pool.probeError && !pool.truncated;
+}
+
 /** Row cap per display probe (passed to getValuesByDisplay as MaxRecords). */
 const PROBE_ROW_LIMIT = 50;
 
@@ -463,7 +468,7 @@ export async function resolveLabelsToIds(
                 // it into the write body would be an arbitrary pick. bestId
                 // stays undefined and the field routes to
                 // pendingConfirmations / the no-match warning instead.
-                const activeProbeIncomplete = Boolean(activePool.probeError || activePool.truncated);
+                const activeProbeIncomplete = !poolIsComplete(activePool);
                 // A field yields at most ONE [NAME_POOL_INCOMPLETE] warning:
                 // the pass-1, pass-2, and R9 gates below share this flag.
                 let incompleteWarned = false;
@@ -493,7 +498,7 @@ export async function resolveLabelsToIds(
                 if (bestId === undefined) {
                     allPool = await fetchReferenceCandidates(helper, field.referencesEntity, label, false);
                     allCandidates = allPool.rows;
-                    const allProbeIncomplete = Boolean(allPool.probeError || allPool.truncated);
+                    const allProbeIncomplete = !poolIsComplete(allPool);
 
                     for (const entity of allCandidates) {
                         const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
@@ -556,8 +561,7 @@ export async function resolveLabelsToIds(
                     );
                     if (nameFieldMatchId !== undefined) {
                         const nameMatchProbeIncomplete =
-                            activePool.probeError || activePool.truncated ||
-                            nameMatchPool.probeError || nameMatchPool.truncated;
+                            !poolIsComplete(activePool) || !poolIsComplete(nameMatchPool);
                         if (nameMatchProbeIncomplete) {
                             // x3 V1: a pass-1/pass-2 pool gate may already have
                             // warned for this field — keep it to one warning.
@@ -853,7 +857,7 @@ export async function resolveFilterLabelsToIds(
             // C1: whether any pool fetched for this label is incomplete —
             // surfaced as a warning below (the read path keeps its
             // auto-resolution; only the write path gates on completeness).
-            let probeIncomplete = activePool.probeError || activePool.truncated;
+            let probeIncomplete = !poolIsComplete(activePool);
 
             for (const entity of activeCandidates) {
                 const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
@@ -867,7 +871,7 @@ export async function resolveFilterLabelsToIds(
             if (bestId === undefined) {
                 allPool = await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, false);
                 allCandidates = allPool.rows;
-                if (allPool.probeError || allPool.truncated) probeIncomplete = true;
+                if (!poolIsComplete(allPool)) probeIncomplete = true;
 
                 for (const entity of allCandidates) {
                     const display = helper.getEntityDisplayName(entity as unknown as IDataObject);
@@ -894,7 +898,7 @@ export async function resolveFilterLabelsToIds(
                 (nameFields.length >= 2 || hasSingleBracketedNameField(effectiveReferenceEntity))
             ) {
                 const nameMatchPool = allPool ?? await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, false);
-                if (nameMatchPool.probeError || nameMatchPool.truncated) probeIncomplete = true;
+                if (!poolIsComplete(nameMatchPool)) probeIncomplete = true;
                 const allForNameMatch = nameMatchPool.rows;
                 const mergedById = new Map<string | number, IDataObject>();
 
@@ -940,7 +944,7 @@ export async function resolveFilterLabelsToIds(
                 // Reuse allPool from Pass 2 (set whenever bestId is still
                 // undefined — Pass 2 always ran by here)
                 const partialsPool = allPool ?? await fetchReferenceCandidates(helper, effectiveReferenceEntity, label, false);
-                if (partialsPool.probeError || partialsPool.truncated) probeIncomplete = true;
+                if (!poolIsComplete(partialsPool)) probeIncomplete = true;
                 const allForPartials = partialsPool.rows;
                 for (const entity of allForPartials) {
                     const display = helper.getEntityDisplayName(entity as unknown as IDataObject);

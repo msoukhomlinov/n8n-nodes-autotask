@@ -480,9 +480,9 @@ export async function fetchThresholdInformation(
 // each other's denials.
 
 export interface ImpersonationDenialMarker {
-	resourceId: number;
-	method: string;
-	endpoint: string;
+	readonly resourceId: number;
+	readonly method: string;
+	readonly endpoint: string;
 }
 
 const impersonationDenialTokens = new WeakMap<object, string>();

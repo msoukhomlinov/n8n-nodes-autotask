@@ -202,3 +202,40 @@ export function getOptionalImpersonationResourceId(
 	}
 	return parsed;
 }
+
+/**
+ * Forward impersonation options for an attachment create call — the five
+ * hand-rolled attachment resources (Ticket/TicketNote/TimeEntry/ExpenseItem/
+ * OpportunityAttachments) all need this identical resolve-or-fall-back logic.
+ */
+export function resolveAttachmentImpersonationOptions(
+	context: IExecuteFunctions,
+	itemIndex: number,
+	endpoint: string,
+): { impersonationResourceId: number | undefined; proceedWithoutImpersonationIfDenied: boolean } {
+	let impersonationResourceId: number | undefined;
+	let proceedWithoutImpersonationIfDenied = false;
+	if (isImpersonationSupportedForEndpoint(endpoint)) {
+		try {
+			impersonationResourceId = getOptionalImpersonationResourceId(context, itemIndex);
+			if (impersonationResourceId !== undefined) {
+				proceedWithoutImpersonationIfDenied = context.getNodeParameter(
+					'proceedWithoutImpersonationIfDenied',
+					itemIndex,
+					true,
+				) as boolean;
+			}
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				error.message.includes('Could not get parameter')
+			) {
+				impersonationResourceId = undefined;
+			} else {
+				// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
+				throw error;
+			}
+		}
+	}
+	return { impersonationResourceId, proceedWithoutImpersonationIfDenied };
+}

@@ -95,7 +95,7 @@ export const contactFields: INodeProperties[] = [
 			},
 		},
 		description:
-			"The company the contact belongs to — the API only exposes contact deletion via the company-scoped path (Companies/{companyID}/Contacts/{id}). Root-company contacts use 0 — enter 0 explicitly only for those.",
+			"The company the contact belongs to — the API only exposes contact deletion via the company-scoped path (Companies/{companyID}/Contacts/{ID}). Root-company contacts use 0 — enter 0 explicitly only for those.",
 	},
 	{
 		displayName: 'Fields',
