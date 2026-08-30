@@ -3,6 +3,7 @@ import { CountOperation, GetManyOperation } from '../operations/base';
 import type { IAutotaskEntity } from '../types';
 import type { IFilterCondition } from '../types/base/entity-types';
 import { getFields } from './entity/api';
+import { resolveCredentialIdentity } from './cache/service';
 
 const MAX_DOMAIN_LIMIT = 100;
 const DEFAULT_DOMAIN_LIMIT = 25;
@@ -69,32 +70,48 @@ export interface CompanySearchCoverage extends IDataObject {
 }
 
 /**
- * Total company count from one unfiltered /query/count call. Failure-tolerant:
- * any error (API outage, permission, timeout) yields undefined so the caller can
- * omit totalAvailable and report windowComplete=false instead of failing the
- * whole search. The getNodeParameter override neutralises filtersFromTool /
- * fieldsToMap so the tool call's own filters (or UI resource-mapper fields) can
- * never leak into the total count.
+ * Module-level single-flight map for the REAL (unraced) count request, keyed by
+ * credential identity via `resolveCredentialIdentity()` — same derivation and
+ * per-tenant keying discipline as `inFlightMap` in `helpers/enrichment.ts` and
+ * `picklistIdSetCache` in `ai-tools/filter-builder.ts` (never key by anything
+ * unscoped — that reintroduces the cross-tenant cache leak class this repo has
+ * already hit once).
  *
- * The override is installed on an ISOLATED child context (Object.create) rather
- * than on the caller's context: this call runs in parallel with the bounded
- * scans, which install their own overrides on the same shared context. Mutating
- * the shared context let the two override windows clobber each other (Codex
- * NEW-0) — if the count finished while a bounded query was awaiting its API
- * call, the count's finally could clobber the query's override, and the query's
- * finally could subsequently restore the captured count override permanently,
- * so later processing (or the next input item) read neutralised filters and
- * field mappings. Same isolated-context pattern as executeCountOperation
- * (ai-tools/tool-executor-helpers.ts). The shared context is never mutated.
- *
- * Bounded by COMPANY_TOTAL_COUNT_TIMEOUT_MS (issue #144): raced against a timer via
- * Promise.race so a slow/large tenant can never stall the caller past that bound —
- * on timeout this degrades to undefined exactly like the existing error catch-all.
- * The underlying call's promise is left with a no-op .catch() so a late
- * resolve/reject after the timeout has already won the race never surfaces as an
- * unhandled rejection.
+ * Why: the 10s Promise.race below only stops OUR code from waiting — it does
+ * not cancel the underlying HTTP request or free the Company-endpoint slot it
+ * holds in `EndpointThreadTracker` (3 concurrent requests per endpoint, per
+ * Autotask's post-2023.1 integration limit). On a slow tenant, retrying the
+ * same search a few times previously spawned a fresh real count request each
+ * time — each holding a slot for its full ~5-minute real duration — until all 3
+ * Company slots were exhausted and the bounded scans that also need the
+ * `company` endpoint stalled too (Codex P1 on PR #150 / issue #144). Concurrent
+ * or rapid-repeat calls for the SAME tenant now share one underlying request.
  */
-export async function countCompanyTotal(
+const countInFlightMap = new Map<string, Promise<number | undefined>>();
+
+/**
+ * The real, unbounded /query/count call. Isolated from the timeout/dedup
+ * plumbing so the promise stored in `countInFlightMap` is exactly this request
+ * — never re-raced, never duplicated. Failure-tolerant (mirrors the previous
+ * catch-all): any error degrades to undefined, so the shared promise NEVER
+ * rejects — callers racing a copy of it via Promise.race can never see an
+ * unhandled rejection from it.
+ *
+ * The getNodeParameter override neutralises filtersFromTool / fieldsToMap so
+ * the tool call's own filters (or UI resource-mapper fields) can never leak
+ * into the total count. Installed on an ISOLATED child context (Object.create)
+ * rather than the caller's context: this call runs in parallel with the
+ * bounded scans, which install their own overrides on the same shared context.
+ * Mutating the shared context let the two override windows clobber each other
+ * (Codex NEW-0) — if the count finished while a bounded query was awaiting its
+ * API call, the count's finally could clobber the query's override, and the
+ * query's finally could subsequently restore the captured count override
+ * permanently, so later processing (or the next input item) read neutralised
+ * filters and field mappings. Same isolated-context pattern as
+ * executeCountOperation (ai-tools/tool-executor-helpers.ts). The shared
+ * context is never mutated.
+ */
+async function runCountCompanyTotalRequest(
 	context: IExecuteFunctions,
 	itemIndex: number,
 ): Promise<number | undefined> {
@@ -110,19 +127,57 @@ export async function countCompanyTotal(
 		if (name === 'fieldsToMap') return { value: {} };
 		return originalGetNodeParameter(name, index, fallbackValue, options);
 	}) as IExecuteFunctions['getNodeParameter'];
-	let timer: ReturnType<typeof setTimeout> | undefined;
+
 	try {
 		const countOp = new CountOperation<IAutotaskEntity>('company', scopedContext);
-		const execPromise = countOp.execute(itemIndex);
-		execPromise.catch(() => {});
-		const timeoutPromise = new Promise<typeof COUNT_TIMEOUT_SENTINEL>((resolve) => {
-			timer = setTimeout(() => resolve(COUNT_TIMEOUT_SENTINEL), COMPANY_TOTAL_COUNT_TIMEOUT_MS);
-		});
-		const count = await Promise.race([execPromise, timeoutPromise]);
-		if (count === COUNT_TIMEOUT_SENTINEL) return undefined;
+		const count = await countOp.execute(itemIndex);
 		return typeof count === 'number' && Number.isFinite(count) ? count : undefined;
 	} catch {
 		return undefined;
+	}
+}
+
+/**
+ * Total company count from one unfiltered /query/count call, de-duplicated
+ * per tenant (see `countInFlightMap` above) and bounded by
+ * COMPANY_TOTAL_COUNT_TIMEOUT_MS (issue #144). Each caller — whether it starts
+ * the request or joins an already-in-flight one for the same credential — is
+ * individually raced against its own 10s timer via Promise.race, so no
+ * individual call ever waits past that bound even though the underlying
+ * request may still be running for a slower/first caller. A `null`
+ * credentialIdentity (credentials unreadable) bypasses the in-flight map
+ * entirely — same fail-safe as the #142 precedent — and runs the count
+ * directly, matching pre-dedup behaviour.
+ */
+export async function countCompanyTotal(
+	context: IExecuteFunctions,
+	itemIndex: number,
+): Promise<number | undefined> {
+	const credentialIdentity = await resolveCredentialIdentity(context);
+
+	let sharedPromise: Promise<number | undefined>;
+	const existing = credentialIdentity !== null ? countInFlightMap.get(credentialIdentity) : undefined;
+	if (existing) {
+		sharedPromise = existing;
+	} else {
+		sharedPromise = runCountCompanyTotalRequest(context, itemIndex);
+		if (credentialIdentity !== null) {
+			countInFlightMap.set(credentialIdentity, sharedPromise);
+			void sharedPromise.finally(() => {
+				if (countInFlightMap.get(credentialIdentity) === sharedPromise) {
+					countInFlightMap.delete(credentialIdentity);
+				}
+			});
+		}
+	}
+
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		const timeoutPromise = new Promise<typeof COUNT_TIMEOUT_SENTINEL>((resolve) => {
+			timer = setTimeout(() => resolve(COUNT_TIMEOUT_SENTINEL), COMPANY_TOTAL_COUNT_TIMEOUT_MS);
+		});
+		const count = await Promise.race([sharedPromise, timeoutPromise]);
+		return count === COUNT_TIMEOUT_SENTINEL ? undefined : count;
 	} finally {
 		clearTimeout(timer);
 	}
