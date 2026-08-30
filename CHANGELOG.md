@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.29.2] - 2026-08-30
+
+### Fixed
+
+- **`countCompanyTotal` had no timeout, stalling every `company.searchByDomain`/`searchByIdentity` response on slow tenants** — the unfiltered tenant-wide count ran in parallel with the bounded scans but was awaited with no bound; on a slow/large tenant this blocked the whole response until the underlying HTTP client's own (long) timeout. The count is now raced against a 10s timer (`COMPANY_TOTAL_COUNT_TIMEOUT_MS`) and degrades to `undefined` on timeout via the same failure-tolerant path already used for outright errors (`totalAvailable` omitted, `windowComplete=false`); a no-op `.catch()` on the losing branch prevents an unhandled-rejection warning if the real count call eventually settles after the timeout has already won. Resolves #144.
+
 ## [2.29.1] - 2026-08-30
 
 ### Changed
