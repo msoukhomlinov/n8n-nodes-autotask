@@ -14,6 +14,17 @@ import { QUERY_LIMITS } from '../../constants/operations';
 /** Memoises per-entity isActive field support. Keyed by lowercased entity type. */
 const entitySupportsIsActiveCache = new Map<string, boolean>();
 
+// v2.29.1 (x3-V6): short-TTL memo for DEGRADED capability reads (empty or
+// throwing getFields responses). The durable verdict cache above must never
+// hold a degraded answer (a transient failure must not permanently suppress
+// isActive filtering), but returning `true` uncached on every call re-probes
+// the metadata endpoint on EVERY value lookup — a re-fetch storm during a
+// degraded window. The memo holds the degraded (safe-direction) verdict for
+// a short TTL only: it stops the storm, then expires and re-probes so a
+// recovered metadata endpoint is picked up promptly.
+const entitySupportsIsActiveDegradedMemo = new Map<string, number>(); // key -> degradedAt (epoch ms)
+const DEGRADED_CAPABILITY_MEMO_TTL_MS = 60_000;
+
 // v2.29.0 (X10) / B5: usable-name-field capability cache — stores the matched
 // NAME_FIELD_HINTS field list (null = entity has no usable name field).
 // See resolveUsableNameFields() / getUsableReferenceNameFields().
@@ -97,6 +108,12 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 		const key = this.entityType.toLowerCase();
 		const cached = entitySupportsIsActiveCache.get(key);
 		if (cached !== undefined) return cached;
+		// v2.29.1 (x3-V6): a fresh (within-TTL) degraded memo skips the
+		// re-probe — same safe-direction verdict as the uncached degraded path.
+		const memoedAt = entitySupportsIsActiveDegradedMemo.get(key);
+		if (memoedAt !== undefined && Date.now() - memoedAt < DEGRADED_CAPABILITY_MEMO_TTL_MS) {
+			return true;
+		}
 		try {
 			const fields = (await getFields(this.canonicalEntityType, this.context, {
 				fieldType: 'standard',
@@ -106,10 +123,14 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			// cache it (the next call re-probes); fail safe by assuming support
 			// so the active filter is kept rather than silently dropped.
 			if (fields.length === 0) {
+				// Degraded read — memo the safe-direction verdict briefly (x3-V6).
+				entitySupportsIsActiveDegradedMemo.set(key, Date.now());
 				return true;
 			}
 			const has = fields.some((f) => f.name === 'isActive');
 			entitySupportsIsActiveCache.set(key, has);
+			// A healthy probe supersedes any stale degraded memo.
+			entitySupportsIsActiveDegradedMemo.delete(key);
 			return has;
 		} catch (err) {
 			console.warn(
@@ -119,6 +140,9 @@ export class EntityValueHelper<T extends IAutotaskEntity> {
 			);
 			// Do NOT write to entitySupportsIsActiveCache here — a transient failure
 			// must not permanently suppress isActive filtering for this entity type.
+			// Memo the degraded verdict briefly instead (x3-V6) so the storm stops
+			// while the memo expires and the next call re-probes.
+			entitySupportsIsActiveDegradedMemo.set(key, Date.now());
 			// Fail safe: assume the entity supports isActive so the active filter
 			// is kept (matches the empty-read direction above).
 			return true;

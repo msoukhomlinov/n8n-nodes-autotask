@@ -280,6 +280,12 @@ export function dispatchOperationResponse(
 					if (Array.isArray(record?.warnings) && (record.warnings as string[]).length > 0) {
 						mutationContext.resolutionWarnings = record.warnings as string[];
 					}
+					// v2.29.1 (x3-V8 parity): the contact mover reports whether the
+					// source-contact deactivation PATCH actually happened — surface
+					// it like the configuration-item mover does.
+					if (typeof record?.sourceDeactivated === 'boolean') {
+						mutationContext.sourceDeactivated = record.sourceDeactivated;
+					}
 					if (
 						record?.auditNotes &&
 						typeof record.auditNotes === 'object' &&

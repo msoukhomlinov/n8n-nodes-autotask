@@ -457,7 +457,13 @@ export function buildMutationResponse(
 		pendingConfirmations: context.pendingConfirmations ?? [],
 		warnings: mutationWarnings,
 	};
-	if (isMoveConfigurationItem && typeof context.sourceDeactivated === 'boolean') {
+	// x3-V8 parity (v2.29.1): both movers report whether the source record's
+	// deactivation actually happened — emit the positive-confirmation flag for
+	// the whole move family, not just moveConfigurationItem.
+	if (
+		(isMoveConfigurationItem || operation === 'moveToCompany') &&
+		typeof context.sourceDeactivated === 'boolean'
+	) {
 		response.sourceDeactivated = context.sourceDeactivated;
 	}
 	if (context.auditNotes) response.auditNotes = context.auditNotes;
