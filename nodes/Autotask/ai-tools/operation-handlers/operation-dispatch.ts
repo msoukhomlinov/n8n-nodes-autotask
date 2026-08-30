@@ -143,7 +143,7 @@ interface MutationValidationResult {
 	 * F7b: root context fields for CHANGE outcomes (moveToCompany success) — mover
 	 * warnings + auditNotes — so a successful move no longer swallows audit-note
 	 * creation failures. Merged into the ToolResponseContext at envelope build time.
-	 * `sourceDeactivated` (moveConfigurationItem) — the mover's ACTUAL deactivation
+	 * `sourceDeactivated` (moveConfigurationItem and moveToCompany) — the mover's ACTUAL deactivation
 	 * outcome (true only when the deactivation PATCH was issued and acknowledged).
 	 * The success summary must never claim a deactivation the mover did not perform.
 	 */
