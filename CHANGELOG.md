@@ -7,6 +7,8 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 ### Fixed
 
 - **Enrichment cache not scoped by credential identity** — the module-level raw-response cache and in-flight coalescing map in `helpers/enrichment.ts` (ticket/task/etc. display-field enrichment) were keyed without the credential identity, unlike every other per-tenant cache in the node. In a multi-tenant process (`acceptInjectedCredentials` / per-user MCP credentials), tenant A's enrichment API responses could be served to tenant B's calls for the same record IDs. Both caches are now keyed by `resolveCredentialIdentity(context)` (same derivation used by `metadataCache`/`artifactCache`/the picklist ID-set cache); a null identity (credentials unreadable) bypasses caching entirely rather than falling back to a shared key. Resolves #142.
+- **Next-hop enrichment (e.g. `taskProjectNumber`/`taskProjectName`) silently dropped when the cache is bypassed** — `fetchEntityFields()` only handed the caller computed `outputFields`, so the nextHop lookup re-read the first-hop raw record via `getCachedRaw()`; with a null credential identity (cache bypassed by design above) that lookup always missed, even though the raw record had just been fetched. `fetchEntityFields()` now also returns a per-call raw-record map so nextHop chaining no longer depends on the shared cache having stored anything.
+- **`package-lock.json` version lag (again)** — the lockfile's root `version` field lagged `package.json` (2.29.1 vs 2.29.2); both root version fields now track the package version.
 
 ## [2.29.1] - 2026-08-30
 
