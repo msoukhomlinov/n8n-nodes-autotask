@@ -462,6 +462,14 @@ function trackInFlightCount(
  * waiter's stale-claim reap (full-value CAS) can never remove a marker belonging
  * to an owner that is still renewing.
  *
+ * The next tick is scheduled BEFORE awaiting the current renewal, not from its
+ * `.finally()` (Codex R4 P1): neither `RedisLike` nor the client config gives
+ * `renewCountClaim`'s EVAL a command timeout, so a half-open connection can leave
+ * one renewal pending indefinitely. Scheduling from `.finally()` would then stall
+ * every later tick too, letting the marker expire under a still-live claimant.
+ * Ticks are independent of each other's completion, so a stalled renewal costs at
+ * most that one attempt.
+ *
  * Returns a `stop` handle. Renewal is best-effort: a failed or thrown EVAL only
  * means we may have lost the claim, and the loop keeps trying until the request
  * settles. Nothing here can reject — the whole chain ends in `.catch()`.
@@ -475,6 +483,7 @@ function startCountRenewal(
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const tick = () => {
 		if (stopped) return;
+		timer = setTimeout(tick, COUNT_RENEW_MS);
 		const now = Date.now();
 		void renewCountClaim(
 			redis,
@@ -482,14 +491,9 @@ function startCountRenewal(
 			countClaimOwnerPrefix(ownerToken),
 			countClaimValue(ownerToken, now),
 			COUNT_PENDING_TTL_MS,
-		)
-			.catch(() => {
-				// Renewal is advisory: losing it costs at most a duplicate count later.
-			})
-			.finally(() => {
-				if (stopped) return;
-				timer = setTimeout(tick, COUNT_RENEW_MS);
-			});
+		).catch(() => {
+			// Renewal is advisory: losing it costs at most a duplicate count later.
+		});
 	};
 	timer = setTimeout(tick, COUNT_RENEW_MS);
 	return () => {
@@ -635,7 +639,14 @@ async function runDistributedCount(
 				COUNT_PENDING_TTL_MS,
 			);
 		} catch {
-			// Redis unhealthy mid-flight: degrade to the in-process path.
+			// Redis unhealthy mid-flight: degrade to the in-process path — but only if
+			// the caller's entry deadline hasn't already passed. Past the deadline,
+			// starting `runInProcessCount` would still kick off a real, UNCOORDINATED
+			// count (Codex R4 P1): the outer race in `countCompanyTotal` stops THIS
+			// caller from waiting for it, but the request itself still runs and holds
+			// a Company-endpoint slot outside the distributed claim the rest of this
+			// function exists to serialise.
+			if (Date.now() >= deadline) return undefined;
 			return await runInProcessCount(context, itemIndex, resultKey, deadline);
 		}
 
