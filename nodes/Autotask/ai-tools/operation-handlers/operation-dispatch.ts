@@ -143,7 +143,7 @@ interface MutationValidationResult {
 	 * F7b: root context fields for CHANGE outcomes (moveToCompany success) — mover
 	 * warnings + auditNotes — so a successful move no longer swallows audit-note
 	 * creation failures. Merged into the ToolResponseContext at envelope build time.
-	 * `sourceDeactivated` (moveConfigurationItem) — the mover's ACTUAL deactivation
+	 * `sourceDeactivated` (moveConfigurationItem and moveToCompany) — the mover's ACTUAL deactivation
 	 * outcome (true only when the deactivation PATCH was issued and acknowledged).
 	 * The success summary must never claim a deactivation the mover did not perform.
 	 */
@@ -279,6 +279,12 @@ export function dispatchOperationResponse(
 					const mutationContext: NonNullable<MutationValidationResult['mutationContext']> = {};
 					if (Array.isArray(record?.warnings) && (record.warnings as string[]).length > 0) {
 						mutationContext.resolutionWarnings = record.warnings as string[];
+					}
+					// v2.29.1 (x3-V8 parity): the contact mover reports whether the
+					// source-contact deactivation PATCH actually happened — surface
+					// it like the configuration-item mover does.
+					if (typeof record?.sourceDeactivated === 'boolean') {
+						mutationContext.sourceDeactivated = record.sourceDeactivated;
 					}
 					if (
 						record?.auditNotes &&

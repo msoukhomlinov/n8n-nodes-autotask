@@ -13,7 +13,7 @@ export interface ToolResponseContext {
 	auditNotes?: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
 	/** v2.29.0 (X4): for moveConfigurationItem — the SOURCE record id (the move clones to a new id and deactivates the source). */
 	originalRecordId?: number | string;
-	/** MAJOR-1 (PR #148 round 10): moveConfigurationItem — true only when the mover ACTUALLY issued (and the API acknowledged) the source deactivation PATCH; false/absent means the source was left untouched. */
+	/** MAJOR-1 (PR #148 round 10), extended x3-V8 (v2.29.1): moveConfigurationItem and moveToCompany — true only when the mover ACTUALLY issued (and the API acknowledged) the source deactivation PATCH; false/absent means the source was left untouched. */
 	sourceDeactivated?: boolean;
 	pendingConfirmations?: PendingLabelConfirmation[];
 	effectiveOffset?: number;
@@ -457,7 +457,13 @@ export function buildMutationResponse(
 		pendingConfirmations: context.pendingConfirmations ?? [],
 		warnings: mutationWarnings,
 	};
-	if (isMoveConfigurationItem && typeof context.sourceDeactivated === 'boolean') {
+	// x3-V8 parity (v2.29.1): both movers report whether the source record's
+	// deactivation actually happened — emit the positive-confirmation flag for
+	// the whole move family, not just moveConfigurationItem.
+	if (
+		(isMoveConfigurationItem || operation === 'moveToCompany') &&
+		typeof context.sourceDeactivated === 'boolean'
+	) {
 		response.sourceDeactivated = context.sourceDeactivated;
 	}
 	if (context.auditNotes) response.auditNotes = context.auditNotes;

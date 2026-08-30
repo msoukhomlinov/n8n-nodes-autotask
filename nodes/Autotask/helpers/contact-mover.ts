@@ -31,6 +31,10 @@ export interface IMoveToCompanyResult {
 	companyNoteIdMapping: Record<number, number>;
 	contactGroupsCopied: number[];
 	auditNotes: { sourceCompanyNoteId: number; destinationCompanyNoteId: number };
+	/** v2.29.1 (x3-V8 parity): true only when the source-contact deactivation
+	 *  PATCH was issued and acknowledged (mirrors the configuration-item mover's
+	 *  `sourceDeactivated`). Absent on dry-run/skip outcomes. */
+	sourceDeactivated?: boolean;
 	warnings: string[];
 	impersonationResourceId?: number;
 	plan?: {
@@ -677,6 +681,12 @@ async function createAuditNotes(
 
 // ─── Step 9: Deactivate source contact ──────────────────────────────────────
 
+// v2.29.1 (x3-V8 parity): returns whether the deactivation PATCH was actually
+// issued and acknowledged (true) or skipped/failed (false), so the mover result
+// can carry `sourceDeactivated` — the same positive-confirmation flag the
+// configuration-item mover emits. Contact deactivation here is unconditional
+// (no deactivateSource option), so the flag mainly distinguishes a successful
+// PATCH from a failed one.
 async function deactivateSourceContact(
 	ctx: IExecuteFunctions,
 	sourceContactId: number,
@@ -685,7 +695,7 @@ async function deactivateSourceContact(
 	warnings: string[],
 	impersonationResourceId?: number,
 	proceedWithoutImpersonationIfDenied?: boolean,
-): Promise<void> {
+): Promise<boolean> {
 	// Warn if primary contact
 	if (sourceContact.isPrimaryContact === true || sourceContact.isPrimaryContact === 1) {
 		warnings.push(`Source contact ${sourceContactId} is the primary contact for company ${sourceCompanyId}. It has been deactivated but you may need to assign a new primary contact.`);
@@ -697,8 +707,10 @@ async function deactivateSourceContact(
 			id: sourceContactId,
 			isActive: 0,
 		}, {}, impersonationResourceId, proceedWithoutImpersonationIfDenied);
+		return true;
 	} catch (err) {
 		warnings.push(`Failed to deactivate source contact ${sourceContactId}: ${(err as Error).message}. The new contact was created successfully.`);
+		return false;
 	}
 }
 
@@ -852,6 +864,10 @@ export async function moveContactToCompany(
 	let contactGroupsCopied: number[] = [];
 	let companyNoteIdMapping: Record<number, number> = {};
 	let auditNotes = { sourceCompanyNoteId: 0, destinationCompanyNoteId: 0 };
+	// v2.29.1 (x3-V8 parity): positive-confirmation flag, lifted out of the
+	// temporary-activation window callback (assignment happens inside it).
+	// Seeded fail-closed: never claim a deactivation that did not happen.
+	let sourceDeactivated = false;
 
 	await withActiveImpersonationResource(
 		ctx,
@@ -903,7 +919,7 @@ export async function moveContactToCompany(
 			);
 
 			// Step 10: Deactivate source contact (optional)
-			await deactivateSourceContact(
+			sourceDeactivated = await deactivateSourceContact(
 				ctx,
 				options.sourceContactId,
 				sourceCompanyId,
@@ -927,6 +943,7 @@ export async function moveContactToCompany(
 		companyNoteIdMapping,
 		contactGroupsCopied,
 		auditNotes,
+		sourceDeactivated,
 		warnings,
 		...(impersonationResourceId !== undefined && { impersonationResourceId }),
 	};
