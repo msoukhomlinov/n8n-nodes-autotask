@@ -299,8 +299,16 @@ export const N8N_METADATA_PREFIXES = ['Prompt__'];
  *    precise INVALID_FILTER_CONSTRAINT fires. The handlers error on null BEFORE
  *    any value could reach an API body or filter, so no null can leak downstream.
  * (Other keys keep null→absent: LLMs emit null for "not applicable" fields.)
+ *
+ * `domain` (issue #143): same class of bug for company.searchByDomain — the
+ * schema is `.nullish()` so an explicit `domain: null` reaches here untouched.
+ * Left in the collapse set, it silently degrades into "domain omitted" and the
+ * no-match envelope reports a search that never ran. Kept as literal `null` so
+ * the searchByDomain pre-flight guard below can reject it, while omitting
+ * `domain` entirely (key absent) still falls through to the existing graceful
+ * "none" envelope in helpers/company-domain-search.ts.
  */
-export const EXPLICITNESS_SENSITIVE_KEYS = new Set<string>(['status', 'priority']);
+export const EXPLICITNESS_SENSITIVE_KEYS = new Set<string>(['status', 'priority', 'domain']);
 
 /**
  * Execute an Autotask operation by routing to the existing tool executor
@@ -1304,6 +1312,41 @@ export async function executeAiTool(
 			),
 			correlationId,
 		);
+	}
+
+	// Pre-flight (issue #143): company.searchByDomain with an explicit but unusable
+	// `domain` (null, or any of SENTINEL_ABSENT_STRINGS — blank / the literal strings
+	// 'null'/'undefined', the same LLM-sentinel set the id/ticketNumber normalisation
+	// above uses) must error rather than silently proceed as if a real domain were
+	// given — company-domain-search.ts has no way to distinguish "meant to search for
+	// the literal string 'undefined'" from "meant nothing" and would run a real
+	// (mismatch-only) scan. `domain` omitted entirely (key absent from params) is
+	// untouched and keeps its existing graceful "none" envelope — only an EXPLICIT
+	// unusable value is rejected (e2e review on #152: reuses SENTINEL_ABSENT_STRINGS
+	// instead of a second, incomplete inline copy of the same sentinel list).
+	if (
+		resource === 'company' &&
+		effectiveOperation === 'searchByDomain' &&
+		Object.prototype.hasOwnProperty.call(params, 'domain')
+	) {
+		const rawDomain = (params as Record<string, unknown>).domain;
+		const isUnusableExplicitDomain =
+			rawDomain === null ||
+			(typeof rawDomain === 'string' && SENTINEL_ABSENT_STRINGS.has(rawDomain.trim().toLowerCase()));
+		if (isUnusableExplicitDomain) {
+			return attachCorrelation(
+				JSON.stringify(
+					wrapError(
+						resource,
+						effectiveOperation,
+						ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
+						`'domain' is empty (value was null, blank, or the literal string 'null'/'undefined') — supply a domain string, or omit 'domain' entirely to search without it.`,
+						`Retry autotask_${resource} with operation 'searchByDomain' and 'domain' set to a real domain string (e.g. 'example.com'), or omit 'domain' entirely.`,
+					),
+				),
+				correlationId,
+			);
+		}
 	}
 
 	// Pre-flight: reject rejectReason (when rejectReasonPolicy is mandatory)
