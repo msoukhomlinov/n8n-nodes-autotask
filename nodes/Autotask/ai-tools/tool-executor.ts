@@ -1315,11 +1315,15 @@ export async function executeAiTool(
 	}
 
 	// Pre-flight (issue #143): company.searchByDomain with an explicit but unusable
-	// `domain` (null / blank / the literal string 'null') must error rather than
-	// silently fall through to the "no domain supplied" graceful envelope in
-	// company-domain-search.ts — that envelope would misreport a search that never
-	// ran. `domain` omitted entirely (key absent from params) is untouched and keeps
-	// its existing graceful behaviour — only an EXPLICIT unusable value is rejected.
+	// `domain` (null, or any of SENTINEL_ABSENT_STRINGS — blank / the literal strings
+	// 'null'/'undefined', the same LLM-sentinel set the id/ticketNumber normalisation
+	// above uses) must error rather than silently proceed as if a real domain were
+	// given — company-domain-search.ts has no way to distinguish "meant to search for
+	// the literal string 'undefined'" from "meant nothing" and would run a real
+	// (mismatch-only) scan. `domain` omitted entirely (key absent from params) is
+	// untouched and keeps its existing graceful "none" envelope — only an EXPLICIT
+	// unusable value is rejected (e2e review on #152: reuses SENTINEL_ABSENT_STRINGS
+	// instead of a second, incomplete inline copy of the same sentinel list).
 	if (
 		resource === 'company' &&
 		effectiveOperation === 'searchByDomain' &&
@@ -1328,8 +1332,7 @@ export async function executeAiTool(
 		const rawDomain = (params as Record<string, unknown>).domain;
 		const isUnusableExplicitDomain =
 			rawDomain === null ||
-			(typeof rawDomain === 'string' &&
-				(rawDomain.trim() === '' || rawDomain.trim().toLowerCase() === 'null'));
+			(typeof rawDomain === 'string' && SENTINEL_ABSENT_STRINGS.has(rawDomain.trim().toLowerCase()));
 		if (isUnusableExplicitDomain) {
 			return attachCorrelation(
 				JSON.stringify(
@@ -1337,7 +1340,7 @@ export async function executeAiTool(
 						resource,
 						effectiveOperation,
 						ERROR_TYPES.INVALID_FILTER_CONSTRAINT,
-						`'domain' is empty (value was null, blank, or the literal 'null') — supply a domain string, or omit 'domain' entirely to search without it.`,
+						`'domain' is empty (value was null, blank, or the literal string 'null'/'undefined') — supply a domain string, or omit 'domain' entirely to search without it.`,
 						`Retry autotask_${resource} with operation 'searchByDomain' and 'domain' set to a real domain string (e.g. 'example.com'), or omit 'domain' entirely.`,
 					),
 				),

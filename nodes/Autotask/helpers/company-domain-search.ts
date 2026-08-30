@@ -175,7 +175,7 @@ export function isPublicEmailDomain(domain: string): boolean {
 type DomainOperator = 'eq' | 'beginsWith' | 'endsWith' | 'contains';
 
 interface DomainSearchOptions {
-	domain: string;
+	domain?: string;
 	companyName?: string;
 	domainOperator?: string;
 	searchContactEmails?: boolean;
@@ -220,7 +220,7 @@ export interface UnresolvedSearchDirective extends IDataObject {
 
 export interface CompanyDomainSearchResult extends IDataObject {
 	source: 'companyWebsite' | 'contactEmailFallback' | 'none';
-	domainInput: string;
+	domainInput?: string;
 	domainNormalised: string;
 	requestedOperator: string;
 	appliedCompanyOperator: DomainOperator;
@@ -515,9 +515,15 @@ export async function searchCompaniesByDomain(
 	options: DomainSearchOptions,
 ): Promise<CompanyDomainSearchResult> {
 	const itemIndex = options.itemIndex ?? 0;
+	// domain omitted entirely (undefined) must reach the graceful "none" envelope below,
+	// not throw — normaliseDomainInput expects a string, so coerce the absent case to ''
+	// before normalisation (issue #143 e2e review: the omitted-domain claim was previously
+	// false — options.domain undefined reached normaliseDomainInput's `.trim()` uncoerced
+	// and threw a TypeError, surfacing as an opaque INTERNAL_ERROR instead of the documented
+	// graceful fallback).
 	const domainInput = options.domain;
 	const companyNameNormalised = normaliseNameInput(options.companyName);
-	const domainNormalised = normaliseDomainInput(domainInput);
+	const domainNormalised = normaliseDomainInput(domainInput ?? '');
 	const requestedOperator = options.domainOperator ?? 'contains';
 	const requestedNormalisedOperator = normaliseOperator(requestedOperator);
 	const limit = clampLimit(options.limit);
