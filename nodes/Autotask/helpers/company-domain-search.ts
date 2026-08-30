@@ -807,6 +807,12 @@ export async function countCompanyTotal(
 		}
 
 		if (redis === null || threadIdentity === null || resultKey === null) {
+			// `resolveCountScoping` awaits the first Redis connect, which can itself
+			// outlive the entry deadline before degrading to `redis: null` (a stalled
+			// handshake that only later fails). Past the deadline, `runInProcessCount`
+			// would still start a real, UNCOORDINATED count holding a Company-endpoint
+			// slot — for a caller the outer race has already abandoned.
+			if (Date.now() >= deadline) return undefined;
 			return await runInProcessCount(context, itemIndex, resultKey, deadline);
 		}
 		return await runDistributedCount(
