@@ -138,7 +138,6 @@ export class BaseOperation {
 		// Non-parent parameter: propagate the original lookup failure as a validation error.
 		// If the lookup did not throw (AI path returned undefined/null), return that value unchanged.
 		if (lookupError) {
-			// eslint-disable-next-line @n8n/community-nodes/require-node-api-error
 			throw new Error(
 				ERROR_TEMPLATES.validation
 					.replace('{type}', 'ValidationError')

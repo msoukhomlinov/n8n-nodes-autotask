@@ -4,6 +4,7 @@ import type {
 	ILoadOptionsFunctions,
 	IDataObject,
 } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import { executeToolOperation } from '../resources/tool/execute';
 import type { FieldMeta } from '../helpers/aiHelper';
 import { describeResource, listPicklistValues } from '../helpers/aiHelper';
@@ -487,7 +488,7 @@ export async function executeAiTool(
 				correlationId,
 			);
 		}
-		throw err;
+		throw new NodeOperationError(callContext.getNode(), err as Error);
 	}
 	// Promote top-level read fields (e.g. parent-scope companyID on a child resource)
 	// into eq filters for generic list ops. Without this they are silently dropped for
