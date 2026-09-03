@@ -38,6 +38,7 @@
 import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import { autotaskApiRequest, buildChildEntityUrl, buildEntityUrl } from './http';
+import { isLikelyId } from './id-utils';
 
 // ---------------------------------------------------------------------------
 // Error detection
@@ -298,13 +299,22 @@ async function resolvePatchEndpoint(
 			`Contacts/${ref.entityId}/`,
 		) as { item?: IDataObject };
 
-		let companyId = Number(contactResponse?.item?.companyID ?? 0);
+		// `undefined` means "unresolved" — 0 can NOT double as that sentinel here:
+		// Company is the one Autotask entity where id 0 is legitimate (the root
+		// company), same rule as `isLikelyId` (accepts n >= 0, rejects
+		// negatives/non-integers/zero-padded strings).
+		const toCompanyId = (v: unknown): number | undefined => (isLikelyId(v) ? Number(v) : undefined);
+
+		let companyId = toCompanyId(contactResponse?.item?.companyID);
 
 		// The flat GET-by-ID route occasionally returns companyID: 0 for a
-		// contact that does have a real parent company (see issue #154) — fall
-		// back to a query-style lookup, which reliably returns the full field
-		// set (same pattern used for the not-found probe in tool-executor.ts).
-		if (!companyId) {
+		// contact that does have a real parent company (see issue #154), so a
+		// bare 0 from the GET is not trustworthy on its own — confirm it (and
+		// any unresolved value) with a query-style lookup, which reliably
+		// returns the full field set (same pattern used for the not-found probe
+		// in tool-executor.ts). A 0 confirmed by the query is a real
+		// root-company contact and is used as-is.
+		if (companyId === undefined || companyId === 0) {
 			const queryResponse = await autotaskApiRequest.call(
 				context,
 				'POST',
@@ -312,11 +322,10 @@ async function resolvePatchEndpoint(
 				{ filter: [{ field: 'id', op: 'eq', value: ref.entityId }], MaxRecords: 1 },
 			) as { items?: IDataObject[] } | IDataObject[] | null;
 			const items = Array.isArray(queryResponse) ? queryResponse : (queryResponse?.items ?? []);
-			companyId = Number(items[0]?.companyID ?? 0);
+			companyId = toCompanyId(items[0]?.companyID);
 		}
 
-		if (!companyId) {
-			 
+		if (companyId === undefined) {
 			throw new Error(
 				`Cannot temporarily activate contact ${ref.entityId} for reference field "${ref.field}": unable to determine its companyID via GET or query lookup.`,
 			);
