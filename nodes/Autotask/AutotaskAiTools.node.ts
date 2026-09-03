@@ -47,7 +47,7 @@ import {
 	traceToolBuild,
 } from './ai-tools/debug-trace';
 import { autotaskCredentialStore, probeCredentialIdentity } from './helpers/credential-store';
-import { buildCredentialProxy } from './helpers/credential-proxy';
+import { buildCredentialProxy, buildCachedCredentialProxy } from './helpers/credential-proxy';
 import { initializeRateTracker } from './helpers/http/initRateTracker';
 import type { IAutotaskCredentials } from './types/base/auth';
 
@@ -482,6 +482,10 @@ export class AutotaskAiTools implements INodeType {
 			itemIndex,
 			false,
 		) as boolean;
+		// Resolved once here (supplyData() runs inside n8n's normal per-node
+		// execution, where the vm expression-engine bridge is guaranteed to be
+		// acquired) and closed over below — see buildCachedCredentialProxy for why.
+		const resolvedCredentials = (await this.getCredentials('autotaskApi')) as IAutotaskCredentials;
 		// Trace tool-construction decisions to understand what the AI can see.
 		traceToolBuild({
 			phase: 'supplyData-start',
@@ -502,6 +506,7 @@ export class AutotaskAiTools implements INodeType {
 		];
 		// eslint-disable-next-line @typescript-eslint/no-this-alias
 		const supplyDataContext = this;
+		const cachedCredentialContext = buildCachedCredentialProxy(supplyDataContext, resolvedCredentials);
 		const metadata = await resolveMetadataForTool(
 			supplyDataContext,
 			resource,
@@ -662,12 +667,12 @@ export class AutotaskAiTools implements INodeType {
 				// The execute() path has no ALS context — autotaskCredentialStore.getStore() returns undefined there.
 				const overrideCreds = autotaskCredentialStore.getStore();
 
-				let effectiveContext: ISupplyDataFunctions = supplyDataContext;
+				let effectiveContext: ISupplyDataFunctions = cachedCredentialContext;
 				let effectiveMetadata = metadata;
 				let effectiveCredentialIdentity = credentialIdentity;
 
 				if (acceptInjectedCredentials && overrideCreds) {
-					effectiveContext = buildCredentialProxy(supplyDataContext, overrideCreds);
+					effectiveContext = buildCredentialProxy(cachedCredentialContext, overrideCreds);
 					// Use probeCredentialIdentity rather than re-implementing the hash inline — it
 					// applies the same zone normalisation as the probe cache, so identity values
 					// stay consistent across the probe path and the func() cache key.
@@ -705,10 +710,12 @@ export class AutotaskAiTools implements INodeType {
 						trackerUsername = overrideCreds.Username;
 						trackerIntegrationCode = overrideCreds.APIIntegrationcode;
 					} else {
-						const creds = await supplyDataContext.getCredentials('autotaskApi') as IAutotaskCredentials;
-						trackerZone = creds.zone === 'other' ? (creds.customZoneUrl ?? '') : creds.zone;
-						trackerUsername = creds.Username;
-						trackerIntegrationCode = creds.APIIntegrationcode;
+						// Pre-resolved in supplyData() — see resolvedCredentials above.
+						trackerZone = resolvedCredentials.zone === 'other'
+							? (resolvedCredentials.customZoneUrl ?? '')
+							: resolvedCredentials.zone;
+						trackerUsername = resolvedCredentials.Username;
+						trackerIntegrationCode = resolvedCredentials.APIIntegrationcode;
 					}
 					if (trackerZone && trackerUsername && trackerIntegrationCode) {
 						const credentialKey = `${trackerZone}|${trackerUsername}|${trackerIntegrationCode}`;
@@ -750,6 +757,7 @@ export class AutotaskAiTools implements INodeType {
 						readFields: effectiveMetadata.readFields,
 						writeFields: effectiveMetadata.writeFields,
 						allAllowedOps,
+						allowWriteOperations,
 					},
 				);
 			},
@@ -1092,6 +1100,7 @@ export class AutotaskAiTools implements INodeType {
 					readFields: metadata.readFields,
 					writeFields: metadata.writeFields,
 					allAllowedOps,
+					allowWriteOperations,
 				});
 				let parsed: IDataObject;
 				if (typeof resultJson === 'string') {
