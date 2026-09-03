@@ -37,7 +37,7 @@
 
 import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import { autotaskApiRequest, buildChildEntityUrl } from './http';
+import { autotaskApiRequest, buildChildEntityUrl, buildEntityUrl } from './http';
 
 // ---------------------------------------------------------------------------
 // Error detection
@@ -298,11 +298,27 @@ async function resolvePatchEndpoint(
 			`Contacts/${ref.entityId}/`,
 		) as { item?: IDataObject };
 
-		const companyId = Number(contactResponse?.item?.companyID ?? 0);
+		let companyId = Number(contactResponse?.item?.companyID ?? 0);
+
+		// The flat GET-by-ID route occasionally returns companyID: 0 for a
+		// contact that does have a real parent company (see issue #154) — fall
+		// back to a query-style lookup, which reliably returns the full field
+		// set (same pattern used for the not-found probe in tool-executor.ts).
+		if (!companyId) {
+			const queryResponse = await autotaskApiRequest.call(
+				context,
+				'POST',
+				buildEntityUrl('Contact', { isQuery: true }),
+				{ filter: [{ field: 'id', op: 'eq', value: ref.entityId }], MaxRecords: 1 },
+			) as { items?: IDataObject[] } | IDataObject[] | null;
+			const items = Array.isArray(queryResponse) ? queryResponse : (queryResponse?.items ?? []);
+			companyId = Number(items[0]?.companyID ?? 0);
+		}
+
 		if (!companyId) {
 			 
 			throw new Error(
-				`Cannot temporarily activate contact ${ref.entityId}: unable to determine its companyID`,
+				`Cannot temporarily activate contact ${ref.entityId} for reference field "${ref.field}": unable to determine its companyID via GET or query lookup.`,
 			);
 		}
 

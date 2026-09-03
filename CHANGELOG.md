@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.29.3] - 2026-09-03
+
+### Fixed
+
+- **Inactive-contact temporary-activation workaround threw when Autotask's flat `GET Contacts/{id}/` returned `companyID: 0`** — `resolvePatchEndpoint()` (`helpers/inactive-entity-activation.ts`, used by `withInactiveRefRetry`/`withTemporaryActivation`) relied solely on that flat GET to resolve a contact's parent company before temporarily activating it, but Autotask's by-ID route occasionally returns `companyID: 0` for a contact that does belong to a real, active company — aborting the whole node run with an opaque "unable to determine its companyID" error, even for write flows unrelated to the contact itself (e.g. creating a `CompanyNote`). When the flat GET returns a falsy `companyID`, it now falls back to a query-style lookup (`POST` to the `Contact` query endpoint with an `id` filter, `MaxRecords: 1` — the same pattern already used by the not-found probe in `tool-executor.ts`), which reliably returns the full field set. The error thrown when both lookups fail now names the calling reference field for easier diagnosis. Resolves #154.
+
 ## [2.29.2] - 2026-08-30
 
 ### Fixed
