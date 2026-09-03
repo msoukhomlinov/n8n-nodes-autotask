@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.29.3] - 2026-09-03
+
+### Fixed
+
+- **Inactive-contact temporary-activation workaround threw when Autotask's flat `GET Contacts/{id}/` returned `companyID: 0`** — `resolvePatchEndpoint()` (`helpers/inactive-entity-activation.ts`, used by `withInactiveRefRetry`/`withTemporaryActivation`) relied solely on that flat GET to resolve a contact's parent company before temporarily activating it, but Autotask's by-ID route occasionally returns `companyID: 0` for a contact that does belong to a real, active company — aborting the whole node run with an opaque "unable to determine its companyID" error, even for write flows unrelated to the contact itself (e.g. creating a `CompanyNote`). A bare `companyID: 0` from the flat GET now triggers a query-style confirmation lookup (`POST` to the `Contact` query endpoint with an `id` filter, `MaxRecords: 1` — the same pattern already used by the not-found probe in `tool-executor.ts`) instead of being trusted or treated as failure outright. Resolution uses `undefined` (not falsy-`0`) as the "unresolved" sentinel, matching `isLikelyId`'s existing rule that Company/Account is the one entity where `id = 0` is legitimate (the root company) — a root-company contact confirmed via the query fallback now resolves correctly instead of throwing. The error thrown when both lookups fail now names the calling reference field for easier diagnosis. Resolves #154.
+
 ## [2.29.2] - 2026-08-30
 
 ### Fixed
