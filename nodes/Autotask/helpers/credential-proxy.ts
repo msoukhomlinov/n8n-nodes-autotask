@@ -72,6 +72,40 @@ export function parseAndValidateHeaders(headers: Record<string, string | undefin
     };
 }
 
+/**
+ * Wraps a context so `getCredentials('autotaskApi', ...)` always resolves to a
+ * pre-fetched value instead of calling the live context's `getCredentials`.
+ *
+ * Why: n8n's MCP Server Trigger invokes the AI tool's `func()` closure directly
+ * (LangChain's tool executor), outside n8n's normal per-node execution
+ * machinery. Under n8n's `vm` expression-engine (default since n8n 2.35),
+ * calling `context.getCredentials(...)` from that deferred call site throws
+ * "No bridge acquired for this context" — the isolate window n8n opens around
+ * a workflow execution has already closed by the time the LLM invokes the
+ * tool (see issue #138). `supplyData()` itself runs inside a valid window, so
+ * resolving credentials once there and closing over the value sidesteps the
+ * live-context call entirely — a root-cause fix that behaves identically
+ * whether the host n8n instance uses the `legacy` or `vm` expression engine.
+ */
+export function buildCachedCredentialProxy<T extends ISupplyDataFunctions>(
+    context: T,
+    resolvedCredentials: unknown,
+): T {
+    return new Proxy(context, {
+        get(target, prop, _receiver) {
+            if (prop === 'getCredentials') {
+                return (...args: Parameters<typeof target.getCredentials>) => {
+                    if (args[0] !== 'autotaskApi') return target.getCredentials(...args);
+                    return Promise.resolve(resolvedCredentials);
+                };
+            }
+            // Bind to target (not proxy) to preserve this-binding for class methods with private fields.
+            const value = Reflect.get(target, prop, target);
+            return typeof value === 'function' ? value.bind(target) : value;
+        },
+    }) as T;
+}
+
 export function buildCredentialProxy(
     context: ISupplyDataFunctions,
     override: Readonly<OverrideAutotaskCredentials>,

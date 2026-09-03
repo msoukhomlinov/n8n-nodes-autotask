@@ -160,6 +160,7 @@ export interface ToolExecutionMetadata {
 	readFields?: FieldMeta[];
 	writeFields?: FieldMeta[];
 	allAllowedOps?: string[];
+	allowWriteOperations?: boolean;
 }
 
 interface ResourceConvenienceConfig {
@@ -2048,7 +2049,14 @@ export async function executeAiTool(
 			case 'selectColumnsJson':
 				return selectedColumns.length > 0 ? JSON.stringify(selectedColumns) : '[]';
 			case 'allowWriteOperations':
-				return originalGetNodeParameter('allowWriteOperations', index, false);
+				// Closure-known from supplyData() (v2.29.4, issue #138) — NOT
+				// originalGetNodeParameter. That call runs on the live n8n context;
+				// under n8n's MCP Server Trigger + vm expression engine, this
+				// closure executes after the isolate window for the original
+				// execution has closed, so any live getNodeParameter/getCredentials
+				// call throws "No bridge acquired for this context". Deliberately
+				// NOT hardcoded true — this is the write-operation safety gate.
+				return metadata.allowWriteOperations ?? false;
 			case 'impersonationResourceId':
 				if (resolvedImpersonationId !== undefined) {
 					return resolvedImpersonationId;

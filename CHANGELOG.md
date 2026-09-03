@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.29.4] - 2026-09-04
+
+### Fixed
+
+- **AI tool calls behind n8n's MCP Server Trigger failed on every operation with `"No bridge acquired for this context. Call acquire() first."` when the host n8n instance uses the `vm` expression engine (n8n's default since 2.35.0)** — `supplyData()` handed the live n8n context into the `DynamicStructuredTool`'s `func()` closure, and that closure called `context.getCredentials('autotaskApi')` fresh on every deferred tool invocation (the hot path — every real Autotask API request resolves credentials this way). Because the MCP Server Trigger invokes the tool's closure directly (LangChain's tool executor), outside n8n's normal per-node execution machinery, that call runs after the `vm` engine's isolate window for the originating execution has already closed, and n8n throws before our node's `execute()` or the Autotask API is ever reached. Credentials are now resolved once, synchronously, inside `supplyData()` itself (which always runs inside a valid isolate window) and closed over via a new `buildCachedCredentialProxy()` (`helpers/credential-proxy.ts`) — the `func()` closure and everything it calls (the rate-tracker key derivation, the `acceptInjectedCredentials` override-merge path, every downstream `autotaskApiRequest`) now reads the pre-resolved value instead of touching the live context at invocation time. A second, narrower live call on the same deferred path — `tool-executor.ts`'s `allowWriteOperations` case, which called `getNodeParameter` on the live context to re-check the write-operation safety gate — is now threaded through as a closure-known value from `supplyData()`/`execute()` instead (`ToolExecutionMetadata.allowWriteOperations`), so the gate itself can no longer throw under `vm` either. Root-cause fix: behaves identically whether the host n8n instance is on the `legacy` or `vm` expression engine, so it is safe on installs both before and after n8n 2.35.0. See #138.
+
 ## [2.29.3] - 2026-09-03
 
 ### Fixed
