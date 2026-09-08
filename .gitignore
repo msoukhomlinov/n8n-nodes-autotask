@@ -92,3 +92,8 @@ CLAUDE.md
 /plans/
 /.remember/
 .worktrees/
+
+# local working artifacts (review notes, work dirs, captured payloads)
+/.security-review/
+/.work/
+/intake-toolslist-raw.json
