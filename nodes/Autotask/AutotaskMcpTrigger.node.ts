@@ -82,6 +82,10 @@ export class AutotaskMcpTrigger implements INodeType {
         defaults: {
             name: 'Autotask MCP Trigger',
         },
+        // Hybrid trigger+tools node: the AiTool input is how this MCP trigger exposes its
+        // tools, mirroring n8n core's own MCP trigger/client design; inputs: [] would
+        // break tool wiring. The new convention rule has no exception for AiTool inputs.
+        // eslint-disable-next-line @n8n/community-nodes/trigger-node-conventions
         inputs: [
             {
                 type: NodeConnectionTypes.AiTool,

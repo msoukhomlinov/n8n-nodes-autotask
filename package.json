@@ -58,14 +58,14 @@
     ]
   },
   "devDependencies": {
-    "@langchain/classic": "^1.0.29",
-    "@langchain/core": "^1.1.39",
-    "@modelcontextprotocol/sdk": "~1.26.0",
-    "@n8n/node-cli": ">=0.29.0",
+    "@langchain/classic": "^1.0.46",
+    "@langchain/core": "^1.2.9",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@n8n/node-cli": ">=0.46.4",
     "@types/node": "^22.15.0",
     "@types/pluralize": "^0.0.33",
-    "eslint": "9.32.0",
-    "n8n-workflow": "^2.20.0",
+    "eslint": "9.39.5",
+    "n8n-workflow": "^2.37.4",
     "prettier": "^3.8.3",
     "typescript": "^5.9.3",
     "zod": "^3.23.0"
