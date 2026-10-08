@@ -10,6 +10,7 @@ import {
     CountOperation,
 } from '../../operations/base';
 import { autotaskApiRequest } from '../../helpers/http';
+import { toPathId } from '../../helpers/id-utils';
 import { FilterOperators } from '../../constants/filters';
 import { processOutputMode } from '../../helpers/output-mode';
 import { flattenUdfs } from '../../helpers/udf/flatten';
@@ -157,7 +158,7 @@ async function executeSlaHealthCheck(
     const ticketResponse = await autotaskApiRequest.call(
         context,
         'GET',
-        `Tickets/${ticketId}`,
+        `Tickets/${toPathId(ticketId, 'ticket ID')}`,
     ) as { item?: IAutotaskEntity };
 
     const rawTicket = ticketResponse.item;
@@ -321,7 +322,7 @@ async function executeTicketSummary(
     const ticketResponse = await autotaskApiRequest.call(
         context,
         'GET',
-        `Tickets/${ticketId}`,
+        `Tickets/${toPathId(ticketId, 'ticket ID')}`,
     ) as { item?: IAutotaskEntity };
 
     const rawTicket = ticketResponse.item;

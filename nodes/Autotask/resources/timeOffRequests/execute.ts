@@ -7,6 +7,7 @@ import {
 	CountOperation,
 } from '../../operations/base';
 import { autotaskApiRequest } from '../../helpers/http';
+import { toPathId } from '../../helpers/id-utils';
 
 const ENTITY_TYPE = 'timeOffRequest';
 
@@ -48,7 +49,7 @@ export async function executeTimeOffRequestOperation(
 				}
 
 				case 'approve': {
-					const id = this.getNodeParameter('id', i) as string;
+					const id = toPathId(this.getNodeParameter('id', i));
 					const response = await autotaskApiRequest.call(
 						this,
 						'GET',
@@ -59,7 +60,7 @@ export async function executeTimeOffRequestOperation(
 				}
 
 				case 'reject': {
-					const id = this.getNodeParameter('id', i) as string;
+					const id = toPathId(this.getNodeParameter('id', i));
 					const rejectReason = this.getNodeParameter('rejectReason', i, '') as string;
 					const response = await autotaskApiRequest.call(
 						this,

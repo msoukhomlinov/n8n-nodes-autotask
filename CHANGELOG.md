@@ -2,6 +2,13 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.29.5] - 2026-10-08
+
+### Fixed
+
+- Stricter validation of identifiers used when building request paths.
+- Stricter handling of pagination links.
+
 ## [2.29.4] - 2026-09-04
 
 ### Fixed

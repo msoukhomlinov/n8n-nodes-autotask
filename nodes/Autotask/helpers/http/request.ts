@@ -13,6 +13,7 @@ import type { IRequestConfig, IAutotaskCredentials } from '../../types';
 import { NodeApiError } from 'n8n-workflow';
 import { plural, singular } from 'pluralize';
 import { getEntityMetadata } from '../../constants/entities';
+import { toPathId } from '../id-utils';
 import type { IQueryResponse } from '../../types/base/entity-types';
 import type { IApiError, IApiErrorDetail, IApiErrorWithResponse } from '../../types/base/api';
 import type { OperationType } from '../../types/base/entity-types';
@@ -213,13 +214,11 @@ function formatErrorDetails(errors: IApiErrorDetail[]): string {
  * @returns Processed endpoint with proper pluralization and structure
  */
 function processEndpointPath(endpoint: string, options: IUrlOptions = {}): string {
-	// Don't process complete URLs (pagination)
-	if (endpoint.startsWith('http')) {
-		return endpoint;
-	}
-
 	// 1. Split and clean the path (strip leading and trailing slashes to be idempotent)
 	const parts = endpoint.replace(/^\/+/, '').replace(/\/+$/, '').split('/');
+	if (!parts.every((part) => /^[A-Za-z0-9_]+$/.test(part))) {
+		throw new Error(`Invalid request path "${endpoint}": path segments must be alphanumeric.`);
+	}
 
 	// 2. Process each part
 	const processedParts = parts.map((part) => {
@@ -285,6 +284,20 @@ function validateParentChain(chain: Array<{ type: string; id: string | number }>
 }
 
 /**
+ * Normalises the identifiers in URL options that end up as path segments.
+ * The entity ID keeps its existing presence check (a falsy value means "no ID").
+ */
+function withPathIds(options: IUrlOptions): IUrlOptions {
+	return {
+		...options,
+		...(options.entityId ? { entityId: toPathId(options.entityId) } : {}),
+		...(options.parentChain
+			? { parentChain: options.parentChain.map((p) => ({ type: p.type, id: toPathId(p.id, 'parent ID') })) }
+			: {}),
+	};
+}
+
+/**
  * Builds a URL for a standard entity endpoint
  * @param entity The entity name
  * @param options Additional options for URL construction
@@ -299,6 +312,8 @@ function buildEntityUrl(entity: string, options: IUrlOptions = {}): string {
 
 	// Validate parent chain if present
 	validateParentChain(options.parentChain);
+
+	options = withPathIds(options);
 
 	// Handle attachment entities
 	if (metadata.isAttachment && options.entityId) {
@@ -344,6 +359,7 @@ function buildChildEntityUrl(
 
 	// Validate parent chain if present
 	validateParentChain(options.parentChain);
+	options = withPathIds(options);
 
 	const subname = childMetadata.subname || child;
 	const effectiveParent = childMetadata.parentUrlSegment || parent;
@@ -354,6 +370,8 @@ function buildChildEntityUrl(
 		const endpoint = `${chain}/${subname}${options.entityId ? `/${options.entityId}` : ''}`;
 		return processEndpointPath(endpoint, options);
 	}
+
+	parentId = toPathId(parentId, 'parent ID');
 
 	// Handle attachment child entities
 	if (childMetadata.isAttachment && options.entityId) {
@@ -580,21 +598,14 @@ export async function autotaskApiRequest<T = JsonObject>(
 		json: true,
 	};
 
-	// For pagination URLs, use the URL as-is and preserve the original body
+	// Pagination links: only the path and query of the link are used; they are
+	// always sent to the configured base. Preserve the original body.
 	if (endpoint.startsWith('http') && endpoint.includes('/query/')) {
-		// Check if using custom URL
-		if (credentials.zone === 'other' && credentials.customZoneUrl) {
-			// Extract the path from the endpoint URL (everything after the domain)
-			const urlObj = new URL(endpoint);
-			const pathWithQuery = urlObj.pathname + urlObj.search;
-
-			// Combine custom URL with the extracted path
-			const customBaseUrl = credentials.customZoneUrl.replace(/\/+$/, '');
-			options.url = `${customBaseUrl}${pathWithQuery}`;
-		} else {
-			// Standard behavior - use the full URL as-is
-			options.url = endpoint;
-		}
+		const link = new URL(endpoint);
+		// Custom zones keep their full configured URL as the prefix (proxy setups);
+		// built-in zone links already carry the API path.
+		const root = credentials.zone === 'other' ? baseUrl.replace(/\/+$/, '') : new URL(baseUrl).origin;
+		options.url = `${root}${link.pathname}${link.search}`;
 
 		// For pagination requests, we must preserve the original filter criteria
 		// but should not include IncludeFields as they're already in the URL

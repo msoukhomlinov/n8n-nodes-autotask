@@ -1,6 +1,7 @@
 ﻿import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import { autotaskApiRequest } from '../../helpers/http';
+import { toPathId } from '../../helpers/id-utils';
 import { resolveLabelsToIds } from '../../helpers/label-resolution';
 
 const ENTITY_TYPE = 'resourceTimeOffAdditional';
@@ -38,7 +39,7 @@ export async function executeResourceTimeOffAdditionalOperation(
 					const response = await autotaskApiRequest.call(
 						this,
 						'GET',
-						`Resources/${resourceId}/TimeOffAdditional`,
+						`Resources/${toPathId(resourceId, 'resourceID')}/TimeOffAdditional`,
 					);
 					// API returns QueryActionResult with .items array; fall back to .item or raw response
 					const items_result = (response as IDataObject)?.items;
@@ -65,7 +66,7 @@ export async function executeResourceTimeOffAdditionalOperation(
 					const response = await autotaskApiRequest.call(
 						this,
 						'PATCH',
-						`Resources/${resourceId}/TimeOffAdditional`,
+						`Resources/${toPathId(resourceId, 'resourceID')}/TimeOffAdditional`,
 						fields as IDataObject,
 					);
 					returnData.push({ json: ((response as IDataObject)?.item ?? response) as IDataObject });

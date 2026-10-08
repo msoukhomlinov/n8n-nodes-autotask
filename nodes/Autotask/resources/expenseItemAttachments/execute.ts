@@ -6,6 +6,7 @@ import {
 	CountOperation,
 } from '../../operations/base';
 import { autotaskApiRequest } from '../../helpers/http';
+import { toPathId } from '../../helpers/id-utils';
 import { resolveAttachmentImpersonationOptions } from '../../helpers/impersonation';
 import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 import { ATTACHMENT_TYPE, validateAttachmentSize, type IAttachmentPayload } from '../../helpers/attachment';
@@ -23,7 +24,7 @@ export async function executeExpenseItemAttachmentOperation(
 		try {
 			switch (operation) {
 				case 'create': {
-					const expenseItemId = this.getNodeParameter('expenseItemId', i) as string;
+					const expenseItemId = toPathId(this.getNodeParameter('expenseItemId', i), 'expenseItemId');
 					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
 					const title = this.getNodeParameter('title', i) as string;
 					const publish = this.getNodeParameter('publish', i, 1) as number;
@@ -98,8 +99,8 @@ export async function executeExpenseItemAttachmentOperation(
 				}
 
 				case 'download': {
-					const expenseItemId = this.getNodeParameter('expenseItemId', i) as string;
-					const attachmentId = this.getNodeParameter('id', i) as string;
+					const expenseItemId = toPathId(this.getNodeParameter('expenseItemId', i), 'expenseItemId');
+					const attachmentId = toPathId(this.getNodeParameter('id', i), 'id');
 					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
 
 					const endpoint = `ExpenseItems/${expenseItemId}/Attachments/${attachmentId}/`;
@@ -140,8 +141,8 @@ export async function executeExpenseItemAttachmentOperation(
 				}
 
 				case 'delete': {
-					const expenseItemId = this.getNodeParameter('expenseItemId', i) as string;
-					const attachmentId = this.getNodeParameter('id', i) as string;
+					const expenseItemId = toPathId(this.getNodeParameter('expenseItemId', i), 'expenseItemId');
+					const attachmentId = toPathId(this.getNodeParameter('id', i), 'id');
 
 					const endpoint = `ExpenseItems/${expenseItemId}/Attachments/${attachmentId}/`;
 

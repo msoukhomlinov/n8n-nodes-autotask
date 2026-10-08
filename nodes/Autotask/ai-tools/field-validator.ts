@@ -141,6 +141,17 @@ export function validateEntityId(
         'getByAge',
         'searchByKeyword',
     ];
+    // These operations accept an alternative identifier, so `id` is optional — but
+    // when it is supplied it is used in the request path and must be numeric.
+    const optionalIdOperations = ['slaHealthCheck', 'summary', 'getFullDetail'];
+    const idProvided = idValue !== undefined && idValue !== '';
+    if (optionalIdOperations.includes(operation) && idProvided && !/^\d+$/.test(String(idValue).trim())) {
+        return {
+            valid: false,
+            error: formatIdError(resource, operation),
+        };
+    }
+
     if (noIdOperations.includes(operation)) {
         return { valid: true };
     }

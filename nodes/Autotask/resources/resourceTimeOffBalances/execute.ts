@@ -1,6 +1,7 @@
 ﻿import type { IExecuteFunctions, INodeExecutionData, IDataObject } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import { autotaskApiRequest } from '../../helpers/http';
+import { toPathId } from '../../helpers/id-utils';
 import { resolveLabelsToIds } from '../../helpers/label-resolution';
 
 const ENTITY_TYPE = 'resourceTimeOffBalance';
@@ -47,7 +48,7 @@ export async function executeResourceTimeOffBalanceOperation(
 					const response = await autotaskApiRequest.call(
 						this,
 						'GET',
-						`Resources/${resourceId}/TimeOffBalances`,
+						`Resources/${toPathId(resourceId, 'resourceID')}/TimeOffBalances`,
 					);
 					const itemsResult = (response as IDataObject)?.items ?? [(response as IDataObject)?.item ?? response];
 					returnData.push({ json: { items: itemsResult, resourceID: resourceId } as IDataObject });
@@ -57,11 +58,11 @@ export async function executeResourceTimeOffBalanceOperation(
 				case 'getByYear': {
 					const rawId = this.getNodeParameter('resourceID', i) as string | number;
 					const resourceId = await resolveResourceId(this, rawId);
-					const year = this.getNodeParameter('year', i) as number;
+					const year = toPathId(this.getNodeParameter('year', i), 'year');
 					const response = await autotaskApiRequest.call(
 						this,
 						'GET',
-						`Resources/${resourceId}/TimeOffBalances/${year}`,
+						`Resources/${toPathId(resourceId, 'resourceID')}/TimeOffBalances/${year}`,
 					);
 					returnData.push({ json: ((response as IDataObject)?.item ?? response) as IDataObject });
 					break;

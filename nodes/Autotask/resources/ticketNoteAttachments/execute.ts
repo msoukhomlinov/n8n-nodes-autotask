@@ -6,6 +6,7 @@ import {
 	CountOperation,
 } from '../../operations/base';
 import { autotaskApiRequest } from '../../helpers/http';
+import { toPathId } from '../../helpers/id-utils';
 import { resolveAttachmentImpersonationOptions } from '../../helpers/impersonation';
 import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 import { ATTACHMENT_TYPE, validateAttachmentSize, type IAttachmentPayload } from '../../helpers/attachment';
@@ -23,7 +24,7 @@ export async function executeTicketNoteAttachmentOperation(
 		try {
 			switch (operation) {
 				case 'create': {
-					const ticketNoteId = this.getNodeParameter('ticketNoteId', i) as string;
+					const ticketNoteId = toPathId(this.getNodeParameter('ticketNoteId', i), 'ticketNoteId');
 					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
 					const title = this.getNodeParameter('title', i) as string;
 					const publish = this.getNodeParameter('publish', i, 1) as number;
@@ -91,8 +92,8 @@ export async function executeTicketNoteAttachmentOperation(
 					break;
 				}
 				case 'download': {
-					const ticketNoteId = this.getNodeParameter('ticketNoteId', i) as string;
-					const attachmentId = this.getNodeParameter('id', i) as string;
+					const ticketNoteId = toPathId(this.getNodeParameter('ticketNoteId', i), 'ticketNoteId');
+					const attachmentId = toPathId(this.getNodeParameter('id', i), 'id');
 					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
 
 					// Build endpoint: /TicketNotes/{ticketNoteId}/Attachments/{attachmentId}
@@ -134,8 +135,8 @@ export async function executeTicketNoteAttachmentOperation(
 				}
 
 				case 'delete': {
-					const ticketNoteId = this.getNodeParameter('ticketNoteId', i) as string;
-					const attachmentId = this.getNodeParameter('id', i) as string;
+					const ticketNoteId = toPathId(this.getNodeParameter('ticketNoteId', i), 'ticketNoteId');
+					const attachmentId = toPathId(this.getNodeParameter('id', i), 'id');
 
 					// Build endpoint: /TicketNotes/{ticketNoteId}/Attachments/{attachmentId}
 					const endpoint = `TicketNotes/${ticketNoteId}/Attachments/${attachmentId}/`;

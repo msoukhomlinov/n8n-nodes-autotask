@@ -6,6 +6,7 @@ import {
 	CountOperation,
 } from '../../operations/base';
 import { autotaskApiRequest } from '../../helpers/http';
+import { toPathId } from '../../helpers/id-utils';
 import { resolveAttachmentImpersonationOptions } from '../../helpers/impersonation';
 import { isDryRunEnabled, createDryRunResponse } from '../../helpers/dry-run';
 import { ATTACHMENT_TYPE, validateAttachmentSize, type IAttachmentPayload } from '../../helpers/attachment';
@@ -23,7 +24,7 @@ export async function executeTicketAttachmentOperation(
 		try {
 			switch (operation) {
 				case 'create': {
-					const ticketId = this.getNodeParameter('ticketId', i) as string;
+					const ticketId = toPathId(this.getNodeParameter('ticketId', i), 'ticketId');
 					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
 					const title = this.getNodeParameter('title', i) as string;
 					const publish = this.getNodeParameter('publish', i, 1) as number;
@@ -102,8 +103,8 @@ export async function executeTicketAttachmentOperation(
 				}
 
 				case 'download': {
-					const ticketId = this.getNodeParameter('ticketId', i) as string;
-					const attachmentId = this.getNodeParameter('id', i) as string;
+					const ticketId = toPathId(this.getNodeParameter('ticketId', i), 'ticketId');
+					const attachmentId = toPathId(this.getNodeParameter('id', i), 'id');
 					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
 
 					// Build endpoint: /Tickets/{ticketId}/Attachments/{attachmentId}
@@ -145,8 +146,8 @@ export async function executeTicketAttachmentOperation(
 				}
 
 				case 'delete': {
-					const ticketId = this.getNodeParameter('ticketId', i) as string;
-					const attachmentId = this.getNodeParameter('id', i) as string;
+					const ticketId = toPathId(this.getNodeParameter('ticketId', i), 'ticketId');
+					const attachmentId = toPathId(this.getNodeParameter('id', i), 'id');
 
 					// Build endpoint: /Tickets/{ticketId}/Attachments/{attachmentId}
 					const endpoint = `Tickets/${ticketId}/Attachments/${attachmentId}/`;

@@ -6,6 +6,7 @@ import { handleErrors } from '../../helpers/errorHandler';
 import { getEntityMetadata } from '../../constants/entities';
 import { ERROR_TEMPLATES } from '../../constants/error.constants';
 import { BaseOperation } from './base-operation';
+import { toPathId } from '../../helpers/id-utils';
 import { isDryRunEnabled, createDryRunResponse, type DryRunResponse } from '../../helpers/dry-run';
 
 /**
@@ -43,7 +44,7 @@ export class DeleteOperation<T extends IAutotaskEntity> extends BaseOperation {
 				// buildEntityUrl/buildChildEntityUrl gate the id segment on truthiness, so a
 				// numeric 0 (a legitimate ID) would silently produce a collection URL. Stringify
 				// so "0" stays a real path segment.
-				const idSegment = String(entityId);
+				const idSegment = toPathId(entityId);
 				let endpoint = buildEntityUrl(this.entityType, { entityId: idSegment });
 
 				// For delete operations, parent ID is optional

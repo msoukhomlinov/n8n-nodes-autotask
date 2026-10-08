@@ -10,3 +10,18 @@ export function isLikelyId(v: unknown): boolean {
     }
     return false;
 }
+
+/**
+ * Normalises an identifier that will be placed in a request path. Accepts a
+ * non-negative safe integer or a string of digits (surrounding whitespace is
+ * ignored) and returns it as a string; anything else throws.
+ */
+export function toPathId(value: unknown, label = 'id'): string {
+    const text = typeof value === 'number'
+        ? (Number.isSafeInteger(value) && value >= 0 ? String(value) : '')
+        : typeof value === 'string' ? value.trim() : '';
+    if (!/^\d+$/.test(text)) {
+        throw new Error(`Invalid ${label}: expected a non-negative whole number.`);
+    }
+    return text;
+}

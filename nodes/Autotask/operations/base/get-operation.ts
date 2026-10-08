@@ -8,6 +8,7 @@ import { getSelectedColumns } from '../common/select-columns';
 import { GetManyOperation } from './get-many';
 import { FilterOperators } from '../../constants/filters';
 import { processOutputMode } from '../../helpers/output-mode';
+import { toPathId } from '../../helpers/id-utils';
 
 /**
  * Base class for getting entities
@@ -26,8 +27,8 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 	 */
 	async execute(itemIndex: number): Promise<T> {
 		// Get entity ID from node parameters
-		const entityId = await this.getParameter('id', itemIndex);
-		if (entityId === undefined || entityId === null || (typeof entityId !== 'string' && typeof entityId !== 'number')) {
+		const rawEntityId = await this.getParameter('id', itemIndex);
+		if (rawEntityId === undefined || rawEntityId === null || (typeof rawEntityId !== 'string' && typeof rawEntityId !== 'number')) {
 			throw new Error(
 				ERROR_TEMPLATES.validation
 					.replace('{type}', 'ValidationError')
@@ -35,6 +36,7 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 					.replace('{details}', 'Entity ID is required for get operation')
 			);
 		}
+		const entityId = toPathId(rawEntityId);
 
 		// Check if columns are selected
 		const selectedColumns = getSelectedColumns(this.context, itemIndex);
@@ -77,7 +79,7 @@ export class GetOperation<T extends IAutotaskEntity> extends BaseOperation {
 		} else {
 			// No columns selected, use original implementation with getEntityById
 			console.debug(`[GetOperation] Using standard getEntityById for ${this.entityType} as no columns are selected`);
-			entity = await this.getEntityById(itemIndex, entityId as string | number) as T;
+			entity = await this.getEntityById(itemIndex, entityId) as T;
 		}
 
 		// Apply output mode processing (handles enrichment and formatting)

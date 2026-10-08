@@ -8,6 +8,7 @@ import {
 	CountOperation,
 } from '../../operations/base';
 import { autotaskApiRequest } from '../../helpers/http';
+import { toPathId } from '../../helpers/id-utils';
 import type { IBinaryData } from 'n8n-workflow';
 
 const ENTITY_TYPE = 'invoice';
@@ -23,7 +24,7 @@ export async function executeInvoiceOperation(
 		try {
 			switch (operation) {
 				case 'update': {
-					const invoiceId = this.getNodeParameter('id', i) as string;
+					const invoiceId = toPathId(this.getNodeParameter('id', i));
 					const updateOp = new UpdateOperation<IAutotaskEntity>(ENTITY_TYPE, this);
 					const response = await updateOp.execute(i, invoiceId);
 					returnData.push({ json: response });
@@ -59,7 +60,7 @@ export async function executeInvoiceOperation(
 				case 'pdf':
 				case 'markupHtml':
 				case 'markupXml': {
-					const invoiceId = this.getNodeParameter('id', i) as string;
+					const invoiceId = toPathId(this.getNodeParameter('id', i));
 					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i, 'data') as string;
 
 					// Map operation to special endpoint suffix
