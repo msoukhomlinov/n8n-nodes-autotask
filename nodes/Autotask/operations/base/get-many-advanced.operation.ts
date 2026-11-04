@@ -135,6 +135,20 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 					const maxRecords = this.context.getNodeParameter('maxRecords', itemIndex, 10) as number;
 					// Add MaxRecords to the query input
 					queryInput.MaxRecords = maxRecords;
+				} else if (queryInput.MaxRecords !== undefined) {
+					// The advanced filter is free-form JSON, so MaxRecords can bypass the
+					// 1-500 limit of the maxRecords parameter. Autotask answers values
+					// above 500 with a bare HTTP 500, which is impossible to diagnose
+					// from the response alone.
+					const rawMaxRecords = queryInput.MaxRecords;
+					const maxRecords = Number(rawMaxRecords);
+					if (!Number.isInteger(maxRecords) || maxRecords < 1 || maxRecords > 500) {
+						throw new Error(
+							`Advanced filter "MaxRecords" must be an integer between 1 and 500 (got ${String(rawMaxRecords)}). ` +
+								'Autotask answers values above 500 with HTTP 500. Use "Get All" for larger result sets.',
+						);
+					}
+					queryInput.MaxRecords = maxRecords;
 				}
 
 				// Check for column selection only if IncludeFields wasn't already set by parseAdvancedFilter
