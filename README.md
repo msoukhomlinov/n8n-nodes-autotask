@@ -680,6 +680,7 @@ All dates and times in the Autotask API are in UTC. The node automatically conve
 
 - **Authentication Errors**: Verify your API credentials and ensure the API user has appropriate permissions
 - **Field Validation Errors**: Check field requirements in the Autotask API documentation
+- **HTTP 500 on a query**: Autotask returns a bare 500 for unknown field names in `IncludeFields` or filters, and for `MaxRecords` above 500. Check field names against the entity's field metadata and keep `MaxRecords` between 1 and 500.
 - **Rate Limiting**: If you encounter rate limiting, reduce the frequency of API calls or implement retry logic
 
 ### Reporting Bugs
