@@ -141,14 +141,21 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 					// above 500 with a bare HTTP 500, which is impossible to diagnose
 					// from the response alone.
 					const rawMaxRecords = queryInput.MaxRecords;
-					const maxRecords = Number(rawMaxRecords);
-					if (!Number.isInteger(maxRecords) || maxRecords < 1 || maxRecords > 500) {
+					// Validate the parsed JSON value before coercion: Number(true) is 1 and
+					// Number("500") is 500, so coercing first would let booleans and strings
+					// through a guard meant for integers.
+					if (
+						typeof rawMaxRecords !== 'number' ||
+						!Number.isInteger(rawMaxRecords) ||
+						rawMaxRecords < 1 ||
+						rawMaxRecords > 500
+					) {
 						throw new Error(
 							`Advanced filter "MaxRecords" must be an integer between 1 and 500 (got ${String(rawMaxRecords)}). ` +
 								'Autotask answers values above 500 with HTTP 500. Use "Get All" for larger result sets.',
 						);
 					}
-					queryInput.MaxRecords = maxRecords;
+					queryInput.MaxRecords = rawMaxRecords;
 				}
 
 				// Check for column selection only if IncludeFields wasn't already set by parseAdvancedFilter
