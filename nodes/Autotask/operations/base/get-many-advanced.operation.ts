@@ -151,8 +151,7 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 						rawMaxRecords > 500
 					) {
 						throw new Error(
-							`Advanced filter "MaxRecords" must be an integer between 1 and 500 (got ${String(rawMaxRecords)}). ` +
-								'Autotask answers values above 500 with HTTP 500. Use "Get All" for larger result sets.',
+							`Advanced filter "MaxRecords" must be an integer between 1 and 500 (got ${String(rawMaxRecords)}). Remove it from the filter or set it to 500 or less.`,
 						);
 					}
 					queryInput.MaxRecords = rawMaxRecords;
