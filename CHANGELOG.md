@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.30.0] - 2026-11-11
+
+### Changed
+
+- **UDF-management entities added** — two new Autotask entities (issue #160): `UserDefinedFieldDefinition` (create, update, get, getMany, count) and `UserDefinedFieldListItem` (values of a picklist UDF: create/update are parent-scoped under `/V1.0/UserDefinedFields/{udfFieldId}/ListItems`; read/getMany/count use the read-only standalone `/V1.0/UserDefinedFieldListItems` endpoint, so a `udfFieldId` filter selects one definition's values). Neither entity exposes `delete`: the Autotask API has no DELETE endpoint for UDF definitions or their list items — removal is soft, via `isActive=false`. Vendor constraints are documented on the entity descriptions: `udfType 1` = Company/Account, picklist = `dataType List`; `dataType`/`udfType` are immutable after creation; a company is limited to 200 active UDFs; `valueForDisplay`/`valueForExport` are required and unique per definition, and a default value's `valueForDisplay` cannot be renamed. Both entities are registered in `constants/entities.ts`, `resources/definitions.ts` and `Autotask.node.ts`'s resource/execute dispatch (standard node), plus `resources/tool/execute.ts`'s `RESOURCE_EXECUTORS` map (AI-tool/MCP dispatch), and surface automatically on the AI-tool node and the static tool surface.
+
 ## [2.29.5] - 2026-10-08
 
 ### Fixed

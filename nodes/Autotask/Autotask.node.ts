@@ -247,6 +247,10 @@ import { expenseItemAttachmentFields } from './resources/expenseItemAttachments/
 import { expenseReportFields } from './resources/expenseReports/description';
 import { executeSkillOperation } from './resources/skills/execute';
 import { skillFields } from './resources/skills/description';
+import { executeUserDefinedFieldDefinitionOperation } from './resources/userDefinedFieldDefinition/execute';
+import { userDefinedFieldDefinitionFields } from './resources/userDefinedFieldDefinition/description';
+import { executeUserDefinedFieldListItemOperation } from './resources/userDefinedFieldListItem/execute';
+import { userDefinedFieldListItemFields } from './resources/userDefinedFieldListItem/description';
 import { contactGroupsFields } from './resources/contactGroups/description';
 import { executeContactGroupContactsOperation } from './resources/contactGroupContacts/execute';
 import { contactGroupContactsFields } from './resources/contactGroupContacts/description';
@@ -461,6 +465,8 @@ const autotaskDescription: INodeTypeDescription = {
 			...addOperationsToResource(timeEntryFields, { resourceName: 'timeEntry' }),
 			...addOperationsToResource(timeEntryAttachmentFields, { resourceName: 'timeEntryAttachment' }),
 			...addOperationsToResource(timeOffRequestFields, { resourceName: 'timeOffRequest' }),
+			...addOperationsToResource(userDefinedFieldDefinitionFields, { resourceName: 'userDefinedFieldDefinition' }),
+			...addOperationsToResource(userDefinedFieldListItemFields, { resourceName: 'userDefinedFieldListItem' }),
 			...searchFilterDescription,
 			...searchFilterOperations,
 		]),
@@ -766,6 +772,10 @@ export class Autotask implements INodeType {
 				return executeSurveyResultsOperation.call(this);
 			case 'skill':
 				return executeSkillOperation.call(this);
+			case 'userDefinedFieldDefinition':
+				return executeUserDefinedFieldDefinitionOperation.call(this);
+			case 'userDefinedFieldListItem':
+				return executeUserDefinedFieldListItemOperation.call(this);
 			default:
 				throw new NodeOperationError(
 					this.getNode(),

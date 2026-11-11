@@ -130,6 +130,8 @@ import { executeResourceSkillOperation } from '../resourceSkills/execute';
 import { executeResourceTimeOffAdditionalOperation } from '../resourceTimeOffAdditional/execute';
 import { executeResourceTimeOffApproverOperation } from '../resourceTimeOffApprovers/execute';
 import { executeResourceTimeOffBalanceOperation } from '../resourceTimeOffBalances/execute';
+import { executeUserDefinedFieldDefinitionOperation } from '../userDefinedFieldDefinition/execute';
+import { executeUserDefinedFieldListItemOperation } from '../userDefinedFieldListItem/execute';
 
 /**
  * Resource executor mapping for dynamic execution
@@ -261,6 +263,8 @@ const RESOURCE_EXECUTORS: Record<
 	timeEntry: executeTimeEntryOperation,
 	timeEntryAttachment: executeTimeEntryAttachmentOperation,
 	timeOffRequest: executeTimeOffRequestOperation,
+	userDefinedFieldDefinition: executeUserDefinedFieldDefinitionOperation,
+	userDefinedFieldListItem: executeUserDefinedFieldListItemOperation,
 };
 
 /**
