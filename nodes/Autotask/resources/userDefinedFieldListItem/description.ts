@@ -50,21 +50,6 @@ export const userDefinedFieldListItemFields: INodeProperties[] = [
 		default: 'get',
 	},
 	{
-		displayName: 'UDF Field ID',
-		name: 'udfFieldId',
-		type: 'string',
-		required: true,
-		default: '',
-		displayOptions: {
-			show: {
-				resource: ['userDefinedFieldListItem'],
-				operation: ['create', 'update'],
-			},
-		},
-		description:
-			'The ID of the user-defined field definition that owns this value (parent-scoped create/update)',
-	},
-	{
 		displayName: 'User Defined Field List Item ID',
 		name: 'id',
 		type: 'string',
@@ -106,6 +91,6 @@ export const userDefinedFieldListItemFields: INodeProperties[] = [
 			},
 		},
 		description:
-			'Map the fields to be used in the operation (valueForDisplay and valueForExport are required and unique per definition)',
+			'Map the fields to be used in the operation. For create/update include udfFieldId — the ID of the user-defined field definition that owns the value (parent-scoped). valueForDisplay and valueForExport are required and unique per definition.',
 	},
 ];
