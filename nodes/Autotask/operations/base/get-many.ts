@@ -231,19 +231,7 @@ export class GetManyOperation<T extends IAutotaskEntity> {
 
 				// Initial query - construct endpoint
 				let endpoint: string;
-				if (this.entityType === 'UserDefinedFieldListItem') {
-					// Special handling for UDF list items - use parent context
-					const udfFieldId = filters.filter.find(f => f.field === 'udfFieldId')?.value;
-					if (udfFieldId === undefined || udfFieldId === null || udfFieldId === '') {
-						throw new Error(
-							ERROR_TEMPLATES.validation
-								.replace('{type}', 'ValidationError')
-								.replace('{entity}', this.entityType)
-								.replace('{details}', 'UDF Field ID is required for querying list items')
-						);
-					}
-					endpoint = buildChildEntityUrl('UserDefinedFieldDefinition', 'ListItem', udfFieldId as string | number, { isQuery: true });
-				} else if (this.parentType) {
+				if (this.parentType) {
 					// Check if this entity requires parent context for queries
 					const metadata = getEntityMetadata(this.entityType);
 					const requiresParentForQuery = metadata?.operations?.query === 'parent';

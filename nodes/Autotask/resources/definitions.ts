@@ -624,6 +624,16 @@ export const RESOURCE_DEFINITIONS: INodePropertyOptions[] = [
 		value: 'timeOffRequest',
 		description: 'Query and manage Time Off Requests, including approving or rejecting pending requests submitted by resources',
 	},
+	{
+		name: 'User Defined Field Definition',
+		value: 'userDefinedFieldDefinition',
+		description: 'Manage user-defined field definitions (picklist = dataType List; udfType 1 = Company/Account). No delete endpoint — deactivate via isActive.',
+	},
+	{
+		name: 'User Defined Field List Item',
+		value: 'userDefinedFieldListItem',
+		description: 'Manage values of picklist user-defined fields (parent-scoped under a UDF definition via udfFieldId). No delete endpoint — deactivate via isActive.',
+	},
 ];
 
 export const RESOURCE_FIELD: INodeProperties = {

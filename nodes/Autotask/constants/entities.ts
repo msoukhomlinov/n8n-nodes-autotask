@@ -198,6 +198,25 @@ export const AUTOTASK_ENTITIES: IEntityMetadata[] = [
 		hasUserDefinedFields: true,
 	},
 	{ name: 'TimeEntryAttachment', aiDescription: 'Attachment records scoped to a Time Entry parent record.', childOf: 'TimeEntry', subname: 'Attachments', parentIdField: 'timeEntryID', isAttachment: true, operations: { [OperationType.CREATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self', [OperationType.DELETE]: 'parent' } },
+	// UDF-management entities (issue #160). The Autotask API has no DELETE endpoint for
+	// either entity: definitions are retired via isActive=false, and list items likewise
+	// (soft removal). Company/Account is udfType 1; picklist UDFs use dataType 'List'.
+	{
+		name: 'UserDefinedFieldDefinition',
+		aiDescription:
+			"User-defined field definitions on Autotask entities (udfType 1 = Company/Account; dataType 'List' = picklist). Create, update (isActive for soft removal), read, query and count. No delete — the API has no deletion endpoint; deactivate with isActive=false. dataType and udfType are immutable after creation; a company is limited to 200 active UDFs.",
+		operations: { [OperationType.CREATE]: 'self', [OperationType.UPDATE]: 'self', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' },
+	},
+	{
+		name: 'UserDefinedFieldListItem',
+		aiDescription:
+			"Values (list items) of a picklist user-defined field definition, e.g. Company/Account picklist options. Create and update are parent-scoped under the UDF definition (provide udfFieldId); read/query/count use the standalone UserDefinedFieldListItems endpoint, so a udfFieldId filter can select one definition's values. No delete — deactivate with isActive=false. valueForDisplay and valueForExport are required and must be unique per definition; a default value's valueForDisplay cannot be renamed.",
+		childOf: 'UserDefinedFieldDefinition',
+		subname: 'ListItems',
+		parentUrlSegment: 'UserDefinedFields',
+		parentIdField: 'udfFieldId',
+		operations: { [OperationType.CREATE]: 'parent', [OperationType.UPDATE]: 'parent', [OperationType.QUERY]: 'self', [OperationType.COUNT]: 'self' },
+	},
 ];
 
 /**
