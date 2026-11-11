@@ -11,8 +11,9 @@ live-verified 2026-11-11 in a read-only sweep on the published SDK 0.61.0 / iit-
 the endpoint URLs answer as specced (including the parent-scoped
 `/V1.0/UserDefinedFields/{udfFieldId}/ListItems` reads), a `udfFieldId` filter narrows the
 standalone list endpoint to one definition's values, no delete operation exists on the surface, and
-headroom against the 200-active-UDF cap was confirmed; the node wiring is unchanged, and the live
-write round-trip is owner-gated (not yet exercised).
+headroom against the 200-active-UDF cap was confirmed; the node wiring is unchanged, and the
+live write round-trip (create, label update, deactivate via the parent-scoped ListItems path) was
+exercised the same day under operator governance, with the test records left deactivated.
 
 ## [2.29.5] - 2026-10-08
 
