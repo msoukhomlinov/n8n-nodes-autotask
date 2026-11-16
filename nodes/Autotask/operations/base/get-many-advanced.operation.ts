@@ -154,7 +154,6 @@ export class GetManyAdvancedOperation<T extends IAutotaskEntity> extends BaseOpe
 							`Advanced filter "MaxRecords" must be an integer between 1 and 500 (got ${String(rawMaxRecords)}). Remove it from the filter or set it to 500 or less.`,
 						);
 					}
-					queryInput.MaxRecords = rawMaxRecords;
 				}
 
 				// Check for column selection only if IncludeFields wasn't already set by parseAdvancedFilter
