@@ -11,6 +11,7 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 ### Security
 
 - **`moment` raised to `^2.31.0`** (GHSA-4p3w-j4w9-5jqw, path traversal in `moment.locale()` via a crafted non-string locale name). `moment` reaches the node through `moment-timezone`, whose `^2.29.4` range still allowed the vulnerable 2.30.x; it is now a direct dependency with a patched floor so upgrading installs pick up 2.31.0. The node never calls `moment.locale()`, so it was not exploitable through the node — this is a defence-in-depth floor. All other open Dependabot alerts are in development-only tooling or in packages resolved from the n8n host at runtime, and do not ship with the node.
+- **Development lockfile refreshed** — `package-lock.json` (the lockfile Dependabot scans) had drifted from the pnpm overrides in `pnpm-workspace.yaml`. It is regenerated, and npm `overrides` for `glob`, `minimatch`, `qs`, `stream-json` and `uuid` now mirror those patched floors. Development tooling only: npm ignores a published package's `overrides`, so nothing changes for installs of the node.
 
 ## [2.30.0] - 2026-11-11
 
