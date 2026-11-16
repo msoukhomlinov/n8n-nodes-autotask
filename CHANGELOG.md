@@ -2,6 +2,12 @@
 
 All notable changes to the n8n-nodes-autotask project will be documented in this file.
 
+## [2.30.1] - 2026-11-17
+
+### Fixed
+
+- **Get Many (Advanced) with `MaxRecords` in the advanced-filter JSON** — the JSON can set `MaxRecords` directly, bypassing the 1–500 limit of the Max Records parameter, and Autotask answers values above 500 with a bare HTTP 500 that gives no hint of the cause. With **Get All** on, a `MaxRecords` in the filter JSON must now be an integer from 1 to 500; anything else (above 500, below 1, decimals, booleans, strings, null, arrays, objects) fails before the query is sent, with an error naming the field and the limit. With **Get All** off the Max Records parameter still overrides the JSON value, unchanged. README troubleshooting now lists the common causes of a bare HTTP 500 on queries (unknown field names in `IncludeFields` or filters, `MaxRecords` above 500). See #159.
+
 ## [2.30.0] - 2026-11-11
 
 ### Changed
