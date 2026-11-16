@@ -8,6 +8,10 @@ All notable changes to the n8n-nodes-autotask project will be documented in this
 
 - **Get Many (Advanced) with `MaxRecords` in the advanced-filter JSON** — the JSON can set `MaxRecords` directly, bypassing the 1–500 limit of the Max Records parameter, and Autotask answers values above 500 with a bare HTTP 500 that gives no hint of the cause. With **Get All** on, a `MaxRecords` in the filter JSON must now be an integer from 1 to 500; anything else (above 500, below 1, decimals, booleans, strings, null, arrays, objects) fails before the query is sent, with an error naming the field and the limit. With **Get All** off the Max Records parameter still overrides the JSON value, unchanged. README troubleshooting now lists the common causes of a bare HTTP 500 on queries (unknown field names in `IncludeFields` or filters, `MaxRecords` above 500). See #159.
 
+### Security
+
+- **`moment` raised to `^2.31.0`** (GHSA-4p3w-j4w9-5jqw, path traversal in `moment.locale()` via a crafted non-string locale name). `moment` reaches the node through `moment-timezone`, whose `^2.29.4` range still allowed the vulnerable 2.30.x; it is now a direct dependency with a patched floor so upgrading installs pick up 2.31.0. The node never calls `moment.locale()`, so it was not exploitable through the node — this is a defence-in-depth floor. All other open Dependabot alerts are in development-only tooling or in packages resolved from the n8n host at runtime, and do not ship with the node.
+
 ## [2.30.0] - 2026-11-11
 
 ### Changed
